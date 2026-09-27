@@ -153,11 +153,20 @@ Running speech recognition on a clean, separated vocal is a dramatically easier
 problem than running it on a mix. The same stem engine that makes karaoke
 possible also makes the transcription good.
 
-- **Whisper** (already present for [voice control](ASSISTANT.md#4-voice)) with
-  word-level timestamps, run over the vocal stem.
-- **HeartTranscriptor**, the lyric-recognition model that ships alongside
-  [HeartMuLa](https://github.com/HeartMuLa/heartlib), which is purpose-built for
-  real-world music rather than speech.
+**WhisperX**, the owner's choice (§122), because it gives each word its own
+time. It is installed once, on the DJ's press, into a folder of djmanzo's own,
+and run over the **separated vocals** when separation has finished — the mix
+otherwise, and it says so. See `dj_app::wordtimes` and
+[RESEARCH.md](RESEARCH.md#words-in-time-whisperx-122) for the licences, and
+the non-commercial aligners it avoids.
+
+- **Words already known** — tags, `.lrc`, LRCLIB — are handed over, and only
+  WhisperX's aligner runs: the cheap half of the job.
+- **No words anywhere**: faster-whisper's `base` model finds them first, then
+  the aligner places them.
+- **Every run is timed** against the owner's fifteen seconds for a three- to
+  five-minute song and says whether it met it. Nothing here has measured a
+  real song yet: the container this was built in cannot reach the model hosts.
 
 ### Forced alignment — the case nobody handles
 
@@ -170,7 +179,9 @@ the lyrics somewhere" into a fully synced karaoke track, which is the single
 highest-value operation in this whole feature and one most karaoke software
 simply does not do.
 
-Results are written back as a sidecar `.lrc`, so the work is done once.
+Results are kept in the library as the record's timed words, in enhanced LRC
+(a time before every word), so the work is done once. This is what WhisperX's
+aligner does when the words are known.
 
 ### Ahead of time, or live
 

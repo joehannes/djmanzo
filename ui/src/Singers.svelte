@@ -10,6 +10,7 @@
    */
   import BuyLinks from "./BuyLinks.svelte";
   import Guests from "./Guests.svelte";
+  import WordTiming from "./WordTiming.svelte";
   import {
     detachPanel,
     dispatch,
@@ -427,6 +428,8 @@
       </ul>
     </details>
   {/if}
+
+  <WordTiming {decks} {deckCount} />
 
   <Guests rev={journalRev} {asking} />
 

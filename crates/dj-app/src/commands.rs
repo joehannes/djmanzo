@@ -849,6 +849,7 @@ pub fn put_on_deck(
             id: decoded.id,
         },
     );
+    state.set_deck_stems(deck_id, decoded.id, decoded.buffer.stems_lock());
 
     let track_id = decoded.id;
     let sample_rate = decoded.buffer.sample_rate();
@@ -13649,6 +13650,176 @@ pub fn guests_voice(state: State<'_, AppState>, id: String) -> Result<GuestsDto,
         return Err(error);
     }
     Ok(guests_dto(&state, journal, None))
+}
+
+/// §122: WhisperX, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct WordTimingDto {
+    pub installed: bool,
+    pub progress: crate::wordtimes::Progress,
+    /// The owner's budget for a three- to five-minute song, in seconds.
+    pub budget_seconds: f64,
+    /// Exactly what is, or would be, installed.
+    pub whisperx: &'static str,
+    /// Where it lives, to say so and so it can be deleted by hand.
+    pub folder: String,
+}
+
+fn word_tools(app: &tauri::AppHandle) -> Result<crate::wordtimes::Tools, String> {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no data folder to install WhisperX in: {e}"))?;
+    Ok(crate::wordtimes::Tools {
+        root: dir.join("tools"),
+        os: crate::wordtimes::Os::here(),
+    })
+}
+
+fn word_timing_dto(state: &AppState, tools: &crate::wordtimes::Tools) -> WordTimingDto {
+    WordTimingDto {
+        installed: tools.installed(),
+        progress: state
+            .word_timing()
+            .lock()
+            .map(|p| p.clone())
+            .unwrap_or_default(),
+        budget_seconds: crate::wordtimes::BUDGET_SECONDS,
+        whisperx: crate::wordtimes::WHISPERX,
+        folder: tools.root.display().to_string(),
+    }
+}
+
+/// §122: whether WhisperX is here, being installed, and how the last run went.
+///
+/// # Errors
+/// No data folder.
+#[tauri::command]
+pub fn word_timing(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WordTimingDto, String> {
+    Ok(word_timing_dto(&state, &word_tools(&app)?))
+}
+
+/// §122: install WhisperX, in the background: `uv` fetched and checked if
+/// djmanzo has none, then a private environment with WhisperX and PyTorch's
+/// CPU build in it. Answers at once; the interface reads [`word_timing`]
+/// for the steps.
+///
+/// # Errors
+/// No data folder.
+#[tauri::command]
+pub fn word_timing_install(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WordTimingDto, String> {
+    let tools = word_tools(&app)?;
+    let progress = state.word_timing();
+    {
+        let Ok(mut now) = progress.lock() else {
+            return Err("the install's state is poisoned".to_owned());
+        };
+        if now.installing || tools.installed() {
+            drop(now);
+            return Ok(word_timing_dto(&state, &tools));
+        }
+        now.installing = true;
+        now.error = None;
+        now.step = Some("Starting".to_owned());
+    }
+    let into = tools.clone();
+    tauri::async_runtime::spawn(async move {
+        let http = reqwest::Client::new();
+        let step = Arc::clone(&progress);
+        let outcome = crate::wordtimes::install(&into, &http, move |what| {
+            if let Ok(mut now) = step.lock() {
+                now.step = Some(what.to_owned());
+            }
+        })
+        .await;
+        if let Ok(mut now) = progress.lock() {
+            now.installing = false;
+            now.step = None;
+            now.error = outcome.err();
+        }
+    });
+    Ok(word_timing_dto(&state, &tools))
+}
+
+/// §122: time the words of the record on `deck` with WhisperX, keep them as
+/// the record's timed words, and say how long it took against the owner's
+/// fifteen seconds.
+///
+/// The words already known — the record's own or LRCLIB's — are handed over
+/// so only the aligner runs; a record with none is transcribed first.
+///
+/// # Errors
+/// No record on the deck, WhisperX not installed, or what the run says.
+#[tauri::command]
+pub async fn word_timing_run(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    deck: u8,
+    language: Option<String>,
+) -> Result<crate::wordtimes::Report, String> {
+    let tools = word_tools(&app)?;
+    let id = DeckId::from_human(deck)
+        .and_then(|deck| state.deck_track_id(deck))
+        .ok_or_else(|| format!("deck {deck} has no record on it"))?;
+    let library = library(&state)?;
+    let track = library
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "that record is not in the collection".to_owned())?;
+    let stored = library.words_for(id).ok().flatten();
+    let known_plain = stored.as_ref().map(|s| s.plain.clone()).unwrap_or_default();
+    let known_synced = stored.as_ref().and_then(|s| s.synced.clone());
+    let path = track.path.clone();
+    let stems = DeckId::from_human(deck).and_then(|deck| state.deck_stems(deck, id));
+    let progress = state.word_timing();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        crate::wordtimes::time_words(
+            &tools,
+            &path,
+            |seconds| crate::wordtimes::known_lines(known_synced.as_deref(), &known_plain, seconds),
+            language,
+            stems.as_ref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let (answer, report) = match outcome {
+        Ok(done) => done,
+        Err(why) => {
+            if let Ok(mut now) = progress.lock() {
+                now.error = Some(why.clone());
+            }
+            return Err(why);
+        }
+    };
+    let plain = stored
+        .as_ref()
+        .map(|s| s.plain.clone())
+        .filter(|plain| !plain.trim().is_empty())
+        .unwrap_or_else(|| crate::wordtimes::plain_of(&answer));
+    let lrc = crate::wordtimes::to_lrc(&answer);
+    library
+        .remember_words(
+            id,
+            &plain,
+            Some(&lrc),
+            false,
+            "whisperx",
+            crate::library::now_seconds(),
+        )
+        .map_err(|e| e.to_string())?;
+    if let Ok(mut now) = progress.lock() {
+        now.error = None;
+        now.last = Some(report.clone());
+    }
+    Ok(report)
 }
 
 /// §123: a guest's own copy of their record, as JSON, or the whole journal as

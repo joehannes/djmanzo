@@ -213,6 +213,8 @@ pub struct AppState {
     sample_names: Arc<Mutex<HashMap<(u8, u8), String>>>,
     /// §123: the voice take in flight, shared with the host thread.
     voice_takes: Arc<crate::guests::Takes>,
+    /// §122: WhisperX's install and the last run, for the interface to read.
+    word_timing: Arc<Mutex<crate::wordtimes::Progress>>,
     /// The device that is open, as the interface describes it.
     ///
     /// Held here rather than only in the interface because opening a device is
@@ -264,6 +266,10 @@ pub struct AppState {
     /// the deck's own Load button, and component-local state shows "no track"
     /// for every one of those.
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
+    /// §122: each deck's separated stems, with the track they belong to, so
+    /// WhisperX can be handed the vocals rather than the mix. A handle to the
+    /// table the separation worker fills, not a copy.
+    deck_stems: Mutex<HashMap<u8, (dj_core::TrackId, dj_decode::StemBuffer)>>,
     /// Controllers and the keyboard. See [`crate::control`].
     control: Arc<crate::control::ControlHub>,
     /// Which panels are on screens of their own. See [`crate::monitors`].
@@ -536,6 +542,7 @@ impl AppState {
             presets: PresetLibrary::builtin(),
             sample_names,
             voice_takes,
+            word_timing: Arc::default(),
             active_device: Arc::new(Mutex::new(None)),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
@@ -547,6 +554,7 @@ impl AppState {
             identifier: Mutex::new(None),
             interface_work: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
+            deck_stems: Mutex::new(HashMap::new()),
             control: Arc::new(control),
             detached: Arc::new(Mutex::new(crate::monitors::Detached::default())),
             plugin,
@@ -1587,6 +1595,12 @@ impl AppState {
         crate::guests::write(&dir, journal, unlink)
     }
 
+    /// §122: WhisperX's install and the last run.
+    #[must_use]
+    pub fn word_timing(&self) -> Arc<Mutex<crate::wordtimes::Progress>> {
+        Arc::clone(&self.word_timing)
+    }
+
     /// §123: the voice take in flight.
     #[must_use]
     pub fn voice_takes(&self) -> &crate::guests::Takes {
@@ -2269,6 +2283,33 @@ impl AppState {
         if let Ok(mut map) = self.deck_tracks.lock() {
             map.remove(&deck.human_number());
         }
+        if let Ok(mut map) = self.deck_stems.lock() {
+            map.remove(&deck.human_number());
+        }
+    }
+
+    /// §122: note the stems a deck's new track is being separated into.
+    pub fn set_deck_stems(
+        &self,
+        deck: dj_core::DeckId,
+        track: dj_core::TrackId,
+        stems: dj_decode::StemBuffer,
+    ) {
+        if let Ok(mut map) = self.deck_stems.lock() {
+            map.insert(deck.human_number(), (track, stems));
+        }
+    }
+
+    /// §122: the stems of what is on a deck, if it is still `track`.
+    #[must_use]
+    pub fn deck_stems(
+        &self,
+        deck: dj_core::DeckId,
+        track: dj_core::TrackId,
+    ) -> Option<dj_decode::StemBuffer> {
+        let map = self.deck_stems.lock().ok()?;
+        let (on, stems) = map.get(&deck.human_number())?;
+        (*on == track).then(|| std::sync::Arc::clone(stems))
     }
 
     /// How the assistant is conducting itself, and what the human holds.

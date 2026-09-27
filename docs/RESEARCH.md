@@ -171,6 +171,7 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | Layout budget | `@playwright/test` | Apache-2.0 | **Development only**, never in a shipped build. Drives a real browser to measure *where the controls actually land* at djmanzo's own 1280x800, which is the only kind of test that can catch the failure that has now happened three times: a control a DJ performs with sitting below the fold. A template assertion passes while the crossfader is 900 px off the screen, and jsdom does no layout at all, so nothing cheaper answers the question. It drives **Chromium**, which is *not* the engine djmanzo ships on — the application runs in WebKitGTK — so every assertion carries slack and the limitation is written down beside the number in `ui/e2e/shell.ts`. Brings `playwright` and `playwright-core` (both Apache-2.0) and nothing else. |
 | Accessibility audit | `axe-core` | **MPL-2.0** | **Development only**, never in a shipped build, and with **no dependencies of its own** — one package, one `node_modules` entry. MPL-2.0 is file-level copyleft and ADR-0002 permits it explicitly; it is also never linked into djmanzo at all, since the audit evaluates the library as a string inside a Playwright page and the built bundle never imports it. It is what §33's row meant by *no audit has been run*: the rules engine behind most of the accessibility tooling that exists, and it found eight kinds of defect on its first run, two of which — the deck's level meter announcing itself as an empty box, and the deck's position bar announcing a percentage of nothing — had shipped since those components were written. Chosen over `@axe-core/playwright`, which is the same library plus a wrapper, because the wrapper is twenty lines this project would rather read than depend on. What it cannot do is written beside the number, in `ui/e2e/access.spec.ts`: it is a rules engine, so a clean run is a floor rather than a verdict, and the one rule §33 states as an absolute — colour alone never encoding critical state — is not mechanically checkable at all and lives as a type in `dj_app::mission` instead. |
 | Album archives | `zip` | MIT | §111: a store's album arrives as one `.zip`. Built with `default-features = false, features = ["deflate"]` — reading deflate and stored entries only, which is what stores write; no AES or ZipCrypto, bzip2, zstd, lzma or xz, so an entry packed with one of those is refused and said to be. `deflate` is the one feature that turns on `flate2` (MIT OR Apache-2.0, already in the tree, on its pure-Rust `miniz_oxide` backend), and it also compiles the `zopfli` compressor (Apache-2.0; `bumpalo`, `crc32fast`, `log`, `simd-adler32`, all already in the tree), which nothing calls. `arbitrary` and `derive_arbitrary` (MIT OR Apache-2.0) appear in `Cargo.lock` as optional fuzzing dependencies and are not built. Extraction is djmanzo's own, not the crate's `extract`: each record is written under its own file name alone, names that climb out are refused (`ZipFile::enclosed_name`), and sizes are counted in bytes written against `downloads::LIMITS`, never the sizes the archive claims. See `dj_app::downloads::unpack`. |
+| Checking a downloaded tool | `sha2` | MIT OR Apache-2.0 | §122: the `uv` djmanzo fetches to install WhisperX is checked against the SHA-256 its release publishes beside it before it is unpacked, and refused if it does not match. Already in the tree through Tauri; now a direct dependency of `dj-app` too. |
 | URL escaping | `urlencoding` | MIT | Percent-encoding, for the source APIs in `dj-sources` and the shared tracklist in `dj-app::share`. Small enough to have written by hand and exactly the kind of thing that is wrong when written by hand — the failure is a set list truncated at the first `&` in an artist name. |
 | The Linux webview's permission request | `webkit2gtk` | MIT | The Rust bindings to WebKitGTK, already linked by Tauri's webview layer at the same version and features — named directly only so `dj_app::senses` can answer WebKitGTK's camera and microphone permission request, which is **denied when nobody answers it** and which Tauri answers on macOS but not on Linux. Also turns on WebKitGTK's mock capture devices when `DJMANZO_MOCK_CAPTURE` is set, which is how the room surface is tested in the shipped webview on a machine with no camera. Adds no crate to the build. |
 
@@ -393,6 +394,58 @@ action. **Performance keys are not under the leader**: a hot cue or a kill
 has to be one physical key, so the two-hand keyboard map stays as it was,
 minus Space (now the leader) and the bare digits (now the activities, as the
 owner chose when asked; the hot cues moved to Shift and a digit).
+
+## Words in time: WhisperX (§122)
+
+The owner chose WhisperX for its word timestamps. Nothing below is linked into
+djmanzo, vendored or shipped in its packages: the DJ presses **Install
+WhisperX** and djmanzo installs it into a folder of its own
+(`<app data>/tools`), where it runs as a separate process. Rule 2 of ADR-0002 —
+GPL and AGPL code never linked, vendored or copied — is therefore not in play,
+but the licences are recorded here all the same, because the DJ runs them.
+
+| What | Licence | Note |
+|---|---|---|
+| `uv` 0.12.19 (Astral) | MIT OR Apache-2.0 | Fetches a Python and installs the rest. Downloaded from its GitHub release and checked against the published SHA-256. |
+| CPython 3.12 (fetched by `uv`) | PSF-2.0 | |
+| WhisperX 3.8.6 | BSD-2-Clause | |
+| faster-whisper 1.2.1, CTranslate2 4.8.2 | MIT | Transcription, only for a record with no known words. |
+| PyTorch 2.8, torchaudio 2.8, torchcodec | BSD-3-Clause | Installed with `--torch-backend cpu`. PyPI's default Linux build pulls in fourteen `nvidia-*` CUDA packages under **NVIDIA proprietary licences** and about two gigabytes a CPU-only run never loads; the CPU index has none of them. A dry run here without the flag listed them; one with it could not be run, because this container cannot reach `download.pytorch.org`. |
+| transformers 4.57, tokenizers, safetensors, huggingface-hub | Apache-2.0 | Load the Hugging Face aligners. |
+| pyannote-audio and its family | MIT (per their repositories; PyPI metadata empty) | Installed by WhisperX for speaker separation, which djmanzo never asks for. |
+| PyAV (`av`) 18.1 | BSD-3-Clause | Its wheels bundle FFmpeg; PyPI does not say under which licence that build is made, and it was not verified. djmanzo hands WhisperX a WAV it read itself, so nothing here asks FFmpeg to decode. |
+| The other ~90 packages | MIT, BSD, Apache-2.0, PSF, MPL-2.0 (`certifi`, `tqdm`) | Checked one by one against PyPI's metadata for WhisperX 3.8.6's resolution; none declares GPL, LGPL or AGPL. |
+
+**The models**, fetched on first use:
+
+| Model | Licence | Used for |
+|---|---|---|
+| Whisper `base` (Systran's faster-whisper conversion) | MIT | Finding the words, when none are known. |
+| wav2vec 2.0 `WAV2VEC2_ASR_BASE_960H` (torchaudio) | MIT | Placing English words — WhisperX's default. |
+| `jonatasgrosman/wav2vec2-large-xlsr-53-german`, `-italian` | Apache-2.0 (model cards) | German and Italian, **instead of** WhisperX's default. |
+| `facebook/wav2vec2-large-xlsr-53-spanish`, `-french` | Apache-2.0 (model cards) | Spanish and French, **instead of** WhisperX's default. |
+| WhisperX's defaults for every other language | Each model's own | Chosen by WhisperX (`DEFAULT_ALIGN_MODELS_HF`); not checked one by one. |
+
+WhisperX's own defaults for French, German, Spanish and Italian are torchaudio's
+`VOXPOPULI_ASR_BASE_10K_*`, "originally published by the authors of VoxPopuli
+under CC BY-NC 4.0 and redistributed with the same license". A DJ timing words
+for a paid night is commercial use, so djmanzo names another aligner for those
+four (`dj_app::wordtimes::ALIGNERS`).
+
+**djmanzo's own share of the budget is measured.** Decoding a four-minute
+WAV took 0.15 s here; bringing it to sixteen kilohertz with the stems'
+resampler (`dj_stems::resample`, which works its kernel out sample by sample)
+took **sixteen seconds** — the whole budget. WhisperX is therefore handed audio
+from a resampler of its own (`dj_app::wordtimes::to_sixteen_kilohertz`, the
+kernel worked out once for 512 phases), which brings the same four minutes
+down in under a second; in the running application a 75-second record was
+prepared in 0.3 s, where it had taken 5.0 s.
+
+**WhisperX's share of the budget is not measured.** This container reaches PyPI but
+not `huggingface.co` or `download.pytorch.org`, so WhisperX could not be
+installed and no real song was timed here. Every run on a DJ's machine times
+itself stage by stage and says whether it met the budget, which is the
+measurement the owner's rule asks for.
 
 ## Karaoke hosting (§107)
 

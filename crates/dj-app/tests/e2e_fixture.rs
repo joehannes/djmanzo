@@ -1153,6 +1153,67 @@ fn the_browser_fixture_has_the_guest_questions() {
     );
 }
 
+/// §122: **WhisperX as the Singers surface draws it** — not installed, and
+/// a run's report — in Rust's own shapes, for `ui/e2e/wordtiming.spec.ts`.
+/// The report's numbers are an example, not a measurement.
+#[test]
+fn the_browser_fixture_has_word_timing() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/word-timing.json");
+    let report = |seconds: f64| dj_app::wordtimes::Report {
+        mode: "align".to_owned(),
+        language: "es".to_owned(),
+        words: 212,
+        stages: vec![
+            ("prepare".to_owned(), 0.8),
+            ("start".to_owned(), 2.1),
+            ("align".to_owned(), seconds - 2.9),
+        ],
+        seconds,
+        record_seconds: 231.0,
+        within_budget: seconds <= dj_app::wordtimes::BUDGET_SECONDS,
+        heard: if seconds <= dj_app::wordtimes::BUDGET_SECONDS {
+            "vocals"
+        } else {
+            "mix"
+        }
+        .to_owned(),
+    };
+    let status = dj_app::commands::WordTimingDto {
+        installed: false,
+        progress: dj_app::wordtimes::Progress::default(),
+        budget_seconds: dj_app::wordtimes::BUDGET_SECONDS,
+        whisperx: dj_app::wordtimes::WHISPERX,
+        folder: "/home/dj/.local/share/app.djmanzo.desktop/tools".to_owned(),
+    };
+    let fresh = serde_json::to_string_pretty(&serde_json::json!({
+        "status": status,
+        "within": report(9.4),
+        "over": report(41.0),
+    }))
+    .expect("the word timing serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the word timing");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("stored JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("fresh JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nWhisperX's status or report changed shape.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// **The AI providers the settings draw**, as Rust describes them, for
 /// `ui/e2e/ai.spec.ts`: OpenRouter and Google keyed and ready, the local
 /// model not running, the rest waiting for a key.

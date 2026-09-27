@@ -4770,6 +4770,41 @@ export interface GuestBook {
 export const guestBook = () => invoke<GuestBook>("guests");
 export const guestSave = (guest: Guest) => invoke<GuestBook>("guests_save", { guest });
 export const guestForget = (id: string) => invoke<GuestBook>("guests_forget", { id });
+/** §122: how a WhisperX run went. See `dj_app::wordtimes::Report`. */
+export interface WordTimingReport {
+  /** `align` when the words were known, `transcribe` when they were found. */
+  mode: "align" | "transcribe";
+  language: string;
+  words: number;
+  /** Each stage and its seconds. */
+  stages: [string, number][];
+  seconds: number;
+  record_seconds: number;
+  within_budget: boolean;
+  /** The separated vocals, or the whole mix when separation had not finished. */
+  heard: "vocals" | "mix";
+}
+
+/** §122: WhisperX, installed or not, and how the last run went. */
+export interface WordTiming {
+  installed: boolean;
+  progress: {
+    installing: boolean;
+    step: string | null;
+    error: string | null;
+    last: WordTimingReport | null;
+  };
+  budget_seconds: number;
+  whisperx: string;
+  folder: string;
+}
+
+export const wordTiming = () => invoke<WordTiming>("word_timing");
+export const wordTimingInstall = () => invoke<WordTiming>("word_timing_install");
+/** Time the words of the record on `deck`; `language` a two-letter code, or detected. */
+export const wordTimingRun = (deck: number, language: string | null) =>
+  invoke<WordTimingReport>("word_timing_run", { deck, language });
+
 /** §123: record about fifteen seconds of a guest's voice, with their consent. */
 export const guestVoice = (id: string) => invoke<GuestBook>("guests_voice", { id });
 /** A guest's own copy (`id`), or the whole journal as a table (`null`). */

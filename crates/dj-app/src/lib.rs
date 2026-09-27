@@ -104,6 +104,7 @@ pub mod waveform;
 pub mod welcome;
 pub mod whisper;
 pub mod widgets;
+pub mod wordtimes;
 pub mod workers;
 pub mod world;
 
@@ -818,6 +819,9 @@ pub fn run() {
             commands::guests_forget,
             commands::guests_export,
             commands::guests_voice,
+            commands::word_timing,
+            commands::word_timing_install,
+            commands::word_timing_run,
             commands::karaoke_breaks,
             commands::karaoke_breaks_set,
             commands::set_activity_mode,

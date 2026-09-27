@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Words in time, by WhisperX.** The Singers surface can install WhisperX —
+  once, into a folder of djmanzo's own, about two gigabytes — and then time
+  the words of the record on a deck, so the singers' screen wipes them word
+  by word. Words already known are only placed, which is quick; a record with
+  none is listened to first. It hears the separated vocals when separation
+  has finished, and each run says how long it took against the fifteen-second
+  budget. French, German, Spanish and Italian use aligners that allow
+  commercial use.
 - **Fifteen seconds of a karaoke guest's voice.** Once a guest has agreed
   and that is saved, their record in the guest book (one press from the
   up-next singer) records fifteen seconds of the microphone on its own —

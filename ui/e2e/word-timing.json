@@ -1,0 +1,60 @@
+{
+  "over": {
+    "heard": "mix",
+    "language": "es",
+    "mode": "align",
+    "record_seconds": 231.0,
+    "seconds": 41.0,
+    "stages": [
+      [
+        "prepare",
+        0.8
+      ],
+      [
+        "start",
+        2.1
+      ],
+      [
+        "align",
+        38.1
+      ]
+    ],
+    "within_budget": false,
+    "words": 212
+  },
+  "status": {
+    "budget_seconds": 15.0,
+    "folder": "/home/dj/.local/share/app.djmanzo.desktop/tools",
+    "installed": false,
+    "progress": {
+      "error": null,
+      "installing": false,
+      "last": null,
+      "step": null
+    },
+    "whisperx": "whisperx==3.8.6"
+  },
+  "within": {
+    "heard": "vocals",
+    "language": "es",
+    "mode": "align",
+    "record_seconds": 231.0,
+    "seconds": 9.4,
+    "stages": [
+      [
+        "prepare",
+        0.8
+      ],
+      [
+        "start",
+        2.1
+      ],
+      [
+        "align",
+        6.5
+      ]
+    ],
+    "within_budget": true,
+    "words": 212
+  }
+}

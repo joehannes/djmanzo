@@ -2633,6 +2633,12 @@ added together as light, white when all were present:
 > also consider playing video files in the app ... audio is analysed and controllable as with regular audio ... video is displayable (in some separate widget/window ... a separate window can be sent to a beamer in the venue ... or streamed to some online service (youtube??)) or can be hidden.
 > so subsequent karaoke visualizations can be preset-packages that can be applied to songs/videos per different aspects: genre/bpm/topic/ ... with letters/words as analysed ... as fetched from free online sources. (apart from being able to analyse the song for letters, add AI driven search for song letters online services ... a few that work pretty good and freely, auto ordered by quality/reliability ... even 2 or 3 paid services with configuration for subscription tokens/...secrets ... disabled by default but activateable
 
+>
+> *Decided later (2026-09-26), on which tool finds the words:*
+> as of the question what audio analysis tool to choose for finding out the lyrics for karaoke:
+> I prefer x-whisper, since it also tells the timestamps for the words/lyrics ... that's necessary for karaoke ...
+> if x-whipser works on all platforms somehow, do use it. if not, please find a combination of traditional whisper or fast-whisper ... and something that can help put the timestamps for these found words/lyrics ...
+
 ---
 # 123. ASKED SINCE: A KARAOKE JOURNAL, AND A SONG FOR EVERY SINGER
 > also for karaoke, new feature:
