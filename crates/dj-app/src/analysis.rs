@@ -532,6 +532,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// §119: a past night's reactions are placed on the drop, the breakdown
+    /// or the voice after a restart, because the parts come back from disk
+    /// with the rest — not only the grid and key the test above holds.
+    #[test]
+    fn the_parts_of_a_record_survive_a_restart() {
+        let dir = std::env::temp_dir().join(format!("djmanzo-parts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut found = analysis();
+        found.trajectory.drops = vec![1_411_200.0, 5_644_800.0];
+        found.trajectory.breakdowns = vec![dj_analysis::energy::Span {
+            from: 2_822_400.0,
+            to: 4_233_600.0,
+        }];
+        found.trajectory.voice_enters = Some(705_600.0);
+
+        let first = AnalysisStore::new();
+        first.set_cache_dir(dir.clone());
+        first.record(DeckId::from_human(1).unwrap(), track_id(4), found.clone());
+
+        let second = AnalysisStore::new();
+        second.set_cache_dir(dir.clone());
+        let back = second
+            .cached(&track_id(4))
+            .expect("read back after a restart");
+        assert_eq!(back.trajectory.drops, found.trajectory.drops);
+        assert_eq!(back.trajectory.breakdowns, found.trajectory.breakdowns);
+        assert_eq!(back.trajectory.voice_enters, Some(705_600.0));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A store with nowhere to write must still work, just without persistence.
     /// A user whose config directory is unavailable should lose caching, not
     /// analysis.
