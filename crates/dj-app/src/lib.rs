@@ -65,6 +65,7 @@ pub mod mixes;
 pub mod monitors;
 pub mod mood;
 pub mod night;
+pub mod outline;
 pub mod parts;
 pub mod peersync;
 pub mod persist;
@@ -588,6 +589,7 @@ pub fn run() {
             commands::stop_audio,
             commands::load_track,
             commands::load_sample,
+            commands::sample_outline,
             commands::dispatch,
             commands::control_status,
             commands::control_mappings,

@@ -417,6 +417,13 @@ export interface SamplerState {
 export const TRIGGER_MODES = ["one_shot", "hold", "loop", "stutter"] as const;
 
 /**
+ * §114: the shape of what is in a sampler slot — how loud it is from its start
+ * to its end, 0–1, in `dj_app::outline::POINTS` steps. Empty for an empty slot.
+ */
+export const sampleOutline = (bank: number, slot: number) =>
+  invoke<number[]>("sample_outline", { bank, slot });
+
+/**
  * Put a file in a sampler slot.
  *
  * The bank is named rather than assumed, so a load cannot land in the wrong

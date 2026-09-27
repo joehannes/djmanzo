@@ -8,7 +8,7 @@
    * headphones, picking a bank. Setting-up work rather than playing work, which
    * is why it is a panel you open rather than something taking room on a deck.
    */
-  import { loadSample, TRIGGER_MODES, type SamplerState } from "./api";
+  import { loadSample, sampleOutline, TRIGGER_MODES, type SamplerState } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
   import IconButton from "./controls/IconButton.svelte";
 
@@ -24,6 +24,38 @@
 
     let error = $state<string | null>(null);
     let busy = $state<number | null>(null);
+
+    /**
+     * §114: each slot's shape, by what is in it — see `dj_app::outline`.
+     *
+     * Asked once per sample rather than per frame: the snapshot replaces the
+     * whole sampler sixty times a second, so the key is what went in (bank,
+     * slot and name), and a key already asked is not asked again.
+     */
+    let outlines = $state<Record<string, number[]>>({});
+    const asked = new Set<string>();
+    const keyOf = (slot: { slot: number; name: string | null }) => `${sampler.bank}:${slot.slot}:${slot.name ?? ""}`;
+    $effect(() => {
+      for (const slot of sampler.slots) {
+        if (!slot.loaded) continue;
+        const key = keyOf(slot);
+        if (asked.has(key)) continue;
+        asked.add(key);
+        sampleOutline(sampler.bank, slot.slot)
+          .then((shape) => (outlines[key] = shape))
+          .catch(() => asked.delete(key));
+      }
+    });
+
+    /** The outline as one bar a step, mirrored about the middle, in an `n × 20` box. */
+    function bars(shape: number[]): string {
+      return shape
+        .map((level, i) => {
+          const h = Math.max(0.04, Math.min(1, level)) * 10;
+          return `M ${i + 0.15} ${(10 - h).toFixed(2)} h 0.7 v ${(2 * h).toFixed(2)} h -0.7 Z`;
+        })
+        .join(" ");
+    }
 
     /**
      * Which slot the next recording lands in, and where it comes from.
@@ -219,9 +251,25 @@
           {#if slot.loaded}
             <!-- A progress bar rather than a number: mid-set this is read at a
                  glance, and "0.62" is not something read at a glance. -->
-            <div class="through">
-              <div class="through-fill" style:width="{slot.progress * 100}%"></div>
-            </div>
+            {@const shape = outlines[keyOf(slot)] ?? []}
+            {#if shape.length}
+              <!-- §114: the sample's own shape — a kick a spike that falls
+                   away, a pad a plateau — filled as far as it has played. -->
+              <svg
+                class="shape"
+                viewBox="0 0 {shape.length} 20"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                data-steps={shape.length}
+              >
+                <path class="rest" d={bars(shape)} />
+                <path class="played" d={bars(shape.slice(0, Math.round(slot.progress * shape.length)))} />
+              </svg>
+            {:else}
+              <div class="through">
+                <div class="through-fill" style:width="{slot.progress * 100}%"></div>
+              </div>
+            {/if}
 
             <select
               disabled={!enabled}
@@ -412,6 +460,21 @@
     .through-fill {
       height: 100%;
       background: var(--accent-2);
+    }
+
+    .shape {
+      width: 4rem;
+      height: 1.25rem;
+      flex: none;
+    }
+
+    .shape .rest {
+      fill: var(--text-dim);
+      opacity: 0.45;
+    }
+
+    .shape .played {
+      fill: var(--accent-2);
     }
 
     .volume {

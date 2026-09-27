@@ -26,8 +26,14 @@ use std::time::Duration;
 /// A finished recording, as the host hands it on.
 #[derive(Debug)]
 pub enum Landed {
-    /// Loaded into a sampler slot, under this name.
-    Sample { bank: u8, slot: u8, name: String },
+    /// Loaded into a sampler slot, under this name, with its shape
+    /// (`crate::outline`).
+    Sample {
+        bank: u8,
+        slot: u8,
+        name: String,
+        outline: Vec<f32>,
+    },
     /// §123: a guest's voice — the take started with no bank and no slot —
     /// which goes to a file kept for them and never onto a pad. Interleaved
     /// stereo, exactly as long as it was.
@@ -867,6 +873,7 @@ fn land_capture(bus: &Arc<ActionBus<Command>>, on_capture: &OnCapture, capture: 
         return;
     }
     let name = format!("rec {source}");
+    let outline = crate::outline::outline(&samples, crate::outline::POINTS);
     let buffer: Arc<dyn dj_decode::TrackSource> = Arc::new(
         dj_decode::AudioBuffer::from_interleaved(samples, sample_rate),
     );
@@ -885,7 +892,12 @@ fn land_capture(bus: &Arc<ActionBus<Command>>, on_capture: &OnCapture, capture: 
         tracing::warn!(bank, slot, "command queue full; a recording was dropped");
         return;
     }
-    on_capture(Landed::Sample { bank, slot, name });
+    on_capture(Landed::Sample {
+        bank,
+        slot,
+        name,
+        outline,
+    });
 
     if bus
         .send_command(Command::RecordSpace {
@@ -1206,13 +1218,15 @@ mod tests {
                 ..
             })
         ));
+        // §114: and with its shape, measured from what was recorded.
         assert!(matches!(
             landed.lock().unwrap().pop(),
             Some(Landed::Sample {
                 bank: 2,
                 slot: 2,
+                outline,
                 ..
-            })
+            }) if outline.len() == crate::outline::POINTS
         ));
     }
 }

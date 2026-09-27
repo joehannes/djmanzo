@@ -1868,3 +1868,42 @@ fn the_browser_fixture_has_break_music() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §114: **a sampler slot's shape** as `dj_app::outline` measures it, for
+/// `ui/e2e/sampler.spec.ts` — a synthetic kick, loudest at its start and
+/// falling away, so the browser draws what a real one would draw.
+#[test]
+fn the_browser_fixture_has_a_sample_outline() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/sample-outline.json");
+    let kick: Vec<f32> = (0..24_000)
+        .flat_map(|n| {
+            #[allow(clippy::cast_precision_loss)]
+            let t = n as f32 / 48_000.0;
+            let sample = 0.8 * (-t * 12.0).exp() * (std::f32::consts::TAU * 60.0 * t).sin();
+            [sample, sample]
+        })
+        .collect();
+    let shape = dj_app::outline::outline(&kick, dj_app::outline::POINTS);
+    let fresh = serde_json::to_string_pretty(&shape).expect("the outline serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the outline");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("stored JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("fresh JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nA sample's outline changed shape.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

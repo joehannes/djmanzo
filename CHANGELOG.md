@@ -37,6 +37,9 @@ Versioning follows semver, with one project-specific convention:
   them between 5 and 20 kHz, where the phaser barely touched anything
   below the cymbals; they now sweep from about 200 Hz to 19 kHz, as the
   phaser was written to do.
+- **A sampler slot shows the shape of its sound.** Each slot draws how loud
+  its sample is from start to end, so a kick looks different from a vocal
+  chop, and fills in as it plays.
 
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 

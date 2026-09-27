@@ -211,6 +211,9 @@ pub struct AppState {
     /// loads it made itself shows nothing for a sample a script, a preset or
     /// the assistant put there.
     sample_names: Arc<Mutex<HashMap<(u8, u8), String>>>,
+    /// §114: the shape of what is in each slot -- see `crate::outline`. Kept
+    /// beside the names and for the same reason.
+    sample_outlines: Arc<crate::outline::Outlines>,
     /// §123: the voice take in flight, shared with the host thread.
     voice_takes: Arc<crate::guests::Takes>,
     /// §122: WhisperX's install and the last run, for the interface to read.
@@ -434,6 +437,7 @@ impl AppState {
         // record their names here and not in the engine.
         let sample_names: Arc<Mutex<HashMap<(u8, u8), String>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let sample_outlines: Arc<crate::outline::Outlines> = Arc::new(Mutex::new(HashMap::new()));
         // Started before the host, because the host's retirement drain has to
         // be able to hand plugin processors back to it.
         let plugin = crate::plugins::PluginHandle::start();
@@ -442,6 +446,7 @@ impl AppState {
         let voice_takes = Arc::new(crate::guests::Takes::default());
         let host = {
             let names = Arc::clone(&sample_names);
+            let outlines = Arc::clone(&sample_outlines);
             let voices = Arc::clone(&voice_takes);
             let insert = plugin.clone();
             AudioHost::start(
@@ -449,9 +454,17 @@ impl AppState {
                 Arc::clone(&registry),
                 use_null_backend,
                 Box::new(move |landed| match landed {
-                    crate::host::Landed::Sample { bank, slot, name } => {
+                    crate::host::Landed::Sample {
+                        bank,
+                        slot,
+                        name,
+                        outline,
+                    } => {
                         if let Ok(mut map) = names.lock() {
                             map.insert((bank, slot), name);
+                        }
+                        if let Ok(mut map) = outlines.lock() {
+                            map.insert((bank, slot), outline);
                         }
                     }
                     crate::host::Landed::Voice {
@@ -544,6 +557,7 @@ impl AppState {
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
             sample_names,
+            sample_outlines,
             voice_takes,
             word_timing: Arc::default(),
             active_device: Arc::new(Mutex::new(None)),
@@ -2189,6 +2203,26 @@ impl AppState {
         if let Ok(mut map) = self.sample_names.lock() {
             map.remove(&(bank, slot));
         }
+        if let Ok(mut map) = self.sample_outlines.lock() {
+            map.remove(&(bank, slot));
+        }
+    }
+
+    /// §114: note the shape of what went into a slot.
+    pub fn set_sample_outline(&self, bank: u8, slot: u8, outline: Vec<f32>) {
+        if let Ok(mut map) = self.sample_outlines.lock() {
+            map.insert((bank, slot), outline);
+        }
+    }
+
+    /// §114: the shape of what is in a slot; empty for an empty one.
+    #[must_use]
+    pub fn sample_outline(&self, bank: u8, slot: u8) -> Vec<f32> {
+        self.sample_outlines
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&(bank, slot)).cloned())
+            .unwrap_or_default()
     }
 
     /// The whole map, shared, for the snapshot pump.

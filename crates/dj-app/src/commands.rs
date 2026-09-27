@@ -723,10 +723,18 @@ pub async fn load_sample(
         return Err(format!("no sampler slot {slot}"));
     }
 
-    let decoded = tauri::async_runtime::spawn_blocking(move || decode_file(&path))
-        .await
-        .map_err(|e| format!("decode task failed: {e}"))?
-        .map_err(|e| e.to_string())?;
+    // §114: its shape measured on the same worker, while the samples are
+    // there to read.
+    let (decoded, outline) = tauri::async_runtime::spawn_blocking(move || {
+        decode_file(&path).map(|decoded| {
+            let outline =
+                crate::outline::outline(decoded.buffer.as_interleaved(), crate::outline::POINTS);
+            (decoded, outline)
+        })
+    })
+    .await
+    .map_err(|e| format!("decode task failed: {e}"))?
+    .map_err(|e| e.to_string())?;
 
     let dto = LoadedSampleDto {
         bank,
@@ -736,6 +744,7 @@ pub async fn load_sample(
     };
 
     state.set_sample_name(bank, slot, dto.name.clone());
+    state.set_sample_outline(bank, slot, outline);
     let source: std::sync::Arc<dyn dj_decode::TrackSource> = std::sync::Arc::new(decoded.buffer);
     state
         .bus()
@@ -751,6 +760,14 @@ pub async fn load_sample(
         .map_err(|_| "the engine queue is full".to_owned())?;
 
     Ok(dto)
+}
+
+/// §114: the shape of what is in a sampler slot -- how loud it is from its
+/// start to its end, in `crate::outline::POINTS` steps, 0..=1 -- for the
+/// sampler to draw instead of a bare progress bar. Empty for an empty slot.
+#[tauri::command]
+pub fn sample_outline(state: State<'_, AppState>, bank: u8, slot: u8) -> Vec<f32> {
+    state.sample_outline(bank, slot)
 }
 
 /// `<deck> <track-id>` — §87's load, from wherever it came.
