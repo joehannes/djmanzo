@@ -387,6 +387,8 @@ mod tests {
                     posture: Some(posture.name().to_owned()),
                     techniques: None,
                     length: None,
+                    loop_beats: None,
+                    effect: None,
                 })
             })
             .collect();
@@ -575,6 +577,8 @@ mod tests {
                         posture: None,
                         techniques: None,
                         length: (!length.is_empty()).then(|| length.to_owned()),
+                        loop_beats: None,
+                        effect: None,
                     })
                 })
                 .collect();

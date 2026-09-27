@@ -69,7 +69,8 @@
 //! how "not that one, now" becomes "never suggest this again".
 
 use dj_control::{By, SessionEvent, TimedEvent};
-use dj_core::{Action, DeckAction, MixerAction, SessionPhase};
+use dj_core::fx::{EffectKind, FxChange};
+use dj_core::{Action, DeckAction, DeckId, MixerAction, SessionPhase};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -305,6 +306,63 @@ pub fn signals(
         .collect()
 }
 
+/// Every effect the DJ put into the room tonight, in order.
+///
+/// §12's *preferred FX*. [`Did::FxUsed`] says an effect was reached for; this
+/// says which. An effect is *used* when a slot holding it is switched on, or
+/// when it is chosen into a slot that is already on. Choosing one into a slot
+/// that is off is setting up: a DJ who loads a reverb and never switches it on
+/// has not used a reverb.
+///
+/// What a slot holds is known only from the log. A slot switched on whose
+/// effect the log never saw chosen is left out rather than guessed at, and the
+/// rack starts empty and off, as the engine's does. **Only the DJ's hand** is
+/// counted -- the automix's echo out is djmanzo's -- but everyone's changes
+/// are followed, because an echo the automix loaded is still the echo in the
+/// slot when the DJ switches it on.
+#[must_use]
+pub fn effects_used(events: &[TimedEvent]) -> Vec<EffectKind> {
+    // Keyed by the deck, or `None` for the master rack, and the slot.
+    let mut held: BTreeMap<(Option<DeckId>, u8), EffectKind> = BTreeMap::new();
+    let mut on: BTreeMap<(Option<DeckId>, u8), bool> = BTreeMap::new();
+    let mut used = Vec::new();
+    for entry in events {
+        let (slot, change) = match entry.event {
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Fx { slot, change },
+            }) => ((Some(deck), slot), change),
+            SessionEvent::Action(Action::Mixer(MixerAction::Fx { slot, change })) => {
+                ((None, slot), change)
+            }
+            _ => continue,
+        };
+        let was_on = on.get(&slot).copied().unwrap_or(false);
+        let heard = match change {
+            FxChange::Select(kind) => {
+                held.insert(slot, kind);
+                was_on
+            }
+            FxChange::SetEnabled(now) => {
+                on.insert(slot, now);
+                now && !was_on
+            }
+            FxChange::ToggleEnabled => {
+                on.insert(slot, !was_on);
+                !was_on
+            }
+            _ => false,
+        };
+        if heard
+            && entry.by == By::Hand
+            && let Some(kind) = held.get(&slot).filter(|kind| **kind != EffectKind::None)
+        {
+            used.push(*kind);
+        }
+    }
+    used
+}
+
 fn did(event: &SessionEvent) -> Option<Did> {
     match event {
         SessionEvent::Load { .. } => Some(Did::Loaded),
@@ -481,6 +539,83 @@ mod tests {
         assert_eq!(unread.len(), 20, "the signals are still recorded");
         assert!(unread.iter().all(|s| s.context.is_none()));
         assert_eq!(tendencies(&unread), vec![]);
+    }
+
+    fn fx(secs: f64, slot: u8, change: FxChange) -> TimedEvent {
+        at(
+            secs,
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Fx { slot, change },
+            },
+        )
+    }
+
+    /// **§12's preferred FX: an effect is used when it goes into the room.**
+    ///
+    /// Switching on a slot holding it, or choosing it into a slot already on.
+    /// Loading one into a slot that stays off is setting up, switching off is
+    /// not a use, and a slot whose effect the log never saw chosen says
+    /// nothing rather than something guessed.
+    #[test]
+    fn an_effect_is_used_when_it_reaches_the_room() {
+        use FxChange::{Select, SetEnabled, ToggleEnabled};
+        let log = [
+            // Switched on before anything was chosen: unknown, not counted.
+            fx(0.0, 1, SetEnabled(true)),
+            fx(1.0, 1, SetEnabled(false)),
+            // Loaded into a slot that is off: setting up.
+            fx(2.0, 1, Select(EffectKind::Reverb)),
+            fx(3.0, 2, Select(EffectKind::Echo)),
+            // Thrown: one echo.
+            fx(4.0, 2, ToggleEnabled),
+            // Switched off: nothing.
+            fx(5.0, 2, ToggleEnabled),
+            // Chosen into a slot that is on: a flanger, heard at once.
+            fx(6.0, 2, SetEnabled(true)),
+            fx(7.0, 2, Select(EffectKind::Flanger)),
+            // On again while on is not a second use; an empty slot is none.
+            fx(8.0, 2, SetEnabled(true)),
+            fx(9.0, 2, Select(EffectKind::None)),
+        ];
+        assert_eq!(
+            effects_used(&log),
+            vec![EffectKind::Echo, EffectKind::Echo, EffectKind::Flanger]
+        );
+    }
+
+    /// The master rack is a rack too, and djmanzo's own throws are its own:
+    /// an echo the automix loaded is still what the DJ switches on after it.
+    #[test]
+    fn the_djs_effects_are_counted_on_the_master_too_and_the_machines_are_not() {
+        let machine = |mut entry: TimedEvent| {
+            entry.by = By::Machine;
+            entry
+        };
+        let log = [
+            machine(fx(0.0, 1, FxChange::Select(EffectKind::Echo))),
+            machine(fx(1.0, 1, FxChange::SetEnabled(true))),
+            machine(fx(2.0, 1, FxChange::SetEnabled(false))),
+            fx(3.0, 1, FxChange::SetEnabled(true)),
+            at(
+                4.0,
+                Action::Mixer(MixerAction::Fx {
+                    slot: 1,
+                    change: FxChange::Select(EffectKind::Reverb),
+                }),
+            ),
+            at(
+                5.0,
+                Action::Mixer(MixerAction::Fx {
+                    slot: 1,
+                    change: FxChange::ToggleEnabled,
+                }),
+            ),
+        ];
+        assert_eq!(
+            effects_used(&log),
+            vec![EffectKind::Echo, EffectKind::Reverb]
+        );
     }
 
     /// **What djmanzo did is not what the DJ did.** An autopilot that rode

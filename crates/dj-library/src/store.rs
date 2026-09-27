@@ -85,6 +85,10 @@ pub struct NightRead<'a> {
     pub techniques: Option<&'a str>,
     /// §12: tonight's usual mix length, as a phrase length in beats.
     pub length: Option<&'a str>,
+    /// §12: the loop length the DJ set most tonight, in beats.
+    pub loop_beats: Option<&'a str>,
+    /// §12: the effect the DJ switched on most tonight, by name.
+    pub effect: Option<&'a str>,
 }
 
 fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
@@ -97,6 +101,8 @@ fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
         posture: row.get(5)?,
         techniques: row.get(6)?,
         length: row.get(7)?,
+        loop_beats: row.get(8)?,
+        effect: row.get(9)?,
     })
 }
 
@@ -124,6 +130,10 @@ pub struct Night {
     pub techniques: Option<String>,
     /// §12: the night's usual mix length, a phrase length in beats (`"16"`).
     pub length: Option<String>,
+    /// §12: the loop length the DJ set most, in beats (`"4"`, `"0.5"`).
+    pub loop_beats: Option<String>,
+    /// §12: the effect the DJ switched on most, by name (`"echo"`).
+    pub effect: Option<String>,
 }
 
 /// §37: what the room did after one mix, as it goes in.
@@ -1261,15 +1271,17 @@ impl Library {
             .map_or(0, |d| d.as_secs() as i64);
         self.with(|conn| {
             conn.execute(
-                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length)
-                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8)
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(session_id) DO UPDATE SET
                      setting    = COALESCE(?2, setting),
                      density    = COALESCE(?4, density),
                      style      = COALESCE(?5, style),
                      posture    = COALESCE(?6, posture),
                      techniques = COALESCE(?7, techniques),
-                     length     = COALESCE(?8, length)",
+                     length     = COALESCE(?8, length),
+                     loop_beats = COALESCE(?9, loop_beats),
+                     effect     = COALESCE(?10, effect)",
                 rusqlite::params![
                     session_id,
                     setting,
@@ -1279,6 +1291,8 @@ impl Library {
                     read.posture,
                     read.techniques,
                     read.length,
+                    read.loop_beats,
+                    read.effect,
                 ],
             )?;
             Ok(())
@@ -1293,7 +1307,7 @@ impl Library {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
                      FROM nights WHERE session_id = ?1",
                     [session_id],
                     read_night,
@@ -1313,7 +1327,7 @@ impl Library {
     pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
         self.with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT session_id, setting, began_at, density, style, posture, techniques, length
+                "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
                  FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
             )?;
             let rows = stmt.query_map([setting], read_night)?;
@@ -2805,6 +2819,8 @@ mod tests {
                 style: Some("blend"),
                 techniques: Some("looped,eq-moved"),
                 length: Some("16"),
+                loop_beats: Some("0.5"),
+                effect: Some("echo"),
                 ..NightRead::default()
             },
         )
@@ -2815,6 +2831,8 @@ mod tests {
         assert_eq!(night.style.as_deref(), Some("blend"));
         assert_eq!(night.techniques.as_deref(), Some("looped,eq-moved"));
         assert_eq!(night.length.as_deref(), Some("16"));
+        assert_eq!(night.loop_beats.as_deref(), Some("0.5"));
+        assert_eq!(night.effect.as_deref(), Some("echo"));
 
         // A later read that does have a length says so: the night's mixes
         // got longer, and the row follows them.
@@ -2830,6 +2848,10 @@ mod tests {
         let night = lib.night("n1").unwrap().unwrap();
         assert_eq!(night.length.as_deref(), Some("32"));
         assert_eq!(night.style.as_deref(), Some("blend"));
+        // A read with nothing to say about loops or effects leaves what the
+        // night already said about them.
+        assert_eq!(night.loop_beats.as_deref(), Some("0.5"));
+        assert_eq!(night.effect.as_deref(), Some("echo"));
     }
 
     /// The DJ can correct themselves: naming a setting again does change it.

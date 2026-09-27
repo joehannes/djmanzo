@@ -127,6 +127,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 18,
         sql: MIGRATION_18,
     },
+    Migration {
+        version: 19,
+        sql: MIGRATION_19,
+    },
 ];
 
 /// The initial schema.
@@ -857,6 +861,22 @@ ALTER TABLE tracks ADD COLUMN vocal REAL;
 /// before this existed: an absence, not a confident zero.
 const MIGRATION_18: &str = r#"
 ALTER TABLE nights ADD COLUMN length TEXT;
+"#;
+
+/// §12's *favourite loop sizes* and *preferred FX*, a night at a time.
+///
+/// Two more figures read off the action log while it exists, beside
+/// `MIGRATION_18`'s length and for its reason: the log does not outlive the
+/// run that made it. `loop_beats` is the loop length the DJ set most tonight,
+/// in beats, as text (`"4"`, `"0.5"`) so two nights at the same length are
+/// one answer a profile can agree on; `effect` is the effect they switched on
+/// most, by its name (`"echo"`).
+///
+/// Null for a night that did not do the thing often enough to say, and for
+/// every night before this existed: an absence, not a confident nothing.
+const MIGRATION_19: &str = r#"
+ALTER TABLE nights ADD COLUMN loop_beats TEXT;
+ALTER TABLE nights ADD COLUMN effect TEXT;
 "#;
 
 const MIGRATION_17: &str = r#"

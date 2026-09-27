@@ -214,6 +214,24 @@ pub fn usual_length(
     phrase_length(lengths[lengths.len() / 2])
 }
 
+/// Every loop length the DJ set tonight, in beats, in the order they set them.
+///
+/// §12's *favourite loop sizes*. Each loop asked for by its length counts, and
+/// so does each halving or doubling of one, because the length a loop is
+/// tightened to is a length the DJ chose. A loop whose length the log cannot
+/// say -- a phrase loop, a manual one, an edge dragged somewhere -- is not in
+/// it, and neither is a roll, which is a stutter rather than a loop left
+/// running. **Only the DJ's hand**: a loop the automix set is djmanzo's.
+#[must_use]
+pub fn loop_lengths(events: &[TimedEvent]) -> Vec<f32> {
+    let (_, _, loops) = walk(events);
+    loops
+        .into_iter()
+        .filter(|change| change.by == By::Hand)
+        .filter_map(|change| change.beats)
+        .collect()
+}
+
 /// The mixes in a night, in the order they happened.
 #[must_use]
 pub fn handovers(events: &[TimedEvent]) -> Vec<Handover> {
@@ -230,8 +248,20 @@ pub fn handovers(events: &[TimedEvent]) -> Vec<Handover> {
 type Walked = (
     Vec<Crossing>,
     Vec<(Duration, DeckId, Signal)>,
-    Vec<(Duration, DeckId, Option<f32>)>,
+    Vec<LoopChange>,
 );
+
+/// One change to a deck's loop length, in the order the log made them.
+#[derive(Debug, Clone, Copy)]
+struct LoopChange {
+    at: Duration,
+    deck: DeckId,
+    /// The length now running, in beats; `None` for no loop, or for one whose
+    /// length the log cannot say.
+    beats: Option<f32>,
+    /// Whose change it was.
+    by: By,
+}
 
 fn walk(events: &[TimedEvent]) -> Walked {
     let mut volume: BTreeMap<DeckId, f32> = BTreeMap::new();
@@ -246,7 +276,7 @@ fn walk(events: &[TimedEvent]) -> Walked {
     // Every change to a deck's loop length, in order. Kept as a history rather
     // than as a final value because the question is what was running *at* a
     // moment, and a loop set after a mix says nothing about that mix.
-    let mut loops: Vec<(Duration, DeckId, Option<f32>)> = Vec::new();
+    let mut loops: Vec<LoopChange> = Vec::new();
     let mut running: BTreeMap<DeckId, f32> = BTreeMap::new();
 
     for entry in events {
@@ -256,7 +286,12 @@ fn walk(events: &[TimedEvent]) -> Walked {
                 // Loading drops the deck's loop (`dj_engine::Deck::load`), so
                 // a loop set on the last record is not running on this one.
                 running.remove(&deck);
-                loops.push((entry.at, deck, None));
+                loops.push(LoopChange {
+                    at: entry.at,
+                    deck,
+                    beats: None,
+                    by: entry.by,
+                });
             }
             SessionEvent::Action(Action::Mixer(MixerAction::Crossfader(x))) => crossfader = x,
             SessionEvent::Action(Action::Mixer(MixerAction::StemSwap {
@@ -285,7 +320,12 @@ fn walk(events: &[TimedEvent]) -> Walked {
                 // a boolean would make one and thirty-two the same relationship.
                 DeckAction::LoopBeats(beats) if *beats > 0.0 => {
                     running.insert(deck, *beats);
-                    loops.push((entry.at, deck, Some(*beats)));
+                    loops.push(LoopChange {
+                        at: entry.at,
+                        deck,
+                        beats: Some(*beats),
+                        by: entry.by,
+                    });
                 }
                 DeckAction::LoopPhrases(phrases) if *phrases > 0.0 => {
                     // A phrase length the log does not carry, so this records
@@ -293,7 +333,12 @@ fn walk(events: &[TimedEvent]) -> Walked {
                     // is the honest answer to "how many beats"; zero would be a
                     // measurement.
                     running.remove(&deck);
-                    loops.push((entry.at, deck, None));
+                    loops.push(LoopChange {
+                        at: entry.at,
+                        deck,
+                        beats: None,
+                        by: entry.by,
+                    });
                 }
                 DeckAction::LoopHalve | DeckAction::LoopDouble => {
                     if let Some(beats) = running.get_mut(&deck) {
@@ -302,12 +347,22 @@ fn walk(events: &[TimedEvent]) -> Walked {
                         } else {
                             2.0
                         };
-                        loops.push((entry.at, deck, Some(*beats)));
+                        loops.push(LoopChange {
+                            at: entry.at,
+                            deck,
+                            beats: Some(*beats),
+                            by: entry.by,
+                        });
                     }
                 }
                 DeckAction::LoopOff => {
                     running.remove(&deck);
-                    loops.push((entry.at, deck, None));
+                    loops.push(LoopChange {
+                        at: entry.at,
+                        deck,
+                        beats: None,
+                        by: entry.by,
+                    });
                 }
                 // A loop whose length the log cannot say -- a manual one, or an
                 // edge dragged somewhere -- or none at all: a roll replaces the
@@ -321,7 +376,12 @@ fn walk(events: &[TimedEvent]) -> Walked {
                 | DeckAction::LoopBeats(_)
                 | DeckAction::Eject => {
                     running.remove(&deck);
-                    loops.push((entry.at, deck, None));
+                    loops.push(LoopChange {
+                        at: entry.at,
+                        deck,
+                        beats: None,
+                        by: entry.by,
+                    });
                 }
                 DeckAction::Fx { slot, change } => match change {
                     FxChange::Select(kind) => {
@@ -373,11 +433,11 @@ fn walk(events: &[TimedEvent]) -> Walked {
 /// The last change at or before the moment, which is what "running" means in a
 /// log: a loop set two minutes earlier and never turned off is still running,
 /// and one set a second after the mix began was not running when it began.
-fn looping(deck: DeckId, when: Duration, loops: &[(Duration, DeckId, Option<f32>)]) -> Option<f32> {
+fn looping(deck: DeckId, when: Duration, loops: &[LoopChange]) -> Option<f32> {
     loops
         .iter()
-        .rfind(|(at, on, _)| *on == deck && *at <= when)
-        .and_then(|(_, _, beats)| *beats)
+        .rfind(|change| change.deck == deck && change.at <= when)
+        .and_then(|change| change.beats)
 }
 
 /// What the room hears from one deck, on the engine's own arithmetic.
@@ -416,7 +476,7 @@ fn gain(
 fn pair(
     crossings: &[Crossing],
     signals: &[(Duration, DeckId, Signal)],
-    loops: &[(Duration, DeckId, Option<f32>)],
+    loops: &[LoopChange],
 ) -> Vec<Handover> {
     let mut used = vec![false; crossings.len()];
     let mut found = Vec::new();
@@ -729,6 +789,29 @@ mod tests {
             log.extend(sweep(120.0, 20.0, -1.0, 1.0));
             assert_eq!(handovers(&log)[0].loop_beats, None, "after {ender:?}");
         }
+    }
+
+    /// **§12's favourite loop sizes: every length the DJ chose.** A loop set
+    /// by its length and each halving of it count; a phrase loop, a roll and
+    /// the automix's loop do not, and a halve of a length that is no longer
+    /// running halves nothing.
+    #[test]
+    fn the_loop_lengths_a_dj_chose_are_the_ones_they_set_by_hand() {
+        let mut machine = deck_action(50.0, 2, DeckAction::LoopBeats(16.0));
+        machine.by = By::Machine;
+        let log = vec![
+            load(0.0, 1, 1),
+            deck_action(10.0, 1, DeckAction::LoopBeats(4.0)),
+            deck_action(11.0, 1, DeckAction::LoopHalve),
+            deck_action(12.0, 1, DeckAction::LoopOff),
+            deck_action(20.0, 1, DeckAction::LoopPhrases(1.0)),
+            deck_action(21.0, 1, DeckAction::LoopDouble),
+            deck_action(30.0, 1, DeckAction::LoopRoll(Some(0.25))),
+            deck_action(31.0, 1, DeckAction::LoopRoll(None)),
+            machine,
+            deck_action(60.0, 1, DeckAction::LoopBeats(0.5)),
+        ];
+        assert_eq!(loop_lengths(&log), vec![4.0, 2.0, 0.5]);
     }
 
     /// **A mix is the DJ's only when the DJ moved both records.** The automix

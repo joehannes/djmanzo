@@ -1112,6 +1112,8 @@ export const ANSWERS: Record<string, unknown> = {
     posture: null,
     techniques: [],
     length: null,
+    loop_beats: null,
+    effect: null,
   },
   /**
    * §81's other two: what tonight's profile would fit.
@@ -1222,6 +1224,8 @@ export const ANSWERS: Record<string, unknown> = {
       density: "Relaxed",
       style: "fade",
       length: null,
+      loop_beats: null,
+      effect: null,
       automation: "prepare",
       techniques: ["eq-moved"],
       genres: [
@@ -1237,10 +1241,12 @@ export const ANSWERS: Record<string, unknown> = {
       density: "Pro Dense",
       style: "blend",
       length: 16,
+      loop_beats: 4,
+      effect: "echo",
       automation: "suggest",
       techniques: ["looped", "filter-swept"],
       genres: [["Techno", 1]],
-      says: "Club, over 4 nights: mostly blend transitions over 16 beats, 100% Techno, assistant on suggest.",
+      says: "Club, over 4 nights: mostly blend transitions over 16 beats, 100% Techno, loops of 4 beats, echo as the effect, assistant on suggest.",
     },
   ],
   // A rehearsal, in the shape `dj_app::commands::RehearsalDto` serialises. The
@@ -2968,6 +2974,8 @@ export async function openShell(
               posture: null,
               techniques: [],
               length: null,
+              loop_beats: null,
+              effect: null,
             }) as Record<string, unknown>;
             win.__night = {
               ...before,

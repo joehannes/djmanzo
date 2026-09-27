@@ -241,6 +241,8 @@ const WEDDING = {
   density: "cosy",
   style: "blend",
   length: null,
+  loop_beats: null,
+  effect: null,
   automation: "suggest",
   techniques: ["eq-moved"],
   genres: [

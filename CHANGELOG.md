@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo learns your loop size and your effect.** Each night keeps the
+  loop length you set most -- by the pads, and by halving or doubling a
+  loop -- and the effect you put into the room most: switched on, not just
+  loaded. A night needs four of them and half to agree before it says
+  either, so tightening a loop from eight beats down to one is not a
+  favourite size. Once enough nights of a kind agree, the profile says it:
+  "loops of 4 beats, echo as the effect". Only your own moves count; phrase
+  loops, manual loops and rolls have no length the log can give and are
+  left out.
 - **djmanzo no longer learns its own moves as yours.** The autopilot, the
   automix and break music mark everything they do as djmanzo's, but what
   djmanzo learns about you -- tonight's habits, each night's transition

@@ -2333,6 +2333,10 @@ pub struct SettingDto {
     pub techniques: Vec<String>,
     /// §12: how long tonight's mixes usually run, a phrase length in beats.
     pub length: Option<u32>,
+    /// §12: the loop length the DJ set most tonight, in beats.
+    pub loop_beats: Option<f32>,
+    /// §12: the effect the DJ switched on most tonight.
+    pub effect: Option<String>,
 }
 
 impl SettingDto {
@@ -2351,6 +2355,8 @@ impl SettingDto {
                 .map(ToOwned::to_owned)
                 .collect(),
             length: night.length.as_deref().and_then(|l| l.parse().ok()),
+            loop_beats: night.loop_beats.as_deref().and_then(|b| b.parse().ok()),
+            effect: night.effect,
         }
     }
 }
@@ -2368,6 +2374,10 @@ pub struct ProfileDto {
     pub style: Option<String>,
     /// §12: how many beats their mixes usually take here.
     pub length: Option<u32>,
+    /// §12: the loop length they set here, in beats.
+    pub loop_beats: Option<f32>,
+    /// §12: the effect they reach for here.
+    pub effect: Option<String>,
     pub automation: Option<String>,
     pub techniques: Vec<String>,
     /// Genre and its share of the plays, commonest first.
@@ -2386,6 +2396,8 @@ impl ProfileDto {
             density: p.density().map(ToOwned::to_owned),
             style: p.style().map(|s| s.as_str().to_owned()),
             length: p.length(),
+            loop_beats: p.loop_beats(),
+            effect: p.effect().map(|e| e.name().to_owned()),
             automation: p.automation().map(|a| a.name().to_owned()),
             techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
             genres: p.genres().to_vec(),
@@ -2438,6 +2450,7 @@ pub fn night_setting(
     });
     let joined = read.techniques.join(",");
     let length = read.length.map(|beats| beats.to_string());
+    let loop_beats = read.loop_beats.map(|beats| beats.to_string());
     db.note_night(
         &state.session_id(),
         setting.map(|s| s.slug()),
@@ -2447,6 +2460,8 @@ pub fn night_setting(
             posture: posture.as_deref(),
             techniques: (!joined.is_empty()).then_some(joined.as_str()),
             length: length.as_deref(),
+            loop_beats: loop_beats.as_deref(),
+            effect: read.effect.map(dj_core::fx::EffectKind::name),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -2478,6 +2493,8 @@ pub fn night_now(state: State<'_, AppState>) -> Result<SettingDto, String> {
             posture: None,
             techniques: Vec::new(),
             length: None,
+            loop_beats: None,
+            effect: None,
         },
     })
 }
@@ -2921,6 +2938,8 @@ mod tests {
                     posture: None,
                     techniques: None,
                     length: None,
+                    loop_beats: None,
+                    effect: None,
                 })
                 .collect();
             crate::profile::profiles(&nights, &|_| counted.clone(), 0)

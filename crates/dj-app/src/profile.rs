@@ -37,7 +37,7 @@
 //! on the tracks, so a stored weight would be a second copy that drifts the
 //! first time a record is re-tagged.
 //!
-//! The other five are read off the **action log**, and the action log does not
+//! The other seven are read off the **action log**, and the action log does not
 //! outlive the run of the application that made it. So they are written to the
 //! night's row as the night goes — see the `nights` table. That is not a second
 //! copy of the log; it is the only trace that survives it.
@@ -50,6 +50,7 @@ use crate::signals::Did;
 use dj_assistant::posture::Posture;
 use dj_control::{By, TimedEvent};
 use dj_core::action::TransitionStyle;
+use dj_core::fx::EffectKind;
 use dj_core::{SessionPhase, TrackId};
 use dj_library::Night;
 
@@ -85,6 +86,61 @@ pub const MOST_IT_MAY_MOVE: f64 = 0.75;
 /// habit.
 const AGREE: f64 = 0.5;
 
+/// The loop lengths a DJ sets, in beats, shortest first.
+///
+/// §12's *favourite loop sizes* are counted in these: the pad ladder's
+/// sixteenth of a beat to eight beats, and the halvings and doublings either
+/// side of it that the deck's own controls reach. A loop of some other length
+/// -- three beats, typed -- is left out rather than rounded onto one of these,
+/// because rounding would put to a DJ a length they never chose.
+pub const LOOP_LENGTHS: [f32; 12] = [
+    0.031_25, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0,
+];
+
+/// `beats` as one of [`LOOP_LENGTHS`], when it is one.
+fn on_the_ladder(beats: f32) -> Option<f32> {
+    LOOP_LENGTHS
+        .into_iter()
+        .find(|length| (length - beats).abs() < 1e-6)
+}
+
+/// A loop length as a DJ says it: *4 beats*, *1 beat*, *1/2 beat*.
+fn beats_said(beats: f32) -> String {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    if beats >= 1.0 {
+        let whole = beats.round() as u32;
+        format!("{whole} beat{}", if whole == 1 { "" } else { "s" })
+    } else {
+        format!("1/{} beat", (1.0 / beats).round() as u32)
+    }
+}
+
+/// The one answer most of a night's gestures agree on, if it had enough.
+///
+/// A night's own version of [`agreed`]: nothing on fewer than
+/// [`crate::signals::ENOUGH`] -- §13's four, the smallest count that cannot be
+/// a mistake, a change of mind and a correction -- and nothing unless the
+/// commonest is at least half of them. A night of loops at eight, four, two
+/// and one beat is a DJ tightening a loop into a drop, not a DJ who loops at
+/// any one of those.
+fn tonights(seen: impl Iterator<Item = String>) -> Option<String> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut total = 0_usize;
+    for value in seen {
+        total += 1;
+        *counts.entry(value).or_default() += 1;
+    }
+    if total < crate::signals::ENOUGH {
+        return None;
+    }
+    let (best, count) = counts
+        .into_iter()
+        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))?;
+    #[allow(clippy::cast_precision_loss)]
+    let share = count as f64 / total as f64;
+    (share >= AGREE).then_some(best)
+}
+
 /// What djmanzo has worked out about how this DJ plays in one setting.
 ///
 /// Private fields on purpose: every one of them is a claim that needed enough
@@ -96,6 +152,8 @@ pub struct Profile {
     density: Option<String>,
     style: Option<TransitionStyle>,
     length: Option<u32>,
+    loop_beats: Option<f32>,
+    effect: Option<EffectKind>,
     automation: Option<Posture>,
     techniques: Vec<Did>,
     genres: Vec<(String, f64)>,
@@ -133,6 +191,19 @@ impl Profile {
     #[must_use]
     pub fn length(&self) -> Option<u32> {
         self.length
+    }
+
+    /// §12's *favourite loop size*: the length they loop at here, in beats,
+    /// as one of [`LOOP_LENGTHS`].
+    #[must_use]
+    pub fn loop_beats(&self) -> Option<f32> {
+        self.loop_beats
+    }
+
+    /// §12's *preferred FX*: the effect they reach for here.
+    #[must_use]
+    pub fn effect(&self) -> Option<EffectKind> {
+        self.effect
     }
 
     /// §81's "automation tolerance": how much they let the assistant do here.
@@ -252,6 +323,12 @@ impl Profile {
                 genre = genre
             ));
         }
+        if let Some(beats) = self.loop_beats {
+            said.push_str(&format!(", loops of {}", beats_said(beats)));
+        }
+        if let Some(effect) = self.effect {
+            said.push_str(&format!(", {} as the effect", effect.name()));
+        }
         if let Some(posture) = self.automation {
             said.push_str(&format!(", assistant on {}", posture.name()));
         }
@@ -296,6 +373,12 @@ pub fn profiles(
             length: agreed(seen.iter().map(|n| (n.length.clone(), weight(n, now))))
                 .and_then(|word| word.parse().ok())
                 .filter(|beats| crate::mixes::PHRASES.contains(beats)),
+            loop_beats: agreed(seen.iter().map(|n| (n.loop_beats.clone(), weight(n, now))))
+                .and_then(|word| word.parse().ok())
+                .and_then(on_the_ladder),
+            effect: agreed(seen.iter().map(|n| (n.effect.clone(), weight(n, now))))
+                .and_then(|word| EffectKind::parse(&word))
+                .filter(|kind| *kind != EffectKind::None),
             automation: agreed(seen.iter().map(|n| (n.posture.clone(), weight(n, now))))
                 .and_then(|word| Posture::ALL.into_iter().find(|p| p.name() == word)),
             techniques: usual(&seen, now),
@@ -323,6 +406,11 @@ pub struct Tonight {
     pub style: Option<String>,
     /// §12: the DJ's middle mix tonight, as one of [`crate::mixes::PHRASES`].
     pub length: Option<u32>,
+    /// §12: the loop length the DJ set most tonight, as one of
+    /// [`LOOP_LENGTHS`].
+    pub loop_beats: Option<f32>,
+    /// §12: the effect the DJ switched on most tonight.
+    pub effect: Option<EffectKind>,
 }
 
 /// Read tonight's log as [`Tonight`].
@@ -362,10 +450,29 @@ pub fn tonight(
     // counts its beats in, so the two never disagree.
     let length = crate::mixes::usual_length(&mixes, &|mix| bpm_of(mix.out_track?));
 
+    // Kept as the ladder's own value written out, so two nights at four
+    // beats are one answer to agree on rather than two floats that differ in
+    // the last place.
+    let loop_beats = tonights(
+        crate::mixes::loop_lengths(log)
+            .into_iter()
+            .filter_map(on_the_ladder)
+            .map(|beats| beats.to_string()),
+    )
+    .and_then(|word| word.parse().ok());
+    let effect = tonights(
+        crate::signals::effects_used(log)
+            .into_iter()
+            .map(|kind| kind.name().to_owned()),
+    )
+    .and_then(|word| EffectKind::parse(&word));
+
     Tonight {
         techniques,
         style,
         length,
+        loop_beats,
+        effect,
     }
 }
 
@@ -658,6 +765,8 @@ mod tests {
             posture: None,
             techniques: None,
             length: None,
+            loop_beats: None,
+            effect: None,
         }
     }
 
@@ -1222,6 +1331,119 @@ mod tests {
             Tonight::default(),
             "the automix's night was filed as the DJ's"
         );
+    }
+
+    /// **A night's loop length and effect need §13's four, and half of them
+    /// to agree.** Four loops at four beats and one at eight is a DJ who loops
+    /// at four; eight, four, two, one is a DJ tightening a loop into a drop and
+    /// loops at none of them; three echoes is not yet a habit.
+    #[test]
+    fn a_nights_loop_and_effect_need_four_and_half_to_agree() {
+        use dj_control::SessionEvent;
+        use dj_core::fx::FxChange;
+        use dj_core::{Action, DeckAction, DeckId};
+
+        let on_deck = |secs: f64, action: DeckAction| {
+            TimedEvent::hand(
+                Duration::from_secs_f64(secs),
+                SessionEvent::Action(Action::Deck {
+                    deck: DeckId::from_human(1).expect("a real deck"),
+                    action,
+                }),
+            )
+        };
+        let read = |log: &[TimedEvent]| tonight(log, &|_| None, &|_| None);
+        let loops = |lengths: &[f32]| -> Vec<TimedEvent> {
+            lengths
+                .iter()
+                .enumerate()
+                .map(|(i, beats)| {
+                    #[allow(clippy::cast_precision_loss)]
+                    on_deck(i as f64, DeckAction::LoopBeats(*beats))
+                })
+                .collect()
+        };
+        assert_eq!(read(&loops(&[4.0, 4.0, 4.0, 8.0])).loop_beats, Some(4.0));
+        assert_eq!(read(&loops(&[0.5, 0.5, 0.5, 0.5])).loop_beats, Some(0.5));
+        assert_eq!(read(&loops(&[8.0, 4.0, 2.0, 1.0])).loop_beats, None);
+        assert_eq!(read(&loops(&[4.0, 4.0, 4.0])).loop_beats, None);
+        // A length off the ladder is left out rather than rounded onto it.
+        assert_eq!(read(&loops(&[3.0, 3.0, 3.0, 3.0])).loop_beats, None);
+
+        let throws = |n: u8| -> Vec<TimedEvent> {
+            let mut log = vec![on_deck(
+                0.0,
+                DeckAction::Fx {
+                    slot: 1,
+                    change: FxChange::Select(EffectKind::Echo),
+                },
+            )];
+            for i in 0..n {
+                log.push(on_deck(
+                    f64::from(i) + 1.0,
+                    DeckAction::Fx {
+                        slot: 1,
+                        change: FxChange::ToggleEnabled,
+                    },
+                ));
+                log.push(on_deck(
+                    f64::from(i) + 1.5,
+                    DeckAction::Fx {
+                        slot: 1,
+                        change: FxChange::ToggleEnabled,
+                    },
+                ));
+            }
+            log
+        };
+        assert_eq!(read(&throws(4)).effect, Some(EffectKind::Echo));
+        assert_eq!(read(&throws(3)).effect, None);
+    }
+
+    /// **§12's favourite loop size and preferred effect: learned once enough
+    /// nights agree, and said.** A stored length no ladder offers, and an
+    /// effect that is no effect, are dropped rather than repeated to the DJ.
+    #[test]
+    fn the_loop_and_the_effect_are_learned_and_said() {
+        let mut rows = nights("club", 3);
+        rows[0].loop_beats = Some("8".to_owned());
+        rows[1].loop_beats = Some("4".to_owned());
+        rows[2].loop_beats = Some("4".to_owned());
+        for row in &mut rows {
+            row.effect = Some("echo".to_owned());
+        }
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        assert_eq!(club.loop_beats(), Some(4.0));
+        assert_eq!(club.effect(), Some(EffectKind::Echo));
+        let said = club.words();
+        assert!(said.contains("loops of 4 beats"), "{said}");
+        assert!(said.contains("echo as the effect"), "{said}");
+
+        for row in &mut rows {
+            row.loop_beats = Some("0.5".to_owned());
+        }
+        let said = profiles(&rows, &nothing, NOW)[0].words();
+        assert!(said.contains("loops of 1/2 beat"), "{said}");
+
+        rows[0].loop_beats = Some("1".to_owned());
+        rows[1].loop_beats = Some("1".to_owned());
+        let said = profiles(&rows, &nothing, NOW)[0].words();
+        assert!(said.contains("loops of 1 beat,"), "{said}");
+
+        // Three nights, three different effects: no habit, and nothing said.
+        rows[0].effect = Some("reverb".to_owned());
+        rows[1].effect = Some("flanger".to_owned());
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        assert_eq!(club.effect(), None);
+        assert!(!club.words().contains("as the effect"), "{}", club.words());
+
+        for row in &mut rows {
+            row.loop_beats = Some("3".to_owned());
+            row.effect = Some("none".to_owned());
+        }
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        assert_eq!(club.loop_beats(), None);
+        assert_eq!(club.effect(), None);
     }
 
     /// **§12's preferred transition duration: how long the mixes take, once
