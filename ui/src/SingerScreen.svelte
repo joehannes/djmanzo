@@ -12,12 +12,21 @@
    * The words are Rust's (`singer_lyrics`, parsed by `dj_library::lrc`), the
    * moment is the deck's playhead, and the arithmetic between them is
    * `./lyricsAt`, tested there.
+   *
+   * Behind them (K1), `singer_backdrop`'s choice: the record's own cover, the
+   * Cover Art Archive's, or the record's own colours — which are drawn
+   * first, always, so the screen is never blank while a cover loads or when
+   * one fails. Plain CSS over black: nothing the words wait on, nothing a
+   * graphics driver can take down with them.
    */
   import {
+    artUrl,
     karaokeRotation,
+    singerBackdrop,
     singerLyrics,
     type DeckState,
     type Rotation,
+    type SingerBackdrop,
     type SingerLyrics,
   } from "./api";
   import { lyricsAt } from "./lyricsAt";
@@ -37,6 +46,9 @@
   );
 
   let words = $state<SingerLyrics | null>(null);
+  let backdrop = $state<SingerBackdrop | null>(null);
+  /** The cover would not load: the colours alone. */
+  let coverFailed = $state(false);
   let asked = "";
   $effect(() => {
     // Asked again when the record on the deck changes, not every frame.
@@ -49,6 +61,50 @@
       .then((found) => (words = found))
       .catch(() => (words = null));
   });
+
+  /**
+   * A record's colours are measured seconds after it loads, so a screen
+   * opened with the record (or a record loaded under an open screen) is told
+   * they are pending, and asks again until they land — for a minute at most,
+   * since a record silent throughout never has any.
+   */
+  const RECHECK_MS = 3_000;
+  const MOST_RECHECKS = 20;
+  /** Only ever counts up: each step is one more ask. */
+  let recheck = $state(0);
+  let backdropRecord = "";
+  let backdropAsked = "";
+  let rechecks = 0;
+  $effect(() => {
+    const record = deck ? `${deck.number}/${deck.title}/${deck.length_frames}` : "";
+    const key = `${record}#${recheck}`;
+    if (key === backdropAsked) return;
+    backdropAsked = key;
+    if (record !== backdropRecord) {
+      backdropRecord = record;
+      backdrop = null;
+      coverFailed = false;
+      rechecks = 0;
+    }
+    if (!deck) return;
+    void singerBackdrop(deck.number)
+      .then((found) => {
+        // An answer for a record since replaced — the archive can take
+        // seconds — is not this one's background.
+        if (backdropAsked !== key) return;
+        backdrop = found;
+        if (found.pending && rechecks < MOST_RECHECKS) {
+          rechecks += 1;
+          setTimeout(() => {
+            if (backdropAsked === key) recheck += 1;
+          }, RECHECK_MS);
+        }
+      })
+      .catch(() => {});
+  });
+
+  /** Where each of the record's colours glows from. */
+  const GLOWS = ["22% 28%", "78% 24%", "30% 78%", "74% 72%"];
 
   /** The rotation, looked at every few seconds: it changes when a host marks a song sung. */
   let rotation = $state<Rotation | null>(null);
@@ -89,6 +145,20 @@
 </script>
 
 <div class="screen" data-singer-screen>
+  <div class="backdrop" data-backdrop={backdrop?.source ?? "none"} aria-hidden="true">
+    {#each (backdrop?.shades ?? []).slice(0, GLOWS.length) as shade, i (i)}
+      <span
+        class="glow"
+        data-shade={shade.colour}
+        style:background="radial-gradient(circle at {GLOWS[i]}, {shade.colour} 0%, transparent 55%)"
+        style:opacity={0.2 + 0.4 * shade.weight}
+      ></span>
+    {/each}
+    {#if backdrop && backdrop.source !== "sound" && !coverFailed}
+      <img class="cover" src={artUrl(backdrop.track)} alt="" onerror={() => (coverFailed = true)} />
+    {/if}
+  </div>
+
   {#if deck?.title}
     <p class="song">{deck.title}{deck.artist ? ` — ${deck.artist}` : ""}</p>
   {/if}
@@ -156,6 +226,71 @@
     text-align: center;
   }
 
+  /* Everything but the background sits above it. */
+  .screen > :not(.backdrop) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .glow {
+    position: absolute;
+    inset: -10%;
+    animation: drift 40s ease-in-out infinite alternate;
+  }
+
+  .glow:nth-child(2) {
+    animation-duration: 53s;
+    animation-direction: alternate-reverse;
+  }
+
+  .glow:nth-child(3) {
+    animation-duration: 47s;
+  }
+
+  /* The cover, faded and softened: something to look at between lines, never
+     something to read past. */
+  .cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.32;
+    filter: blur(0.6vh) saturate(1.1);
+  }
+
+  /* A veil over both, darkest where the words are, so a pale cover or a
+     bright record never takes the contrast a singer across the room reads
+     by. */
+  .backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.5) 75%);
+  }
+
+  @keyframes drift {
+    from {
+      transform: translate(-3%, -2%) scale(1);
+    }
+    to {
+      transform: translate(3%, 2%) scale(1.08);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glow {
+      animation: none;
+    }
+  }
+
   .song {
     margin: 0;
     font-size: 2.2vh;
@@ -180,6 +315,8 @@
   .now {
     font-size: 7vh;
     font-weight: 700;
+    /* Legible over any cover. */
+    filter: drop-shadow(0 0.3vh 0.6vh rgb(0 0 0 / 0.8));
   }
 
   .next {

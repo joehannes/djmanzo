@@ -265,6 +265,48 @@ impl Detached {
 mod tests {
     use super::*;
 
+    /// **A popped-out panel hears the engine.** Tauri grants IPC by window
+    /// label, and the capability once named `main` alone: a popped-out
+    /// panel's first snapshot came from a command, and the stream after it
+    /// was refused, so the singers' screen went on showing the record that
+    /// was playing when it opened. Every panel's label must be one the
+    /// capability names.
+    #[test]
+    fn every_popped_out_panel_is_granted_the_snapshot_stream() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("the capability is JSON");
+        let windows: Vec<&str> = capability["windows"]
+            .as_array()
+            .expect("a list of windows")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect();
+        let granted = |label: &str| {
+            windows
+                .iter()
+                .any(|pattern| match pattern.strip_suffix('*') {
+                    Some(prefix) => label.starts_with(prefix),
+                    None => *pattern == label,
+                })
+        };
+        assert!(granted("main"));
+        for panel in Panel::ALL {
+            assert!(
+                granted(&panel.label()),
+                "`{}` is not in the capability",
+                panel.label()
+            );
+        }
+        let permissions = capability["permissions"].to_string();
+        assert!(
+            permissions.contains("core:event:default"),
+            "the snapshot is an event"
+        );
+        // Suno's window shows a page from the internet; it must not match.
+        assert!(!granted("suno"));
+    }
+
     /// A Tauri window label may only contain alphanumerics, `-`, `/`, `:` and
     /// `_`. A label with anything else in it is refused at runtime — a fault
     /// that appears only when somebody clicks the button, which is exactly the

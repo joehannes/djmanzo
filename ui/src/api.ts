@@ -1236,6 +1236,20 @@ export interface LyricLine {
   words: [number, string][];
 }
 
+/** K1: the singers' screen's background. See `dj_app::backdrop::Backdrop`. */
+export interface SingerBackdrop {
+  /** The record's own cover, the Cover Art Archive's, or its colours alone. */
+  source: "record" | "archive" | "sound";
+  /** The record, for `artUrl`. */
+  track: string;
+  /** The record's own colours — §110's, by how much of it sits in each band — strongest first. */
+  shades: { colour: string; weight: number }[];
+  /** The colours are still being measured: ask again in a moment. */
+  pending: boolean;
+}
+
+export const singerBackdrop = (deck: number) => invoke<SingerBackdrop>("singer_backdrop", { deck });
+
 /** §107: the words for the singers' screen. See `dj_app::karaoke::SingerLyrics`. */
 export interface SingerLyrics {
   lines: LyricLine[];

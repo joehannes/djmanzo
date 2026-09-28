@@ -16,6 +16,18 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The singers' screen has a background.** The record's own cover, or —
+  for a record tagged with its MusicBrainz release — the Cover Art
+  Archive's, asked once and kept on this machine; beneath it, and alone
+  when there is no cover, the record's own colours, the same colours its
+  waveform is drawn in. A veil keeps the words readable over a pale cover.
+- **Fixed: a popped-out panel froze after its first frame.** Only the main
+  window was allowed to receive the engine's updates, so a panel on a
+  second screen — the singers' screen among them — kept showing the moment
+  it was opened.
+- **Fixed: covers were never shown in the application.** The rules for
+  which images the interface may load left out the one covers come from,
+  so the library's cards showed no artwork.
 - **The word-timing model is offered where you install.** The Windows
   installer (`.exe`) asks, after installing, whether to download the
   recommended model (Whisper Small, 190 MB) and checks it against its

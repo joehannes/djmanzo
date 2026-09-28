@@ -105,6 +105,109 @@ test.describe("§107: the singers' screen", () => {
   });
 
   /**
+   * **K1: never a blank screen.** Behind the words, the record's own colours
+   * — strongest first, each glowing at its weight — and over them its cover
+   * from `art://`. A cover that will not load leaves the colours; a record
+   * with none has the colours alone; the words are there throughout.
+   */
+  test("draws the record's colours behind the words, and its cover over them", async ({ page }) => {
+    const shades = [
+      { colour: "rgb(255 60 0)", weight: 1 },
+      { colour: "rgb(255 170 0)", weight: 0.8 },
+      { colour: "rgb(90 200 255)", weight: 0.4 },
+    ];
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        singer_backdrop: { source: "archive", track: "ab".repeat(32), shades, pending: false },
+      },
+    );
+    await singing(page, 14.5);
+    const backdrop = page.locator(`${SCREEN} [data-backdrop]`);
+    await expect(backdrop).toHaveAttribute("data-backdrop", "archive");
+    const glows = backdrop.locator(".glow");
+    await expect(glows).toHaveCount(3);
+    await expect(glows.first()).toHaveAttribute("data-shade", "rgb(255 60 0)");
+    const opacity = await glows.evaluateAll((all) => all.map((g) => Number((g as HTMLElement).style.opacity)));
+    expect(opacity[0]).toBeGreaterThan(opacity[2]);
+    // The browser here has no `art://`: the cover fails, the colours stay.
+    await expect(backdrop.locator("img.cover")).toHaveCount(0);
+    await expect(glows).toHaveCount(3);
+    await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText(/So\s+long\s+my\s+friend/);
+    // The words sit above the background.
+    expect(await page.locator(`${SCREEN} .words`).evaluate((el) => getComputedStyle(el).zIndex)).toBe("1");
+    expect(await backdrop.evaluate((el) => getComputedStyle(el).zIndex)).toBe("0");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("a record with no cover has its colours alone", async ({ page }) => {
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        singer_backdrop: {
+          source: "sound",
+          track: "cd".repeat(32),
+          shades: [{ colour: "rgb(160 0 255)", weight: 1 }],
+          pending: false,
+        },
+      },
+    );
+    await singing(page, 14.5);
+    const backdrop = page.locator(`${SCREEN} [data-backdrop]`);
+    await expect(backdrop).toHaveAttribute("data-backdrop", "sound");
+    await expect(backdrop.locator(".glow")).toHaveCount(1);
+    await expect(backdrop.locator("img")).toHaveCount(0);
+  });
+
+  /**
+   * **Colours that were not measured yet are asked for again.** A record's
+   * spectrum lands seconds after the record does, so a screen opened with it
+   * is told the colours are pending, asks again, and draws them when they
+   * arrive — and stops asking once they have.
+   */
+  test("colours still being measured are asked for again until they land", async ({ page }) => {
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        singer_backdrop: { source: "sound", track: "ef".repeat(32), shades: [], pending: true },
+        singer_backdrop_then: {
+          source: "sound",
+          track: "ef".repeat(32),
+          shades: [{ colour: "rgb(0 120 255)", weight: 1 }],
+          pending: false,
+        },
+      },
+    );
+    await singing(page, 14.5);
+    const asks = () =>
+      page.evaluate(
+        () => (window as unknown as { __backdropAsks?: Record<string, number> }).__backdropAsks?.["2"] ?? 0,
+      );
+    const backdrop = page.locator(`${SCREEN} [data-backdrop]`);
+    await expect.poll(asks).toBe(1);
+    await expect(backdrop.locator(".glow")).toHaveCount(0);
+    await expect(backdrop.locator(".glow")).toHaveCount(1, { timeout: 8000 });
+    await expect(backdrop.locator(".glow")).toHaveAttribute("data-shade", "rgb(0 120 255)");
+    expect(await asks()).toBe(2);
+    // Landed: not asked a third time.
+    await page.waitForTimeout(3_500);
+    expect(await asks()).toBe(2);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **Who is next, while a song is being sung**: the singer on stage is still
    * at the top of the rotation until the host marks the song sung, so the
    * screen names the one after.

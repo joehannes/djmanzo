@@ -83,6 +83,14 @@ impl Covers {
         cover
     }
 
+    /// Serve `cover` for `track` from now on — one found somewhere other than
+    /// the file, such as the Cover Art Archive (`crate::backdrop`).
+    pub fn remember(&self, track: TrackId, cover: Cover) {
+        if let Ok(mut known) = self.known.lock() {
+            known.insert(track, Some(cover));
+        }
+    }
+
     /// How many tracks have been looked at. For tests and for the log.
     #[must_use]
     pub fn known(&self) -> usize {
@@ -105,6 +113,41 @@ pub fn parse_path(path: &str) -> Option<TrackId> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// **A cover the webview is allowed to draw.** Every image djmanzo
+    /// serves by a scheme of its own must be in the page's `img-src`, in
+    /// both spellings — `art:` where the webview keeps custom schemes, and
+    /// `http://art.localhost` on Windows. `art` was left out, and every
+    /// cover in the running application was refused while the browser tests,
+    /// which have no such rule, drew them.
+    #[test]
+    fn every_image_scheme_is_allowed_by_the_content_rules() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("the config is JSON");
+        let csp = config["app"]["security"]["csp"]
+            .as_str()
+            .expect("a content security policy");
+        let images = csp
+            .split(';')
+            .map(str::trim)
+            .find_map(|rule| rule.strip_prefix("img-src "))
+            .expect("an img-src rule");
+        let allowed: Vec<&str> = images.split_whitespace().collect();
+        for scheme in [
+            SCHEME,
+            crate::waveform::SCHEME,
+            crate::brand::SCHEME,
+            crate::kit::SCHEME,
+        ] {
+            let bare = format!("{scheme}:");
+            let windows = format!("http://{scheme}.localhost");
+            assert!(allowed.contains(&bare.as_str()), "{bare} is not allowed");
+            assert!(
+                allowed.contains(&windows.as_str()),
+                "{windows} is not allowed"
+            );
+        }
+    }
 
     fn id(n: u8) -> TrackId {
         let mut bytes = [0u8; 32];

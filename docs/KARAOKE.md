@@ -265,6 +265,22 @@ instrumental break is running and how long it lasts.
 3. A generated abstract background derived from the track's own spectrum, so
    there is never a blank screen.
 
+**Built (K1):** `dj_app::backdrop` and `singer_backdrop`, in that order. The
+record's own cover is served by `art://`, as the library's cards are. A record
+tagged with the MusicBrainz release it came from has that release's front
+cover asked of the Cover Art Archive (`front-500`), once: the image, or the
+archive's word that there is none, is kept under the application's data
+folder, so a night without a network still has its covers and the archive is
+not asked again. Beneath either, always, the record's own colours — §110's
+colour for each of its eight bands, weighted by how much of the record sits
+in it, drawn as four slow glows — which are also the whole background when
+there is no cover, and what shows while one loads or when it fails. A veil
+over both keeps the words at about 13:1 contrast in the middle of the screen
+(measured in the running application with a pale cover; 4.9:1 without it).
+Plain CSS, no GPU, so nothing here can take the words down. A record's
+spectrum lands seconds after it loads; until then the screen is told the
+colours are pending and asks again, for a minute at most.
+
 ### Visuals
 
 Beat-reactive animation driven by what the engine already computes: the beat
@@ -387,9 +403,9 @@ piece of this document lands among them.
 | Lyrics from LRCLIB | M3 | **K1** | shipped |
 | Lyrics from tags and a sidecar `.lrc` | M3 | **K1** | shipped |
 | Singers' screen: wipe, next line, count-in, next singer | M3 | **K1** | shipped |
-| Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | not built |
+| Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | shipped |
 | Stem-based removal and a guide vocal | M6 | **K2** | shipped |
-| Transcription and word times (whisper.cpp, in djmanzo) | M6 | **K2** | shipped; `small` measured at 73 s for a 4½-minute record; the English aligner next |
+| Transcription and word times (whisper.cpp, in djmanzo) | M6 | **K2** | shipped; `small` measured at 73 s for a 4½-minute record, and the English aligner beside it |
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |

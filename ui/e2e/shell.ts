@@ -2575,6 +2575,16 @@ export async function openShell(
             const landed = Date.now() - first >= 600;
             return Promise.resolve(landed ? answers.waveform_info_then : answers.waveform_info);
           }
+          // K1: the singers' screen asked for a deck's background before its
+          // record's colours were measured, then again once they are. Counted
+          // per deck, because the count is what the test holds, and the screen
+          // may ask about another deck before the singer's is playing.
+          if (cmd === "singer_backdrop" && answers.singer_backdrop_then !== undefined) {
+            const counts = (win.__backdropAsks ??= {}) as Record<string, number>;
+            const deck = String(args.deck);
+            counts[deck] = (counts[deck] ?? 0) + 1;
+            return Promise.resolve(counts[deck] === 1 ? answers.singer_backdrop : answers.singer_backdrop_then);
+          }
           if (cmd === "keep_mix") {
             win.__keptAt = args.at;
             return Promise.resolve(1);

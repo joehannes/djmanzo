@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions the djmanzo main window needs.",
-  "windows": ["main"],
+  "description": "Permissions the djmanzo main window and the panels popped out of it need. A popped-out panel is the same interface on a second screen: without the event permission it paints its first snapshot and never another.",
+  "windows": ["main", "panel-*"],
   "permissions": [
     "core:default",
     "core:event:default",

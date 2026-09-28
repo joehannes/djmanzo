@@ -14763,6 +14763,124 @@ pub fn singer_lyrics(state: State<'_, AppState>, deck: u8) -> crate::karaoke::Si
     crate::karaoke::lyrics_for(crate::karaoke::best_words(own, stored))
 }
 
+/// K1: what the singers' screen shows behind the words for the record on
+/// `deck` — its own cover, else the Cover Art Archive's for the release it
+/// was tagged from (asked once, and the answer kept on disk), else its own
+/// colours alone. See `crate::backdrop`.
+///
+/// Its colours come with every answer, drawn first, so the screen is never
+/// blank while a cover loads, and never waits on the network for its words.
+///
+/// # Errors
+/// No record on the deck, or no library.
+#[tauri::command]
+pub async fn singer_backdrop(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    deck: u8,
+) -> Result<crate::backdrop::Backdrop, String> {
+    use crate::backdrop::{Kept, answer, archive_url, keep, kept, mean_spectrum, shades};
+    use tauri::Manager;
+    let id = DeckId::from_human(deck)
+        .and_then(|deck| state.deck_track_id(deck))
+        .ok_or_else(|| format!("deck {deck} has no record on it"))?;
+    let path = library(&state)?
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "that record is not in the collection".to_owned())?
+        .path;
+    let summary = state.waveforms().summary(deck);
+    let pending = crate::backdrop::pending(summary.as_deref());
+    let colours = summary
+        .and_then(|summary| mean_spectrum(&summary))
+        .map(|spectrum| shades(&spectrum))
+        .unwrap_or_default();
+    let backdrop = |source| crate::backdrop::Backdrop {
+        source,
+        track: id.to_hex(),
+        shades: colours.clone(),
+        pending,
+    };
+    let covers = Arc::clone(state.covers());
+    let (own, release) = {
+        let path = path.clone();
+        let covers = Arc::clone(&covers);
+        tauri::async_runtime::spawn_blocking(move || {
+            let own = covers.get(id, |_| Some(path.clone())).is_some();
+            (
+                own,
+                if own {
+                    None
+                } else {
+                    dj_library::tags::release_id(&path)
+                },
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    if own {
+        return Ok(backdrop("record"));
+    }
+    let Some(release) = release else {
+        return Ok(backdrop("sound"));
+    };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("covers");
+    let found = match kept(&dir, &release) {
+        Kept::Found(cover) => Some(cover),
+        Kept::Absent => None,
+        Kept::Unknown => {
+            let asked = async {
+                let response = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| e.to_string())?
+                    .get(archive_url(&release))
+                    .header(
+                        reqwest::header::USER_AGENT,
+                        "djmanzo (https://github.com/joehannes/djmanzo)",
+                    )
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let status = response.status().as_u16();
+                let mime = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+                answer(status, mime.as_deref(), bytes.to_vec())
+            }
+            .await;
+            match asked {
+                Ok(cover) => {
+                    if let Err(why) = keep(&dir, &release, cover.as_ref()) {
+                        tracing::warn!(%why, "a cover from the archive was not kept");
+                    }
+                    cover
+                }
+                Err(why) => {
+                    // Not kept: asked again another time.
+                    tracing::info!(%why, %release, "no cover from the Cover Art Archive this time");
+                    None
+                }
+            }
+        }
+    };
+    Ok(match found {
+        Some(cover) => {
+            covers.remember(id, cover);
+            backdrop("archive")
+        }
+        None => backdrop("sound"),
+    })
+}
+
 /// §109: one activity as the strip draws it.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityDto {

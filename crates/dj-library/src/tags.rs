@@ -81,6 +81,34 @@ pub fn artwork(path: &Path) -> Option<Artwork> {
     })
 }
 
+/// The MusicBrainz release a file was tagged from, if it was — the key the
+/// Cover Art Archive files its covers under.
+///
+/// Taggers such as MusicBrainz Picard write it (`MusicBrainz Album Id` in
+/// ID3, `MUSICBRAINZ_ALBUMID` in Vorbis comments, the iTunes freeform atom in
+/// MP4), and `lofty` reads all three as one key. Checked to be a UUID, since
+/// it ends up in a URL: anything else is no release.
+#[must_use]
+pub fn release_id(path: &Path) -> Option<String> {
+    let tagged = Probe::open(path).ok()?.read().ok()?;
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
+    let id = tag
+        .get_string(&ItemKey::MusicBrainzReleaseId)?
+        .trim()
+        .to_lowercase();
+    is_uuid(&id).then_some(id)
+}
+
+/// Eight, four, four, four and twelve hex digits, hyphenated.
+fn is_uuid(text: &str) -> bool {
+    let parts: Vec<&str> = text.split('-').collect();
+    parts.len() == 5
+        && parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(part, len)| part.len() == len && part.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
 /// Which of a file's pictures is the cover.
 ///
 /// The front cover if there is one, and otherwise the first picture that is
@@ -120,6 +148,54 @@ fn clean(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_release_id_is_a_uuid_or_nothing() {
+        assert!(is_uuid("f1f6a6bf-7c3d-4a1e-9a44-2d5b0c1e8f00"));
+        assert!(!is_uuid("f1f6a6bf-7c3d-4a1e-9a44"));
+        assert!(!is_uuid("../../etc/passwd"));
+        assert!(!is_uuid("f1f6a6bf-7c3d-4a1e-9a44-2d5b0c1e8f0g"));
+    }
+
+    /// The release a tagger wrote is read back, and a file without one — or
+    /// with something that is not a release — has none.
+    #[test]
+    fn the_release_a_file_was_tagged_from_is_read() {
+        use lofty::config::WriteOptions;
+        use lofty::prelude::TagExt;
+        use lofty::tag::{Tag, TagType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let silent = |name: &str| {
+            let path = dir.path().join(name);
+            let mut bytes = Vec::new();
+            for _ in 0..40 {
+                let mut frame = vec![0u8; 417];
+                frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+                bytes.extend_from_slice(&frame);
+            }
+            std::fs::write(&path, bytes).unwrap();
+            path
+        };
+        let tagged = silent("tagged.mp3");
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(
+            ItemKey::MusicBrainzReleaseId,
+            " F1F6A6BF-7C3D-4A1E-9A44-2D5B0C1E8F00 ".to_owned(),
+        );
+        tag.save_to_path(&tagged, WriteOptions::default()).unwrap();
+        assert_eq!(
+            release_id(&tagged).as_deref(),
+            Some("f1f6a6bf-7c3d-4a1e-9a44-2d5b0c1e8f00")
+        );
+
+        let wrong = silent("wrong.mp3");
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(ItemKey::MusicBrainzReleaseId, "not a release".to_owned());
+        tag.save_to_path(&wrong, WriteOptions::default()).unwrap();
+        assert_eq!(release_id(&wrong), None);
+        assert_eq!(release_id(&silent("bare.mp3")), None);
+    }
 
     #[test]
     fn blank_tags_become_absent() {

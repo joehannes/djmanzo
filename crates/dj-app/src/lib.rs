@@ -29,6 +29,7 @@ pub mod audience;
 pub mod audition;
 pub mod automix;
 pub mod autopilot;
+pub mod backdrop;
 pub mod boards;
 pub mod brand;
 pub mod breaks;
@@ -849,6 +850,7 @@ pub fn run() {
             commands::guests_reveal_voice,
             commands::guests_message,
             commands::open_suno,
+            commands::singer_backdrop,
             commands::word_timing,
             commands::word_timing_speed,
             commands::word_timing_download,
