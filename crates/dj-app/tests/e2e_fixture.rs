@@ -1992,3 +1992,21 @@ fn the_browser_fixture_has_the_singers_microphones() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// K3: the bottom of the singers' monitor's music range means *off* in the
+/// engine, and the browser draws that bottom as the word — so both have to
+/// agree where it is. Were they to drift, the slider would say *off* at a
+/// level the engine still plays quietly, or never reach off at all.
+#[test]
+fn the_browser_knows_where_the_monitors_music_goes_off() {
+    let api = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/api.ts");
+    let source = std::fs::read_to_string(&api)
+        .unwrap_or_else(|e| panic!("could not read {}: {e}", api.display()));
+    #[allow(clippy::cast_possible_truncation)]
+    let off = dj_engine::MONITOR_MUSIC_OFF_DB as i32;
+    let line = format!("export const MONITOR_MUSIC_OFF_DB = {off};");
+    assert!(
+        source.contains(&line),
+        "ui/src/api.ts should say `{line}`, as dj_engine::MONITOR_MUSIC_OFF_DB does"
+    );
+}

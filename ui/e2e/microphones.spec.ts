@@ -43,7 +43,11 @@ const TWO = {
     { level: 0.5, gate_open: true, compression_db: 4.2, working: true },
     { level: 0, gate_open: false, compression_db: 0, working: false },
   ],
+  monitor_music_db: null as number | null,
 };
+
+const dispatched = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []);
 
 async function singers(page: Page) {
   await openShell(
@@ -129,6 +133,34 @@ test.describe("K3: the singers' microphones", () => {
     // The count stops climbing: the input is back.
     await readings(page, { ...TWO, starved_frames: 12 * 4_800 });
     await expect(here.getByRole("alert")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The singers' monitor is offered only where the output has a pair for
+   * it, and its level reaches the engine as the action a controller would
+   * send.** Six outputs: no slider, and the host told what would give them
+   * one. Eight: the music's level in the wedge, said in dB and as *off* at
+   * the bottom, and a move of it sent as `monitor music <dB>`.
+   */
+  test("the monitor's music is offered on an output with a pair for it", async ({ page }) => {
+    await singers(page);
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const slider = here.getByRole("slider", { name: "Music in the singers' monitor" });
+    await expect(slider).toHaveCount(0);
+    await expect(here).toContainText("an interface with eight outputs or more gives them a wedge of their own");
+
+    await readings(page, { ...TWO, monitor_music_db: -6 });
+    await expect(slider).toBeVisible();
+    await expect(here.locator(".monitor output")).toHaveText("−6 dB");
+    await slider.fill("-15");
+    await expect.poll(() => dispatched(page)).toContain("monitor music -15");
+
+    // The engine answers at the bottom of the range: the music is off.
+    await readings(page, { ...TWO, monitor_music_db: -60 });
+    await expect(here.locator(".monitor output")).toHaveText("off");
     expect(errorsThrown(page)).toEqual([]);
   });
 });

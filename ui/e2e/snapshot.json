@@ -1045,7 +1045,8 @@
       "inputs": 0,
       "working": 0,
       "starved_frames": 0.0,
-      "strips": []
+      "strips": [],
+      "monitor_music_db": null
     },
     "automix": {
       "enabled": false,

@@ -774,7 +774,16 @@ export interface VocalsState {
   /** Frames the input could not supply; rising means it has gone. */
   starved_frames: number;
   strips: VocalStripState[];
+  /**
+   * The music's level in the singers' monitor, in dB; `null` when the output
+   * has no pair for one (fewer than eight channels). At `MONITOR_MUSIC_OFF_DB`
+   * the music is off and the wedge carries only the voices.
+   */
+  monitor_music_db: number | null;
 }
+
+/** `dj_engine::MONITOR_MUSIC_OFF_DB`: the bottom of the monitor's music range, meaning off. */
+export const MONITOR_MUSIC_OFF_DB = -60;
 
 /** What a strip is for. See `dj_vocal::Preset`. */
 export type VocalPreset = "singer" | "soft-singer" | "loud-singer" | "mc" | "instrument";

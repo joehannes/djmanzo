@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A monitor for the singers (K3).** On an interface with eight outputs or
+  more, outputs 7 and 8 are the singers' wedge: the music at a level of its own
+  and each singer's microphone at its monitor send. The MC talking over the
+  music does not take it out of the wedge, and turning the room up or down
+  does not change it. Its level is on the Singers surface's *Microphones*
+  section — all the way down is *off*, for a singer who wants only
+  themselves — and `monitor music <dB>` on a controller or in a script.
+
 ## v0.35.0 — The singers' microphones on screen, and Mac builds again
 
 - **The singers' microphones are on screen (K3).** The Singers surface has a

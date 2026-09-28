@@ -721,6 +721,12 @@ pub enum GlobalParam {
     /// K3: frames the singers' input ring could not supply. Rising means the
     /// input has gone — unplugged, or its driver stopped delivering.
     VocalStarvedFrames,
+    /// K3: whether the output device has a pair for the singers' monitor —
+    /// eight channels or more, the pair after the headphones.
+    MonitorAvailable,
+    /// K3: the music's level in the singers' monitor, in dB, apart from what
+    /// the room hears. Each singer's own voice there is their strip's send.
+    MonitorMusicDb,
 }
 
 impl DeckParam {
@@ -919,8 +925,8 @@ impl GlobalParam {
     ];
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
-    /// readings since, two for §22's audition, and three for K3's singers.
-    pub const COUNT: usize = 140;
+    /// readings since, two for §22's audition, and five for K3's singers.
+    pub const COUNT: usize = 142;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1071,6 +1077,8 @@ impl GlobalParam {
             VocalInputs,
             VocalWorking,
             VocalStarvedFrames,
+            MonitorAvailable,
+            MonitorMusicDb,
         ]
     }
 }
@@ -1430,6 +1438,8 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::VocalInputs => "vocal_inputs",
         GlobalParam::VocalWorking => "vocal_working",
         GlobalParam::VocalStarvedFrames => "vocal_starved_frames",
+        GlobalParam::MonitorAvailable => "monitor_available",
+        GlobalParam::MonitorMusicDb => "monitor_music_db",
         GlobalParam::Quantize => "quantize",
     }
 }

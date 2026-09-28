@@ -611,6 +611,8 @@ pub enum MixerAction {
     /// Split cue: cue in one ear, master in the other.
     SplitCue(bool),
     BoothGainDb(f32),
+    /// K3: the music's level in the singers' monitor, apart from the room's.
+    MonitorMusicDb(f32),
     /// Snap beat jumps -- and later cues and loops -- to the grid.
     ///
     /// Global rather than per-deck because it is a way of *working*, not a
@@ -767,6 +769,12 @@ impl Action {
             },
             "booth" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "gain" => Ok(Action::Mixer(MixerAction::BoothGainDb(parse_f32(
+                    words.next(),
+                )?))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
+            "monitor" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "music" => Ok(Action::Mixer(MixerAction::MonitorMusicDb(parse_f32(
                     words.next(),
                 )?))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
@@ -1494,6 +1502,9 @@ impl fmt::Display for Action {
             }
             Action::Mixer(MixerAction::BoothGainDb(v)) => {
                 write!(f, "booth gain {}", number(f64::from(*v)))
+            }
+            Action::Mixer(MixerAction::MonitorMusicDb(v)) => {
+                write!(f, "monitor music {}", number(f64::from(*v)))
             }
             Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
@@ -2356,6 +2367,7 @@ mod tests {
             Action::Mixer(MixerAction::CueMix(0.35)),
             Action::Mixer(MixerAction::SplitCue(true)),
             Action::Mixer(MixerAction::BoothGainDb(-6.0)),
+            Action::Mixer(MixerAction::MonitorMusicDb(-9.5)),
             Action::Mixer(MixerAction::Crossfader(-0.25)),
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),
         ];

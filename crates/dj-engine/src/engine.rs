@@ -33,6 +33,10 @@ const CLAP_MAX_FRAMES: usize = 8192;
 // K3: the parameter table has a block for every strip the rack can hold.
 const _: () = assert!(dj_vocal::MOST_STRIPS == dj_core::param::MAX_VOCAL_STRIPS);
 
+/// K3: the music's level in the singers' monitor at which it is off — the
+/// bottom of the range, meaning *only the singers*, not *very quiet*.
+pub const MONITOR_MUSIC_OFF_DB: f32 = -60.0;
+
 /// The realtime engine.
 ///
 /// Lives on the audio thread and obeys its rules absolutely: no allocation, no
@@ -89,6 +93,9 @@ pub struct Engine {
     cue_split: bool,
     booth_gain: SmoothedValue,
     booth_gain_db: f32,
+    /// K3: the music's level in the singers' monitor.
+    monitor_music: SmoothedValue,
+    monitor_music_db: f32,
 
     /// Snap beat jumps to the grid.
     quantize: bool,
@@ -156,6 +163,10 @@ pub struct Engine {
     /// is the other reason — a pre-fader cue sum of four decks can go a long
     /// way over full scale, and it is going straight into someone's ears.
     cue_limiter: Limiter,
+    /// K3: the last thing before the singers' wedge — a third instance for a
+    /// third bus, and for the same second reason: a singer's own voice at
+    /// full send over the music can go past full scale, into their ears.
+    monitor_limiter: Limiter,
 
     /// Sources we could not hand back because the retirement queue was full.
     /// Held rather than dropped -- dropping here is exactly what the queue
@@ -216,6 +227,8 @@ impl Engine {
             cue_split: false,
             booth_gain: SmoothedValue::new(1.0, sr),
             booth_gain_db: 0.0,
+            monitor_music: SmoothedValue::new(1.0, sr),
+            monitor_music_db: 0.0,
             quantize: false,
             sampler: Sampler::new(sample_rate.as_f64()),
             preview: crate::preview::Preview::new(sample_rate.as_f64()),
@@ -230,6 +243,7 @@ impl Engine {
             dropped_samples: 0,
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
+            monitor_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
             // 1024 frames of window, a transform every 512 — 94 Hz, comfortably
@@ -913,6 +927,21 @@ impl Engine {
                 self.registry.set(
                     ParamId::Global(GlobalParam::BoothGainDb),
                     self.booth_gain_db,
+                );
+            }
+            Action::Mixer(MixerAction::MonitorMusicDb(db)) => {
+                // The bottom of the range is off rather than very quiet: a
+                // singer who wants only themselves in the wedge gets that.
+                self.monitor_music_db = db.clamp(MONITOR_MUSIC_OFF_DB, 12.0);
+                self.monitor_music
+                    .set_target(if self.monitor_music_db <= MONITOR_MUSIC_OFF_DB {
+                        0.0
+                    } else {
+                        db_to_linear(self.monitor_music_db)
+                    });
+                self.registry.set(
+                    ParamId::Global(GlobalParam::MonitorMusicDb),
+                    self.monitor_music_db,
                 );
             }
             Action::Mixer(MixerAction::MasterGainDb(db)) => {
@@ -1701,6 +1730,10 @@ impl AudioCallback for Engine {
         let channels = layout.channels;
         self.registry
             .set_bool(ParamId::Global(GlobalParam::CueAvailable), layout.has_cue());
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::MonitorAvailable),
+            layout.monitor.is_some(),
+        );
 
         // Decks add into the shared buffer -- master post-fader, cue pre-fader
         // -- so no per-deck scratch is needed.
@@ -1824,6 +1857,24 @@ impl AudioCallback for Engine {
             let voice_l = mic.left + voices.main[0];
             let voice_r = mic.right + voices.main[1];
 
+            // K3: the singers' wedge — the music at a level of its own and
+            // each singer at their strip's monitor send. Taken here, from the
+            // decks' sum before the talkover and the master gain touch it: an
+            // MC speaking should not take the song away from the singer, and
+            // the DJ turning the room up or down should not change what the
+            // singer is singing against. Before the master rack too, so an
+            // echo thrown over the room does not land in a singer's ears.
+            let monitor = self.monitor_music.next_value();
+            if let Some((monitor_l, monitor_r)) = layout.monitor {
+                let music_r = if layout.is_mono() {
+                    frame[main_l]
+                } else {
+                    frame[main_r]
+                };
+                frame[monitor_l] = frame[main_l].mul_add(monitor, voices.monitor[0]);
+                frame[monitor_r] = music_r.mul_add(monitor, voices.monitor[1]);
+            }
+
             // Master first: everything downstream is derived from it.
             //
             // The music is ducked and the microphone is not, which is the whole
@@ -1940,6 +1991,17 @@ impl AudioCallback for Engine {
             if let Some((booth_l, booth_r)) = layout.booth {
                 frame[booth_l] = (master_l * booth).clamp(-1.0, 1.0);
                 frame[booth_r] = (master_r * booth).clamp(-1.0, 1.0);
+            }
+
+            // The singers' wedge, through a limiter of its own — which also
+            // delays it exactly as much as the master, so the wedge and the
+            // PA a singer hears behind them do not flam.
+            if let Some((monitor_l, monitor_r)) = layout.monitor {
+                let (out_l, out_r) = self
+                    .monitor_limiter
+                    .process_frame(frame[monitor_l], frame[monitor_r]);
+                frame[monitor_l] = out_l.clamp(-1.0, 1.0);
+                frame[monitor_r] = out_r.clamp(-1.0, 1.0);
             }
 
             // Headphones: blend the pre-fader cue sum against the master.
@@ -5359,6 +5421,30 @@ mod mic_tests {
             (master, cue)
         }
 
+        /// Render across `channels` and give back the peaks of the master's
+        /// left channel and the singers' monitor's, zero where there is none.
+        fn render_monitor(&mut self, frames: usize, channels: usize) -> (f32, f32) {
+            let mut out = vec![0.0; frames * channels];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels,
+                    sample_rate: SR,
+                },
+            );
+            let layout = BusLayout::for_channels(channels);
+            let peak = |channel: usize| {
+                out.chunks_exact(channels)
+                    .map(|f| f[channel].abs())
+                    .fold(0.0, f32::max)
+            };
+            (
+                peak(layout.main.0),
+                layout.monitor.map_or(0.0, |(left, _)| peak(left)),
+            )
+        }
+
         fn get(&self, param: GlobalParam) -> f32 {
             self.registry.get(ParamId::Global(param))
         }
@@ -5779,6 +5865,105 @@ mod mic_tests {
         }
         assert!(returned, "the rack was freed on the audio thread");
         assert!(rig.get(GlobalParam::VocalInputs).abs() < f32::EPSILON);
+    }
+
+    /// K3: **the singers' wedge has the music at a level of its own and each
+    /// singer at their send, and nothing the room's mix does moves it.** On
+    /// an eight-channel device the pair after the headphones is the monitor:
+    /// the music there follows its own level and not the master gain; a
+    /// singer is heard in it; the MC pulling the room's music down leaves the
+    /// wedge's where it was; and at the bottom of its range the music is off,
+    /// leaving only the voices. Six channels have no monitor, and say so.
+    #[test]
+    fn the_singers_monitor_has_the_music_at_its_own_level_and_the_voices() {
+        const VOICE: f32 = 0.3;
+        const WIDE: usize = 8;
+        let mut rig = rig();
+        rig.play_music(0.5);
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut ring, consumer) = rtrb::RingBuffer::new(48_000 * 2 * 2);
+        vocals.set_input(Some(consumer));
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, mc) = strips();
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: singer,
+        });
+        rig.send(Command::VocalStrip {
+            strip: 1,
+            settings: mc,
+        });
+        let mut sing = |rig: &mut Rig, first: f32, second: f32, blocks: usize| {
+            let mut peaks = (0.0, 0.0);
+            for _ in 0..blocks {
+                for _ in 0..2_048 {
+                    ring.push(first).expect("ring full");
+                    ring.push(second).expect("ring full");
+                }
+                peaks = rig.render_monitor(2_048, WIDE);
+            }
+            peaks
+        };
+
+        // The music alone: the same in the wedge as in the room at 0 dB.
+        let (room, wedge) = sing(&mut rig, 0.0, 0.0, 4);
+        assert!(room > 0.2, "no music ({room})");
+        assert!((wedge - room).abs() < 0.01, "wedge {wedge}, room {room}");
+        assert!((rig.get(GlobalParam::MonitorAvailable) - 1.0).abs() < f32::EPSILON);
+
+        // Its own level, and the room's gain does not reach it.
+        rig.act(Action::Mixer(MixerAction::MonitorMusicDb(-12.0)));
+        rig.act(Action::Mixer(MixerAction::MasterGainDb(-12.0)));
+        let (quieter, wedge) = sing(&mut rig, 0.0, 0.0, 4);
+        let music = room * 0.2512;
+        assert!(
+            quieter < room * 0.3,
+            "the master gain did nothing ({quieter})"
+        );
+        assert!(
+            (wedge - music).abs() < 0.01,
+            "the wedge's music at -12 dB came out at {wedge}, not {music}"
+        );
+        assert!((rig.get(GlobalParam::MonitorMusicDb) + 12.0).abs() < f32::EPSILON);
+        rig.act(Action::Mixer(MixerAction::MasterGainDb(0.0)));
+
+        // A singer, in the wedge at their send.
+        let centred = VOICE * std::f32::consts::FRAC_1_SQRT_2;
+        let (_, wedge) = sing(&mut rig, VOICE, 0.0, 10);
+        assert!(
+            (wedge - (music + centred)).abs() < 0.01,
+            "the singer reached the wedge at {wedge}, not {}",
+            music + centred
+        );
+
+        // The MC pulls the room's music down and not the wedge's.
+        let (spoken, wedge) = sing(&mut rig, 0.0, VOICE, 20);
+        assert!(spoken < room, "the room's music never moved ({spoken})");
+        assert!(
+            (wedge - (music + centred)).abs() < 0.01,
+            "the MC took the wedge's music with the room's ({wedge})"
+        );
+
+        // At the bottom of the range, only the voices — and with nobody
+        // singing, silence: off, not sixty decibels down.
+        rig.act(Action::Mixer(MixerAction::MonitorMusicDb(-90.0)));
+        let (_, wedge) = sing(&mut rig, VOICE, 0.0, 10);
+        assert!(
+            (wedge - centred).abs() < 0.005,
+            "the singer was lost with the music ({wedge})"
+        );
+        // Long enough for the MC's talkover to have let the room's music
+        // back up — its hold alone is half a second.
+        let (room, wedge) = sing(&mut rig, 0.0, 0.0, 40);
+        assert!(room > 0.3, "the room's music was stopped too ({room})");
+        assert!(wedge < 1e-6, "the music was still in the wedge ({wedge})");
+        assert!((rig.get(GlobalParam::MonitorMusicDb) - MONITOR_MUSIC_OFF_DB).abs() < f32::EPSILON);
+
+        // Six channels: no pair for it, and the snapshot is told.
+        rig.render_monitor(64, 6);
+        assert!(rig.get(GlobalParam::MonitorAvailable).abs() < f32::EPSILON);
     }
 }
 

@@ -8,10 +8,14 @@
    * many are working and what that costs the audio thread, and how late a
    * singer hears themselves. The chain behind each strip is Rust's
    * (`dj_vocal`); this draws the snapshot's readings and sends the host's
-   * choices, which Rust keeps for the next time djmanzo starts.
+   * choices, which Rust keeps for the next time djmanzo starts. Below them,
+   * on an output with eight channels, the music's level in the singers'
+   * monitor — the wedge's own, apart from the room's.
    */
   import {
+    dispatch,
     listInputs,
+    MONITOR_MUSIC_OFF_DB,
     vocalStripPreset,
     vocalStripSet,
     vocalsClose,
@@ -139,6 +143,16 @@
   const heavy = $derived(share(count) > 60);
   /** Input buffer and output buffer: how late a singer hears themselves in a monitor. */
   const late = $derived(opened ? Math.round(opened.latencyMs * 2) : null);
+
+  /** The music in the singers' monitor; `null` when the output has no pair for one. */
+  const monitor = $derived(live?.monitor_music_db ?? null);
+  /** The level said as the host thinks of it: off at the bottom, dB above. */
+  const level = (db: number) =>
+    db <= MONITOR_MUSIC_OFF_DB ? "off" : `${db > 0 ? "+" : db < 0 ? "−" : ""}${Math.abs(Math.round(db))} dB`;
+
+  function monitorMusic(db: number) {
+    dispatch(`monitor music ${db}`).catch((e) => (error = String(e)));
+  }
 </script>
 
 <section class="mics" aria-labelledby="singers-mics">
@@ -215,6 +229,26 @@
         </li>
       {/each}
     </ul>
+    {#if monitor !== null}
+      <div class="monitor">
+        <label for="singers-monitor-music">Music in the singers' monitor</label>
+        <input
+          id="singers-monitor-music"
+          type="range"
+          min={MONITOR_MUSIC_OFF_DB}
+          max="12"
+          step="1"
+          value={monitor}
+          oninput={(e) => monitorMusic(Number(e.currentTarget.value))}
+        />
+        <output for="singers-monitor-music">{level(monitor)}</output>
+      </div>
+    {:else}
+      <p class="hint">
+        No singers' monitor on this output — an interface with eight outputs or more gives them a wedge of their own,
+        on outputs 7 and 8.
+      </p>
+    {/if}
     <button class="close" onclick={() => void close()} disabled={busy}>Close the inputs</button>
   {/if}
   {#if error}
@@ -320,6 +354,19 @@
 
   .silent {
     grid-column: 1 / -1;
+  }
+
+  .monitor {
+    display: grid;
+    grid-template-columns: auto minmax(6rem, 1fr) 3.2rem;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9em;
+  }
+
+  .monitor output {
+    color: var(--text-dim);
+    text-align: right;
   }
 
   .close {

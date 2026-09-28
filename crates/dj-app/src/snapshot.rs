@@ -430,6 +430,10 @@ pub struct VocalsSnapshot {
     /// One per input, in order. Empty with none open — and then, like the
     /// rest of a quiet snapshot, costing no allocation.
     pub strips: Vec<VocalStripSnapshot>,
+    /// The music's level in the singers' monitor, in dB — `None` when the
+    /// output device has no pair for one (fewer than eight channels, or the
+    /// decks going out on pairs of their own).
+    pub monitor_music_db: Option<f32>,
 }
 
 /// K3: one singer's microphone's face.
@@ -1008,6 +1012,8 @@ impl Snapshot {
                                 working: strip(index, VocalParam::Working) >= 0.5,
                             })
                             .collect(),
+                        monitor_music_db: (get(GlobalParam::MonitorAvailable) >= 0.5)
+                            .then(|| get(GlobalParam::MonitorMusicDb)),
                     }
                 },
                 split_output: bridge.map(|stats| SplitOutputSnapshot {

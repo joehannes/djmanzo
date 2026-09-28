@@ -409,7 +409,7 @@ piece of this document lands among them.
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |
-| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains built (`dj-vocal`); the engine, the input and the screen next — §6 below |
+| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen and the monitor built; reconnecting, a singer's own settings and the chain on screen next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
@@ -625,9 +625,38 @@ two-channel input: the section offered it, *Open the inputs* gave two rows,
 *Open* on Mic 1 wrote `"open": true` to `vocal.json`, a restart brought it
 back open, and *nothing on Mic 1* appeared after ten silent seconds — which
 driving it found first appearing at once, the clock having counted the time
-the strip was closed. **Not yet:** the monitor pair, reconnecting a lost
-input by itself, a singer's own settings laid over the strip's, and the chain
-behind a press on the row.
+the strip was closed.
+
+**And the singers' monitor.** On an output with eight channels or more, the
+pair after the headphones (`BusLayout::monitor`, channels 7–8) is the
+singers' wedge: the music at a level of its own and each singer at their
+strip's monitor send, through a third limiter — the master's twin, so the
+wedge and the PA a singer hears behind them arrive together. The music there
+is the decks' sum *before* the talkover and the master gain: an MC speaking
+does not take the song out from under a singer, and the DJ turning the room
+up or down does not change what the singer sings against. Before the master
+rack too, so an echo thrown over the room is not in a singer's ears. Its
+level is `monitor music <dB>` on the action bus — so on a controller and in
+a script as well — from −60, which is *off*, not quiet, to +12; the snapshot
+carries it as `master.vocals.monitor_music_db`, `null` on an output with no
+pair for it, and the *Microphones* section draws a slider for it or, on a
+narrower output, says what would give the singers one. Sending the decks or
+the stems out on pairs of their own takes the pair, and a controller whose
+mapping names its own sockets gives none. Not kept between runs,
+as the booth's level is not. Held by an engine test (the wedge's music at
+its own level and deaf to the master gain; a singer heard in it; the MC
+pulling the room down and not the wedge; *off* silent), a bus test,
+`rt_safety` on eight outputs and a browser test — mutation-tested: the wedge
+taking the ducked music, taking the master gain, and *off* left sixty
+decibels down each fail the engine test (the last only once the test listened
+with nobody singing — it had passed at first, the level hiding inside the
+tolerance), and the slider sending the wrong level fails the browser's. **Driven in the
+running application** on the null backend's two outputs: the section said
+there was no monitor on this output and what would give the singers one —
+first worded as *on its last pair*, which is wrong for an interface with more
+than eight, and now *on outputs 7 and 8*.
+**Not yet:** reconnecting a lost input by itself, a singer's own settings
+laid over the strip's, and the chain behind a press on the row.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

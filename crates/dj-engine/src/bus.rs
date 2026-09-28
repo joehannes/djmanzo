@@ -20,6 +20,10 @@ pub struct BusLayout {
     pub cue: Option<(usize, usize)>,
     /// Booth output with independent level. Needs six channels.
     pub booth: Option<(usize, usize)>,
+    /// K3: the singers' monitor — the music at a level of its own and each
+    /// singer's microphone at its monitor send, for the wedge facing the
+    /// stage. Needs eight channels: the pair after the cue.
+    pub monitor: Option<(usize, usize)>,
     /// Where each separated stem goes, when a deck is being sent out in parts.
     ///
     /// `None` normally, which is every set that is not being fed through an
@@ -55,6 +59,7 @@ impl BusLayout {
                 main: (0, 0),
                 cue: None,
                 booth: None,
+                monitor: None,
                 stems: None,
                 decks_out: None,
             },
@@ -63,6 +68,7 @@ impl BusLayout {
                 main: (0, 1),
                 cue: None,
                 booth: None,
+                monitor: None,
                 stems: None,
                 decks_out: None,
             },
@@ -71,6 +77,7 @@ impl BusLayout {
                 main: (0, 1),
                 cue: Some((2, 3)),
                 booth: None,
+                monitor: None,
                 stems: None,
                 decks_out: None,
             },
@@ -79,6 +86,7 @@ impl BusLayout {
                 main: (0, 1),
                 booth: Some((2, 3)),
                 cue: Some((4, 5)),
+                monitor: (channels >= 8).then_some((6, 7)),
                 stems: None,
                 decks_out: None,
             },
@@ -100,6 +108,8 @@ impl BusLayout {
             return self;
         }
         self.stems = Some([(0, 1), (2, 3), (4, 5), (6, 7)]);
+        // The stems are on the monitor's pair now.
+        self.monitor = None;
         self
     }
 
@@ -129,6 +139,9 @@ impl BusLayout {
             return self;
         }
         self.decks_out = Some(decks);
+        // No master chain runs with the decks going out apart, so there is
+        // no wedge to feed — and on eight channels its pair is deck four's.
+        self.monitor = None;
         self
     }
 
@@ -234,6 +247,7 @@ impl BusRouting {
             main: self.main,
             cue: self.cue,
             booth: self.booth,
+            monitor: None,
             stems: None,
             decks_out: None,
         })
@@ -283,6 +297,10 @@ mod tests {
                 used.push(l);
                 used.push(r);
             }
+            if let Some((l, r)) = layout.monitor {
+                used.push(l);
+                used.push(r);
+            }
             let unique: std::collections::HashSet<_> = used.iter().copied().collect();
             assert_eq!(
                 unique.len(),
@@ -303,6 +321,9 @@ mod tests {
             if let Some((l, r)) = layout.booth {
                 indices.extend([l, r]);
             }
+            if let Some((l, r)) = layout.monitor {
+                indices.extend([l, r]);
+            }
             for index in indices {
                 assert!(
                     index < layout.channels,
@@ -310,6 +331,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// K3: eight outputs give the singers' monitor the pair after the
+    /// headphones; fewer have no room for it. Sending the decks or the stems
+    /// out on pairs of their own takes that pair, so the monitor goes — deck
+    /// four's cable is not a singer's wedge.
+    #[test]
+    fn eight_channels_give_the_singers_a_monitor_until_the_pairs_are_taken() {
+        for channels in [1usize, 2, 4, 6] {
+            assert!(BusLayout::for_channels(channels).monitor.is_none());
+        }
+        let layout = BusLayout::for_channels(8);
+        assert_eq!(layout.monitor, Some((6, 7)));
+        assert_eq!(layout.cue, Some((4, 5)));
+        assert_eq!(BusLayout::for_channels(10).monitor, Some((6, 7)));
+        assert!(layout.with_stem_out().monitor.is_none());
+        assert!(layout.with_deck_out(4).monitor.is_none());
     }
 
     #[test]
