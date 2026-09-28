@@ -126,8 +126,8 @@ pub const MODELS: [Model; 5] = [
         file: "ggml-medium-q5_0.bin",
         bytes: 539_212_467,
         sha256: "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
-        seconds_per_minute: 48.0,
-        measured: false,
+        seconds_per_minute: 49.6,
+        measured: true,
         reliability: "hears hard vocals and other languages better; slow",
         recommended: false,
     },
@@ -1161,6 +1161,37 @@ mod tests {
                 .url
                 .contains("/resolve/a19f851b3d42865797e410752b4c570c871e4825/")
         );
+    }
+
+    /// The Windows installer offers the recommended model itself
+    /// (`windows/hooks.nsh`): the same file, from the same place, checked
+    /// against the same checksum, into the folder the app reads models from.
+    #[test]
+    fn the_windows_installer_fetches_exactly_the_recommended_model() {
+        let hooks = include_str!("../windows/hooks.nsh");
+        let small = recommended();
+        assert!(hooks.contains(&format!("-Uri '{}'", url(small))), "the URL");
+        assert!(
+            hooks.contains(&format!("-ne '{}'", small.sha256)),
+            "the checksum"
+        );
+        assert!(
+            hooks.contains(&format!("'{}'", small.file)),
+            "the file name"
+        );
+        // `commands::word_models`: the app data folder, then models/whisper.
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("the config");
+        let identifier = config["identifier"].as_str().expect("an identifier");
+        assert!(
+            hooks.contains(&format!("'{identifier}\\models\\whisper'")),
+            "the folder djmanzo reads its models from"
+        );
+        assert_eq!(
+            config["bundle"]["windows"]["nsis"]["installerHooks"],
+            "windows/hooks.nsh"
+        );
+        assert!(hooks.contains("IfSilent"), "a silent install asks nothing");
     }
 
     #[test]

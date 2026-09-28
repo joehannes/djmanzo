@@ -525,8 +525,9 @@ and record: `small` **73–76 s** (inside the minute and a half; 72 s through
 djmanzo's own code, at the fixed processor baseline, which measured no
 slower than a build tuned to that processor) — recommended; `large-v3-turbo`
 353 s, and it **invented lines** over the record's instrumental break,
-repeating two phrases once a second for half a minute; `medium` not yet
-measured, its figure an estimate. Voice detection (Silero, MIT), which would
+repeating two phrases once a second for half a minute; `medium` 223.5 s
+(49.6 s a minute of record), with the best words of all ("dullness",
+"You picked a rose"). Voice detection (Silero, MIT), which would
 stop those inventions, keeps only 40–98 s of the 270 s record's singing when
 run over the mix — it is trained on speech — so it is not used on the mix;
 djmanzo drops a line said a third time among the last six instead. Word
@@ -545,6 +546,20 @@ a median **0.021 s** from WhisperX's (80 % within 0.075 s, 95 % within
 0.68 s), against 0.26 s for Whisper's own times; the aligner took 10.2 s of
 the run. Listening took 93.9 s in that run where it had taken 72 s earlier
 on the same machine — the machine's own variance, reported as measured.
+
+**Downloaded from the installer, where an installer can** (the owner: "if
+the model download is huge, i want the thing to be downloadable from the
+installer (and if not ... from within the app/GUI on demand)"). Of the
+formats djmanzo ships, only the Windows NSIS installer (`.exe`) runs code of
+djmanzo's own while installing: its post-install hook
+(`crates/dj-app/windows/hooks.nsh`, compiled with NSIS 3.09 here) asks, and
+fetches Whisper Small with PowerShell into the folder the app reads models
+from, checked against the same SHA-256 — a test holds the hook to the model
+list. The `.msi` (WiX), `.deb`, `.rpm`, AppImage and `.dmg` run no such
+step, so for them the first run is the installer's moment: the welcome
+guide's last step offers the same download, once, on the DJ's press; the
+Singers panel offers every model at any time. The hook has been compiled
+but not run on Windows from here.
 
 ## Options put to the owner: streaming, visuals, video, words, a marketplace (§119, §122, §123)
 

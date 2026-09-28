@@ -16,6 +16,18 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The word-timing model is offered where you install.** The Windows
+  installer (`.exe`) asks, after installing, whether to download the
+  recommended model (Whisper Small, 190 MB) and checks it against its
+  published checksum; on every system the welcome guide's last step offers
+  the same download, once, and only on your press. A `.deb`, `.rpm`,
+  AppImage, `.dmg` or `.msi` cannot fetch a file while it installs, so
+  there the welcome guide and the Singers panel are the places.
+- **Medium measured.** Whisper Medium took 50 seconds a minute of song on
+  the machine the others were measured on — 3 minutes 44 seconds for a
+  4½-minute song — and heard the words best; the list's estimate for it
+  is now a measurement.
+
 - **English words land on the syllable.** The same list now offers the
   English aligner (95 MB, downloaded once). After Whisper has listened to
   an English song, it places every word by its letters: on a 4½-minute

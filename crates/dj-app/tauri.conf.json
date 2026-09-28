@@ -37,6 +37,11 @@
     ],
     "category": "Music",
     "shortDescription": "VirtualDJ-class DJ application",
-    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine."
+    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine.",
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      }
+    }
   }
 }

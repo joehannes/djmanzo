@@ -109,6 +109,19 @@ test.describe("§118b: the welcome", () => {
     }
     await expect(dialog.locator(".changes li")).toHaveCount(welcome.plan.changes.length);
 
+    // §122: karaoke's word-timing model is offered here, once, and only
+    // fetched on the press.
+    const timing = () =>
+      page.evaluate(
+        () => (window as unknown as { __timing?: { cmd: string; model?: string }[] }).__timing ?? [],
+      );
+    const words = dialog.locator("[data-welcome-words]");
+    await expect(words).toContainText("Small, 190 MB");
+    expect((await timing()).filter((c) => c.cmd === "word_timing_download")).toHaveLength(0);
+    await words.getByRole("button", { name: "Download Small now" }).click();
+    await expect(words.getByRole("status")).toContainText("Downloading Small in the background");
+    expect((await timing()).find((c) => c.cmd === "word_timing_download")).toMatchObject({ model: "small" });
+
     await dialog.getByRole("button", { name: "Set it up" }).click();
     await expect(dialog).toHaveCount(0);
     const applied = (await calls(page)).find((c) => c.cmd === "welcome_apply")!.answers;

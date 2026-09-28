@@ -34,7 +34,10 @@
     welcomeApply,
     welcomePlan,
     welcomeSave,
+    wordTiming,
+    wordTimingDownload,
     type AdaptationLevel,
+    type WordTiming,
     type GigOptions,
     type WelcomeAnswers,
     type WelcomeApplied,
@@ -57,6 +60,28 @@
   } = $props();
 
   const STEPS = ["hello", "nights", "music", "moves", "help", "look", "ready"] as const;
+
+  // §122: the model karaoke's word timing needs, offered once, here — the
+  // first run is the one moment every package has for a download (a .deb or
+  // a disk image cannot fetch one while it installs). Offered only while no
+  // model is present, and never started without the press.
+  let words = $state<WordTiming | null>(null);
+  let wordsAsked = $state(false);
+  $effect(() => {
+    wordTiming()
+      .then((status) => (words = status))
+      .catch(() => {});
+  });
+  const recommendedModel = $derived(words?.models.find((model) => model.recommended) ?? null);
+  async function fetchWords() {
+    if (!recommendedModel) return;
+    wordsAsked = true;
+    try {
+      words = await wordTimingDownload(recommendedModel.id);
+    } catch {
+      wordsAsked = false;
+    }
+  }
   type Step = (typeof STEPS)[number];
 
   // A draft of the answers it was opened with, copied once on purpose: what
@@ -367,6 +392,24 @@
         Then: the number keys switch activity, <kbd>Space</kbd> shows every key, <kbd>0</kbd> opens
         the dashboard, and <strong>9</strong> prepares an event.
       </p>
+      {#if words && !words.chosen && !words.cpu && recommendedModel}
+        <div class="words" data-welcome-words>
+          <p>
+            <strong>For karaoke:</strong> djmanzo times each sung word so the singers' screen can
+            wipe the lyrics. That needs one model, downloaded once —
+            {recommendedModel.name}, {Math.round(recommendedModel.bytes / 1e6)} MB,
+            {recommendedModel.reliability}.
+          </p>
+          {#if wordsAsked}
+            <p class="hint" role="status">
+              Downloading {recommendedModel.name} in the background — the Singers panel shows how far.
+            </p>
+          {:else}
+            <button type="button" onclick={() => void fetchWords()}>Download {recommendedModel.name} now</button>
+            <span class="hint">or later, from the Singers panel.</span>
+          {/if}
+        </div>
+      {/if}
     {/if}
 
     {#if error ?? refusal}
@@ -390,6 +433,21 @@
 </div>
 
 <style>
+  .words {
+    border-top: 1px solid var(--border);
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  .words p {
+    margin: 0;
+    flex-basis: 100%;
+  }
+
   .welcome-backdrop {
     position: fixed;
     inset: 0;

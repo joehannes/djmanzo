@@ -196,7 +196,8 @@ for the measurements and licences.
   four-core machine, inside the owner's minute and a half, with most words
   right over the mix. Every run is timed against that limit and says
   whether it met it; what it took is kept, so the list's next estimate is
-  this machine's own.
+  this machine's own. The Windows installer offers `small` as it
+  installs; on every system the welcome guide offers it at first run.
 - **Word times** come from Whisper's own attention and land within about a
   quarter of a second of WhisperX's aligner — close enough to wipe a line
   by, not to the syllable. **For English**, the aligner the owner asked for

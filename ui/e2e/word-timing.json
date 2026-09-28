@@ -95,14 +95,14 @@
         "file": "ggml-medium-q5_0.bin",
         "id": "medium",
         "installed": false,
-        "measured": false,
+        "measured": true,
         "name": "Medium",
         "recommended": false,
         "reliability": "hears hard vocals and other languages better; slow",
-        "seconds_per_minute": 48.0,
+        "seconds_per_minute": 49.6,
         "sha256": "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
         "song_measured": false,
-        "song_seconds": 213.33333333333334
+        "song_seconds": 220.44444444444446
       },
       {
         "bytes": 574041195,
@@ -201,14 +201,14 @@
         "file": "ggml-medium-q5_0.bin",
         "id": "medium",
         "installed": false,
-        "measured": false,
+        "measured": true,
         "name": "Medium",
         "recommended": false,
         "reliability": "hears hard vocals and other languages better; slow",
-        "seconds_per_minute": 48.0,
+        "seconds_per_minute": 49.6,
         "sha256": "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
         "song_measured": false,
-        "song_seconds": 192.0
+        "song_seconds": 198.4
       },
       {
         "bytes": 574041195,
