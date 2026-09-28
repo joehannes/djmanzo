@@ -72,27 +72,32 @@ impl VocalFrame {
 #[derive(Debug)]
 pub struct Vocals {
     strips: Vec<Strip>,
+    /// How many channels each frame of the ring carries: the interface's
+    /// input count, which may be more than there are strips.
+    width: usize,
     input: Option<rtrb::Consumer<f32>>,
     /// Frames the ring could not supply.
     starved: u64,
 }
 
 impl Vocals {
-    /// One strip per input channel, up to [`MOST_STRIPS`]. Called when the
-    /// interface opens, never on the audio thread.
+    /// One strip per input channel, up to [`MOST_STRIPS`]; an interface with
+    /// more inputs than that has its first ones used and the rest read and
+    /// let go, so every frame is still taken whole. Called when the interface
+    /// opens, never on the audio thread.
     #[must_use]
     pub fn new(sample_rate: f32, inputs: usize) -> Self {
         Self {
             strips: (0..inputs.min(MOST_STRIPS))
                 .map(|_| Strip::new(sample_rate))
                 .collect(),
+            width: inputs,
             input: None,
             starved: 0,
         }
     }
 
-    /// How many strips there are, which is how many channels each frame of
-    /// the input ring carries.
+    /// How many strips there are.
     #[must_use]
     pub fn inputs(&self) -> usize {
         self.strips.len()
@@ -135,12 +140,12 @@ impl Vocals {
     /// was closed would deliver seconds of stale room the moment one opened.
     pub fn next_frame(&mut self) -> VocalFrame {
         let mut frame = VocalFrame::SILENT;
-        let channels = self.strips.len();
+        let width = self.width;
         let whole = self
             .input
             .as_ref()
-            .is_some_and(|input| input.slots() >= channels);
-        if self.input.is_some() && !whole && channels > 0 {
+            .is_some_and(|input| input.slots() >= width);
+        if self.input.is_some() && !whole && width > 0 {
             self.starved += 1;
         }
         for strip in &mut self.strips {
@@ -161,6 +166,13 @@ impl Vocals {
                 frame.monitor[side] += out.monitor[side];
             }
             frame.music_gain = frame.music_gain.min(out.music_gain);
+        }
+        // Inputs beyond the last strip: read, so the next frame starts where
+        // it should, and let go.
+        if whole && let Some(input) = self.input.as_mut() {
+            for _ in self.strips.len()..width {
+                let _ = input.pop();
+            }
         }
         frame
     }
@@ -278,6 +290,44 @@ mod tests {
         vocals.next_frame();
         assert_eq!(vocals.input.as_ref().unwrap().slots(), 0);
         assert_eq!(vocals.starved_frames(), 2);
+    }
+
+    /// **An interface with more inputs than strips keeps its frames whole.**
+    /// Eighteen inputs, sixteen strips: the last two channels of each frame
+    /// are read and let go, so the next frame's first channel still lands on
+    /// the first strip — a voice there is heard, and nothing leaks across.
+    #[test]
+    fn inputs_beyond_the_last_strip_are_read_and_let_go() {
+        const WIDTH: usize = MOST_STRIPS + 2;
+        let mut vocals = Vocals::new(RATE, WIDTH);
+        assert_eq!(vocals.inputs(), MOST_STRIPS);
+        vocals.strip_mut(0).unwrap().apply(&StripSettings {
+            pan: -1.0,
+            ..singer()
+        });
+        let (mut producer, consumer) = rtrb::RingBuffer::new(WIDTH * 24_000);
+        for n in 0..12_000 {
+            #[allow(clippy::cast_precision_loss)]
+            let voice = (std::f32::consts::TAU * 220.0 * n as f32 / RATE).sin() * 0.3;
+            producer.push(voice).unwrap();
+            for _ in 1..MOST_STRIPS {
+                producer.push(0.0).unwrap();
+            }
+            // The two inputs no strip is for: loud, and never to be heard.
+            producer.push(0.9).unwrap();
+            producer.push(0.9).unwrap();
+        }
+        vocals.set_input(Some(consumer));
+        let (mut left, mut right) = (0.0f32, 0.0f32);
+        for _ in 0..12_000 {
+            let frame = vocals.next_frame();
+            left = left.max(frame.main[0].abs());
+            right = right.max(frame.main[1].abs());
+        }
+        assert!(left > 0.1 && left < 0.35, "the first strip heard {left}");
+        assert!(right < 1e-6, "an input beyond the strips leaked ({right})");
+        assert_eq!(vocals.starved_frames(), 0);
+        assert_eq!(vocals.input.as_ref().unwrap().slots(), 0);
     }
 
     /// **The music follows the lowest talkover**: an MC speaking pulls it

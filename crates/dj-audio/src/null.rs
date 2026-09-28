@@ -204,6 +204,20 @@ impl AudioBackend for NullBackend {
         Ok(vec![Self::input_device_info()])
     }
 
+    /// Every channel the null input has — two — of silence. The same stream
+    /// as [`AudioBackend::open_input`]'s, at the device's own width.
+    fn open_input_all(
+        &self,
+        config: &StreamConfig,
+        sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        let config = StreamConfig {
+            channels: Self::input_device_info().max_output_channels,
+            ..config.clone()
+        };
+        self.open_input(&config, sink)
+    }
+
     fn open_input(
         &self,
         config: &StreamConfig,

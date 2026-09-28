@@ -615,10 +615,14 @@ mod tests {
             .open_timecode(id, None, pick_format(None).unwrap(), false)
             .expect("the null backend can capture");
         state.host().open_mic(None).expect("so can the microphone");
+        state
+            .host()
+            .open_vocals(None, Vec::new())
+            .expect("and the singers' microphones");
         assert_eq!(
             dj_audio::null::live_input_streams(),
-            2,
-            "a control record and a microphone are two open captures"
+            3,
+            "a control record, a microphone and the singers' input are three open captures"
         );
 
         crate::commands::open_device_for(&state, None, None, None).expect("reconnect");
@@ -627,6 +631,57 @@ mod tests {
             0,
             "the old engine went away and its inputs kept running into rings nobody drains"
         );
+    }
+
+    /// K3: **the singers' microphones open as wide as the input, with the
+    /// host's settings, and close again.** Through the real host thread and
+    /// the null backend's two-channel input: the engine ends up holding a strip
+    /// per channel, a strip's settings reach `vocal.json` and survive being
+    /// read back, and closing takes the rack away and the capture with it.
+    #[test]
+    fn the_singers_microphones_open_as_wide_as_the_input_and_close_again() {
+        let _guard = input_lock();
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        crate::commands::open_device_for(&state, None, None, None).expect("the null device opens");
+        let inputs = |state: &AppState| {
+            state.registry().get(dj_core::ParamId::Global(
+                dj_core::param::GlobalParam::VocalInputs,
+            ))
+        };
+        let settle = |state: &AppState, want: f32| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                if (inputs(state) - want).abs() < f32::EPSILON {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+
+        let mc = dj_vocal::StripSettings {
+            open: true,
+            talkover: true,
+            reverb: None,
+            ..dj_vocal::StripSettings::default()
+        };
+        crate::commands::set_vocal_strip(&state, 1, mc).expect("kept and sent");
+        assert_eq!(state.read_vocal_settings()[1], mc, "kept in vocal.json");
+        assert!(crate::commands::set_vocal_strip(&state, 16, mc).is_err());
+
+        let opened = state
+            .host()
+            .open_vocals(None, state.read_vocal_settings())
+            .expect("the null input opens");
+        assert_eq!(opened.channels, 2);
+        assert!(settle(&state, 2.0), "the engine never held two strips");
+        assert_eq!(dj_audio::null::live_input_streams(), 1);
+
+        state.host().close_vocals().expect("closes");
+        assert!(settle(&state, 0.0), "the rack stayed in the engine");
+        assert_eq!(dj_audio::null::live_input_streams(), 0);
     }
 
     /// **A control record actually attaches, end to end.**

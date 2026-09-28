@@ -583,9 +583,24 @@ music that drops; a rack taken away comes back through the retirement queue)
 and by `rt_safety` (eight strips singing and falling silent, settings changed,
 the rack replaced and removed: no allocation, both racks returned) — three
 mutants, each failing one: the voices left out of the master, the MC's gain
-ignored, the old rack dropped on the audio thread. **Not yet:** the host
-opening the input with all its channels, the per-strip parameters, the
-monitor pair, and the Singers surface.
+ignored, the old rack dropped on the audio thread.
+
+**And the host.** `dj-audio` opens an input with every channel it has, as it
+has them (`open_input_all`; all of a frame or none into the ring), and the
+host builds a rack as wide as what opened — an interface with more inputs than
+`MOST_STRIPS` has its first ones used and the rest read and let go, so frames
+stay whole — lays the settings kept in `vocal.json` on its strips, off the
+audio thread, and hands it to the engine. A device change closes the singers'
+input with every other input; closing it takes the rack out of the engine.
+Commands: `vocals_open`, `vocals_close`, `vocals_state` (strips, how many are
+working, the starvation count, and what one full chain costs here, measured
+once) and `vocal_strip_set` (kept, then sent). Held through the real host
+thread and the null backend's two-channel input — the engine ends up holding
+two strips, a strip's settings reach the file, closing empties the engine,
+a device change leaves no capture open — with two mutants failing them: the
+device change leaving the singers' input running, and closing without taking
+the rack away. **Not yet:** the per-strip parameters, the monitor pair, the
+lost-input reconnect, and the Singers surface.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

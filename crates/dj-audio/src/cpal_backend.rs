@@ -217,6 +217,57 @@ impl AudioBackend for CpalBackend {
         }))
     }
 
+    fn open_input_all(
+        &self,
+        config: &StreamConfig,
+        mut sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        let device = self.find_input(config.device.as_ref())?;
+        let device_name = device.name().unwrap_or_else(|_| "unknown".to_owned());
+        let supported = device
+            .default_input_config()
+            .map_err(|e| AudioError::OpenStream(e.to_string()))?;
+        let device_channels = supported.channels().max(1);
+        let stream_config = cpal::StreamConfig {
+            channels: device_channels,
+            sample_rate: cpal::SampleRate(config.sample_rate.get()),
+            buffer_size: cpal::BufferSize::Fixed(config.buffer_frames),
+        };
+        let stride = usize::from(device_channels);
+        let stream = device
+            .build_input_stream(
+                &stream_config,
+                move |data: &[f32], _info: &cpal::InputCallbackInfo| {
+                    for frame in data.chunks_exact(stride) {
+                        // All of a frame or none: a ring with room for half
+                        // of one would put every later channel on the wrong
+                        // strip. A full ring means the engine is not draining,
+                        // and its starvation count is the visible half.
+                        if sink.slots() < stride {
+                            break;
+                        }
+                        for &sample in frame {
+                            let _ = sink.push(sample);
+                        }
+                    }
+                },
+                move |err| {
+                    tracing::error!(error = %err, "audio input stream error");
+                },
+                None,
+            )
+            .map_err(|e| AudioError::OpenStream(e.to_string()))?;
+        Ok(Box::new(CpalStream {
+            active: ActiveConfig {
+                device_name,
+                sample_rate: config.sample_rate,
+                buffer_frames: config.buffer_frames,
+                channels: device_channels,
+            },
+            stream,
+        }))
+    }
+
     fn open_output(
         &self,
         config: &StreamConfig,

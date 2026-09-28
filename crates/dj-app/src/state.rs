@@ -1587,6 +1587,35 @@ impl AppState {
         }
     }
 
+    fn vocal_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("vocal.json"))
+    }
+
+    /// K3: each singer's microphone's settings, strip by strip, as the host
+    /// left them — the rig, restored when djmanzo starts. Empty on a fresh
+    /// install or an unreadable file, which gives every strip a singer's
+    /// defaults.
+    #[must_use]
+    pub fn read_vocal_settings(&self) -> Vec<dj_vocal::StripSettings> {
+        self.vocal_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep them.
+    pub fn write_vocal_settings(&self, settings: &[dj_vocal::StripSettings]) {
+        let Some(path) = self.vocal_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(settings) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the singers' microphones' settings will not survive a restart");
+        }
+    }
+
     /// Keep the rotation, so a restart mid-night does not lose the queue.
     pub fn set_karaoke(&self, rotation: &crate::karaoke::Rotation) {
         let Some(path) = self.karaoke_path() else {

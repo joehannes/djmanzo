@@ -353,7 +353,7 @@ crates/
                 pure, testable, allocation-free
   dj-vocal      K3: a vocal chain per microphone input — gate, EQ, compressor, de-esser,
                 echo, reverb — idle strips free; allocation-free, like dj-dsp, which it
-                builds on. Held by the engine; the host does not yet open its input
+                builds on. Held by the engine, its input opened by the host
   dj-decode     symphonia + platform fallbacks, CachingReader, prefetch pool
   dj-analysis   beatgrid, BPM, key, loudness, waveform data, structure
   dj-stems      ONNX look-ahead separation + content-hashed cache

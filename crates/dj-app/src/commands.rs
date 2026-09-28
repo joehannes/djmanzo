@@ -558,6 +558,111 @@ pub fn close_mic(state: State<'_, AppState>) -> Result<(), String> {
     state.host().close_mic().map_err(|e| e.to_string())
 }
 
+/// K3: the singers' microphones, as the interface shows them.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VocalsDto {
+    /// How many strips the engine is holding — the input's channel count,
+    /// up to `dj_vocal::MOST_STRIPS`. Zero when no input is open.
+    pub inputs: usize,
+    /// How many of them are working now; an idle strip costs nothing.
+    pub working: usize,
+    /// Frames the input could not supply since it was opened: rising means
+    /// it has gone.
+    pub starved_frames: u64,
+    /// Every strip's settings, one per input (defaults where the host has set
+    /// none yet).
+    pub strips: Vec<dj_vocal::StripSettings>,
+    /// What one strip with every stage on costs on this machine, as a share
+    /// of one processor core — measured once, off the audio thread.
+    pub chain_cost: f64,
+}
+
+/// What one full chain costs here: measured the first time it is asked for.
+fn chain_cost() -> f64 {
+    static COST: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *COST.get_or_init(|| dj_vocal::measure_chain(48_000.0))
+}
+
+fn vocals_dto(state: &AppState) -> VocalsDto {
+    use dj_core::param::GlobalParam;
+    let get = |param| state.registry().get(dj_core::ParamId::Global(param));
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let inputs = get(GlobalParam::VocalInputs).max(0.0) as usize;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let working = get(GlobalParam::VocalWorking).max(0.0) as usize;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let starved_frames = get(GlobalParam::VocalStarvedFrames).max(0.0) as u64;
+    let mut strips = state.read_vocal_settings();
+    strips.resize(inputs.max(strips.len()), dj_vocal::StripSettings::default());
+    VocalsDto {
+        inputs,
+        working,
+        starved_frames,
+        strips,
+        chain_cost: chain_cost(),
+    }
+}
+
+/// K3: open every input of `device_id` (or the default input) for the
+/// singers, a strip each, with the settings the host left on them.
+#[tauri::command]
+pub fn vocals_open(
+    state: State<'_, AppState>,
+    device_id: Option<String>,
+) -> Result<MicDeviceDto, String> {
+    let device = device_id.map(dj_audio::DeviceId::new);
+    let config = state
+        .host()
+        .open_vocals(device, state.read_vocal_settings())
+        .map_err(|e| e.to_string())?;
+    Ok(MicDeviceDto::from(&config))
+}
+
+/// K3: close the singers' input.
+#[tauri::command]
+pub fn vocals_close(state: State<'_, AppState>) -> Result<(), String> {
+    state.host().close_vocals().map_err(|e| e.to_string())
+}
+
+/// K3: the singers' microphones now.
+#[tauri::command]
+pub fn vocals_state(state: State<'_, AppState>) -> VocalsDto {
+    vocals_dto(&state)
+}
+
+/// K3: one strip's settings — kept for the next time djmanzo starts, and sent
+/// to the engine at once.
+#[tauri::command]
+pub fn vocal_strip_set(
+    state: State<'_, AppState>,
+    strip: u8,
+    settings: dj_vocal::StripSettings,
+) -> Result<VocalsDto, String> {
+    set_vocal_strip(&state, strip, settings)?;
+    Ok(vocals_dto(&state))
+}
+
+pub(crate) fn set_vocal_strip(
+    state: &AppState,
+    strip: u8,
+    settings: dj_vocal::StripSettings,
+) -> Result<(), String> {
+    let index = usize::from(strip);
+    if index >= dj_vocal::MOST_STRIPS {
+        return Err(format!("djmanzo has no microphone {}", index + 1));
+    }
+    let mut kept = state.read_vocal_settings();
+    if kept.len() <= index {
+        kept.resize(index + 1, dj_vocal::StripSettings::default());
+    }
+    kept[index] = settings;
+    state.write_vocal_settings(&kept);
+    state
+        .bus()
+        .send_command(dj_engine::Command::VocalStrip { strip, settings })
+        .map_err(|_| "the engine is not accepting commands".to_owned())
+}
+
 #[tauri::command]
 pub fn open_device(
     state: State<'_, AppState>,

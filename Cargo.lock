@@ -1341,6 +1341,7 @@ dependencies = [
  "dj-secrets",
  "dj-sources",
  "dj-stems",
+ "dj-vocal",
  "dj-world",
  "lofty",
  "reqwest 0.12.28",
@@ -1588,6 +1589,7 @@ version = "0.34.0"
 dependencies = [
  "dj-dsp",
  "rtrb",
+ "serde",
 ]
 
 [[package]]

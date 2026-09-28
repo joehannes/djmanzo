@@ -19,11 +19,13 @@
 use crate::dynamics::{Compressor, DeEsser, Gate, db_to_linear};
 use crate::space::{Echo, Reverb};
 use dj_dsp::{Biquad, Ducker, PeakMeter, SmoothedValue};
+use serde::{Deserialize, Serialize};
 
 /// Everything a DJ sets on a strip. Plain numbers, so a singer's settings can
 /// be kept and put back — and `Copy`, so they cross the engine's command
 /// queue by value and leave nothing behind for the audio thread to free.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StripSettings {
     /// Whether the microphone is live.
     pub open: bool,
@@ -50,13 +52,13 @@ pub struct StripSettings {
     pub reverb: Option<ReverbSettings>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GateSettings {
     pub threshold_db: f32,
     pub range_db: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EqSettings {
     pub low_db: f32,
     pub mid_db: f32,
@@ -64,20 +66,20 @@ pub struct EqSettings {
     pub high_db: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CompressorSettings {
     pub threshold_db: f32,
     pub ratio: f32,
     pub makeup_db: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct DeEsserSettings {
     pub frequency_hz: f32,
     pub threshold_db: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EchoSettings {
     pub delay_ms: f32,
     pub feedback: f32,
@@ -85,7 +87,7 @@ pub struct EchoSettings {
     pub level: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ReverbSettings {
     pub seconds: f32,
     /// How much of the room is heard, 0 to 1.

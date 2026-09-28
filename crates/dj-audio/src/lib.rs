@@ -106,6 +106,23 @@ pub trait AudioBackend: Send + Sync + std::fmt::Debug {
         Err(AudioError::NoInputDevice)
     }
 
+    /// K3: open a capture stream delivering **every** channel the device has,
+    /// as it has them, interleaved into `sink` — one channel per singer's
+    /// microphone, nothing doubled or dropped. The stream's
+    /// [`ActiveConfig::channels`] says how many each frame carries, and a
+    /// frame the ring cannot take whole is not written at all, so the reader
+    /// never lands a channel on the wrong strip.
+    ///
+    /// `config.channels` is ignored: the device decides. Defaults to refusing,
+    /// for the same reason as [`Self::input_devices`].
+    fn open_input_all(
+        &self,
+        _config: &StreamConfig,
+        _sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        Err(AudioError::NoInputDevice)
+    }
+
     /// The system default input, if there is one.
     fn default_input(&self) -> Result<Option<DeviceInfo>, AudioError> {
         Ok(self.input_devices()?.into_iter().find(|d| d.is_default))

@@ -80,6 +80,12 @@ enum HostCommand {
         reply: SyncSender<Result<ActiveConfig, HostError>>,
     },
     CloseMic(SyncSender<Result<(), HostError>>),
+    OpenVocals {
+        device: Option<DeviceId>,
+        settings: Vec<dj_vocal::StripSettings>,
+        reply: SyncSender<Result<ActiveConfig, HostError>>,
+    },
+    CloseVocals(SyncSender<Result<(), HostError>>),
     OpenTimecode {
         deck: dj_core::DeckId,
         device: Option<DeviceId>,
@@ -219,6 +225,26 @@ impl AudioHost {
         self.request(HostCommand::CloseMic)
     }
 
+    /// K3: open every channel of an input for the singers' microphones, a
+    /// strip and a vocal chain each, with `settings` laid on the strips in
+    /// order — strips beyond the list keep a singer's defaults. The answer's
+    /// `channels` is how many inputs the interface gave.
+    pub fn open_vocals(
+        &self,
+        device: Option<DeviceId>,
+        settings: Vec<dj_vocal::StripSettings>,
+    ) -> Result<ActiveConfig, HostError> {
+        self.request(|reply| HostCommand::OpenVocals {
+            device,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn close_vocals(&self) -> Result<(), HostError> {
+        self.request(HostCommand::CloseVocals)
+    }
+
     /// Point a deck at a control record on `device`.
     ///
     /// The decoder is built **here**, on the host thread: its position table is
@@ -314,6 +340,8 @@ fn run_host(
     // Held for its lifetime like the cue stream: dropping it closes the input
     // device and stops the callback that fills the engine's ring.
     let mut mic_stream: Option<Box<dyn AudioStream>> = None;
+    // K3: the singers' input, every channel of it, held like the microphone's.
+    let mut vocal_stream: Option<Box<dyn AudioStream>> = None;
     // One input stream per deck on vinyl. A DJ with two turntables has two
     // cartridges on two inputs, and they are opened and closed independently.
     let mut timecode_streams: [Option<Box<dyn AudioStream>>; dj_core::MAX_DECKS] =
@@ -349,6 +377,10 @@ fn run_host(
                 // makes the failure visible -- the panel shows nothing
                 // attached, which is the truth -- instead of inaudible.
                 drop_inputs(&mut mic_stream, &mut timecode_streams);
+                if let Some(previous) = vocal_stream.take() {
+                    let _ = previous.pause();
+                    drop(previous);
+                }
                 let result = open_device(
                     backend.as_ref(),
                     &bus,
@@ -382,6 +414,29 @@ fn run_host(
             }
             Ok(HostCommand::CloseMic(reply)) => {
                 close_mic(&bus, &mut mic_stream);
+                let _ = reply.send(Ok(()));
+            }
+            Ok(HostCommand::OpenVocals {
+                device,
+                settings,
+                reply,
+            }) => {
+                // Same as the microphone: no engine until an output is open.
+                let result = match stream.as_ref().map(|s| s.config().clone()) {
+                    Some(master) => open_vocals(
+                        backend.as_ref(),
+                        &bus,
+                        device,
+                        &settings,
+                        &master,
+                        &mut vocal_stream,
+                    ),
+                    None => Err(HostError::NoDevice),
+                };
+                let _ = reply.send(result);
+            }
+            Ok(HostCommand::CloseVocals(reply)) => {
+                close_vocals(&bus, &mut vocal_stream);
                 let _ = reply.send(Ok(()));
             }
             Ok(HostCommand::OpenTimecode {
@@ -617,6 +672,76 @@ fn close_timecode(
         .is_err()
     {
         tracing::warn!("command queue full; the control record stays attached in the engine");
+    }
+}
+
+/// K3: open every channel of an input for the singers, and give the engine
+/// a rack of strips as wide as the input, built here — its buffers allocated
+/// on this thread, never the audio thread's — with the host's settings on it.
+///
+/// Runs at the master's rate for the microphone's reason: a voice read at the
+/// wrong rate is a voice pitched and drifting. The rack is sized to the
+/// channels the stream actually opened with, which is what the ring carries.
+fn open_vocals(
+    backend: &dyn AudioBackend,
+    bus: &Arc<ActionBus<Command>>,
+    device: Option<DeviceId>,
+    settings: &[dj_vocal::StripSettings],
+    master: &ActiveConfig,
+    slot: &mut Option<Box<dyn AudioStream>>,
+) -> Result<ActiveConfig, HostError> {
+    close_vocals(bus, slot);
+    let reported = backend
+        .input_devices()
+        .map_err(|e| HostError::Audio(e.to_string()))?
+        .into_iter()
+        .find(|info| device.as_ref().map_or(info.is_default, |id| &info.id == id))
+        .map_or(2, |info| usize::from(info.max_output_channels.max(1)));
+    let sample_rate = master.sample_rate;
+    let capacity = (sample_rate.as_f64() * MIC_RING_SECONDS) as usize * reported;
+    let (producer, consumer) = rtrb::RingBuffer::new(capacity);
+    let config = dj_audio::StreamConfig {
+        device,
+        sample_rate,
+        buffer_frames: master.buffer_frames,
+        channels: reported as u16,
+    };
+    let stream = backend
+        .open_input_all(&config, producer)
+        .map_err(|e| HostError::Audio(e.to_string()))?;
+    let width = usize::from(stream.config().channels.max(1));
+    #[allow(clippy::cast_possible_truncation)]
+    let mut rack = dj_vocal::Vocals::new(sample_rate.as_f64() as f32, width);
+    for (index, strip) in settings.iter().enumerate() {
+        if let Some(target) = rack.strip_mut(index) {
+            target.apply(strip);
+        }
+    }
+    rack.set_input(Some(consumer));
+    if bus
+        .send_command(Command::Vocals {
+            rack: Some(Box::new(rack)),
+        })
+        .is_err()
+    {
+        return Err(HostError::Audio(
+            "command queue full; the singers' microphones could not be attached".to_owned(),
+        ));
+    }
+    stream.play().map_err(|e| HostError::Audio(e.to_string()))?;
+    let active = stream.config().clone();
+    *slot = Some(stream);
+    Ok(active)
+}
+
+/// K3: close the singers' input and tell the engine to let go of the rack.
+fn close_vocals(bus: &Arc<ActionBus<Command>>, slot: &mut Option<Box<dyn AudioStream>>) {
+    if let Some(previous) = slot.take() {
+        let _ = previous.pause();
+        drop(previous);
+    }
+    if bus.send_command(Command::Vocals { rack: None }).is_err() {
+        tracing::warn!("command queue full; the singers' microphones stay attached in the engine");
     }
 }
 
