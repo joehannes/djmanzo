@@ -35,6 +35,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
     "category": "Music",
     "shortDescription": "VirtualDJ-class DJ application",
     "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine.",

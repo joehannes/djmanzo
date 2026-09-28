@@ -11,3 +11,11 @@ GGML_AVX = "ON"
 GGML_AVX2 = "ON"
 GGML_FMA = "ON"
 GGML_F16C = "ON"
+
+# The oldest macOS djmanzo builds for. whisper.cpp's backend registry uses
+# `std::filesystem`, which Apple's C++ library has only from 10.15 (Catalina);
+# Tauri's own default is 10.13, and v0.34.0's two Mac builds failed on it. The
+# release takes the same number from `bundle.macOS.minimumSystemVersion` in
+# crates/dj-app/tauri.conf.json, and a test holds the two together, so a build
+# here and the release agree. Ignored everywhere but macOS.
+MACOSX_DEPLOYMENT_TARGET = "10.15"

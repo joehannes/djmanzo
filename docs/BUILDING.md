@@ -9,7 +9,7 @@ Two ways: let CI do it, or do it on the machine in front of you.
 | **Rust** | stable, via [rustup](https://rustup.rs) |
 | **Node** | 22 or later |
 | **CMake** | 3.14 or later — builds whisper.cpp, which times karaoke words (`brew install cmake`, `apt-get install cmake`, or cmake.org on Windows) |
-| **macOS** | Xcode command line tools: `xcode-select --install` |
+| **macOS** | Xcode command line tools: `xcode-select --install`. djmanzo builds for macOS 10.15 (Catalina) or later: whisper.cpp needs `std::filesystem`, which Apple's C++ library has only from 10.15. The number is pinned in `.cargo/config.toml` and in `bundle.macOS.minimumSystemVersion`, and a test keeps them equal |
 | **Debian / Ubuntu** | the GTK and WebKit stack, below |
 
 ```sh

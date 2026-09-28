@@ -1194,6 +1194,37 @@ mod tests {
         assert!(hooks.contains("IfSilent"), "a silent install asks nothing");
     }
 
+    /// **The Macs are built for a macOS that has what whisper.cpp needs.**
+    /// Its backend registry uses `std::filesystem`, which Apple's C++ library
+    /// has from 10.15; Tauri's default minimum is 10.13, and v0.34.0's two
+    /// Mac builds failed on exactly that while every other build — including
+    /// CI's own Mac test, compiled for the runner's newer macOS — passed. So
+    /// the release's minimum and the one every cargo build here uses are the
+    /// same number, and it is at least 10.15.
+    #[test]
+    fn the_macs_are_built_for_a_macos_whisper_cpp_can_compile_for() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("the config");
+        let release = config["bundle"]["macOS"]["minimumSystemVersion"]
+            .as_str()
+            .expect("a minimum macOS for the release");
+        let cargo = include_str!("../../../.cargo/config.toml");
+        let pinned = cargo
+            .lines()
+            .find_map(|line| line.strip_prefix("MACOSX_DEPLOYMENT_TARGET = "))
+            .map(|value| value.trim_matches('"'))
+            .expect("every cargo build pins the deployment target");
+        assert_eq!(release, pinned, "the release and the builds here disagree");
+        let parts: Vec<u32> = release
+            .split('.')
+            .map(|p| p.parse().expect("a number"))
+            .collect();
+        assert!(
+            parts >= vec![10, 15],
+            "macOS {release} has no std::filesystem for whisper.cpp"
+        );
+    }
+
     #[test]
     fn alike_words_are_near_misses_and_others_are_not() {
         assert_eq!(alike("there", "there"), 3);
