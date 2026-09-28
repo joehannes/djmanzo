@@ -527,6 +527,54 @@ the second step, with the `ParamId::Vocal` parameters, strip 0 as today's
 `Mic*`, the singers' monitor bus and the measured round trip. Nothing here
 can say how it sounds — this container has no microphone and no speakers.
 
-**Still to design before the second step:** how a strip's settings are saved
-and recalled per singer, what the host sees for eight strips at once, and how
-a strip whose input vanishes mid-song fails.
+### The second step, designed
+
+**A strip's settings, and a singer's.** Two layers, the second over the first.
+*The strip's own* — its preset and every setting on it — is the host's rig and
+lives in `vocal.json` beside the other settings, restored when djmanzo starts,
+so microphone 3 is still the MC's microphone tomorrow. *A singer's* — the
+compressor and reverb a guest sounded best with — is kept only where the
+singer is: on the guest's record in the guest book when they have agreed to
+be kept (§123's *keep* consent; a voice's settings with a name on them are
+about a person), and otherwise on their place in tonight's rotation, gone at
+*New night* with everything else about them. When the host puts a singer on a
+microphone — a strip is assigned from the rotation, the way a deck is — the
+singer's settings are laid over the strip's, and *Keep for this singer* is the
+one press that writes them back. Presets name what the strip is for, not what
+is on it: *Singer*, *Soft singer*, *Loud singer*, *MC* (talkover on, no
+reverb), *Instrument* (no gate, no de-esser).
+
+**Eight strips at once.** The host is running a room, not mixing a record, so
+a strip's face is what a host acts on in a hurry: who is on it (the singer's
+name, or *Mic 3*), open or closed, a fader, a level meter with the gate's
+state on it, and how hard the compressor is working — one row each, eight rows
+in the space the Singers surface already has. The chain is behind a press on
+the strip, and the preset is one tap. Above the rows, one line says what the
+rig costs — *4 of 8 microphones working, about 3 % of the machine* — from each
+strip's measured cost and whether it is idle, and turns into a warning before
+the sum reaches what the machine has to give. The round trip — input buffer,
+ring and output buffer, measured when the interface opens — is on the same
+line, because a singer who hears themselves late will say so, and the host
+needs the number to answer.
+
+**An input that vanishes mid-song.** The interface is unplugged, or its
+driver stops delivering. The music never stops for it: the ring runs dry,
+every strip is fed silence, the reverb and echo tails finish as they would
+after a phrase — no click from a chain cut off mid-tail — and any talkover
+lets the music back up. The host sees *Microphones lost — reconnect the
+interface* the moment the starvation count climbs for half a second, and
+djmanzo tries to reopen the input every two seconds, off the audio thread,
+until it answers; the strips' settings survive, because they are the strips',
+not the stream's. One cable pulled from one socket cannot be told from a
+silent singer in the samples, so it is not guessed at: an open strip with no
+signal for ten seconds says *nothing on Mic 3* on its row, and no more.
+
+**The order of the second step.** The engine holds a `Vocals`, built off the
+audio thread when the interface opens and installed by a command, the old one
+leaving through the retirement queue; the host opens the input with every
+channel it has, into one ring; `ParamId::Vocal(strip, param)` publishes each
+strip, strip 0 answering to today's `Mic*` parameters; the voices join the
+main bus before the master chain; eight or more outputs give the singers'
+monitor its own pair (`BusLayout::monitor`, after the booth); then the
+Singers surface's rows. `dj-engine` then depends on `dj-vocal` as well as
+`dj-dsp` and `dj-core` — still nothing that does I/O.
