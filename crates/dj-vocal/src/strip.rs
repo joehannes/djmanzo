@@ -21,8 +21,9 @@ use crate::space::{Echo, Reverb};
 use dj_dsp::{Biquad, Ducker, PeakMeter, SmoothedValue};
 
 /// Everything a DJ sets on a strip. Plain numbers, so a singer's settings can
-/// be kept and put back.
-#[derive(Debug, Clone, PartialEq)]
+/// be kept and put back — and `Copy`, so they cross the engine's command
+/// queue by value and leave nothing behind for the audio thread to free.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StripSettings {
     /// Whether the microphone is live.
     pub open: bool,
@@ -260,7 +261,7 @@ impl Strip {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let settle = (0.1 * rate) as usize;
         self.tail = echo.max(reverb) + settle;
-        self.settings.clone_from(settings);
+        self.settings = *settings;
     }
 
     #[must_use]

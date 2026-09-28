@@ -57,6 +57,17 @@ pub struct VocalFrame {
     pub music_gain: f32,
 }
 
+impl VocalFrame {
+    /// No voices, and the music left alone: what a rig with no microphones
+    /// gives.
+    pub const SILENT: Self = Self {
+        main: [0.0; 2],
+        cue: [0.0; 2],
+        monitor: [0.0; 2],
+        music_gain: 1.0,
+    };
+}
+
 /// The singers' microphones.
 #[derive(Debug)]
 pub struct Vocals {
@@ -104,6 +115,12 @@ impl Vocals {
         self.strips.get_mut(index)
     }
 
+    /// How many strips are working now: open, or still sounding a tail.
+    #[must_use]
+    pub fn working(&self) -> usize {
+        self.strips.iter().filter(|strip| !strip.is_idle()).count()
+    }
+
     /// Frames the ring could not supply: a real fault — the input is not
     /// keeping up — with a real fix, a larger buffer.
     #[must_use]
@@ -117,12 +134,7 @@ impl Vocals {
     /// to be drained either way: a ring left to fill while every microphone
     /// was closed would deliver seconds of stale room the moment one opened.
     pub fn next_frame(&mut self) -> VocalFrame {
-        let mut frame = VocalFrame {
-            main: [0.0; 2],
-            cue: [0.0; 2],
-            monitor: [0.0; 2],
-            music_gain: 1.0,
-        };
+        let mut frame = VocalFrame::SILENT;
         let channels = self.strips.len();
         let whole = self
             .input

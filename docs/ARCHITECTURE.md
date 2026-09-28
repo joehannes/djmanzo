@@ -353,7 +353,7 @@ crates/
                 pure, testable, allocation-free
   dj-vocal      K3: a vocal chain per microphone input — gate, EQ, compressor, de-esser,
                 echo, reverb — idle strips free; allocation-free, like dj-dsp, which it
-                builds on. Not yet held by the engine
+                builds on. Held by the engine; the host does not yet open its input
   dj-decode     symphonia + platform fallbacks, CachingReader, prefetch pool
   dj-analysis   beatgrid, BPM, key, loudness, waveform data, structure
   dj-stems      ONNX look-ahead separation + content-hashed cache
@@ -369,8 +369,14 @@ docs/           this directory
 ```
 
 Dependency direction is strictly downward: `dj-core` at the bottom, `dj-app` at the top,
-no cycles. `dj-engine` depends on `dj-dsp` and `dj-core` only — it must stay auditable for
-realtime safety, which means keeping its dependency surface tiny.
+no cycles. `dj-engine` must stay auditable for realtime safety, which means everything it
+depends on is either allocation-free on the audio thread or only ever touched off it: `dj-dsp`
+and `dj-vocal` (processing), `dj-core` and `dj-control` (types and the parameter table),
+`dj-decode` and `dj-stems` (buffers that arrive already decoded or separated), `dj-dvs`,
+`dj-clap` and `dj-audio` (the timecode decoder, the plugin insert, the callback trait).
+None of them does I/O on the audio thread, and `tests/rt_safety.rs` counts allocations on
+every path that reaches one. (This line once said `dj-dsp` and `dj-core` only; it had not
+been true for a long time.)
 
 ---
 

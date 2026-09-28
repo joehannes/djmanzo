@@ -114,6 +114,11 @@ pub struct Engine {
     recorder: Recorder,
     /// The microphone / line input strip. See [`crate::mic::Mic`].
     mic: crate::mic::Mic,
+    /// K3: the singers' microphones, a strip and a vocal chain each, when the
+    /// host has installed them (`dj_vocal`). Boxed because it is built — and
+    /// its buffers allocated — on another thread and moved across the command
+    /// queue; `None` is the normal state of a set with no karaoke in it.
+    vocals: Option<Box<dj_vocal::Vocals>>,
     /// A CLAP plugin on the master, when the DJ has put one there.
     ///
     /// Boxed because it is large and moved across the command queue; `Option`
@@ -214,6 +219,7 @@ impl Engine {
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
             mic: crate::mic::Mic::new(sr),
+            vocals: None,
             clap: None,
             clap_scratch: vec![0.0; CLAP_MAX_FRAMES * CLAP_CHANNELS],
             clap_bypass: false,
@@ -519,6 +525,24 @@ impl Engine {
                 Command::MicInput { source } => {
                     if let Some(previous) = self.mic.set_input(source) {
                         self.retire(Retired::MicInput(previous));
+                    }
+                }
+                Command::Vocals { rack } => {
+                    let previous = match rack {
+                        Some(rack) => self.vocals.replace(rack),
+                        None => self.vocals.take(),
+                    };
+                    if let Some(previous) = previous {
+                        self.retire(Retired::Vocals(previous));
+                    }
+                }
+                Command::VocalStrip { strip, settings } => {
+                    if let Some(strip) = self
+                        .vocals
+                        .as_mut()
+                        .and_then(|vocals| vocals.strip_mut(usize::from(strip)))
+                    {
+                        strip.apply(&settings);
                     }
                 }
                 Command::RecordStream { sink } => {
@@ -989,6 +1013,12 @@ impl Engine {
             GlobalParam::MicStarvedFrames,
             self.mic.starved_frames() as f32,
         );
+        let (inputs, working, starved) = self.vocals.as_ref().map_or((0, 0, 0), |vocals| {
+            (vocals.inputs(), vocals.working(), vocals.starved_frames())
+        });
+        set(GlobalParam::VocalInputs, inputs as f32);
+        set(GlobalParam::VocalWorking, working as f32);
+        set(GlobalParam::VocalStarvedFrames, starved as f32);
     }
 
     fn publish_deck_state(&self) {
@@ -1727,6 +1757,10 @@ impl AudioCallback for Engine {
                 if recording_mic {
                     self.recorder.write(mic.left, mic.right);
                 }
+                // The singers' ring fills too, for the same reason.
+                if let Some(vocals) = self.vocals.as_mut() {
+                    let _ = vocals.next_frame();
+                }
                 let _ = self.master_gain.next_value();
             }
         }
@@ -1742,6 +1776,18 @@ impl AudioCallback for Engine {
             if recording_mic {
                 self.recorder.write(mic.left, mic.right);
             }
+            // K3: the singers, each through their own chain, where the
+            // microphone joins — so the master rack and then the limiter that
+            // protect the PA from a record protect it from a singer too.
+            let voices = self
+                .vocals
+                .as_mut()
+                .map_or(dj_vocal::VocalFrame::SILENT, |vocals| vocals.next_frame());
+            // The music takes the lowest gain anything talking over it asks
+            // for: the DJ's microphone or a strip set as the MC's.
+            let music_gain = mic.music_gain.min(voices.music_gain);
+            let voice_l = mic.left + voices.main[0];
+            let voice_r = mic.right + voices.main[1];
 
             // Master first: everything downstream is derived from it.
             //
@@ -1760,11 +1806,11 @@ impl AudioCallback for Engine {
             // digital clipping, and clipping the signal on the way into a
             // limiter throws away the very peaks it exists to catch -- the
             // damage would already be done and merely quieter.
-            let raw_l = frame[main_l].mul_add(mic.music_gain, mic.left) * master;
+            let raw_l = frame[main_l].mul_add(music_gain, voice_l) * master;
             let raw_r = if layout.is_mono() {
                 raw_l
             } else {
-                frame[main_r].mul_add(mic.music_gain, mic.right) * master
+                frame[main_r].mul_add(music_gain, voice_r) * master
             };
 
             // The master rack, between the master gain and the limiter. After
@@ -1794,11 +1840,14 @@ impl AudioCallback for Engine {
             // voice over the music, and the DJ's headphones already have the
             // voice in them directly — pulling the music down there would take
             // away the only reference they have.
-            if self.mic.to_cue()
-                && let Some((cue_l, cue_r)) = layout.cue
-            {
-                frame[cue_l] += mic.left;
-                frame[cue_r] += mic.right;
+            if let Some((cue_l, cue_r)) = layout.cue {
+                if self.mic.to_cue() {
+                    frame[cue_l] += mic.left;
+                    frame[cue_r] += mic.right;
+                }
+                // Each strip decided its own send to the headphones.
+                frame[cue_l] += voices.cue[0];
+                frame[cue_r] += voices.cue[1];
             }
         }
 
@@ -5589,6 +5638,104 @@ mod mic_tests {
             "starvation went unreported: {}",
             rig.get(GlobalParam::MicStarvedFrames)
         );
+    }
+
+    /// K3: a singer on the first input, the MC on the second, as plain
+    /// settings with nothing between the voice and the bus.
+    fn strips() -> (dj_vocal::StripSettings, dj_vocal::StripSettings) {
+        let singer = dj_vocal::StripSettings {
+            open: true,
+            high_pass_hz: 0.0,
+            gate: None,
+            compressor: None,
+            de_esser: None,
+            reverb: None,
+            ..dj_vocal::StripSettings::default()
+        };
+        let mc = dj_vocal::StripSettings {
+            talkover: true,
+            ..singer
+        };
+        (singer, mc)
+    }
+
+    /// K3: **the singers join the master where the microphone does, and only
+    /// the MC's strip pulls the music down.** With music playing, a singer on
+    /// the first input is heard over it and the music stays where it was; the
+    /// MC on the second is heard and the music drops under them. The rack says
+    /// how many inputs it has and how many are working, and a rack taken away
+    /// leaves through the retirement queue rather than being freed here.
+    #[test]
+    fn singers_join_the_master_and_only_the_mc_pulls_the_music_down() {
+        const VOICE: f32 = 0.3;
+        let mut rig = rig();
+        rig.play_music(0.5);
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut ring, consumer) = rtrb::RingBuffer::new(48_000 * 2 * 2);
+        assert!(vocals.set_input(Some(consumer)).is_none());
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, mc) = strips();
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: singer,
+        });
+        rig.send(Command::VocalStrip {
+            strip: 1,
+            settings: mc,
+        });
+        let sing = |ring: &mut rtrb::Producer<f32>, first: f32, second: f32, frames: usize| {
+            for _ in 0..frames {
+                ring.push(first).expect("ring full");
+                ring.push(second).expect("ring full");
+            }
+        };
+
+        // The music alone, once the mixer has settled — the crossfader's
+        // centre takes the first block to arrive at.
+        let mut alone = 0.0;
+        for _ in 0..4 {
+            sing(&mut ring, 0.0, 0.0, 2_048);
+            alone = rig.render_peak(2_048);
+        }
+        assert!(alone > 0.2, "no music to sing over ({alone})");
+        assert!((rig.get(GlobalParam::VocalInputs) - 2.0).abs() < f32::EPSILON);
+
+        // The singer, over it: louder, the music untouched.
+        let mut sung = 0.0;
+        for _ in 0..10 {
+            sing(&mut ring, VOICE, 0.0, 2_048);
+            sung = rig.render_peak(2_048);
+        }
+        let centred = VOICE * std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            (sung - (alone + centred)).abs() < 0.01,
+            "a singer came out at {sung}, not the music ({alone}) and the voice"
+        );
+        assert!(rig.get(GlobalParam::VocalWorking) >= 1.0);
+
+        // The MC, alone: heard, and the music pulled down under them.
+        let mut spoken = 0.0;
+        for _ in 0..20 {
+            sing(&mut ring, 0.0, VOICE, 2_048);
+            spoken = rig.render_peak(2_048);
+        }
+        assert!(
+            spoken < alone,
+            "the MC was heard over music that did not move ({spoken})"
+        );
+        assert!(spoken > centred * 0.9, "the MC was not heard ({spoken})");
+
+        // Taken away: back through the retirement queue.
+        rig.send(Command::Vocals { rack: None });
+        rig.render_peak(64);
+        let mut returned = false;
+        while let Ok(retired) = rig.retired.pop() {
+            returned |= matches!(retired, Retired::Vocals(_));
+        }
+        assert!(returned, "the rack was freed on the audio thread");
+        assert!(rig.get(GlobalParam::VocalInputs).abs() < f32::EPSILON);
     }
 }
 

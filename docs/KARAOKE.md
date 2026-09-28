@@ -569,6 +569,24 @@ not the stream's. One cable pulled from one socket cannot be told from a
 silent singer in the samples, so it is not guessed at: an open strip with no
 signal for ten seconds says *nothing on Mic 3* on its row, and no more.
 
+**Built so far of the second step — the engine.** `dj-engine` holds a
+`Vocals` (`Command::Vocals`, the replaced rack leaving through
+`Retired::Vocals`) and takes a strip's settings by value
+(`Command::VocalStrip`). The voices join exactly where the DJ's microphone
+does — before the master rack and the limiter — and the music takes the lowest
+gain anything talking over it asks for, the DJ's microphone or an MC's strip;
+each strip's headphone send reaches the cue bus; with the decks going out
+separately the singers' ring is still drained. `vocal_inputs`,
+`vocal_working` and `vocal_starved_frames` are published. Held by an engine
+test (a singer is heard over music that does not move; the MC is heard over
+music that drops; a rack taken away comes back through the retirement queue)
+and by `rt_safety` (eight strips singing and falling silent, settings changed,
+the rack replaced and removed: no allocation, both racks returned) — three
+mutants, each failing one: the voices left out of the master, the MC's gain
+ignored, the old rack dropped on the audio thread. **Not yet:** the host
+opening the input with all its channels, the per-strip parameters, the
+monitor pair, and the Singers surface.
+
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one
 leaving through the retirement queue; the host opens the input with every

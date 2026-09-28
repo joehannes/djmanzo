@@ -90,7 +90,7 @@ fn eight_singers_never_allocate() {
             feedback: 0.8,
             level: 0.5,
         }),
-        ..everything.clone()
+        ..everything
     };
 
     let allocations = counted(|| {

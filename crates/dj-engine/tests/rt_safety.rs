@@ -368,6 +368,81 @@ fn the_headphone_cue_path_never_allocates() {
     );
 }
 
+/// K3: the singers' microphones on the audio thread. Eight strips with their
+/// chains, singing and falling silent, settings changed mid-set, the rack
+/// replaced and then taken away — none of it may allocate. The racks are
+/// built before the count, where the host builds them.
+#[test]
+fn the_singers_microphones_never_allocate() {
+    const STRIPS: usize = 8;
+    let mut rig = rig_with_channels(4, 256, 4);
+    for n in 1..=2u8 {
+        rig.load_and_play(n, 2_000_000);
+    }
+    let rack = |ring: rtrb::Consumer<f32>| {
+        let mut vocals = dj_vocal::Vocals::new(48_000.0, STRIPS);
+        vocals.set_input(Some(ring));
+        Box::new(vocals)
+    };
+    let (mut voice, ring) = rtrb::RingBuffer::new(48_000 * STRIPS);
+    let (_, spare_ring) = rtrb::RingBuffer::new(1_024 * STRIPS);
+    let first = rack(ring);
+    let second = rack(spare_ring);
+    let singing = dj_vocal::StripSettings {
+        open: true,
+        to_cue: 0.5,
+        echo: Some(dj_vocal::EchoSettings {
+            delay_ms: 300.0,
+            feedback: 0.4,
+            level: 0.3,
+        }),
+        ..dj_vocal::StripSettings::default()
+    };
+    let mc = dj_vocal::StripSettings {
+        talkover: true,
+        ..singing
+    };
+    rig.send(Command::Vocals { rack: Some(first) });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for strip in 0..STRIPS {
+            rig.send(Command::VocalStrip {
+                strip: strip as u8,
+                settings: if strip == 0 { mc } else { singing },
+            });
+        }
+        let mut n = 0u32;
+        for block in 0..400 {
+            // Voices for half the blocks; the ring runs dry for the rest.
+            if block % 2 == 0 {
+                for _ in 0..256 {
+                    for channel in 0..STRIPS {
+                        let v = ((n as f32) * 0.05 + channel as f32).sin() * 0.3;
+                        let _ = voice.push(v);
+                    }
+                    n = n.wrapping_add(1);
+                }
+            }
+            rig.renderer.render_block();
+        }
+        rig.send(Command::Vocals { rack: Some(second) });
+        rig.renderer.render_discarding(50);
+        rig.send(Command::Vocals { rack: None });
+        rig.renderer.render_discarding(50);
+    });
+    assert_eq!(
+        allocations, 0,
+        "the singers' microphones allocated {allocations} times"
+    );
+    // Both racks went home to be freed.
+    let mut returned = 0;
+    while let Ok(retired) = rig.retired.pop() {
+        returned += usize::from(matches!(retired, Retired::Vocals(_)));
+    }
+    assert_eq!(returned, 2);
+}
+
 /// Split cue is a separate branch again.
 #[test]
 fn split_cue_never_allocates() {

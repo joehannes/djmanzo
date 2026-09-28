@@ -137,6 +137,22 @@ pub enum Command {
     MicInput {
         source: Option<rtrb::Consumer<f32>>,
     },
+    /// K3: install the singers' microphones, or take them away.
+    ///
+    /// A rack built by the host when the interface opens — a strip for every
+    /// input, their buffers already allocated and the input ring already in
+    /// it — because building one allocates and the audio thread must not.
+    /// Whatever rack was there leaves through [`Retired::Vocals`].
+    Vocals {
+        rack: Option<Box<dj_vocal::Vocals>>,
+    },
+    /// K3: one strip's settings, all of them. By value: settings are plain
+    /// numbers, and a strip applying them does arithmetic, never allocates.
+    /// A strip the rack does not have is ignored.
+    VocalStrip {
+        strip: u8,
+        settings: dj_vocal::StripSettings,
+    },
     /// Put a saved loop back on a deck, or clear the active one.
     ///
     /// A command for the same reason as the two above: the region comes from
@@ -269,6 +285,9 @@ pub enum Retired {
     /// releases a share of the ring, and if the host's input callback has
     /// already gone that share is the last one and the drop is a `free()`.
     MicInput(rtrb::Consumer<f32>),
+    /// K3: a replaced rack of singers' microphones, with its input ring and
+    /// every strip's reverb and echo buffers, to be freed.
+    Vocals(Box<dj_vocal::Vocals>),
     /// A recording buffer with nothing in it, to be freed.
     ///
     /// Distinct from [`Retired::Capture`] so that "free this" and "this is a

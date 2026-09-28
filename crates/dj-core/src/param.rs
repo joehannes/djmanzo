@@ -711,6 +711,16 @@ pub enum GlobalParam {
     MasterBandHighMid,
     /// Spectral band 4 (Treble) energy, 0.0..=1.0.
     MasterBandTreble,
+    /// K3: how many singers' microphones the engine is holding strips for —
+    /// the input count of the interface they come in on. Zero with none.
+    VocalInputs,
+    /// K3: how many of those strips are working now. A strip that is closed,
+    /// or silent for longer than its echo and reverb take to die, costs
+    /// nothing and is not counted.
+    VocalWorking,
+    /// K3: frames the singers' input ring could not supply. Rising means the
+    /// input has gone — unplugged, or its driver stopped delivering.
+    VocalStarvedFrames,
 }
 
 impl DeckParam {
@@ -909,8 +919,8 @@ impl GlobalParam {
     ];
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
-    /// readings since, and two for §22's audition.
-    pub const COUNT: usize = 137;
+    /// readings since, two for §22's audition, and three for K3's singers.
+    pub const COUNT: usize = 140;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1058,6 +1068,9 @@ impl GlobalParam {
             MasterBandLowMid,
             MasterBandHighMid,
             MasterBandTreble,
+            VocalInputs,
+            VocalWorking,
+            VocalStarvedFrames,
         ]
     }
 }
@@ -1342,6 +1355,9 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::MasterBandLowMid => "master_band_low_mid",
         GlobalParam::MasterBandHighMid => "master_band_high_mid",
         GlobalParam::MasterBandTreble => "master_band_treble",
+        GlobalParam::VocalInputs => "vocal_inputs",
+        GlobalParam::VocalWorking => "vocal_working",
+        GlobalParam::VocalStarvedFrames => "vocal_starved_frames",
         GlobalParam::Quantize => "quantize",
     }
 }
