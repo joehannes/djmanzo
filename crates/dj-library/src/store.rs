@@ -169,6 +169,36 @@ pub struct StoredResponse {
     pub after: f32,
 }
 
+/// Who chose a record that was played (§12).
+///
+/// The owner's rule (27 September): a suggestion the DJ accepted counts as
+/// their choice when taste, genres, tempos and keys are learned; a record the
+/// autopilot chose by itself does not. So a night the autopilot ran does not
+/// teach djmanzo that its own picks are the DJ's taste.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Chosen {
+    /// The DJ, by hand — and every play recorded before this was.
+    #[default]
+    Dj,
+    /// djmanzo suggested it and the DJ accepted: pressed the assistant's
+    /// next step, or accepted a staged transaction.
+    Accepted,
+    /// The autopilot, on its own.
+    Autopilot,
+}
+
+impl Chosen {
+    /// As `history.chosen` holds it: null for the DJ's own choice.
+    #[must_use]
+    pub const fn to_sql(self) -> Option<&'static str> {
+        match self {
+            Self::Dj => None,
+            Self::Accepted => Some("accepted"),
+            Self::Autopilot => Some("autopilot"),
+        }
+    }
+}
+
 /// The library database.
 ///
 /// One connection behind a mutex rather than a pool. SQLite serialises writes
@@ -313,16 +343,31 @@ impl Library {
         })
     }
 
-    /// Record a play: bump the count, stamp the time, and append to history.
+    /// Record a play the DJ chose: bump the count, stamp the time, and append
+    /// to history.
     pub fn record_play(&self, id: TrackId, at: i64, session: Option<&str>) -> Result<()> {
+        self.record_play_chosen(id, at, session, Chosen::Dj)
+    }
+
+    /// Record a play, saying who chose the record. The count and the time
+    /// are facts whoever chose it; who did is what [`Self::genres_in`],
+    /// [`Self::tempos_in`], [`Self::key_steps_in`] and [`Self::learn_taste`]
+    /// read, to learn from the DJ's choices and not the autopilot's.
+    pub fn record_play_chosen(
+        &self,
+        id: TrackId,
+        at: i64,
+        session: Option<&str>,
+        chosen: Chosen,
+    ) -> Result<()> {
         self.with(|conn| {
             conn.execute(
                 "UPDATE tracks SET play_count = play_count + 1, last_played = ?2 WHERE id = ?1",
                 params![id.to_hex(), at],
             )?;
             conn.execute(
-                "INSERT INTO history (track_id, played_at, session_id) VALUES (?1, ?2, ?3)",
-                params![id.to_hex(), at, session],
+                "INSERT INTO history (track_id, played_at, session_id, chosen) VALUES (?1, ?2, ?3, ?4)",
+                params![id.to_hex(), at, session, chosen.to_sql()],
             )?;
             Ok(())
         })
@@ -1415,7 +1460,9 @@ impl Library {
     /// already in `history` and the genres are already on the tracks, so a
     /// stored weight would be a second copy that drifts the first time a DJ
     /// re-tags a record. Commonest first; records with no genre are left out
-    /// rather than counted as a genre called nothing.
+    /// rather than counted as a genre called nothing, and so are records the
+    /// autopilot chose by itself ([`Chosen`]): its picks are not the DJ's
+    /// taste. A suggestion the DJ accepted counts.
     ///
     /// # Errors
     /// Whatever the database says.
@@ -1427,6 +1474,7 @@ impl Library {
                  JOIN nights n ON n.session_id = h.session_id
                  JOIN tracks t ON t.id = h.track_id
                  WHERE n.setting = ?1 AND t.genre IS NOT NULL AND t.genre <> ''
+                   AND h.chosen IS NOT 'autopilot'
                  GROUP BY t.genre
                  ORDER BY plays DESC, t.genre ASC",
             )?;
@@ -1450,7 +1498,8 @@ impl Library {
     /// would drift the first time a record is re-analysed. The moment comes
     /// with each tempo so the reader can fade old nights on the curve
     /// everything else learned fades on. Records with no tempo are left out
-    /// rather than counted as a tempo of nothing.
+    /// rather than counted as a tempo of nothing, and so are the autopilot's
+    /// own picks ([`Chosen`]).
     ///
     /// # Errors
     /// Whatever the database says.
@@ -1462,6 +1511,7 @@ impl Library {
                  JOIN nights n ON n.session_id = h.session_id
                  JOIN tracks t ON t.id = h.track_id
                  WHERE n.setting = ?1 AND t.bpm IS NOT NULL AND t.bpm > 0
+                   AND h.chosen IS NOT 'autopilot'
                  ORDER BY h.played_at",
             )?;
             let rows = stmt.query_map([setting], |row| {
@@ -1482,7 +1532,9 @@ impl Library {
     /// Paired within a night only, in the order the records came in, and a
     /// pair either of whose records has no key is left out rather than bridged:
     /// pairing across an unread record would claim a step nobody took. The
-    /// same record twice running is not a step either.
+    /// same record twice running is not a step either. A step *into* a record
+    /// the autopilot chose by itself was the autopilot's and is left out; a
+    /// step out of one, into the DJ's next record, was the DJ's ([`Chosen`]).
     ///
     /// # Errors
     /// Whatever the database says.
@@ -1491,7 +1543,7 @@ impl Library {
             let mut stmt = conn.prepare(
                 "SELECT before_hour, before_mode, key_hour, key_mode, played_at
                  FROM (
-                     SELECT h.played_at, h.track_id, t.key_hour, t.key_mode,
+                     SELECT h.played_at, h.track_id, h.chosen, t.key_hour, t.key_mode,
                             lag(h.track_id) OVER night AS before_track,
                             lag(t.key_hour) OVER night AS before_hour,
                             lag(t.key_mode) OVER night AS before_mode
@@ -1502,6 +1554,7 @@ impl Library {
                      WINDOW night AS (PARTITION BY h.session_id ORDER BY h.played_at, h.id)
                  )
                  WHERE before_track IS NOT NULL AND before_track <> track_id
+                   AND chosen IS NOT 'autopilot'
                  ORDER BY played_at",
             )?;
             let rows = stmt.query_map([setting], |row| {
@@ -2017,14 +2070,15 @@ impl Library {
     ///
     /// Both halves in one place because the answer is a comparison: plays
     /// alone would learn the shape of the collection rather than the DJ. See
-    /// [`crate::learned`].
+    /// [`crate::learned`]. The autopilot's own picks are not plays of the
+    /// DJ's ([`Chosen`]).
     pub fn learn_taste(&self, now: i64) -> Result<crate::learned::Learned> {
         let since = now - Self::LEARN_FROM_DAYS * 86_400;
         self.with(|conn| {
             let mut plays = conn.prepare(
                 "SELECT tracks.genre, history.played_at
                  FROM history JOIN tracks ON tracks.id = history.track_id
-                 WHERE history.played_at >= ?1",
+                 WHERE history.played_at >= ?1 AND history.chosen IS NOT 'autopilot'",
             )?;
             let played: Vec<crate::learned::Played> = plays
                 .query_map([since], |row| {
@@ -3063,6 +3117,60 @@ mod tests {
             ]
         );
         assert!(lib.key_steps_in("wedding").unwrap().is_empty());
+    }
+
+    /// **§12: the DJ's choices teach djmanzo; the autopilot's do not.** The
+    /// owner's rule — a suggestion the DJ accepted is their choice, a record
+    /// the autopilot chose by itself is not — held against all four things
+    /// learned from what was played: genres, tempos, key steps and taste.
+    #[test]
+    fn a_record_the_autopilot_chose_by_itself_teaches_nothing() {
+        let lib = library();
+        // By hand: bachata at 128 in 8A. The autopilot: techno at 140 in 3A.
+        // Accepted: salsa at 96 in 9A.
+        for (byte, genre, bpm, hour) in [
+            (1, "Bachata", 128.0, 8),
+            (2, "Techno", 140.0, 3),
+            (3, "Salsa", 96.0, 9),
+        ] {
+            lib.upsert_track(&genred(byte, genre, genre)).unwrap();
+            let mut analysis = genred(byte, "", "").analysis;
+            analysis.bpm = Some(bpm);
+            analysis.key_hour = Some(hour);
+            analysis.key_mode = Some(Mode::Minor);
+            lib.set_analysis(id(byte), &analysis).unwrap();
+        }
+        lib.note_night("clb", Some("club"), NightRead::default())
+            .unwrap();
+        let now = 1_800_000_000;
+        lib.record_play_chosen(id(1), now - 30, Some("clb"), Chosen::Dj)
+            .unwrap();
+        lib.record_play_chosen(id(2), now - 20, Some("clb"), Chosen::Autopilot)
+            .unwrap();
+        lib.record_play_chosen(id(3), now - 10, Some("clb"), Chosen::Accepted)
+            .unwrap();
+
+        assert_eq!(
+            lib.genres_in("club").unwrap(),
+            vec![("Bachata".to_owned(), 1), ("Salsa".to_owned(), 1)],
+            "the autopilot's techno was learned as the DJ's genre"
+        );
+        assert_eq!(
+            lib.tempos_in("club").unwrap(),
+            vec![(128.0, now - 30), (96.0, now - 10)]
+        );
+        // 8A → 3A was the autopilot's step and is not learned; 3A → 9A was
+        // the DJ accepting what came next, and is.
+        let key = |hour: u8| MusicalKey::new(hour, Mode::Minor).unwrap();
+        assert_eq!(
+            lib.key_steps_in("club").unwrap(),
+            vec![(key(3), key(9), now - 10)]
+        );
+        let taste = lib.learn_taste(now).unwrap();
+        assert_eq!(taste.plays, 2, "the autopilot's play counted as the DJ's");
+        // The count on the record is a fact whoever chose it.
+        let played = lib.track(id(2)).unwrap().unwrap();
+        assert_eq!(played.stats.play_count, 1);
     }
 
     /// A play from a night djmanzo was never told about counts towards no

@@ -261,6 +261,7 @@ fn an_eject_through_the_application_clears_the_deck_and_through_the_bus_alone_do
                 title: "A Record".to_owned(),
                 artist: None,
                 id: TrackId::from_bytes([3; 32]),
+                chosen: dj_library::Chosen::Dj,
             },
         );
     };

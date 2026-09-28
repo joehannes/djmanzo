@@ -60,6 +60,8 @@ pub enum Write {
         track: TrackId,
         at: i64,
         session: Option<String>,
+        /// Who chose the record (§12).
+        chosen: dj_library::Chosen,
     },
     /// §37: what the room did after a mix.
     ///
@@ -103,9 +105,12 @@ impl LibraryWriter {
                     let Ok(db) = library.get() else { return };
                     let result = match &write {
                         Write::Cues { track, cues } => db.set_cues(*track, cues),
-                        Write::Play { track, at, session } => {
-                            db.record_play(*track, *at, session.as_deref())
-                        }
+                        Write::Play {
+                            track,
+                            at,
+                            session,
+                            chosen,
+                        } => db.record_play_chosen(*track, *at, session.as_deref(), *chosen),
                         Write::Response {
                             session,
                             at_seconds,

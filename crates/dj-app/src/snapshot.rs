@@ -1647,6 +1647,7 @@ mod tests {
                 title: "Suavemente".to_owned(),
                 artist: Some("Elvis Crespo".to_owned()),
                 id: dj_core::TrackId::from_bytes([1; 32]),
+                chosen: dj_library::Chosen::Dj,
             },
         )]));
 
@@ -1683,6 +1684,7 @@ mod tests {
                 title: "untitled.wav".to_owned(),
                 artist: None,
                 id: dj_core::TrackId::from_bytes([2; 32]),
+                chosen: dj_library::Chosen::Dj,
             },
         )]));
 

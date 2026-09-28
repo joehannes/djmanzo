@@ -873,6 +873,7 @@ pub fn put_on_deck(
             title: dto.title.clone(),
             artist: dto.artist.clone(),
             id: decoded.id,
+            chosen: dj_library::Chosen::Dj,
         },
     );
     state.set_deck_stems(deck_id, decoded.id, decoded.buffer.stems_lock());
@@ -5996,7 +5997,9 @@ pub fn start_assistant_tick(handle: tauri::AppHandle) {
             if matches!(decision.step, crate::autopilot::Step::Nothing) {
                 continue;
             }
-            if let Err(error) = perform_step(state, &decision.step) {
+            // Nobody pressed anything: this record is the autopilot's own
+            // choice, and is not learned as the DJ's taste.
+            if let Err(error) = perform_step(state, &decision.step, dj_library::Chosen::Autopilot) {
                 // Logged rather than retried. A step that failed once will
                 // usually fail again immediately, and a loop that retried twice
                 // a second would fill the log and change nothing.
@@ -6043,7 +6046,8 @@ pub fn assistant_step(state: State<'_, AppState>) -> Result<Option<String>, Stri
         let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
         decide(&state, &guard)
     };
-    perform_step(&state, &decision.step)
+    // The DJ pressed for it: a suggestion accepted, and theirs.
+    perform_step(&state, &decision.step, dj_library::Chosen::Accepted)
 }
 
 /// Carry out one step.
@@ -6051,7 +6055,16 @@ pub fn assistant_step(state: State<'_, AppState>) -> Result<Option<String>, Stri
 /// Separated from the deciding so that the gating lives in exactly one place
 /// (`autopilot::next_step`) and this function is only obedience. A second
 /// posture check here would be a second thing to keep in step with the first.
-fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Option<String>, String> {
+///
+/// `chosen` is whose choice a record the step puts on a deck is (§12): the
+/// automatic tick's is the autopilot's own, and a step the DJ pressed or a
+/// transaction they accepted is theirs, as accepted — which is what that
+/// record's play is filed under, and what is learned from it.
+fn perform_step(
+    state: &AppState,
+    step: &crate::autopilot::Step,
+    chosen: dj_library::Chosen,
+) -> Result<Option<String>, String> {
     use crate::autopilot::Step;
     // Every action a step sends is djmanzo's: a step is either the autopilot
     // acting on its own or a transaction the DJ accepted, and in both cases the
@@ -6071,6 +6084,7 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
             // same cues, grid and analysis a hand-loaded one does.
             let decoded = decode_file(&found.path).map_err(|e| e.to_string())?;
             put_on_deck(state, *deck, decoded)?;
+            state.set_deck_chosen(*deck, chosen);
             // Advance the set only now, when the record has actually reached a
             // deck. A track chosen and then ejected was never played.
             if let Ok(mut guard) = state.conduct().lock()
@@ -6842,7 +6856,7 @@ pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcom
     let mut done = Vec::new();
     let mut stopped = None;
     for (index, step) in staged.chosen() {
-        match perform_step(&state, step) {
+        match perform_step(&state, step, dj_library::Chosen::Accepted) {
             Ok(Some(what)) => done.push(what),
             Ok(None) => {}
             Err(because) => {
@@ -6857,6 +6871,77 @@ pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcom
     }
     state.clear_staged();
     Ok(crate::staged::Outcome { done, stopped })
+}
+
+#[cfg(test)]
+mod chosen_tests {
+    use super::*;
+    use dj_library::Chosen;
+
+    /// A second of a tone, written where the library will find it.
+    fn record(dir: &std::path::Path, name: &str, hz: f32) -> std::path::PathBuf {
+        let path = dir.join(name);
+        let mut wav = crate::wav::Wav::create(&path, 48_000).unwrap();
+        let samples: Vec<i16> = (0..48_000u32)
+            .flat_map(|n| {
+                #[allow(clippy::cast_possible_truncation)]
+                let v = ((std::f32::consts::TAU * hz * n as f32 / 48_000.0).sin() * 8_000.0) as i16;
+                [v, v]
+            })
+            .collect();
+        wav.write(&samples).unwrap();
+        wav.close().unwrap()
+    }
+
+    fn in_library(state: &AppState, byte: u8, path: std::path::PathBuf) -> dj_core::TrackId {
+        let id = dj_core::TrackId::from_bytes([byte; 32]);
+        state
+            .library()
+            .get()
+            .unwrap()
+            .upsert_track(&dj_library::LibraryTrack {
+                id,
+                path,
+                tags: dj_library::Tags::default(),
+                duration_frames: 48_000,
+                sample_rate: dj_core::SampleRate::DEFAULT,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: dj_library::StoredAnalysis::default(),
+                stats: dj_library::PlayStats::default(),
+                colour: None,
+            })
+            .unwrap();
+        id
+    }
+
+    /// **§12: a record on a deck says who chose it.** The automatic tick's
+    /// load is the autopilot's own; the same step pressed by the DJ, or in a
+    /// transaction they accepted, is theirs as accepted; and whatever is put
+    /// on that deck next by any other road is the DJ's again — the mark
+    /// belongs to the load, not to the deck.
+    #[test]
+    fn a_record_the_autopilot_loads_is_marked_as_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+        let deck = dj_core::DeckId::from_human(2).unwrap();
+        let first = in_library(&state, 1, record(dir.path(), "a.wav", 440.0));
+        let second = in_library(&state, 2, record(dir.path(), "b.wav", 660.0));
+
+        let stage = |track| crate::autopilot::Step::Stage { deck, track };
+        perform_step(&state, &stage(first), Chosen::Autopilot).unwrap();
+        assert_eq!(state.deck_chosen(deck), Some(Chosen::Autopilot));
+
+        perform_step(&state, &stage(second), Chosen::Accepted).unwrap();
+        assert_eq!(state.deck_chosen(deck), Some(Chosen::Accepted));
+
+        let by_hand = decode_file(dir.path().join("a.wav")).unwrap();
+        put_on_deck(&state, deck, by_hand).unwrap();
+        assert_eq!(state.deck_chosen(deck), Some(Chosen::Dj));
+    }
 }
 
 // -- the override matrix ----------------------------------------------------
@@ -11134,6 +11219,7 @@ mod persistence_tests {
                 title: "A".to_owned(),
                 artist: None,
                 id: id(1),
+                chosen: dj_library::Chosen::Dj,
             },
         );
         state
@@ -11315,6 +11401,7 @@ mod persistence_tests {
                 title: "A".to_owned(),
                 artist: None,
                 id: id(9),
+                chosen: dj_library::Chosen::Dj,
             },
         );
         grid_on_deck(

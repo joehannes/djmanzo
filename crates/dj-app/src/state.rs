@@ -364,6 +364,10 @@ pub struct LoadedTrackInfo {
     /// onto the same deck in that time, and without this check the first
     /// track's beat grid would be applied to the second.
     pub id: dj_core::TrackId,
+    /// Who chose it (§12): the DJ, a suggestion they accepted, or the
+    /// autopilot on its own — what its play is filed under when it counts.
+    /// Every load is the DJ's until the autopilot's step says otherwise.
+    pub chosen: dj_library::Chosen,
 }
 
 /// How the assistant conducts itself: how much it does, what the night is, and
@@ -2312,6 +2316,26 @@ impl AppState {
         if let Ok(mut map) = self.deck_tracks.lock() {
             map.insert(deck.human_number(), info);
         }
+    }
+
+    /// Say who chose the record on a deck (§12). Called by the autopilot's
+    /// step straight after its load; a load of anyone else's is the DJ's.
+    pub fn set_deck_chosen(&self, deck: dj_core::DeckId, chosen: dj_library::Chosen) {
+        if let Ok(mut map) = self.deck_tracks.lock()
+            && let Some(loaded) = map.get_mut(&deck.human_number())
+        {
+            loaded.chosen = chosen;
+        }
+    }
+
+    /// Who chose the record on a deck, if there is one.
+    #[must_use]
+    pub fn deck_chosen(&self, deck: dj_core::DeckId) -> Option<dj_library::Chosen> {
+        self.deck_tracks
+            .lock()
+            .ok()?
+            .get(&deck.human_number())
+            .map(|loaded| loaded.chosen)
     }
 
     /// The content hash of what is on a deck, if anything.

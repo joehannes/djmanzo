@@ -1109,11 +1109,13 @@ fn record_plays(
             // the history should not be thirty seconds late about when.
             #[allow(clippy::cast_possible_truncation)]
             let heard = watcher.heard(deck.number).round() as i64;
-            writer.send(persist::Write::Play {
-                track: played,
-                at: library::now_seconds() - heard.max(0),
-                session: Some(session.to_owned()),
-            });
+            writer.send(play_of(
+                names.as_deref(),
+                deck.number,
+                played,
+                library::now_seconds() - heard.max(0),
+                session,
+            ));
             // The moment a track counts as played is the moment to tick off
             // the request that wanted it. Doing this here rather than in the
             // panel means a DJ who never opens the panel still hands the room
@@ -1130,6 +1132,31 @@ fn record_plays(
                 tracing::debug!(id, ?name, "a request was played");
             }
         }
+    }
+}
+
+/// The history row for a record that has just counted as played, filed
+/// under whoever chose it (§12): the autopilot's own picks are kept apart
+/// from the DJ's, so what is learned from the history is the DJ's taste.
+/// A record no longer named on its deck is the DJ's, as every load is until
+/// the autopilot says otherwise.
+fn play_of(
+    names: Option<&std::collections::HashMap<u8, state::LoadedTrackInfo>>,
+    deck: u8,
+    played: dj_core::TrackId,
+    at: i64,
+    session: &str,
+) -> persist::Write {
+    let chosen = names
+        .and_then(|map| map.get(&deck))
+        .filter(|loaded| loaded.id == played)
+        .map(|loaded| loaded.chosen)
+        .unwrap_or_default();
+    persist::Write::Play {
+        track: played,
+        at,
+        session: Some(session.to_owned()),
+        chosen,
     }
 }
 
@@ -1182,4 +1209,51 @@ fn dump_snapshot(snapshot: &snapshot::Snapshot) {
         }
         Err(error) => tracing::warn!(%error, "could not serialise the snapshot fixture"),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dj_library::Chosen;
+
+    /// **§12: a play is filed under whoever chose the record.** The mark
+    /// travels with the record on the deck into its history row; a deck now
+    /// holding something else, or no names at all, is the DJ's — the rule for
+    /// every load until the autopilot says otherwise.
+    #[test]
+    fn a_play_is_filed_under_whoever_chose_the_record() {
+        let picked = dj_core::TrackId::from_bytes([1; 32]);
+        let other = dj_core::TrackId::from_bytes([2; 32]);
+        let mut names = std::collections::HashMap::new();
+        names.insert(
+            1,
+            state::LoadedTrackInfo {
+                title: "A".to_owned(),
+                artist: None,
+                id: picked,
+                chosen: Chosen::Autopilot,
+            },
+        );
+        let filed = |names: Option<&std::collections::HashMap<u8, state::LoadedTrackInfo>>,
+                     deck: u8,
+                     played: dj_core::TrackId| {
+            let persist::Write::Play {
+                track,
+                at,
+                session,
+                chosen,
+            } = play_of(names, deck, played, 1_800_000_000, "friday")
+            else {
+                panic!("not a play");
+            };
+            assert_eq!(track, played);
+            assert_eq!(at, 1_800_000_000);
+            assert_eq!(session.as_deref(), Some("friday"));
+            chosen
+        };
+        assert_eq!(filed(Some(&names), 1, picked), Chosen::Autopilot);
+        assert_eq!(filed(Some(&names), 1, other), Chosen::Dj, "another record");
+        assert_eq!(filed(Some(&names), 2, picked), Chosen::Dj, "another deck");
+        assert_eq!(filed(None, 1, picked), Chosen::Dj);
+    }
 }

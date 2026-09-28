@@ -131,6 +131,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 19,
         sql: MIGRATION_19,
     },
+    Migration {
+        version: 20,
+        sql: MIGRATION_20,
+    },
 ];
 
 /// The initial schema.
@@ -877,6 +881,19 @@ ALTER TABLE nights ADD COLUMN length TEXT;
 const MIGRATION_19: &str = r#"
 ALTER TABLE nights ADD COLUMN loop_beats TEXT;
 ALTER TABLE nights ADD COLUMN effect TEXT;
+"#;
+
+/// §12: who chose each record that was played.
+///
+/// The owner decided (27 September) that a suggestion the DJ accepted counts
+/// as their choice when taste, genres, tempos and keys are learned, and a
+/// record the autopilot chose by itself does not. `'accepted'` or
+/// `'autopilot'`, and null for the DJ's own choice — which every play
+/// recorded before this reads as. For a night the autopilot ran before this
+/// existed that is wrong, and nothing kept can now say which records were
+/// its: an absence the learning cannot repair, only stop adding to.
+const MIGRATION_20: &str = r#"
+ALTER TABLE history ADD COLUMN chosen TEXT;
 "#;
 
 const MIGRATION_17: &str = r#"

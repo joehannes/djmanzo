@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The autopilot's own picks no longer teach djmanzo your taste.** When
+  djmanzo learns which genres, tempos and key moves you favour, a record
+  the autopilot chose by itself is left out; a suggestion you accepted —
+  the assistant's next step pressed, or a staged transaction accepted —
+  counts as yours. Plays from before this update cannot be told apart and
+  count as yours.
 - **The singers' screen has a background.** The record's own cover, or —
   for a record tagged with its MusicBrainz release — the Cover Art
   Archive's, asked once and kept on this machine; beneath it, and alone

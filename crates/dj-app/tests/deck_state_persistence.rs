@@ -95,6 +95,7 @@ fn load(state: &AppState, id: TrackId) {
             title: "A".to_owned(),
             artist: None,
             id,
+            chosen: dj_library::Chosen::Dj,
         },
     );
     assert!(

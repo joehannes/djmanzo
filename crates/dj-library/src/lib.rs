@@ -48,4 +48,4 @@ pub use record::{
     Tags, TrackEdit,
 };
 pub use scan::{ScanReport, ScannedFile, scan_all, scan_folder};
-pub use store::{Library, LibraryError, MixResponse, Night, NightRead, StoredResponse};
+pub use store::{Chosen, Library, LibraryError, MixResponse, Night, NightRead, StoredResponse};
