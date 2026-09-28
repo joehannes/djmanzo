@@ -1463,6 +1463,7 @@ dependencies = [
  "dj-dsp",
  "dj-dvs",
  "dj-stems",
+ "dj-vocal",
  "rtrb",
 ]
 
