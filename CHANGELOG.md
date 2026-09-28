@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.35.0 — The singers' microphones on screen, and Mac builds again
+
 - **The singers' microphones are on screen (K3).** The Singers surface has a
   *Microphones* section: pick your interface and open its inputs, and every
   input gets a row — open or closed, a fader, a level meter that lights when
