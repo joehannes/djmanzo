@@ -4,7 +4,7 @@ Written for a session that has never seen this project: a different machine, a
 different account, no memory of any conversation. Everything needed to carry on
 is in the repository, and this file is the index and the method.
 
-**djmanzo** is a professional DJ application — a Rust workspace of twenty
+**djmanzo** is a professional DJ application — a Rust workspace of twenty-one
 crates behind a Svelte 5 / Tauri 2 interface. It plays records, beatmatches
 them, analyses a library, hosts effects and plugins, drives controllers and
 timecode vinyl, and carries an assistant that speaks only in actions. It is

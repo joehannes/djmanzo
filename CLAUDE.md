@@ -1,6 +1,6 @@
 # djmanzo
 
-A VirtualDJ-class DJ application: a Rust workspace of twenty crates behind a
+A VirtualDJ-class DJ application: a Rust workspace of twenty-one crates behind a
 Svelte 5 / Tauri 2 interface. Work happens on `main`; no pull request unless
 one is asked for.
 

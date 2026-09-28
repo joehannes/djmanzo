@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Groundwork for a microphone per singer (K3).** A new part of djmanzo,
+  `dj-vocal`, holds a full vocal chain for every microphone input — gate,
+  EQ, compressor, de-esser, echo and reverb, each singer's their own — and
+  costs nothing for a microphone that is closed or silent. It is not yet
+  connected to the audio engine or shown on screen; that comes next.
 - **The autopilot's own picks no longer teach djmanzo your taste.** When
   djmanzo learns which genres, tempos and key moves you favour, a record
   the autopilot chose by itself is left out; a suggestion you accepted —

@@ -351,6 +351,9 @@ crates/
                 and nowhere else.
   dj-dsp        EQ, filters, stretch wrapper, resampler, meters, limiter, effect slots —
                 pure, testable, allocation-free
+  dj-vocal      K3: a vocal chain per microphone input — gate, EQ, compressor, de-esser,
+                echo, reverb — idle strips free; allocation-free, like dj-dsp, which it
+                builds on. Not yet held by the engine
   dj-decode     symphonia + platform fallbacks, CachingReader, prefetch pool
   dj-analysis   beatgrid, BPM, key, loudness, waveform data, structure
   dj-stems      ONNX look-ahead separation + content-hashed cache

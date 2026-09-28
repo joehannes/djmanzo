@@ -409,7 +409,7 @@ piece of this document lands among them.
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |
-| N microphones, a chain each, a singers' monitor | M1 | **K3** | designed — §6 below |
+| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains built (`dj-vocal`); the engine, the input and the screen next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
@@ -500,6 +500,33 @@ K8 measures a singer's range on one, §123's fifteen-second voice take records
 the strip the singer is on rather than "the microphone", and K9's recorded
 performances are a strip plus the record.
 
-**Still to design before code:** how a strip's settings are saved and recalled
-per singer, what the host sees for eight strips at once, how a strip whose
-input vanishes mid-song fails, and the tests that hold it.
+**Built, first step — the crate (`dj-vocal`).** Everything above that lives
+inside the crate: `Vocals` reads one ring of interleaved frames, channel *n*
+to strip *n*, all of a frame or none (a ring that runs dry is silence and a
+count, never half a frame); each `Strip` runs the chain in the order drawn,
+every stage bypassable — a high-pass, a gate with hysteresis and hold, a
+three-band EQ, a soft-knee compressor on a held peak, a de-esser that turns
+down only the band above its frequency, an echo, and a four-line feedback
+delay network reverb whose time is the time asked for — then pans, and sends
+to the room, the DJ's headphones and the singers' monitor at a level each.
+Talkover is the strip's own, and the music takes the lowest gain any
+talking-over strip asks for. A strip that is closed, or whose voice has been
+gone for longer than its echo and reverb take to die away, is not processed;
+the room's hum under the gate's threshold does not keep it working, and the
+first word over it wakes it. Everything is sized when the strips are made —
+the echo's and reverb's buffers for their longest settings — so no setting
+allocates, and a counting allocator holds eight strips with every stage on,
+settings changed mid-way and the ring running dry to none. What a chain
+costs is measured (`measure_chain`): one with every stage on took about
+0.6 % of a core of this machine (a 2.1 GHz Xeon), so sixteen singers would
+be about a tenth. Held by fifteen tests; four mutants — the tail ignored,
+the room's hum counted as a voice, half a frame read, an allocation per
+frame — each fail one. **Not yet:** the engine does not hold it, the host
+does not open a multichannel input, and there is nothing on screen; that is
+the second step, with the `ParamId::Vocal` parameters, strip 0 as today's
+`Mic*`, the singers' monitor bus and the measured round trip. Nothing here
+can say how it sounds — this container has no microphone and no speakers.
+
+**Still to design before the second step:** how a strip's settings are saved
+and recalled per singer, what the host sees for eight strips at once, and how
+a strip whose input vanishes mid-song fails.

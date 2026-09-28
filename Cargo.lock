@@ -1582,6 +1582,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dj-vocal"
+version = "0.33.0"
+dependencies = [
+ "dj-dsp",
+ "rtrb",
+]
+
+[[package]]
 name = "dj-world"
 version = "0.33.0"
 dependencies = [

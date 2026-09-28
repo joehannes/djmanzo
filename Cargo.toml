@@ -21,6 +21,7 @@ members = [
     "crates/dj-stems",
     "crates/dj-net",
     "crates/dj-dvs",
+    "crates/dj-vocal",
 ]
 
 [workspace.package]
@@ -34,6 +35,7 @@ authors = ["djmanzo contributors"]
 [workspace.dependencies]
 dj-core = { path = "crates/dj-core" }
 dj-dsp = { path = "crates/dj-dsp" }
+dj-vocal = { path = "crates/dj-vocal" }
 dj-audio = { path = "crates/dj-audio" }
 dj-decode = { path = "crates/dj-decode" }
 dj-engine = { path = "crates/dj-engine" }
