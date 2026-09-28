@@ -179,7 +179,7 @@ impl Takeover {
             .filter(|(_, when)| now.duration_since(**when) < FORGET_AFTER)
             .filter_map(|(param, _)| match param {
                 ParamId::Deck(deck, _) => Some(*deck),
-                ParamId::Global(_) => None,
+                ParamId::Global(_) | ParamId::Vocal(..) => None,
             })
             .collect();
         decks.sort_by_key(|d: &DeckId| d.human_number());

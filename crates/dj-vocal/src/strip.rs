@@ -27,6 +27,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StripSettings {
+    /// What the strip is for — the preset last chosen on it.
+    pub preset: Preset,
     /// Whether the microphone is live.
     pub open: bool,
     /// The fader, in dB.
@@ -100,6 +102,7 @@ impl Default for StripSettings {
     /// the room and the singers' monitor, not the DJ's headphones.
     fn default() -> Self {
         Self {
+            preset: Preset::Singer,
             open: false,
             gain_db: 0.0,
             pan: 0.0,
@@ -127,6 +130,111 @@ impl Default for StripSettings {
                 seconds: Reverb::DEFAULT_SECONDS,
                 level: 0.18,
             }),
+        }
+    }
+}
+
+/// What a strip is for (docs/KARAOKE.md §6): named for the job, not for
+/// what is switched on, and one tap on the strip's row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Preset {
+    /// A singer: a high-pass for handling noise, a gate, a compressor, a
+    /// de-esser and a little room. What every strip starts as.
+    Singer,
+    /// A singer who holds back: the gate opens lower and the compressor
+    /// brings more of them up.
+    SoftSinger,
+    /// A singer who shouts: a harder compressor, the gate opens higher.
+    LoudSinger,
+    /// The host's microphone: talkover on, so the music drops under
+    /// announcements, and no room on the voice.
+    Mc,
+    /// A guitar or a keyboard: no gate and no de-esser to chop it up.
+    Instrument,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 5] = [
+        Preset::Singer,
+        Preset::SoftSinger,
+        Preset::LoudSinger,
+        Preset::Mc,
+        Preset::Instrument,
+    ];
+
+    /// The name a host reads on the row.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Preset::Singer => "Singer",
+            Preset::SoftSinger => "Soft singer",
+            Preset::LoudSinger => "Loud singer",
+            Preset::Mc => "MC",
+            Preset::Instrument => "Instrument",
+        }
+    }
+
+    /// `settings` made what this preset is for. What the host set by hand on
+    /// the row — open or closed, the fader, where the voice sits and where
+    /// it is sent — is kept; the chain is the preset's.
+    #[must_use]
+    pub fn applied_to(self, settings: &StripSettings) -> StripSettings {
+        let singer = StripSettings::default();
+        let chain = match self {
+            Preset::Singer => singer,
+            Preset::SoftSinger => StripSettings {
+                gate: Some(GateSettings {
+                    threshold_db: -52.0,
+                    range_db: Gate::DEFAULT_RANGE_DB,
+                }),
+                compressor: Some(CompressorSettings {
+                    threshold_db: -28.0,
+                    ratio: 3.0,
+                    makeup_db: 8.0,
+                }),
+                ..singer
+            },
+            Preset::LoudSinger => StripSettings {
+                gate: Some(GateSettings {
+                    threshold_db: -38.0,
+                    range_db: Gate::DEFAULT_RANGE_DB,
+                }),
+                compressor: Some(CompressorSettings {
+                    threshold_db: -16.0,
+                    ratio: 6.0,
+                    makeup_db: 0.0,
+                }),
+                ..singer
+            },
+            Preset::Mc => StripSettings {
+                talkover: true,
+                reverb: None,
+                echo: None,
+                ..singer
+            },
+            Preset::Instrument => StripSettings {
+                high_pass_hz: 40.0,
+                gate: None,
+                de_esser: None,
+                compressor: Some(CompressorSettings {
+                    threshold_db: -18.0,
+                    ratio: 2.0,
+                    makeup_db: 0.0,
+                }),
+                reverb: None,
+                ..singer
+            },
+        };
+        StripSettings {
+            preset: self,
+            open: settings.open,
+            gain_db: settings.gain_db,
+            pan: settings.pan,
+            to_main: settings.to_main,
+            to_cue: settings.to_cue,
+            to_monitor: settings.to_monitor,
+            ..chain
         }
     }
 }
@@ -450,6 +558,34 @@ mod tests {
         assert!(!strip.is_idle());
         assert_eq!(strip.processed_frames(), stopped_at + 1);
         assert!(woken.main[0] != 0.0 || woken.main[1] != 0.0 || strip.gate_open());
+    }
+
+    /// **A preset changes the chain and keeps the host's hands.** Choosing
+    /// MC on an open strip at −6 dB panned left keeps it open, at −6 dB,
+    /// left — and turns talkover on and the room off; choosing Singer again
+    /// gives the room back and talkover up, and every preset has a name.
+    #[test]
+    fn a_preset_is_the_chain_and_leaves_the_hosts_settings_alone() {
+        let set = StripSettings {
+            open: true,
+            gain_db: -6.0,
+            pan: -0.5,
+            to_cue: 0.3,
+            ..StripSettings::default()
+        };
+        let mc = Preset::Mc.applied_to(&set);
+        assert_eq!(mc.preset, Preset::Mc);
+        assert!(mc.open && mc.talkover && mc.reverb.is_none());
+        assert!((mc.gain_db + 6.0).abs() < f32::EPSILON && (mc.pan + 0.5).abs() < f32::EPSILON);
+        assert!((mc.to_cue - 0.3).abs() < f32::EPSILON);
+        let back = Preset::Singer.applied_to(&mc);
+        assert!(!back.talkover && back.reverb.is_some() && back.open);
+        let instrument = Preset::Instrument.applied_to(&set);
+        assert!(instrument.gate.is_none() && instrument.de_esser.is_none());
+        let loud = Preset::LoudSinger.applied_to(&set).compressor.unwrap();
+        let soft = Preset::SoftSinger.applied_to(&set).compressor.unwrap();
+        assert!(loud.ratio > soft.ratio && soft.makeup_db > loud.makeup_db);
+        assert!(Preset::ALL.iter().all(|preset| !preset.name().is_empty()));
     }
 
     /// **A singer's microphone leaves the music alone; the MC's pulls it

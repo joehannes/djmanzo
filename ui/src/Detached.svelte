@@ -168,7 +168,7 @@
     {:else if panel === "singers"}
       <SingerScreen decks={snapshot.decks} />
     {:else if panel === "karaoke"}
-      <Singers enabled={ready} {deckCount} decks={snapshot.decks} />
+      <Singers enabled={ready} {deckCount} decks={snapshot.decks} vocals={snapshot.master.vocals} />
     {:else if panel === "prepare"}
       <SideView enabled={ready} {deckCount} decks={snapshot.decks} />
     {:else if panel === "next"}

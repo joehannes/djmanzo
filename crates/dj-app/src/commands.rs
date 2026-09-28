@@ -575,6 +575,15 @@ pub struct VocalsDto {
     /// What one strip with every stage on costs on this machine, as a share
     /// of one processor core — measured once, off the audio thread.
     pub chain_cost: f64,
+    /// What a strip can be made for, in the order a host reads them.
+    pub presets: Vec<PresetDto>,
+}
+
+/// K3: one preset, as the row offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PresetDto {
+    pub id: dj_vocal::Preset,
+    pub name: &'static str,
 }
 
 /// What one full chain costs here: measured the first time it is asked for.
@@ -592,14 +601,40 @@ fn vocals_dto(state: &AppState) -> VocalsDto {
     let working = get(GlobalParam::VocalWorking).max(0.0) as usize;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let starved_frames = get(GlobalParam::VocalStarvedFrames).max(0.0) as u64;
-    let mut strips = state.read_vocal_settings();
+    vocals_for(
+        inputs,
+        working,
+        starved_frames,
+        state.read_vocal_settings(),
+        chain_cost(),
+    )
+}
+
+/// The answer from its parts: the engine's counts, the settings kept on
+/// disk (one per input, defaults for the rest) and the measured cost. Public
+/// so the browser's fixture is made by the same code.
+#[must_use]
+pub fn vocals_for(
+    inputs: usize,
+    working: usize,
+    starved_frames: u64,
+    mut strips: Vec<dj_vocal::StripSettings>,
+    chain_cost: f64,
+) -> VocalsDto {
     strips.resize(inputs.max(strips.len()), dj_vocal::StripSettings::default());
     VocalsDto {
         inputs,
         working,
         starved_frames,
         strips,
-        chain_cost: chain_cost(),
+        chain_cost,
+        presets: dj_vocal::Preset::ALL
+            .iter()
+            .map(|&preset| PresetDto {
+                id: preset,
+                name: preset.name(),
+            })
+            .collect(),
     }
 }
 
@@ -639,6 +674,23 @@ pub fn vocal_strip_set(
     settings: dj_vocal::StripSettings,
 ) -> Result<VocalsDto, String> {
     set_vocal_strip(&state, strip, settings)?;
+    Ok(vocals_dto(&state))
+}
+
+/// K3: make a strip what a preset is for, keeping what the host set by hand
+/// on its row — open, fader, pan and sends.
+#[tauri::command]
+pub fn vocal_strip_preset(
+    state: State<'_, AppState>,
+    strip: u8,
+    preset: dj_vocal::Preset,
+) -> Result<VocalsDto, String> {
+    let current = state
+        .read_vocal_settings()
+        .get(usize::from(strip))
+        .copied()
+        .unwrap_or_default();
+    set_vocal_strip(&state, strip, preset.applied_to(&current))?;
     Ok(vocals_dto(&state))
 }
 

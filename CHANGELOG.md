@@ -16,6 +16,19 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The singers' microphones are on screen (K3).** The Singers surface has a
+  *Microphones* section: pick your interface and open its inputs, and every
+  input gets a row — open or closed, a fader, a level meter that lights when
+  the gate lets a voice through, how hard its compressor is working, and
+  what it is for (*Singer*, *Soft singer*, *Loud singer*, *MC* — talkover
+  on, no room — or *Instrument*). Above the rows, how many are working and
+  what that costs your machine, and how late a singer hears themselves. If
+  the interface is unplugged mid-song the music keeps playing and the
+  section says so; an open microphone with nothing on it for ten seconds is
+  named. Every row's settings are kept for the next time djmanzo starts.
+- **Mac builds are back.** v0.34.0 shipped no Mac builds: whisper.cpp needs
+  macOS 10.15 (Catalina), and the build still asked for 10.13. djmanzo now
+  needs macOS 10.15 or later.
 ## v0.34.0 — Word timing inside djmanzo, a background behind the singers' words, and pop-outs that stay live
 
 - **Groundwork for a microphone per singer (K3).** A new part of djmanzo,

@@ -1,0 +1,328 @@
+<script lang="ts">
+  /**
+   * K3: the singers' microphones — a row for every input the interface has.
+   *
+   * What a host acts on in a hurry (docs/KARAOKE.md §6): which microphone,
+   * open or closed, its fader, its level with the gate on it, how hard its
+   * compressor is working, and what it is for — one row each. Above them, how
+   * many are working and what that costs the audio thread, and how late a
+   * singer hears themselves. The chain behind each strip is Rust's
+   * (`dj_vocal`); this draws the snapshot's readings and sends the host's
+   * choices, which Rust keeps for the next time djmanzo starts.
+   */
+  import {
+    listInputs,
+    vocalStripPreset,
+    vocalStripSet,
+    vocalsClose,
+    vocalsOpen,
+    vocalsState,
+    type Device,
+    type MicDevice,
+    type StripSettings,
+    type VocalPreset,
+    type Vocals,
+    type VocalsState,
+  } from "./api";
+
+  let { live, enabled = true }: { live?: VocalsState; enabled?: boolean } = $props();
+
+  let vocals = $state<Vocals | null>(null);
+  let inputs = $state<Device[]>([]);
+  let device = $state("");
+  let opened = $state<MicDevice | null>(null);
+  let busy = $state(false);
+  let error = $state("");
+
+  async function refresh() {
+    try {
+      vocals = await vocalsState();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  $effect(() => {
+    void refresh();
+    void listInputs()
+      .then((found) => {
+        inputs = found;
+        device ||= found.find((d) => d.is_default)?.id ?? found[0]?.id ?? "";
+      })
+      .catch(() => {});
+  });
+
+  /** How many strips the engine holds; the settings are asked for again when it changes. */
+  const count = $derived(live?.inputs ?? 0);
+  let known = -1;
+  $effect(() => {
+    if (count === known) return;
+    known = count;
+    void refresh();
+  });
+
+  async function open() {
+    busy = true;
+    error = "";
+    try {
+      opened = await vocalsOpen(device || null);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function close() {
+    busy = true;
+    try {
+      await vocalsClose();
+      opened = null;
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function set(strip: number, settings: StripSettings) {
+    try {
+      vocals = await vocalStripSet(strip, settings);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function preset(strip: number, chosen: VocalPreset) {
+    try {
+      vocals = await vocalStripPreset(strip, chosen);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
+   * The input has gone when the ring has kept running dry for half a second —
+   * an interface unplugged, or its driver stopped. Never a stopped record: the
+   * strips are fed silence and their tails finish.
+   */
+  let lastStarved = 0;
+  let dryingSince: number | null = null;
+  let lost = $state(false);
+  /** When each strip last heard anything, to say which open microphone is silent. */
+  let heard: number[] = [];
+  let quiet = $state<boolean[]>([]);
+  const QUIET_MS = 10_000;
+  $effect(() => {
+    const now = performance.now();
+    const starved = live?.starved_frames ?? 0;
+    if (count > 0 && starved > lastStarved) {
+      dryingSince ??= now;
+    } else {
+      dryingSince = null;
+    }
+    lastStarved = starved;
+    lost = dryingSince !== null && now - dryingSince > 500;
+    const faces = live?.strips ?? [];
+    const settings = vocals?.strips ?? [];
+    quiet = faces.map((face, i) => {
+      const open = settings[i]?.open ?? false;
+      // A closed strip's silence is not news: the clock starts when it opens.
+      if (!open || face.level > 0.01 || heard[i] === undefined) heard[i] = now;
+      return open && now - heard[i] > QUIET_MS;
+    });
+  });
+
+  /** The audio thread's share, as a percentage, for `strips` working at once. */
+  const share = (strips: number) => Math.round(strips * (vocals?.chain_cost ?? 0) * 1000) / 10;
+  /** Too much for this machine if every strip worked at once. */
+  const heavy = $derived(share(count) > 60);
+  /** Input buffer and output buffer: how late a singer hears themselves in a monitor. */
+  const late = $derived(opened ? Math.round(opened.latencyMs * 2) : null);
+</script>
+
+<section class="mics" aria-labelledby="singers-mics">
+  <h3 id="singers-mics">Microphones</h3>
+  {#if count === 0}
+    <p class="hint">
+      A strip and a vocal chain for every input of your interface — gate, EQ, compressor, de-esser, echo and a
+      little room, each singer's their own.
+    </p>
+    <div class="open">
+      <select aria-label="Interface for the singers' microphones" bind:value={device} disabled={!enabled}>
+        {#each inputs as input (input.id)}
+          <option value={input.id}>{input.name} — {input.channels} inputs</option>
+        {:else}
+          <option value="">No input found</option>
+        {/each}
+      </select>
+      <button onclick={() => void open()} disabled={!enabled || busy || inputs.length === 0}>Open the inputs</button>
+    </div>
+  {:else}
+    <p class="rig" role="status" data-heavy={heavy}>
+      {live?.working ?? 0} of {count} microphones working — about {share(live?.working ?? 0)} % of the audio thread{#if count > 1}; all {count} at once, {share(count)} %{/if}.
+      {#if late !== null}A singer hears themselves about {late} ms late.{/if}
+      {#if heavy}<strong>That is more than this machine should be asked for — close some.</strong>{/if}
+    </p>
+    {#if lost}
+      <p class="lost" role="alert">Microphones lost — reconnect the interface.</p>
+    {/if}
+    <ul class="strips" aria-label="Singers' microphones">
+      {#each (vocals?.strips ?? []).slice(0, count) as strip, i (i)}
+        {@const face = live?.strips[i]}
+        <li
+          class="strip"
+          data-strip={i + 1}
+          data-open={strip.open}
+          data-working={face?.working ?? false}
+          data-gate={face?.gate_open ?? false}
+        >
+          <span class="name">Mic {i + 1}</span>
+          <button
+            class="switch"
+            aria-pressed={strip.open}
+            aria-label="Mic {i + 1} {strip.open ? 'open' : 'closed'}"
+            onclick={() => void set(i, { ...strip, open: !strip.open })}>{strip.open ? "Open" : "Closed"}</button
+          >
+          <input
+            class="fader"
+            type="range"
+            min="-60"
+            max="12"
+            step="0.5"
+            value={strip.gain_db}
+            aria-label="Mic {i + 1} level"
+            onchange={(e) => void set(i, { ...strip, gain_db: Number(e.currentTarget.value) })}
+          />
+          <span class="meter" aria-hidden="true">
+            <span class="fill" style:width="{Math.min(1, face?.level ?? 0) * 100}%"></span>
+          </span>
+          <span class="squeeze" title="How hard the compressor is working"
+            >{(face?.compression_db ?? 0) >= 0.5 ? `−${Math.round(face?.compression_db ?? 0)} dB` : ""}</span
+          >
+          <select
+            aria-label="Mic {i + 1} is for"
+            value={strip.preset}
+            onchange={(e) => void preset(i, e.currentTarget.value as VocalPreset)}
+          >
+            {#each vocals?.presets ?? [] as choice (choice.id)}
+              <option value={choice.id}>{choice.name}</option>
+            {/each}
+          </select>
+          {#if quiet[i]}
+            <span class="silent">nothing on Mic {i + 1}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    <button class="close" onclick={() => void close()} disabled={busy}>Close the inputs</button>
+  {/if}
+  {#if error}
+    <p class="error" role="alert">{error}</p>
+  {/if}
+</section>
+
+<style>
+  .mics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.6rem;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 1em;
+  }
+
+  .hint,
+  .rig {
+    color: var(--text-dim);
+    font-size: 0.85em;
+    margin: 0;
+  }
+
+  .rig[data-heavy="true"] strong,
+  .lost,
+  .error {
+    color: var(--danger);
+    margin: 0;
+  }
+
+  .open {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  select,
+  input {
+    font: inherit;
+  }
+
+  .strips {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .strip {
+    display: grid;
+    grid-template-columns: 3.4rem 4.6rem minmax(5rem, 1fr) 4rem 3.2rem auto;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 6px);
+    background: var(--panel-raised);
+  }
+
+  .strip[data-open="true"] {
+    border-color: var(--accent);
+  }
+
+  .name {
+    font-weight: 600;
+  }
+
+  .switch[aria-pressed="true"] {
+    color: var(--accent);
+  }
+
+  .meter {
+    position: relative;
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--panel);
+    overflow: hidden;
+    outline: 1px solid var(--border);
+  }
+
+  .strip[data-gate="true"] .meter {
+    outline-color: var(--accent);
+  }
+
+  .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--accent);
+  }
+
+  .squeeze,
+  .silent {
+    color: var(--text-dim);
+    font-size: 0.8em;
+  }
+
+  .silent {
+    grid-column: 1 / -1;
+  }
+
+  .close {
+    align-self: flex-start;
+  }
+</style>

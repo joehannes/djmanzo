@@ -417,6 +417,34 @@ pub struct MicSnapshot {
     pub starved_frames: f64,
 }
 
+/// K3: the singers' microphones, as the host watches them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VocalsSnapshot {
+    /// How many strips the engine is holding: the singers' input's channel
+    /// count, zero with no input open.
+    pub inputs: u8,
+    /// How many are working now — the rest cost nothing.
+    pub working: u8,
+    /// Frames the singers' input could not supply. Rising means it has gone.
+    pub starved_frames: f64,
+    /// One per input, in order. Empty with none open — and then, like the
+    /// rest of a quiet snapshot, costing no allocation.
+    pub strips: Vec<VocalStripSnapshot>,
+}
+
+/// K3: one singer's microphone's face.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VocalStripSnapshot {
+    /// Peak level after the chain, 0..=1.
+    pub level: f32,
+    /// The gate is letting a voice through.
+    pub gate_open: bool,
+    /// How far the compressor is turning the voice down, in positive dB.
+    pub compression_db: f32,
+    /// Open, or still sounding a tail.
+    pub working: bool,
+}
+
 /// One deck's stem playing over another's mix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StemSwapSnapshot {
@@ -489,6 +517,8 @@ pub struct MasterSnapshot {
     pub quantize: bool,
     /// The microphone / line input strip.
     pub mic: MicSnapshot,
+    /// K3: the singers' microphones.
+    pub vocals: VocalsSnapshot,
     /// The automix.
     pub automix: AutomixSnapshot,
     /// The plugin insert.
@@ -954,6 +984,30 @@ impl Snapshot {
                         attack_ms: get(GlobalParam::MicAttackMs),
                         release_ms: get(GlobalParam::MicReleaseMs),
                         starved_frames: f64::from(get(GlobalParam::MicStarvedFrames)),
+                    }
+                },
+                vocals: {
+                    use dj_core::param::VocalParam;
+                    let get = |p| registry.get(ParamId::Global(p));
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let inputs = get(GlobalParam::VocalInputs)
+                        .clamp(0.0, dj_core::param::MAX_VOCAL_STRIPS as f32)
+                        as u8;
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let working = get(GlobalParam::VocalWorking).clamp(0.0, 255.0) as u8;
+                    let strip = |index: u8, p| registry.get(ParamId::Vocal(index, p));
+                    VocalsSnapshot {
+                        inputs,
+                        working,
+                        starved_frames: f64::from(get(GlobalParam::VocalStarvedFrames)),
+                        strips: (0..inputs)
+                            .map(|index| VocalStripSnapshot {
+                                level: strip(index, VocalParam::Level),
+                                gate_open: strip(index, VocalParam::GateOpen) >= 0.5,
+                                compression_db: strip(index, VocalParam::CompressionDb),
+                                working: strip(index, VocalParam::Working) >= 0.5,
+                            })
+                            .collect(),
                     }
                 },
                 split_output: bridge.map(|stats| SplitOutputSnapshot {

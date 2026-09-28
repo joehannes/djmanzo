@@ -1946,3 +1946,49 @@ fn the_browser_fixture_has_a_sample_outline() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// K3's singers' microphones, as `vocals_state` answers: closed, and open on
+/// a two-input interface with the second strip made the MC's. A golden, so
+/// the browser's rows are drawn from what Rust sends — the presets' names and
+/// order, and a strip's settings, field for field. The cost is fixed here;
+/// the real one is measured on the machine.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_singers_microphones() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/vocals.json");
+    let mc = dj_vocal::Preset::Mc.applied_to(&dj_vocal::StripSettings {
+        open: true,
+        ..dj_vocal::StripSettings::default()
+    });
+    let fixture = serde_json::json!({
+        "closed": dj_app::commands::vocals_for(0, 0, 0, Vec::new(), 0.006),
+        "open": dj_app::commands::vocals_for(
+            2,
+            1,
+            0,
+            vec![dj_vocal::StripSettings::default(), mc],
+            0.006,
+        ),
+    });
+    let fresh = serde_json::to_string_pretty(&fixture).expect("the microphones serialise");
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the microphones");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("stored is JSON");
+    assert_eq!(
+        stored, fixture,
+        "\nThe singers' microphones changed shape.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

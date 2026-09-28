@@ -1,0 +1,118 @@
+{
+  "closed": {
+    "chain_cost": 0.006,
+    "inputs": 0,
+    "presets": [
+      {
+        "id": "singer",
+        "name": "Singer"
+      },
+      {
+        "id": "soft-singer",
+        "name": "Soft singer"
+      },
+      {
+        "id": "loud-singer",
+        "name": "Loud singer"
+      },
+      {
+        "id": "mc",
+        "name": "MC"
+      },
+      {
+        "id": "instrument",
+        "name": "Instrument"
+      }
+    ],
+    "starved_frames": 0,
+    "strips": [],
+    "working": 0
+  },
+  "open": {
+    "chain_cost": 0.006,
+    "inputs": 2,
+    "presets": [
+      {
+        "id": "singer",
+        "name": "Singer"
+      },
+      {
+        "id": "soft-singer",
+        "name": "Soft singer"
+      },
+      {
+        "id": "loud-singer",
+        "name": "Loud singer"
+      },
+      {
+        "id": "mc",
+        "name": "MC"
+      },
+      {
+        "id": "instrument",
+        "name": "Instrument"
+      }
+    ],
+    "starved_frames": 0,
+    "strips": [
+      {
+        "compressor": {
+          "makeup_db": 3.0,
+          "ratio": 3.0,
+          "threshold_db": -20.0
+        },
+        "de_esser": {
+          "frequency_hz": 6500.0,
+          "threshold_db": -30.0
+        },
+        "echo": null,
+        "eq": null,
+        "gain_db": 0.0,
+        "gate": {
+          "range_db": 40.0,
+          "threshold_db": -45.0
+        },
+        "high_pass_hz": 100.0,
+        "open": false,
+        "pan": 0.0,
+        "preset": "singer",
+        "reverb": {
+          "level": 0.18000000715255737,
+          "seconds": 1.600000023841858
+        },
+        "talkover": false,
+        "to_cue": 0.0,
+        "to_main": 1.0,
+        "to_monitor": 1.0
+      },
+      {
+        "compressor": {
+          "makeup_db": 3.0,
+          "ratio": 3.0,
+          "threshold_db": -20.0
+        },
+        "de_esser": {
+          "frequency_hz": 6500.0,
+          "threshold_db": -30.0
+        },
+        "echo": null,
+        "eq": null,
+        "gain_db": 0.0,
+        "gate": {
+          "range_db": 40.0,
+          "threshold_db": -45.0
+        },
+        "high_pass_hz": 100.0,
+        "open": true,
+        "pan": 0.0,
+        "preset": "mc",
+        "reverb": null,
+        "talkover": true,
+        "to_cue": 0.0,
+        "to_main": 1.0,
+        "to_monitor": 1.0
+      }
+    ],
+    "working": 1
+  }
+}

@@ -30,6 +30,9 @@ const CLAP_CHANNELS: usize = dj_clap::plugin::CHANNELS;
 /// plugin's own truncation follows.
 const CLAP_MAX_FRAMES: usize = 8192;
 
+// K3: the parameter table has a block for every strip the rack can hold.
+const _: () = assert!(dj_vocal::MOST_STRIPS == dj_core::param::MAX_VOCAL_STRIPS);
+
 /// The realtime engine.
 ///
 /// Lives on the audio thread and obeys its rules absolutely: no allocation, no
@@ -1019,6 +1022,38 @@ impl Engine {
         set(GlobalParam::VocalInputs, inputs as f32);
         set(GlobalParam::VocalWorking, working as f32);
         set(GlobalParam::VocalStarvedFrames, starved as f32);
+        // Each strip's face: what the host watches on its row. A strip the
+        // rack does not have reads as closed and silent.
+        for index in 0..dj_core::param::MAX_VOCAL_STRIPS {
+            let strip = self.vocals.as_ref().and_then(|vocals| vocals.strip(index));
+            #[allow(clippy::cast_possible_truncation)]
+            let id = index as u8;
+            let publish = |param, value: f32| {
+                self.registry.set(ParamId::Vocal(id, param), value);
+            };
+            use dj_core::param::VocalParam;
+            publish(VocalParam::Level, strip.map_or(0.0, dj_vocal::Strip::level));
+            publish(
+                VocalParam::GateOpen,
+                if strip.is_some_and(dj_vocal::Strip::gate_open) {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+            publish(
+                VocalParam::CompressionDb,
+                strip.map_or(0.0, dj_vocal::Strip::compressing_db),
+            );
+            publish(
+                VocalParam::Working,
+                if strip.is_some_and(|strip| !strip.is_idle()) {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+        }
     }
 
     fn publish_deck_state(&self) {
@@ -5714,6 +5749,14 @@ mod mic_tests {
             "a singer came out at {sung}, not the music ({alone}) and the voice"
         );
         assert!(rig.get(GlobalParam::VocalWorking) >= 1.0);
+        // Each strip's face: the singer's is working and has a level; a
+        // strip the rack does not have reads as nothing.
+        use dj_core::param::VocalParam;
+        let strip = |strip: u8, param| rig.registry.get(ParamId::Vocal(strip, param));
+        assert!((strip(0, VocalParam::Working) - 1.0).abs() < f32::EPSILON);
+        assert!(strip(0, VocalParam::Level) > 0.1);
+        assert!(strip(1, VocalParam::Level) < 1e-6, "the MC was silent");
+        assert!(strip(5, VocalParam::Working).abs() < f32::EPSILON);
 
         // The MC, alone: heard, and the music pulled down under them.
         let mut spoken = 0.0;

@@ -10,6 +10,7 @@
    */
   import BuyLinks from "./BuyLinks.svelte";
   import Guests from "./Guests.svelte";
+  import Microphones from "./Microphones.svelte";
   import WordTiming from "./WordTiming.svelte";
   import {
     detachPanel,
@@ -30,13 +31,15 @@
     type DeckState,
     type LibraryTrack,
     type Rotation,
+    type VocalsState,
   } from "./api";
 
   let {
     enabled,
     deckCount = 2,
     decks = [],
-  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
+    vocals,
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[]; vocals?: VocalsState } = $props();
 
   /**
    * §107: what the room hears of the recorded singer, per deck. Out is
@@ -428,6 +431,8 @@
       </ul>
     </details>
   {/if}
+
+  <Microphones live={vocals} {enabled} />
 
   <WordTiming {decks} {deckCount} />
 

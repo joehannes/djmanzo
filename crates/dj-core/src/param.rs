@@ -1075,24 +1075,87 @@ impl GlobalParam {
     }
 }
 
+/// K3: the most singers' microphones the parameter table has room for —
+/// `dj_vocal::MOST_STRIPS`, which the engine checks it agrees with.
+pub const MAX_VOCAL_STRIPS: usize = 16;
+
+/// K3: what one singer's microphone reports, strip by strip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VocalParam {
+    /// Peak level after the chain, 0..=1.
+    Level,
+    /// 1.0 while the gate lets a voice through (or there is no gate).
+    GateOpen,
+    /// How far the compressor is turning the voice down, in positive dB.
+    CompressionDb,
+    /// 1.0 while the strip is working — open, or still sounding a tail.
+    Working,
+}
+
+impl VocalParam {
+    pub const COUNT: usize = 4;
+
+    #[must_use]
+    pub const fn offset(self) -> usize {
+        self as usize
+    }
+
+    #[must_use]
+    pub const fn all() -> [VocalParam; Self::COUNT] {
+        [
+            VocalParam::Level,
+            VocalParam::GateOpen,
+            VocalParam::CompressionDb,
+            VocalParam::Working,
+        ]
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            VocalParam::Level => "level",
+            VocalParam::GateOpen => "gate_open",
+            VocalParam::CompressionDb => "compression_db",
+            VocalParam::Working => "working",
+        }
+    }
+}
+
 /// A parameter address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ParamId {
     Deck(DeckId, DeckParam),
     Global(GlobalParam),
+    /// K3: one singer's microphone, 0-based, below [`MAX_VOCAL_STRIPS`]. A
+    /// strip beyond it has nowhere in the table and reads as nothing.
+    Vocal(u8, VocalParam),
 }
 
 impl ParamId {
     /// Total size of the parameter table.
-    pub const COUNT: usize = MAX_DECKS * DeckParam::COUNT + GlobalParam::COUNT;
+    pub const COUNT: usize =
+        MAX_DECKS * DeckParam::COUNT + GlobalParam::COUNT + MAX_VOCAL_STRIPS * VocalParam::COUNT;
 
     /// Index into the flat table. Deck blocks come first so that a deck's
-    /// parameters are contiguous and share cache lines.
+    /// parameters are contiguous and share cache lines; the singers' strips
+    /// come last, a block each.
     #[must_use]
     pub const fn index(self) -> usize {
         match self {
             ParamId::Deck(deck, param) => deck.index() * DeckParam::COUNT + param.offset(),
             ParamId::Global(param) => MAX_DECKS * DeckParam::COUNT + param.offset(),
+            ParamId::Vocal(strip, param) => {
+                // Clamped rather than trusted: an out-of-range strip lands on
+                // the last block instead of past the end of the table.
+                let strip = if (strip as usize) < MAX_VOCAL_STRIPS {
+                    strip as usize
+                } else {
+                    MAX_VOCAL_STRIPS - 1
+                };
+                MAX_DECKS * DeckParam::COUNT
+                    + GlobalParam::COUNT
+                    + strip * VocalParam::COUNT
+                    + param.offset()
+            }
         }
     }
 
@@ -1104,7 +1167,13 @@ impl ParamId {
                 .map(move |p| ParamId::Deck(d, p))
         });
         let globals = GlobalParam::all().into_iter().map(ParamId::Global);
-        decks.chain(globals)
+        #[allow(clippy::cast_possible_truncation)]
+        let vocals = (0..MAX_VOCAL_STRIPS as u8).flat_map(|strip| {
+            VocalParam::all()
+                .into_iter()
+                .map(move |p| ParamId::Vocal(strip, p))
+        });
+        decks.chain(globals).chain(vocals)
     }
 
     /// Stable name for the UI, scripting and the network API, e.g.
@@ -1116,6 +1185,9 @@ impl ParamId {
                 format!("deck.{}.{}", deck.human_number(), deck_param_name(param))
             }
             ParamId::Global(param) => format!("master.{}", global_param_name(param)),
+            ParamId::Vocal(strip, param) => {
+                format!("vocal.{}.{}", u16::from(strip) + 1, param.name())
+            }
         }
     }
 }

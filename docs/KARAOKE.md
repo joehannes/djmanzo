@@ -599,8 +599,35 @@ thread and the null backend's two-channel input — the engine ends up holding
 two strips, a strip's settings reach the file, closing empties the engine,
 a device change leaves no capture open — with two mutants failing them: the
 device change leaving the singers' input running, and closing without taking
-the rack away. **Not yet:** the per-strip parameters, the monitor pair, the
-lost-input reconnect, and the Singers surface.
+the rack away.
+
+**And on screen.** Each strip publishes its level, whether its gate is open,
+how hard its compressor works and whether it is working
+(`ParamId::Vocal(strip, …)`, a block of four per strip after the globals;
+`MAX_VOCAL_STRIPS` in `dj-core` is held equal to `dj_vocal::MOST_STRIPS` at
+compile time), and the snapshot carries them as `master.vocals`. Presets are
+`dj_vocal::Preset` — *Singer*, *Soft singer*, *Loud singer*, *MC*,
+*Instrument* — each the chain for its job, keeping what the host set by hand
+on the row (open, fader, pan, sends); `vocal_strip_preset` applies one. The
+Singers surface's *Microphones* section (`ui/src/Microphones.svelte`) is the
+design above: an interface picked and opened, then a row a strip — name,
+switch, fader, meter lit by the gate, compression, preset — and one line
+with how many are working, their share of the audio thread from the measured
+chain cost, and the round trip; *Microphones lost — reconnect the interface*
+once the starvation count has climbed for half a second; *nothing on Mic n*
+after ten seconds of an open strip's silence, counted from when it opened.
+Held by an engine test (the singer's strip working with a level, a strip the
+rack does not have reading nothing), a preset test, a golden of Rust's answer
+(`ui/e2e/vocals.json`) and two browser tests — mutation-tested: the switch
+sending the strip unchanged, and the lost-input check never firing, each
+fail one. **Driven in the running application** with the null backend's
+two-channel input: the section offered it, *Open the inputs* gave two rows,
+*Open* on Mic 1 wrote `"open": true` to `vocal.json`, a restart brought it
+back open, and *nothing on Mic 1* appeared after ten silent seconds — which
+driving it found first appearing at once, the clock having counted the time
+the strip was closed. **Not yet:** the monitor pair, reconnecting a lost
+input by itself, a singer's own settings laid over the strip's, and the chain
+behind a press on the row.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

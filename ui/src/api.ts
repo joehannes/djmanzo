@@ -635,6 +635,8 @@ export interface MasterState {
   quantize: boolean;
   /** The microphone / line input strip. */
   mic: MicState;
+  /** K3: the singers' microphones. See `dj_app::snapshot::VocalsSnapshot`. */
+  vocals: VocalsState;
   /** The automix. */
   automix: AutomixState;
   /** The plugin insert. */
@@ -752,6 +754,76 @@ export const openMic = (deviceId: string | null) =>
   invoke<MicDevice>("open_mic", { deviceId });
 
 export const closeMic = () => invoke<void>("close_mic");
+
+/** K3: one singer's microphone's face. See `dj_app::snapshot::VocalStripSnapshot`. */
+export interface VocalStripState {
+  /** Peak level after the chain, 0..1. */
+  level: number;
+  gate_open: boolean;
+  /** How far the compressor is turning the voice down, in positive dB. */
+  compression_db: number;
+  /** Open, or still sounding a tail; an idle strip costs nothing. */
+  working: boolean;
+}
+
+/** K3: the singers' microphones, live. See `dj_app::snapshot::VocalsSnapshot`. */
+export interface VocalsState {
+  /** How many strips the engine holds: the singers' input's channel count, 0 with none open. */
+  inputs: number;
+  working: number;
+  /** Frames the input could not supply; rising means it has gone. */
+  starved_frames: number;
+  strips: VocalStripState[];
+}
+
+/** What a strip is for. See `dj_vocal::Preset`. */
+export type VocalPreset = "singer" | "soft-singer" | "loud-singer" | "mc" | "instrument";
+
+/** Everything the host sets on a strip. See `dj_vocal::StripSettings`. */
+export interface StripSettings {
+  preset: VocalPreset;
+  open: boolean;
+  gain_db: number;
+  /** −1 left to 1 right. */
+  pan: number;
+  talkover: boolean;
+  to_main: number;
+  to_cue: number;
+  to_monitor: number;
+  /** 0 turns the high-pass off. */
+  high_pass_hz: number;
+  gate: { threshold_db: number; range_db: number } | null;
+  eq: { low_db: number; mid_db: number; mid_hz: number; high_db: number } | null;
+  compressor: { threshold_db: number; ratio: number; makeup_db: number } | null;
+  de_esser: { frequency_hz: number; threshold_db: number } | null;
+  echo: { delay_ms: number; feedback: number; level: number } | null;
+  reverb: { seconds: number; level: number } | null;
+}
+
+/** K3: the singers' microphones as `vocals_state` answers. See `dj_app::commands::VocalsDto`. */
+export interface Vocals {
+  inputs: number;
+  working: number;
+  starved_frames: number;
+  /** One per input; defaults where the host has set none. */
+  strips: StripSettings[];
+  /** One full chain's cost on this machine, as a share of one processor core. */
+  chain_cost: number;
+  presets: { id: VocalPreset; name: string }[];
+}
+
+export const vocalsState = () => invoke<Vocals>("vocals_state");
+
+/** Open every input of a device for the singers, a strip each. */
+export const vocalsOpen = (deviceId: string | null) => invoke<MicDevice>("vocals_open", { deviceId });
+
+export const vocalsClose = () => invoke<void>("vocals_close");
+
+export const vocalStripSet = (strip: number, settings: StripSettings) =>
+  invoke<Vocals>("vocal_strip_set", { strip, settings });
+
+export const vocalStripPreset = (strip: number, preset: VocalPreset) =>
+  invoke<Vocals>("vocal_strip_preset", { strip, preset });
 
 /**
  * Every CLAP plugin in the standard search paths.

@@ -47,6 +47,7 @@ export const SLACK = 16;
  * green, still telling you nothing. The Rust test fails when they diverge.
  */
 import snapshot from "./snapshot.json" with { type: "json" };
+import vocals from "./vocals.json" with { type: "json" };
 /**
  * The pad pages, generated from `dj_core::PadPage::ALL` by the same Rust test.
  *
@@ -651,6 +652,10 @@ export const ANSWERS: Record<string, unknown> = {
   list_panels: panels,
   list_sources: [],
   list_inputs: [],
+  // K3: the singers' microphones, closed, as Rust answers (`vocals.json`).
+  vocals_state: vocals.closed,
+  // Not a command: what `vocals_state` answers once the inputs are open.
+  vocals_opened: vocals.open,
   secrets_persist: true,
   music_library: { folders: [], tracks: 0 },
   stem_out: { deck: null, decks: null, deckCapacity: 6, channels: null },
@@ -2333,6 +2338,35 @@ export async function openShell(
           // model downloading for a moment and then chosen, the rest as
           // `dj_app::commands` answers them; a run answers the report the
           // test chose.
+          // K3: the singers' microphones -- opening gives Rust's two-input
+          // answer from `vocals.json`, and a strip's settings and preset are
+          // kept as sent. Every call is recorded for the test to read.
+          if (cmd.startsWith("vocals_") || cmd.startsWith("vocal_strip_")) {
+            ((win.__vocalCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
+            type Held = { strips: Record<string, unknown>[] };
+            const held = (win.__vocals ??= structuredClone(answers.vocals_state)) as Held;
+            if (cmd === "vocals_open") {
+              win.__vocals = structuredClone(answers.vocals_opened);
+              return Promise.resolve({
+                name: "USB interface",
+                sampleRate: 48_000,
+                bufferFrames: 256,
+                channels: 2,
+                latencyMs: 5.3,
+              });
+            }
+            if (cmd === "vocals_close") {
+              win.__vocals = structuredClone(answers.vocals_state);
+              return Promise.resolve(null);
+            }
+            if (cmd === "vocal_strip_set") {
+              held.strips[Number(args.strip)] = args.settings as Record<string, unknown>;
+            }
+            if (cmd === "vocal_strip_preset") {
+              held.strips[Number(args.strip)] = { ...held.strips[Number(args.strip)], preset: args.preset };
+            }
+            return Promise.resolve(held);
+          }
           if (cmd === "word_timing" || cmd.startsWith("word_timing_")) {
             ((win.__timing ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
             type Model = {

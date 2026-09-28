@@ -1041,6 +1041,12 @@
       "release_ms": 400.0,
       "starved_frames": 0.0
     },
+    "vocals": {
+      "inputs": 0,
+      "working": 0,
+      "starved_frames": 0.0,
+      "strips": []
+    },
     "automix": {
       "enabled": false,
       "mixing": false,

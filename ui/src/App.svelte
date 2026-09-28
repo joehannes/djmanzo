@@ -3476,7 +3476,7 @@
   {/snippet}
 
   {#snippet surfaceKaraoke()}
-    <Singers enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+    <Singers enabled={ready} {deckCount} decks={snapshot?.decks ?? []} vocals={snapshot?.master.vocals} />
   {/snippet}
 
   {#snippet surfaceRequests()}
