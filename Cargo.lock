@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "dj-analysis"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "dj-dsp",
@@ -1321,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "dj-app"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-analysis",
  "dj-assistant",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "dj-assistant"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "async-trait",
  "dj-core",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "dj-audio"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cpal",
  "dj-core",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "dj-clap"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "clack-extensions",
  "clack-host",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "dj-control"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "rtrb",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "dj-core"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -1421,7 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "dj-decode"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "arc-swap",
  "blake3",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "dj-dsp"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "rustfft",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "dj-dvs"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "serde",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "dj-engine"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-audio",
  "dj-clap",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "dj-hid"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-control",
  "dj-core",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "dj-library"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "base64 0.22.1",
  "dj-analysis",
@@ -1502,7 +1502,7 @@ dependencies = [
 
 [[package]]
 name = "dj-net"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-control",
  "dj-core",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "dj-presets"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "serde",
@@ -1530,7 +1530,7 @@ dependencies = [
 
 [[package]]
 name = "dj-render"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "dj-dsp",
@@ -1541,7 +1541,7 @@ dependencies = [
 
 [[package]]
 name = "dj-secrets"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "keyring",
  "serde",
@@ -1550,7 +1550,7 @@ dependencies = [
 
 [[package]]
 name = "dj-sources"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1567,7 +1567,7 @@ dependencies = [
 
 [[package]]
 name = "dj-stems"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "blake3",
  "dj-core",
@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "dj-vocal"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-dsp",
  "rtrb",
@@ -1592,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "dj-world"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "dj-core",
  "serde",
