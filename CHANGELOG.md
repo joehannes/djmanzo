@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A guest's voice is recorded from the microphone they sing into (K3).**
+  The guest book's fifteen-second voice take now comes from the singers'
+  microphone the guest is on — their voice without the echo and the room —
+  rather than from the DJ's microphone, which on a karaoke night may not be
+  plugged in at all.
+
 - **The microphone controls work Mic 1 (K3).** With the singers' microphones
   open and no microphone of your own attached, the Booth's microphone panel,
   the keys and any controller button mapped to the microphone switch, fade,

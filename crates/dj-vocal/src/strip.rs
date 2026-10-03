@@ -540,6 +540,11 @@ pub struct StripFrame {
     /// What the music should be multiplied by for this strip's sake: 1 unless
     /// its talkover is on and it is speaking.
     pub music_gain: f32,
+    /// The voice itself, before its space: after the fader, the low cut, the
+    /// gate, the EQ, the compressor and the de-esser, and before the echo, the
+    /// room, the pan and the sends. What a recording of the singer wants
+    /// (§123's voice take) — a reverb tail is the room, not them.
+    pub voice: f32,
 }
 
 impl StripFrame {
@@ -548,6 +553,7 @@ impl StripFrame {
         cue: [0.0; 2],
         monitor: [0.0; 2],
         music_gain: 1.0,
+        voice: 0.0,
     };
 }
 
@@ -738,6 +744,7 @@ impl Strip {
             cue: [left * settings.to_cue, right * settings.to_cue],
             monitor: [left * settings.to_monitor, right * settings.to_monitor],
             music_gain,
+            voice,
         }
     }
 

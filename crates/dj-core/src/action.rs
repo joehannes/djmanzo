@@ -893,8 +893,14 @@ fn parse_sampler_change<'a>(
         "volume" => SamplerChange::Volume(parse_f32(words.next())?.clamp(0.0, 1.0)),
         "stop_all" => SamplerChange::StopAll,
         // At most the recorder's own length, and at least a second.
+        // K3: `voice 15 singer 2`, a guest on the second singers' microphone.
         "voice" => SamplerChange::Voice {
             seconds: parse_f32(words.next())?.clamp(1.0, MAX_RECORD_SECONDS as f32) as u8,
+            strip: match words.next() {
+                None => None,
+                Some("singer") => Some(parse_singer(words.next())?),
+                Some(other) => return Err(ParseError::UnknownVerb(other.to_owned())),
+            },
         },
         // The one verb here that takes more than a value: `record 3 deck 1` is
         // four words, which is why this function reads the iterator rather than
@@ -911,12 +917,26 @@ fn parse_sampler_change<'a>(
     })
 }
 
+/// A singers' microphone as people count them — `1` is the first — into the
+/// strip index the engine uses.
+fn parse_singer(word: Option<&str>) -> Result<u8, ParseError> {
+    let human: u8 = word
+        .ok_or(ParseError::MissingArgument)?
+        .parse()
+        .map_err(|_| ParseError::BadArgument)?;
+    if human == 0 || usize::from(human) > crate::param::MAX_VOCAL_STRIPS {
+        return Err(ParseError::BadArgument);
+    }
+    Ok(human - 1)
+}
+
 fn parse_record_source<'a>(
     words: &mut impl Iterator<Item = &'a str>,
 ) -> Result<RecordSource, ParseError> {
     match words.next().ok_or(ParseError::MissingArgument)? {
         "master" => Ok(RecordSource::Master),
         "mic" => Ok(RecordSource::Mic),
+        "singer" => Ok(RecordSource::Singer(parse_singer(words.next())?)),
         "deck" => Ok(RecordSource::Deck(
             DeckId::from_human(parse_slot(words.next())?).ok_or(ParseError::BadArgument)?,
         )),
@@ -1916,6 +1936,34 @@ mod tests {
         );
     }
 
+    /// K3: the singers' microphones are counted from 1 in words and from 0
+    /// inside, and one past the last there can be is refused.
+    #[test]
+    fn a_singer_is_named_as_people_count_them() {
+        assert_eq!(
+            Action::parse("sampler voice 15 singer 2"),
+            Ok(Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
+                seconds: 15,
+                strip: Some(1),
+            })))
+        );
+        assert_eq!(
+            Action::parse("sampler record 1 singer 1"),
+            Ok(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+                slot: 1,
+                source: RecordSource::Singer(0),
+            })))
+        );
+        for wrong in ["0", "17", "two"] {
+            assert_eq!(
+                Action::parse(&format!("sampler voice 15 singer {wrong}")),
+                Err(ParseError::BadArgument),
+                "{wrong}"
+            );
+        }
+        assert!(Action::parse("sampler voice 15 deck 1").is_err());
+    }
+
     #[test]
     fn every_sampler_action_round_trips_through_its_text_form() {
         let mut actions: Vec<Action> = vec![
@@ -1927,7 +1975,20 @@ mod tests {
                 slot: 4,
                 source: RecordSource::Mic,
             })),
-            Action::Mixer(MixerAction::Sampler(SamplerChange::Voice { seconds: 15 })),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
+                seconds: 15,
+                strip: None,
+            })),
+            // K3: a singers' microphone as a source, and a guest's take from
+            // the one they are singing into.
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+                slot: 2,
+                source: RecordSource::Singer(0),
+            })),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
+                seconds: 15,
+                strip: Some(3),
+            })),
         ];
         for change in [
             SampleChange::Trigger,

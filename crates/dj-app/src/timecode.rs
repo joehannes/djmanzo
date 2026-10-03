@@ -770,6 +770,8 @@ mod tests {
             }
             false
         };
+        let take = |guest: &str| crate::commands::voice_take_line(&state, guest);
+        assert_eq!(take("Ana"), "sampler voice 15", "the DJ's microphone");
         // Before the singers' input opens, a `mic` action is the DJ's own.
         crate::commands::perform(&state, "mic gain 2").expect("performed");
         assert!(settle(&|| (get(GlobalParam::MicGainDb) - 2.0).abs() < 1e-3));
@@ -786,6 +788,13 @@ mod tests {
             settle(&|| get(GlobalParam::MicStrip) > 0.5),
             "Mic 1 never became the microphone"
         );
+        // §123's take: from Mic 1 while the microphone is Mic 1, and from the
+        // strip a guest is on when they are on one.
+        assert_eq!(take("Ana"), "sampler voice 15 singer 1");
+        crate::commands::put_on_mic(&state, 1, Some("Ana")).expect("on");
+        assert_eq!(take("ana"), "sampler voice 15 singer 2");
+        assert_eq!(take("Ben"), "sampler voice 15 singer 1");
+        crate::commands::put_on_mic(&state, 1, None).expect("off");
 
         let rev = || get(GlobalParam::VocalSettingsRev);
         let before = rev();
@@ -852,6 +861,7 @@ mod tests {
             .open_mic(None)
             .expect("the DJ's microphone opens");
         assert!(settle(&|| get(GlobalParam::MicStrip) < 0.5));
+        assert_eq!(take("Ben"), "sampler voice 15", "the DJ's own again");
         assert!(
             get(GlobalParam::MicOpen) < 0.5,
             "the DJ's channel was armed by Mic 1's switch"

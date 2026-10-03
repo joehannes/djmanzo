@@ -14374,17 +14374,31 @@ pub fn guests_voice(state: State<'_, AppState>, id: String) -> Result<GuestsDto,
         singing,
         asked: now_seconds(),
     };
+    let line = voice_take_line(&state, &guest.name);
     if !state.voice_takes().expect(take) {
         return Err("a voice is already being recorded".to_owned());
     }
-    if let Err(error) = perform(
-        &state,
-        &format!("sampler voice {}", crate::guests::VOICE_SECONDS),
-    ) {
+    if let Err(error) = perform(&state, &line) {
         state.voice_takes().forget();
         return Err(error);
     }
     Ok(guests_dto(&state, journal, None))
+}
+
+/// K3: what records a guest's voice — the singers' microphone they are on,
+/// its voice before its echo and room; with them on none and the microphone
+/// being Mic 1, that; otherwise the DJ's own microphone, as before there were
+/// singers' microphones (docs/KARAOKE.md §6).
+pub(crate) fn voice_take_line(state: &AppState, guest: &str) -> String {
+    let seconds = crate::guests::VOICE_SECONDS;
+    let on = lock(state.on_mics()).iter().position(|slot| {
+        slot.as_ref()
+            .is_some_and(|on| crate::guests::same_name(&on.singer, guest))
+    });
+    match on.or_else(|| mic_is_strip(state).then_some(0)) {
+        Some(strip) => format!("sampler voice {seconds} singer {}", strip + 1),
+        None => format!("sampler voice {seconds}"),
+    }
 }
 
 /// §123: write the words of a song for a guest with the DJ's own AI

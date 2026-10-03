@@ -78,6 +78,9 @@ pub struct Vocals {
     input: Option<rtrb::Consumer<f32>>,
     /// Frames the ring could not supply.
     starved: u64,
+    /// Each strip's voice in the last frame, before its space
+    /// ([`StripFrame::voice`]): what a recording of the singer on it takes.
+    voices: [f32; MOST_STRIPS],
 }
 
 impl Vocals {
@@ -94,7 +97,15 @@ impl Vocals {
             width: inputs,
             input: None,
             starved: 0,
+            voices: [0.0; MOST_STRIPS],
         }
+    }
+
+    /// Strip `index`'s voice in the last frame, before its echo and room —
+    /// silence for a strip that is idle or not there.
+    #[must_use]
+    pub fn voice(&self, index: usize) -> f32 {
+        self.voices.get(index).copied().unwrap_or(0.0)
     }
 
     /// How many strips there are.
@@ -148,7 +159,7 @@ impl Vocals {
         if self.input.is_some() && !whole && width > 0 {
             self.starved += 1;
         }
-        for strip in &mut self.strips {
+        for (index, strip) in self.strips.iter_mut().enumerate() {
             // All of a frame or none of it: taking part of one would put every
             // later frame's channels on the wrong strips.
             let sample = if whole {
@@ -160,6 +171,9 @@ impl Vocals {
                 0.0
             };
             let out = strip.process(sample);
+            if let Some(voice) = self.voices.get_mut(index) {
+                *voice = out.voice;
+            }
             for side in 0..2 {
                 frame.main[side] += out.main[side];
                 frame.cue[side] += out.cue[side];
@@ -270,6 +284,56 @@ mod tests {
             "the first microphone reached the second's side ({right})"
         );
         assert_eq!(vocals.starved_frames(), 0);
+    }
+
+    /// **A strip's voice is the singer and not the room.** The first strip
+    /// with an echo and a long room on it: while the singer sings, its voice
+    /// is there; once they stop, the room's tail still sounds in the mix but
+    /// the voice is silent at once — a recording of them holds them, not the
+    /// reverb. The second strip, sung into by nobody, gives nothing, and nor
+    /// does a strip that is not there.
+    #[test]
+    fn a_strips_voice_is_the_singer_before_the_room() {
+        let mut vocals = Vocals::new(RATE, 2);
+        vocals.strip_mut(0).unwrap().apply(&StripSettings {
+            echo: Some(crate::EchoSettings::default()),
+            reverb: Some(crate::ReverbSettings {
+                seconds: 3.0,
+                level: 0.5,
+            }),
+            ..singer()
+        });
+        vocals.strip_mut(1).unwrap().apply(&singer());
+        let (mut producer, consumer) = rtrb::RingBuffer::new(48_000 * 2);
+        vocals.set_input(Some(consumer));
+        let mut loudest = 0.0f32;
+        for n in 0..24_000 {
+            #[allow(clippy::cast_precision_loss)]
+            let sung = (std::f32::consts::TAU * 220.0 * n as f32 / RATE).sin() * 0.3;
+            producer.push(sung).unwrap();
+            producer.push(0.0).unwrap();
+            vocals.next_frame();
+            loudest = loudest.max(vocals.voice(0).abs());
+            assert!(vocals.voice(1).abs() < 1e-6, "nobody sang into the second");
+        }
+        assert!(
+            loudest > 0.1,
+            "the singer was not in their voice ({loudest})"
+        );
+        // They stop. A moment later the room is still ringing; the voice is not.
+        let (mut voice, mut room) = (0.0f32, 0.0f32);
+        for n in 0..12_000 {
+            producer.push(0.0).unwrap();
+            producer.push(0.0).unwrap();
+            let frame = vocals.next_frame();
+            if n > 2_400 {
+                voice = voice.max(vocals.voice(0).abs());
+                room = room.max(frame.main[0].abs());
+            }
+        }
+        assert!(room > 1e-3, "no tail to tell the voice from ({room})");
+        assert!(voice < 1e-4, "the room was in the voice ({voice})");
+        assert!(vocals.voice(MOST_STRIPS + 3).abs() < f32::EPSILON);
     }
 
     /// **A ring that runs dry is silence and a count**, never half a frame:

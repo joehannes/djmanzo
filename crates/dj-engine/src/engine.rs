@@ -367,14 +367,16 @@ impl Engine {
             ParamId::Global(GlobalParam::RecordSeconds),
             self.recorder.seconds(),
         );
-        // 0 for the master, 255 for the microphone, otherwise the deck's own
-        // number — one reading rather than a flag plus a number that could
-        // disagree about which.
+        // 0 for the master, 255 for a voice — the microphone or a singer's —
+        // otherwise the deck's own number: one reading rather than a flag plus
+        // a number that could disagree about which.
         self.registry.set(
             ParamId::Global(GlobalParam::RecordSourceDeck),
             match self.recorder.tapping() {
                 Some(dj_core::RecordSource::Deck(deck)) => f32::from(deck.human_number()),
-                Some(dj_core::RecordSource::Mic) => f32::from(u8::MAX),
+                Some(dj_core::RecordSource::Mic | dj_core::RecordSource::Singer(_)) => {
+                    f32::from(u8::MAX)
+                }
                 _ => 0.0,
             },
         );
@@ -858,17 +860,20 @@ impl Engine {
                             .get(deck.index())
                             .and_then(|deck| deck.effective_bpm()),
                         // A voice has no tempo of its own.
-                        dj_core::RecordSource::Mic => None,
+                        dj_core::RecordSource::Mic | dj_core::RecordSource::Singer(_) => None,
                     };
                     self.recorder.start(self.sampler.bank(), slot, source, bpm);
                 }
                 // §123: a guest's voice, for a length. Bank and slot 0 name no
                 // slot, which is how the host knows to keep it as a file for
                 // them rather than land it on a pad.
-                dj_core::SamplerChange::Voice { seconds } => {
+                // K3: from the singers' microphone the guest is on, when there
+                // is one — their voice before its echo and room.
+                dj_core::SamplerChange::Voice { seconds, strip } => {
                     let frames = (f64::from(seconds) * self.sample_rate.as_f64()) as usize;
-                    self.recorder
-                        .start_for(0, 0, dj_core::RecordSource::Mic, frames);
+                    let source =
+                        strip.map_or(dj_core::RecordSource::Mic, dj_core::RecordSource::Singer);
+                    self.recorder.start_for(0, 0, source, frames);
                 }
                 dj_core::SamplerChange::RecordStop => self.recorder.stop(),
                 dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
@@ -1841,6 +1846,11 @@ impl AudioCallback for Engine {
         let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
         // §123: the microphone on its own, taken where its frame is read.
         let recording_mic = self.recorder.tapping() == Some(dj_core::RecordSource::Mic);
+        // K3: or a singers' strip, its voice before its echo and room.
+        let recording_singer = match self.recorder.tapping() {
+            Some(dj_core::RecordSource::Singer(strip)) => Some(usize::from(strip)),
+            _ => None,
+        };
 
         let (main_l, main_r) = layout.main;
         // The master chain does not run when the decks are going out
@@ -1864,6 +1874,10 @@ impl AudioCallback for Engine {
                 // The singers' ring fills too, for the same reason.
                 if let Some(vocals) = self.vocals.as_mut() {
                     let _ = vocals.next_frame();
+                    if let Some(strip) = recording_singer {
+                        let voice = vocals.voice(strip);
+                        self.recorder.write(voice, voice);
+                    }
                 }
                 let _ = self.master_gain.next_value();
             }
@@ -1887,6 +1901,13 @@ impl AudioCallback for Engine {
                 .vocals
                 .as_mut()
                 .map_or(dj_vocal::VocalFrame::SILENT, |vocals| vocals.next_frame());
+            if let Some(strip) = recording_singer {
+                let voice = self
+                    .vocals
+                    .as_ref()
+                    .map_or(0.0, |vocals| vocals.voice(strip));
+                self.recorder.write(voice, voice);
+            }
             // The music takes the lowest gain anything talking over it asks
             // for: the DJ's microphone or a strip set as the MC's.
             let music_gain = mic.music_gain.min(voices.music_gain);
@@ -5509,6 +5530,7 @@ mod mic_tests {
         }
         rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
             seconds: 1,
+            strip: None,
         })));
         // A second and a half of singing: longer than the take.
         let mut capture = None;
@@ -5538,6 +5560,78 @@ mod mic_tests {
             recorded.iter().all(|s| (s - VOICE).abs() < 0.01),
             "the voice alone, without the record under it: peak {}",
             recorded.iter().fold(0.0f32, |peak, s| peak.max(s.abs()))
+        );
+    }
+
+    /// K3: **a guest's take from the singers' microphone they are on is
+    /// their voice alone.** Two singers on two strips — the second the guest
+    /// — the DJ talking into their own microphone and a record playing: the
+    /// take is the second strip's voice, steady at its level, with nothing of
+    /// the first singer, the DJ or the record in it, and it says where it was
+    /// taken from.
+    #[test]
+    fn a_take_from_a_singers_strip_is_that_singer_alone() {
+        const FIRST: f32 = 0.1;
+        const GUEST: f32 = 0.3;
+        const DJ: f32 = 0.25;
+        let mut rig = rig();
+        rig.send(Command::RecordSpace {
+            samples: vec![0.0; 48_000 * 30 * 2],
+        });
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut ring, input) = rtrb::RingBuffer::new(48_000 * 2);
+        vocals.set_input(Some(input));
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, _) = strips();
+        for strip in 0..2 {
+            rig.send(Command::VocalStrip {
+                strip,
+                settings: singer,
+            });
+        }
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.mic(MicChange::SetTalkover(false));
+        rig.play_music(0.5);
+        let mut sing = |rig: &mut Rig, frames: usize| {
+            rig.speak(DJ, frames);
+            for _ in 0..frames {
+                ring.push(FIRST).expect("ring full");
+                ring.push(GUEST).expect("ring full");
+            }
+        };
+        for _ in 0..20 {
+            sing(&mut rig, 1_024);
+            rig.render_peak(1_024);
+        }
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
+            seconds: 1,
+            strip: Some(1),
+        })));
+        let mut capture = None;
+        for block in 0..72 {
+            sing(&mut rig, 1_024);
+            rig.render_peak(1_024);
+            if block == 0 {
+                assert_eq!(rig.get(GlobalParam::RecordSourceDeck), 255.0, "a voice");
+            }
+            while let Ok(item) = rig.retired.pop() {
+                if let Retired::Capture(landed) = item {
+                    capture = Some(landed);
+                }
+            }
+        }
+        let capture = capture.expect("the take finished on its own");
+        assert_eq!(capture.source, RecordSource::Singer(1));
+        assert_eq!(capture.frames, 48_000, "exactly the second asked for");
+        let recorded = &capture.samples[..capture.frames * 2];
+        assert!(
+            recorded.iter().all(|s| (s - GUEST).abs() < 0.01),
+            "the guest alone: from {} to {}",
+            recorded.iter().fold(f32::MAX, |low, s| low.min(*s)),
+            recorded.iter().fold(f32::MIN, |high, s| high.max(*s))
         );
     }
 

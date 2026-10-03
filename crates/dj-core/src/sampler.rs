@@ -143,6 +143,10 @@ pub enum RecordSource {
     /// the voice on its own, without the record under it or the master's
     /// effects over it. §123's recording of a karaoke guest singing.
     Mic,
+    /// K3: one of the singers' microphones — strip `n`, counted from 0 — its
+    /// voice before its echo and room: the singer, not the room. §123's take
+    /// of a guest who is singing into it.
+    Singer(u8),
 }
 
 impl std::fmt::Display for RecordSource {
@@ -151,6 +155,7 @@ impl std::fmt::Display for RecordSource {
             RecordSource::Master => write!(f, "master"),
             RecordSource::Deck(deck) => write!(f, "deck {}", deck.human_number()),
             RecordSource::Mic => write!(f, "mic"),
+            RecordSource::Singer(strip) => write!(f, "singer {}", u16::from(*strip) + 1),
         }
     }
 }
@@ -226,8 +231,10 @@ pub enum SamplerChange {
     /// voice, which the application keeps as a file for them rather than
     /// landing in a slot. Uses the same recorder, so it waits while a sample
     /// is being recorded and a sample waits while it runs; stopped early by
-    /// [`SamplerChange::RecordStop`].
-    Voice { seconds: u8 },
+    /// [`SamplerChange::RecordStop`]. K3: `strip`, when given, is the singers'
+    /// microphone they are on, and the take is its voice
+    /// ([`RecordSource::Singer`]) rather than the DJ's microphone.
+    Voice { seconds: u8, strip: Option<u8> },
 }
 
 impl std::fmt::Display for SamplerChange {
@@ -239,7 +246,14 @@ impl std::fmt::Display for SamplerChange {
             SamplerChange::Record { slot, source } => write!(f, "record {slot} {source}"),
             SamplerChange::RecordStop => write!(f, "record stop"),
             SamplerChange::RecordCancel => write!(f, "record cancel"),
-            SamplerChange::Voice { seconds } => write!(f, "voice {seconds}"),
+            SamplerChange::Voice {
+                seconds,
+                strip: None,
+            } => write!(f, "voice {seconds}"),
+            SamplerChange::Voice {
+                seconds,
+                strip: Some(strip),
+            } => write!(f, "voice {seconds} {}", RecordSource::Singer(*strip)),
         }
     }
 }

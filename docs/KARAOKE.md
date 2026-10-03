@@ -790,8 +790,27 @@ the count rather than whether it was climbing — true of the DJ's own
 microphone too, and with Mic 1 it would have been every karaoke night. It
 now warns while the count climbs and for two seconds after, and not for the
 count it first sees (a browser test, failing with the old condition).
-**Not yet:** §123's voice take recording the strip its singer is on — which
-a singer put on a microphone now makes possible.
+**And a guest's voice take is the strip they sing on.** §123's fifteen
+seconds of a guest's voice came from the DJ's own microphone — silent on a
+night run on the singers' microphones. Each strip now gives its voice before
+its space — after the fader, the low cut, gate, EQ, compressor and
+de-esser, before the echo, the room, the pan and the sends
+(`StripFrame::voice`, `Vocals::voice`) — and the recorder can take it
+(`RecordSource::Singer`, `sampler voice 15 singer 2`, and `sampler record 3
+singer 1` for a pad). A guest on a microphone is recorded from it; a guest on
+none, with the microphone being Mic 1, from Mic 1; otherwise from the DJ's
+own microphone as before (`voice_take_line`). The singer, not the room: an AI
+music service is given a voice, not a reverb tail. Held by a `dj-vocal` test
+(the voice there while they sing and gone the moment they stop, while the
+room still rings in the mix), an engine test (a take from the second of two
+singers, with the first singing, the DJ talking and a record playing, holds
+the second alone, at its level, and says where it came from), an action test
+(singers counted from 1 in words, 0 and 17 refused) and the host test above
+(the strip a guest is on, Mic 1, and the DJ's own microphone again once
+attached).
+**Not yet:** the small-buffer setting for singing ("The delay a singer
+hears"): the round trip is measured and shown on the *Microphones* line, but
+the buffer is still chosen with the output device.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one
