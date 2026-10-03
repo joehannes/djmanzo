@@ -359,6 +359,77 @@ impl StripSettings {
             }),
         }
     }
+
+    /// The part of these settings that is about the voice on the strip.
+    #[must_use]
+    pub fn chain(&self) -> Chain {
+        Chain {
+            preset: self.preset,
+            talkover: self.talkover,
+            high_pass_hz: self.high_pass_hz,
+            gate: self.gate,
+            eq: self.eq,
+            compressor: self.compressor,
+            de_esser: self.de_esser,
+            echo: self.echo,
+            reverb: self.reverb,
+        }
+    }
+
+    /// These settings with `chain` laid over them: the row — open or closed,
+    /// the fader, where the voice sits and where it is sent — stays this
+    /// strip's, and everything the voice goes through is `chain`'s.
+    #[must_use]
+    pub fn with_chain(&self, chain: &Chain) -> Self {
+        Self {
+            preset: chain.preset,
+            talkover: chain.talkover,
+            high_pass_hz: chain.high_pass_hz,
+            gate: chain.gate,
+            eq: chain.eq,
+            compressor: chain.compressor,
+            de_esser: chain.de_esser,
+            echo: chain.echo,
+            reverb: chain.reverb,
+            ..*self
+        }
+    }
+}
+
+/// The part of a strip's settings that is about the voice on it rather than
+/// the rig: what a preset decides, and what a singer keeps (docs/KARAOKE.md
+/// §6, *a strip's settings, and a singer's*). The rest — open or closed, the
+/// fader, pan and the three sends — is the host's, on the strip's row, and
+/// stays the strip's whoever is singing into it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Chain {
+    pub preset: Preset,
+    pub talkover: bool,
+    pub high_pass_hz: f32,
+    pub gate: Option<GateSettings>,
+    pub eq: Option<EqSettings>,
+    pub compressor: Option<CompressorSettings>,
+    pub de_esser: Option<DeEsserSettings>,
+    pub echo: Option<EchoSettings>,
+    pub reverb: Option<ReverbSettings>,
+}
+
+impl Default for Chain {
+    /// A singer's.
+    fn default() -> Self {
+        StripSettings::default().chain()
+    }
+}
+
+impl Chain {
+    /// Held to [`LIMITS`], as a strip's settings are
+    /// ([`StripSettings::held`]): a chain kept on a guest's record is read
+    /// from a file, and a file can say anything.
+    #[must_use]
+    pub fn held(&self) -> Self {
+        StripSettings::default().with_chain(self).held().chain()
+    }
 }
 
 /// What a strip is for (docs/KARAOKE.md §6): named for the job, not for
@@ -453,16 +524,10 @@ impl Preset {
                 ..singer
             },
         };
-        StripSettings {
+        settings.with_chain(&Chain {
             preset: self,
-            open: settings.open,
-            gain_db: settings.gain_db,
-            pan: settings.pan,
-            to_main: settings.to_main,
-            to_cue: settings.to_cue,
-            to_monitor: settings.to_monitor,
-            ..chain
-        }
+            ..chain.chain()
+        })
     }
 }
 
@@ -927,6 +992,100 @@ mod tests {
             ..start
         };
         assert!((low.held().high_pass_hz - 20.0).abs() < f32::EPSILON);
+    }
+
+    /// **A singer's chain laid over a strip takes everything the voice goes
+    /// through and nothing of the row.** Read off the settings themselves:
+    /// every field a strip has is either the chain's or one of the row's six,
+    /// never both and never neither, so a field added to the strip and
+    /// forgotten here fails; and laying one strip's chain over another gives
+    /// each field from the side it belongs to.
+    #[test]
+    fn a_chain_laid_over_a_strip_keeps_the_row() {
+        const ROW: [&str; 6] = ["open", "gain_db", "pan", "to_main", "to_cue", "to_monitor"];
+        let keys = |value: serde_json::Value| -> Vec<String> {
+            let mut keys: Vec<String> = value
+                .as_object()
+                .expect("an object")
+                .keys()
+                .cloned()
+                .collect();
+            keys.sort();
+            keys
+        };
+        let mut every = keys(serde_json::to_value(Chain::default()).expect("serializes"));
+        assert!(ROW.iter().all(|row| !every.iter().any(|key| key == row)));
+        every.extend(ROW.iter().map(|&row| row.to_owned()));
+        every.sort();
+        assert_eq!(
+            every,
+            keys(serde_json::to_value(StripSettings::default()).expect("serializes"))
+        );
+
+        // The rig: open, turned down, to one side, sent everywhere — and an
+        // MC's chain on it.
+        let rig = Preset::Mc.applied_to(&StripSettings {
+            open: true,
+            gain_db: -9.0,
+            pan: 0.4,
+            to_main: 0.7,
+            to_cue: 0.6,
+            to_monitor: 0.5,
+            ..StripSettings::default()
+        });
+        // A singer who sounded best soft, with an echo, a brighter top, a
+        // lower cut and the de-esser higher — and a row of their own that
+        // must not come with them.
+        let singer = StripSettings {
+            open: false,
+            gain_db: 6.0,
+            pan: -1.0,
+            to_main: 0.0,
+            to_cue: 0.0,
+            to_monitor: 0.0,
+            high_pass_hz: 60.0,
+            eq: Some(EqSettings {
+                high_db: 3.0,
+                ..EqSettings::default()
+            }),
+            echo: Some(EchoSettings::default()),
+            de_esser: Some(DeEsserSettings {
+                frequency_hz: 7_500.0,
+                ..DeEsserSettings::default()
+            }),
+            ..Preset::SoftSinger.applied_to(&StripSettings::default())
+        };
+        let laid = rig.with_chain(&singer.chain());
+        assert_eq!(laid.chain(), singer.chain());
+        let (laid, rig, singer) = (
+            serde_json::to_value(laid).expect("serializes"),
+            serde_json::to_value(rig).expect("serializes"),
+            serde_json::to_value(singer).expect("serializes"),
+        );
+        for key in keys(laid.clone()) {
+            let from = if ROW.contains(&key.as_str()) {
+                &rig
+            } else {
+                &singer
+            };
+            assert_eq!(laid[&key], from[&key], "{key}");
+            assert_ne!(rig[&key], singer[&key], "{key} tells the two apart");
+        }
+
+        // A chain read from a file is held as a strip's settings are.
+        let wild = Chain {
+            compressor: Some(CompressorSettings {
+                makeup_db: 200.0,
+                ..CompressorSettings::default()
+            }),
+            high_pass_hz: f32::NAN,
+            ..Chain::default()
+        }
+        .held();
+        assert!(
+            (wild.compressor.expect("on").makeup_db - range::COMPRESSOR_MAKEUP_DB.1).abs() < 1e-6
+        );
+        assert!((wild.high_pass_hz - Chain::default().high_pass_hz).abs() < f32::EPSILON);
     }
 
     /// **A strip that has stopped reads as stopped.** An MC's strip — no

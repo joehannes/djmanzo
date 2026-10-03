@@ -829,6 +829,18 @@ export interface Vocals {
   limits: VocalLimits;
   /** A strip with every stage on, each where it starts when switched on. */
   every_stage: StripSettings;
+  /**
+   * Who is on each strip, one per strip. `strips` is what is played, with
+   * their chain already laid over the strip's row.
+   */
+  on: (OnMic | null)[];
+}
+
+/** K3: a singer on a microphone, and where the chain they sing through is kept. */
+export interface OnMic {
+  singer: string;
+  /** On their guest-book record, on their place tonight, or nowhere yet. */
+  kept: "guest-book" | "tonight" | null;
 }
 
 export const vocalsState = () => invoke<Vocals>("vocals_state");
@@ -843,6 +855,13 @@ export const vocalStripSet = (strip: number, settings: StripSettings) =>
 
 export const vocalStripPreset = (strip: number, preset: VocalPreset) =>
   invoke<Vocals>("vocal_strip_preset", { strip, preset });
+
+/** K3: put a singer from the rotation on a microphone; `null` takes whoever is on it off. */
+export const vocalStripSinger = (strip: number, singer: string | null) =>
+  invoke<Vocals>("vocal_strip_singer", { strip, singer });
+
+/** K3: *Keep for this singer* — the chain of whoever is on the strip, kept where they are. */
+export const vocalStripKeep = (strip: number) => invoke<Vocals>("vocal_strip_keep", { strip });
 
 /**
  * Every CLAP plugin in the standard search paths.

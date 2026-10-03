@@ -586,6 +586,10 @@ pub struct VocalsDto {
     /// switches it on (`StripSettings::every_stage`): a stage the screen
     /// turns on starts where Rust says, not where the screen guesses.
     pub every_stage: dj_vocal::StripSettings,
+    /// Who is on each strip, one per strip: the singer, and where the chain
+    /// they are singing through is kept, if anywhere yet. `strips` is what
+    /// is played, their chain already laid over the strip's row.
+    pub on: Vec<Option<crate::karaoke::OnMic>>,
 }
 
 /// K3: one preset, as the row offers it.
@@ -601,7 +605,7 @@ fn chain_cost() -> f64 {
     *COST.get_or_init(|| dj_vocal::measure_chain(48_000.0))
 }
 
-fn vocals_dto(state: &AppState) -> VocalsDto {
+pub(crate) fn vocals_dto(state: &AppState) -> VocalsDto {
     use dj_core::param::GlobalParam;
     let get = |param| state.registry().get(dj_core::ParamId::Global(param));
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -614,9 +618,37 @@ fn vocals_dto(state: &AppState) -> VocalsDto {
         inputs,
         working,
         starved_frames,
-        state.read_vocal_settings(),
+        played_vocal_settings(state),
+        lock(state.on_mics()).clone(),
         chain_cost(),
     )
+}
+
+fn lock<T>(held: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    held.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// K3: what each strip plays — the rig kept in `vocal.json`, with the chain
+/// of whoever is on it laid over its row (docs/KARAOKE.md §6).
+fn played_vocal_settings(state: &AppState) -> Vec<dj_vocal::StripSettings> {
+    let on = lock(state.on_mics());
+    played(state.read_vocal_settings(), &on)
+}
+
+fn played(
+    mut rig: Vec<dj_vocal::StripSettings>,
+    on: &[Option<crate::karaoke::OnMic>],
+) -> Vec<dj_vocal::StripSettings> {
+    if rig.len() < on.len() {
+        rig.resize(on.len(), dj_vocal::StripSettings::default());
+    }
+    for (strip, singer) in rig.iter_mut().zip(on) {
+        if let Some(singer) = singer {
+            *strip = strip.with_chain(&singer.chain);
+        }
+    }
+    rig
 }
 
 /// The answer from its parts: the engine's counts, the settings kept on
@@ -628,9 +660,11 @@ pub fn vocals_for(
     working: usize,
     starved_frames: u64,
     mut strips: Vec<dj_vocal::StripSettings>,
+    mut on: Vec<Option<crate::karaoke::OnMic>>,
     chain_cost: f64,
 ) -> VocalsDto {
     strips.resize(inputs.max(strips.len()), dj_vocal::StripSettings::default());
+    on.resize(strips.len(), None);
     VocalsDto {
         inputs,
         working,
@@ -649,6 +683,7 @@ pub fn vocals_for(
             .map(|&(name, (min, max))| (name, [min, max]))
             .collect(),
         every_stage: dj_vocal::StripSettings::every_stage(),
+        on,
     }
 }
 
@@ -662,7 +697,7 @@ pub fn vocals_open(
     let device = device_id.map(dj_audio::DeviceId::new);
     let config = state
         .host()
-        .open_vocals(device, state.read_vocal_settings())
+        .open_vocals(device, played_vocal_settings(&state))
         .map_err(|e| e.to_string())?;
     Ok(MicDeviceDto::from(&config))
 }
@@ -692,15 +727,15 @@ pub fn vocal_strip_set(
 }
 
 /// K3: make a strip what a preset is for, keeping what the host set by hand
-/// on its row — open, fader, pan and sends.
+/// on its row — open, fader, pan and sends. With a singer on it, it is their
+/// chain that changes.
 #[tauri::command]
 pub fn vocal_strip_preset(
     state: State<'_, AppState>,
     strip: u8,
     preset: dj_vocal::Preset,
 ) -> Result<VocalsDto, String> {
-    let current = state
-        .read_vocal_settings()
+    let current = played_vocal_settings(&state)
         .get(usize::from(strip))
         .copied()
         .unwrap_or_default();
@@ -708,27 +743,180 @@ pub fn vocal_strip_preset(
     Ok(vocals_dto(&state))
 }
 
+fn strip_index(strip: u8) -> Result<usize, String> {
+    let index = usize::from(strip);
+    if index < dj_vocal::MOST_STRIPS {
+        Ok(index)
+    } else {
+        Err(format!("djmanzo has no microphone {}", index + 1))
+    }
+}
+
+fn send_vocal_strip(
+    state: &AppState,
+    strip: usize,
+    settings: dj_vocal::StripSettings,
+) -> Result<(), String> {
+    let strip = u8::try_from(strip).map_err(|_| "no such microphone".to_owned())?;
+    state
+        .bus()
+        .send_command(dj_engine::Command::VocalStrip { strip, settings })
+        .map_err(|_| "the engine is not accepting commands".to_owned())
+}
+
+/// One strip's settings, as the screen sent them: held, kept, played.
+///
+/// With nobody on the strip, all of it is the rig's and goes to
+/// `vocal.json`. With a singer on it, only the row does — open, fader, pan,
+/// sends — and the chain is the singer's, played until they come off the
+/// strip and kept only by [`vocal_strip_keep`]: the rig is not changed by a
+/// compressor turned up for one voice.
 pub(crate) fn set_vocal_strip(
     state: &AppState,
     strip: u8,
     settings: dj_vocal::StripSettings,
 ) -> Result<(), String> {
-    let index = usize::from(strip);
-    if index >= dj_vocal::MOST_STRIPS {
-        return Err(format!("djmanzo has no microphone {}", index + 1));
-    }
+    let index = strip_index(strip)?;
     // Whatever the screen sent, what is kept and played is inside the limits.
     let settings = settings.held();
+    let mut on = lock(state.on_mics());
     let mut kept = state.read_vocal_settings();
     if kept.len() <= index {
         kept.resize(index + 1, dj_vocal::StripSettings::default());
     }
-    kept[index] = settings;
+    match on.get_mut(index).and_then(Option::as_mut) {
+        Some(singer) => {
+            kept[index] = settings.with_chain(&kept[index].chain());
+            singer.chain = settings.chain();
+        }
+        None => kept[index] = settings,
+    }
     state.write_vocal_settings(&kept);
-    state
-        .bus()
-        .send_command(dj_engine::Command::VocalStrip { strip, settings })
-        .map_err(|_| "the engine is not accepting commands".to_owned())
+    send_vocal_strip(state, index, settings)
+}
+
+/// K3: put a singer from the rotation on a microphone, the way a record is
+/// put on a deck — or, with no singer, take whoever is on it off.
+///
+/// The chain kept for them is laid over the strip's row: from their record in
+/// the guest book when they agreed to be kept, else from their place in
+/// tonight's rotation, else the strip's own chain to start from. One singer
+/// is on one microphone: put on this one, they leave any other, which goes
+/// back to the rig. Putting a singer on the strip they are already on keeps
+/// what has been changed for them since.
+#[tauri::command]
+pub fn vocal_strip_singer(
+    state: State<'_, AppState>,
+    strip: u8,
+    singer: Option<String>,
+) -> Result<VocalsDto, String> {
+    put_on_mic(&state, strip, singer.as_deref())?;
+    Ok(vocals_dto(&state))
+}
+
+pub(crate) fn put_on_mic(state: &AppState, strip: u8, singer: Option<&str>) -> Result<(), String> {
+    use crate::karaoke::{Kept, OnMic};
+    let index = strip_index(strip)?;
+    let singer = singer.map(str::trim).filter(|name| !name.is_empty());
+    let mut rig = state.read_vocal_settings();
+    let mut on = lock(state.on_mics());
+    let most = rig.len().max(on.len()).max(index + 1);
+    rig.resize(most, dj_vocal::StripSettings::default());
+    on.resize(most, None);
+    let already = |slot: &Option<OnMic>, name: &str| {
+        slot.as_ref()
+            .is_some_and(|on| crate::guests::same_name(&on.singer, name))
+    };
+    if singer.is_some_and(|name| already(&on[index], name)) {
+        return Ok(());
+    }
+    let mut changed = vec![index];
+    if let Some(name) = singer {
+        for (other, slot) in on.iter_mut().enumerate() {
+            if other != index && already(slot, name) {
+                *slot = None;
+                changed.push(other);
+            }
+        }
+    }
+    on[index] = singer.map(|name| {
+        let (chain, kept) = if let Some(chain) = state.guests().microphone(name) {
+            (chain, Some(Kept::GuestBook))
+        } else if let Some(chain) = state.karaoke().microphone(name) {
+            (chain, Some(Kept::Tonight))
+        } else {
+            (rig[index].chain(), None)
+        };
+        OnMic {
+            singer: name.to_owned(),
+            chain,
+            kept,
+        }
+    });
+    let playing = played(rig, &on);
+    for strip in changed {
+        send_vocal_strip(state, strip, playing[strip])?;
+    }
+    Ok(())
+}
+
+/// K3: *Keep for this singer* — the chain the singer on `strip` is singing
+/// through, kept for the next time they are put on a microphone: on their
+/// record in the guest book when they agreed to be kept, otherwise on their
+/// place in tonight's rotation.
+///
+/// # Errors
+/// Nobody on the strip; a singer who is in neither; the journal not written.
+#[tauri::command]
+pub fn vocal_strip_keep(state: State<'_, AppState>, strip: u8) -> Result<VocalsDto, String> {
+    keep_for_singer(&state, strip)?;
+    Ok(vocals_dto(&state))
+}
+
+pub(crate) fn keep_for_singer(state: &AppState, strip: u8) -> Result<(), String> {
+    use crate::karaoke::Kept;
+    let index = strip_index(strip)?;
+    let mut on = lock(state.on_mics());
+    let singer = on
+        .get_mut(index)
+        .and_then(Option::as_mut)
+        .ok_or_else(|| format!("nobody is on Mic {}", index + 1))?;
+    let mut journal = state.guests();
+    if journal.keep_microphone(&singer.singer, singer.chain) {
+        state.set_guests(&journal, &[])?;
+        singer.kept = Some(Kept::GuestBook);
+        return Ok(());
+    }
+    let mut rotation = state.karaoke();
+    if rotation.keep_microphone(&singer.singer, singer.chain) {
+        state.set_karaoke(&rotation);
+        singer.kept = Some(Kept::Tonight);
+        return Ok(());
+    }
+    Err(format!(
+        "{} is not in tonight's rotation and has not agreed to be kept in the guest book",
+        singer.singer
+    ))
+}
+
+/// K3: every singer off every microphone, each strip back to the rig — a
+/// new night has nobody on it yet.
+fn everybody_off_the_mics(state: &AppState) {
+    let mut on = lock(state.on_mics());
+    let was: Vec<usize> = on
+        .iter()
+        .enumerate()
+        .filter_map(|(strip, slot)| slot.is_some().then_some(strip))
+        .collect();
+    on.clear();
+    drop(on);
+    let rig = state.read_vocal_settings();
+    for strip in was {
+        let settings = rig.get(strip).copied().unwrap_or_default();
+        if send_vocal_strip(state, strip, settings).is_err() {
+            break;
+        }
+    }
 }
 
 #[tauri::command]
@@ -13979,12 +14167,19 @@ pub fn karaoke_key(state: State<'_, AppState>, singer: String, key: i32) -> Rota
 #[tauri::command]
 #[must_use]
 pub fn karaoke_clear(state: State<'_, AppState>) -> RotationDto {
+    new_night(&state)
+}
+
+/// What *New night* does, minus Tauri's `State` wrapper: and K3, everybody
+/// off the singers' microphones.
+pub(crate) fn new_night(state: &AppState) -> RotationDto {
     let mut journal = state.guests();
     let unlink = journal.new_night();
     if let Err(error) = state.set_guests(&journal, &unlink) {
         tracing::warn!(%error, "tonight's guests are still in the journal");
     }
-    with_rotation(&state, |rotation| {
+    everybody_off_the_mics(state);
+    with_rotation(state, |rotation| {
         rotation.clear();
         true
     })

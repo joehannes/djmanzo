@@ -2340,10 +2340,14 @@ export async function openShell(
           // test chose.
           // K3: the singers' microphones -- opening gives Rust's two-input
           // answer from `vocals.json`, and a strip's settings and preset are
-          // kept as sent. Every call is recorded for the test to read.
+          // kept as sent. A singer put on a strip leaves any other, with
+          // nothing kept for them; keeping says it was kept tonight -- where
+          // the chain comes from and goes is `dj_app`'s, and tested there.
+          // Every call is recorded for the test to read.
           if (cmd.startsWith("vocals_") || cmd.startsWith("vocal_strip_")) {
             ((win.__vocalCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
-            type Held = { strips: Record<string, unknown>[] };
+            type On = { singer: string; kept: string | null } | null;
+            type Held = { strips: Record<string, unknown>[]; on: On[] };
             const held = (win.__vocals ??= structuredClone(answers.vocals_state)) as Held;
             if (cmd === "vocals_open") {
               win.__vocals = structuredClone(answers.vocals_opened);
@@ -2364,6 +2368,19 @@ export async function openShell(
             }
             if (cmd === "vocal_strip_preset") {
               held.strips[Number(args.strip)] = { ...held.strips[Number(args.strip)], preset: args.preset };
+            }
+            if (cmd === "vocal_strip_singer") {
+              const singer = (args.singer as string | null) ?? null;
+              const strip = Number(args.strip);
+              if (held.on[strip]?.singer !== singer) {
+                held.on = held.on.map((on) => (on?.singer === singer ? null : on));
+                held.on[strip] = singer === null ? null : { singer, kept: null };
+              }
+            }
+            if (cmd === "vocal_strip_keep") {
+              const on = held.on[Number(args.strip)];
+              if (!on) return Promise.reject(new Error(`nobody is on Mic ${Number(args.strip) + 1}`));
+              on.kept = "tonight";
             }
             return Promise.resolve(held);
           }

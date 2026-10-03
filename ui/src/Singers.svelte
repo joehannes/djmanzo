@@ -27,10 +27,13 @@
     karaokeSang,
     librarySearch,
     loadTrack,
+    vocalsState,
+    vocalStripSinger,
     type Breaks,
     type DeckState,
     type LibraryTrack,
     type Rotation,
+    type Vocals,
     type VocalsState,
   } from "./api";
 
@@ -98,6 +101,31 @@
       error = String(e);
     }
     journalRev += 1;
+  }
+
+  /**
+   * K3: the singers' microphones as Rust answers — shared with the section
+   * below, so a singer put on a microphone here is on its row there.
+   */
+  let mics = $state<Vocals | null>(null);
+  /** How many microphones the engine holds. */
+  const micCount = $derived(vocals?.inputs ?? 0);
+  const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+  /** Put a singer on a microphone, the way a record goes on a deck; `null` takes them off. */
+  async function onMic(strip: number, singer: string | null) {
+    error = "";
+    try {
+      mics = await vocalStripSinger(strip, singer);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /** A new night has nobody on a microphone: Rust has taken them off. */
+  async function newNight() {
+    await change(karaokeClear());
+    if (micCount > 0) mics = await vocalsState().catch(() => mics);
   }
 
   /**
@@ -278,6 +306,22 @@
           onclick={() => (asking = { name: upNext.name })}>Guest book</button
         >
       </div>
+      {#if micCount > 0 && mics}
+        <!--
+          K3: on a microphone, the way a record goes on a deck — and through
+          the chain kept for them. Pressed again, off it.
+        -->
+        <div class="on-mic" role="group" aria-label="{upNext.name} on a microphone">
+          {#each Array.from({ length: micCount }, (_, i) => i) as strip (strip)}
+            {@const here = sameName(mics.on[strip]?.singer ?? "", upNext.name)}
+            <button
+              aria-pressed={here}
+              title={here ? `Take ${upNext.name} off Mic ${strip + 1}` : `${upNext.name} sings on Mic ${strip + 1}`}
+              onclick={() => void onMic(strip, here ? null : upNext.name)}>Mic {strip + 1}</button
+            >
+          {/each}
+        </div>
+      {/if}
     </section>
   {:else}
     <p class="empty">Nobody is queued. Add the first singer below.</p>
@@ -432,7 +476,7 @@
     </details>
   {/if}
 
-  <Microphones live={vocals} {enabled} />
+  <Microphones live={vocals} {enabled} bind:vocals={mics} singers={(rotation?.singers ?? []).map((s) => s.name)} />
 
   <WordTiming {decks} {deckCount} />
 
@@ -446,7 +490,7 @@
     >Singers' screen — the words, on a display of its own</button
   >
 
-  <button class="quiet new-night" onclick={() => void change(karaokeClear())}
+  <button class="quiet new-night" onclick={() => void newNight()}
     title="Everybody's keys are kept, and so are the guests who agreed to be"
     >New night — clear the list and tonight's guests</button
   >
@@ -516,12 +560,18 @@
   }
 
   .key,
-  .actions {
+  .actions,
+  .on-mic {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.35rem;
     margin-top: 0.3rem;
+  }
+
+  .on-mic button[aria-pressed="true"] {
+    color: var(--active);
+    border-color: var(--active);
   }
 
   .done {

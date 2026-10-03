@@ -295,6 +295,8 @@ pub struct AppState {
     automix: Arc<Mutex<crate::automix::Automix>>,
     /// §107: break music between singers.
     breaks: Mutex<crate::breaks::Held>,
+    /// K3: who is on each singers' microphone, strip by strip.
+    on_mics: Mutex<Vec<Option<crate::karaoke::OnMic>>>,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -583,6 +585,7 @@ impl AppState {
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
+            on_mics: Mutex::new(Vec::new()),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1557,6 +1560,13 @@ impl AppState {
     #[must_use]
     pub fn breaks(&self) -> &Mutex<crate::breaks::Held> {
         &self.breaks
+    }
+
+    /// K3: who is on each singers' microphone, strip by strip — `None` for
+    /// a strip with nobody on it, and nothing past the last strip anybody
+    /// has been put on.
+    pub fn on_mics(&self) -> &Mutex<Vec<Option<crate::karaoke::OnMic>>> {
+        &self.on_mics
     }
 
     fn breaks_path(&self) -> Option<std::path::PathBuf> {

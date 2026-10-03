@@ -9,7 +9,10 @@
    * singer hears themselves. The chain behind each strip is Rust's
    * (`dj_vocal`); this draws the snapshot's readings and sends the host's
    * choices, which Rust keeps for the next time djmanzo starts. A press on a
-   * row's name opens the chain behind it (`StripChain`). Below them,
+   * row's name opens the chain behind it (`StripChain`), and who is singing
+   * into it: a singer from the rotation put on a microphone sings through
+   * the chain kept for them, laid over the strip's row by Rust, and *Keep for
+   * this singer* keeps what the host has changed for them. Below them,
    * on an output with eight channels, the music's level in the singers'
    * monitor — the wedge's own, apart from the room's.
    */
@@ -17,13 +20,16 @@
     dispatch,
     listInputs,
     MONITOR_MUSIC_OFF_DB,
+    vocalStripKeep,
     vocalStripPreset,
     vocalStripSet,
+    vocalStripSinger,
     vocalsClose,
     vocalsOpen,
     vocalsState,
     type Device,
     type MicDevice,
+    type OnMic,
     type StripSettings,
     type VocalPreset,
     type Vocals,
@@ -31,9 +37,20 @@
   } from "./api";
   import StripChain from "./StripChain.svelte";
 
-  let { live, enabled = true }: { live?: VocalsState; enabled?: boolean } = $props();
+  let {
+    live,
+    enabled = true,
+    vocals = $bindable(null),
+    singers = [],
+  }: {
+    live?: VocalsState;
+    enabled?: boolean;
+    /** Rust's answer, shared with the rotation above, which puts singers on microphones too. */
+    vocals?: Vocals | null;
+    /** Tonight's rotation, by name: who can be put on a microphone. */
+    singers?: string[];
+  } = $props();
 
-  let vocals = $state<Vocals | null>(null);
   let inputs = $state<Device[]>([]);
   let device = $state("");
   let opened = $state<MicDevice | null>(null);
@@ -101,6 +118,34 @@
     } catch (e) {
       error = String(e);
     }
+  }
+
+  async function putOn(strip: number, singer: string | null) {
+    try {
+      vocals = await vocalStripSinger(strip, singer);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function keep(strip: number) {
+    error = "";
+    try {
+      vocals = await vocalStripKeep(strip);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /** Who can be put on a strip: the rotation, and whoever is on it already. */
+  const choices = (on: OnMic | null) =>
+    on && !singers.some((name) => name.toLowerCase() === on.singer.toLowerCase()) ? [on.singer, ...singers] : singers;
+
+  /** Where the chain a singer is singing through came from, said for the host. */
+  function whence(on: OnMic): string {
+    if (on.kept === "guest-book") return `${on.singer}'s own, from the guest book`;
+    if (on.kept === "tonight") return `${on.singer}'s own, kept for tonight`;
+    return `the strip's own — nothing kept for ${on.singer} yet`;
   }
 
   async function preset(strip: number, chosen: VocalPreset) {
@@ -190,19 +235,22 @@
     <ul class="strips" aria-label="Singers' microphones">
       {#each (vocals?.strips ?? []).slice(0, count) as strip, i (i)}
         {@const face = live?.strips[i]}
+        {@const on = vocals?.on[i] ?? null}
         <li
           class="strip"
           data-strip={i + 1}
           data-open={strip.open}
           data-working={face?.working ?? false}
           data-gate={face?.gate_open ?? false}
+          data-singer={on?.singer ?? ""}
         >
           <button
             class="name"
             aria-expanded={chains[i] ?? false}
-            title="The chain behind Mic {i + 1}"
+            title={on ? `${on.singer}, on Mic ${i + 1}: the chain behind it` : `The chain behind Mic ${i + 1}`}
             onclick={() => (chains[i] = !chains[i])}
-            >Mic {i + 1}<span class="more" aria-hidden="true">{chains[i] ? " ▾" : " ▸"}</span></button
+            >{on ? on.singer : `Mic ${i + 1}`}<span class="more" aria-hidden="true">{chains[i] ? " ▾" : " ▸"}</span
+            ></button
           >
           <button
             class="switch"
@@ -239,6 +287,25 @@
             <span class="silent">nothing on Mic {i + 1}</span>
           {/if}
           {#if chains[i] && vocals}
+            <div class="who" role="group" aria-label="Who is on Mic {i + 1}">
+              <select
+                aria-label="Who is singing on Mic {i + 1}"
+                value={on?.singer ?? ""}
+                onchange={(e) => void putOn(i, e.currentTarget.value || null)}
+              >
+                <option value="">Nobody — the strip's own chain</option>
+                {#each choices(on) as name (name)}
+                  <option value={name}>{name}</option>
+                {/each}
+              </select>
+              {#if on}
+                <span class="whence">{whence(on)}</span>
+                <button
+                  title="What {on.singer} sounds best through, kept for the next time they are on a microphone"
+                  onclick={() => void keep(i)}>Keep for {on.singer}</button
+                >
+              {/if}
+            </div>
             <StripChain
               index={i}
               {strip}
@@ -372,6 +439,11 @@
     font: inherit;
     font-weight: 600;
     white-space: nowrap;
+    /* A singer's name in place of "Mic 3": a long one is cut, not let push
+       the fader off the row. */
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
     text-align: left;
     padding: 0.1rem 0.2rem;
     border: none;
@@ -415,6 +487,20 @@
 
   .silent {
     grid-column: 1 / -1;
+  }
+
+  .who {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    padding-top: 0.3rem;
+    font-size: 0.85em;
+  }
+
+  .whence {
+    color: var(--text-dim);
   }
 
   .monitor {

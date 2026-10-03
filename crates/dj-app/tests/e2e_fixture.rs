@@ -1963,13 +1963,28 @@ fn the_browser_fixture_has_the_singers_microphones() {
         open: true,
         ..dj_vocal::StripSettings::default()
     });
+    // K3: Ana on Mic 1, through the soft singer's chain kept on her record.
+    let ana = dj_vocal::Preset::SoftSinger.applied_to(&dj_vocal::StripSettings::default());
     let fixture = serde_json::json!({
-        "closed": dj_app::commands::vocals_for(0, 0, 0, Vec::new(), 0.006),
+        "closed": dj_app::commands::vocals_for(0, 0, 0, Vec::new(), Vec::new(), 0.006),
         "open": dj_app::commands::vocals_for(
             2,
             1,
             0,
             vec![dj_vocal::StripSettings::default(), mc],
+            Vec::new(),
+            0.006,
+        ),
+        "singing": dj_app::commands::vocals_for(
+            2,
+            1,
+            0,
+            vec![ana, mc],
+            vec![Some(dj_app::karaoke::OnMic {
+                singer: "Ana".to_owned(),
+                chain: ana.chain(),
+                kept: Some(dj_app::karaoke::Kept::GuestBook),
+            })],
             0.006,
         ),
     });

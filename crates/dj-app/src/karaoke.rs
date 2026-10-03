@@ -52,7 +52,7 @@ pub struct Request {
 }
 
 /// One singer in the rotation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Singer {
     pub name: String,
     /// What they have asked for, in the order they asked.
@@ -61,6 +61,12 @@ pub struct Singer {
     /// How many times they have sung tonight.
     #[serde(default)]
     pub turns: u32,
+    /// K3: the microphone chain they sounded best through, kept for tonight
+    /// (docs/KARAOKE.md §6) — and gone at *New night* with the rest of their
+    /// place. A guest who has agreed to be kept has it on their record in
+    /// the guest book instead ([`crate::guests::Guest::microphone`]).
+    #[serde(default)]
+    pub microphone: Option<dj_vocal::Chain>,
 }
 
 /// Somebody sang something, in some key. The history keys are read from.
@@ -75,7 +81,7 @@ pub struct Sung {
 
 /// The night's rotation: the singers in the order they will be called, and
 /// everything sung so far.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rotation {
     /// In calling order. The first singer with a song is up next.
     #[serde(default)]
@@ -83,6 +89,32 @@ pub struct Rotation {
     /// Oldest first. Kept across nights, because keys are.
     #[serde(default)]
     pub history: Vec<Sung>,
+}
+
+/// K3: a singer on one of the singers' microphones (docs/KARAOKE.md §6).
+///
+/// Never written to disk: who is singing into which microphone is a moment
+/// of the night, and a restart gives every strip back to the rig.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OnMic {
+    pub singer: String,
+    /// What the strip plays for them, laid over its row: the chain kept for
+    /// them, or the strip's own when none is, with every change the host has
+    /// made since they were put on it — which *Keep for this singer* keeps.
+    #[serde(skip)]
+    pub chain: dj_vocal::Chain,
+    /// Where their chain is kept, if anywhere yet.
+    pub kept: Option<Kept>,
+}
+
+/// K3: where a singer's microphone chain is kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Kept {
+    /// On their record in the guest book: they agreed to be kept.
+    GuestBook,
+    /// On their place in tonight's rotation, gone at *New night*.
+    Tonight,
 }
 
 /// The most key change a request may ask for, either way. Beyond a fifth a
@@ -136,6 +168,7 @@ impl Rotation {
                 name: name.to_owned(),
                 songs: vec![request],
                 turns: 0,
+                microphone: None,
             }),
         }
         true
@@ -258,6 +291,31 @@ impl Rotation {
                     }
             })
             .map(|sung| sung.key)
+    }
+
+    /// K3: the microphone chain kept for `name` tonight, held to the
+    /// strip's limits — the rotation is a file too.
+    #[must_use]
+    pub fn microphone(&self, name: &str) -> Option<dj_vocal::Chain> {
+        self.singers
+            .iter()
+            .find(|singer| same(&singer.name, name))?
+            .microphone
+            .map(|chain| chain.held())
+    }
+
+    /// K3: keep `chain` on `name`'s place tonight. Answers whether they are
+    /// in the rotation to keep it on.
+    pub fn keep_microphone(&mut self, name: &str, chain: dj_vocal::Chain) -> bool {
+        let Some(singer) = self
+            .singers
+            .iter_mut()
+            .find(|singer| same(&singer.name, name))
+        else {
+            return false;
+        };
+        singer.microphone = Some(chain.held());
+        true
     }
 
     /// A new night: everybody off the list, the history kept.

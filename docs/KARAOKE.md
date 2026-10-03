@@ -713,7 +713,41 @@ under it. A row now stays inside its panel, its level and compression going
 under the fader where the panel is narrow, and the chain fits the row — held
 by a browser test that narrows the list, and the preset select let give way
 because WebKitGTK draws one wider than the tests' Chromium does.
-**Not yet:** a singer's own settings laid over the strip's.
+**And a singer's own chain, laid over the strip's.** A strip's settings are
+now two layers, as designed. What the voice goes through — the preset, the
+low cut, talkover and every stage, `dj_vocal::Chain` — is split from the row,
+which stays the rig's whoever is singing: open or closed, the fader, pan and
+the three sends (`StripSettings::chain` and `with_chain`; a preset is now
+that same split, so the two cannot disagree about which is which). The up-next
+singer has a button a microphone beside *Load on 1*, and behind a row the
+host can put anybody in tonight's rotation on it, or nobody
+(`vocal_strip_singer`); the row then carries the singer's name in place of
+*Mic 1*. Put on a microphone, a singer sings through the chain kept for them
+— from their guest-book record when they agreed to be kept, else from their
+place in tonight's rotation, else the strip's own to start from — laid over
+that strip's row. While they are on it, a change to the row is the rig's and
+goes to `vocal.json`; a change to the chain is theirs, played and not kept,
+so a compressor turned up for one voice does not become the rig's. *Keep for
+this singer* (`vocal_strip_keep`) keeps it: on `Guest::microphone` with
+§123's *keep* consent, on `Singer::microphone` without. A guest's record only
+gains one by that press, never from the form, and loses it when they are no
+longer to be kept; a rotation place loses it at *New night*, which also takes
+everybody off the microphones. One singer is on one microphone: put on
+another, they leave the first, which goes back to the rig. Who is on which is
+never written down — a restart gives every strip back to the rig. Held by a
+`dj-vocal` test that reads every field of a strip off its settings and
+requires each to be the chain's or one of the row's six, never both or
+neither; a host test that reads what the engine is sent off the command
+queue itself (Ana on Mic 1 through the rig's chain; her compressor up and the
+fader down, the fader alone reaching `vocal.json`; kept on her rotation place;
+off, the rig as it was; on Mic 2, her chain over Mic 2's row; Ben's MC chain
+kept in the guest book because he agreed to be kept; Ana put where Ben is
+taking him off and leaving Mic 2; *New night* taking everybody off and Ana's
+chain with her place, Ben's staying until he is no longer to be kept); a
+journal test (the form can neither set nor clear it); a golden of Rust's
+answer with a singer on a strip; and two browser tests.
+**Not yet:** strip 0 answering to today's `Mic*` parameters, and §123's voice
+take recording the strip its singer is on — which this makes possible.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

@@ -131,6 +131,7 @@
         1.0
       ]
     },
+    "on": [],
     "presets": [
       {
         "id": "singer",
@@ -289,6 +290,10 @@
         1.0
       ]
     },
+    "on": [
+      null,
+      null
+    ],
     "presets": [
       {
         "id": "singer",
@@ -334,6 +339,229 @@
         "open": false,
         "pan": 0.0,
         "preset": "singer",
+        "reverb": {
+          "level": 0.18000000715255737,
+          "seconds": 1.600000023841858
+        },
+        "talkover": false,
+        "to_cue": 0.0,
+        "to_main": 1.0,
+        "to_monitor": 1.0
+      },
+      {
+        "compressor": {
+          "makeup_db": 3.0,
+          "ratio": 3.0,
+          "threshold_db": -20.0
+        },
+        "de_esser": {
+          "frequency_hz": 6500.0,
+          "threshold_db": -30.0
+        },
+        "echo": null,
+        "eq": null,
+        "gain_db": 0.0,
+        "gate": {
+          "range_db": 40.0,
+          "threshold_db": -45.0
+        },
+        "high_pass_hz": 100.0,
+        "open": true,
+        "pan": 0.0,
+        "preset": "mc",
+        "reverb": null,
+        "talkover": true,
+        "to_cue": 0.0,
+        "to_main": 1.0,
+        "to_monitor": 1.0
+      }
+    ],
+    "working": 1
+  },
+  "singing": {
+    "chain_cost": 0.006,
+    "every_stage": {
+      "compressor": {
+        "makeup_db": 3.0,
+        "ratio": 3.0,
+        "threshold_db": -20.0
+      },
+      "de_esser": {
+        "frequency_hz": 6500.0,
+        "threshold_db": -30.0
+      },
+      "echo": {
+        "delay_ms": 320.0,
+        "feedback": 0.3499999940395355,
+        "level": 0.25
+      },
+      "eq": {
+        "high_db": 0.0,
+        "low_db": 0.0,
+        "mid_db": 0.0,
+        "mid_hz": 1000.0
+      },
+      "gain_db": 0.0,
+      "gate": {
+        "range_db": 40.0,
+        "threshold_db": -45.0
+      },
+      "high_pass_hz": 100.0,
+      "open": false,
+      "pan": 0.0,
+      "preset": "singer",
+      "reverb": {
+        "level": 0.18000000715255737,
+        "seconds": 1.600000023841858
+      },
+      "talkover": false,
+      "to_cue": 0.0,
+      "to_main": 1.0,
+      "to_monitor": 1.0
+    },
+    "inputs": 2,
+    "limits": {
+      "compressor.makeup_db": [
+        0.0,
+        24.0
+      ],
+      "compressor.ratio": [
+        1.0,
+        20.0
+      ],
+      "compressor.threshold_db": [
+        -50.0,
+        0.0
+      ],
+      "de_esser.frequency_hz": [
+        2000.0,
+        12000.0
+      ],
+      "de_esser.threshold_db": [
+        -60.0,
+        0.0
+      ],
+      "echo.delay_ms": [
+        20.0,
+        1500.0
+      ],
+      "echo.feedback": [
+        0.0,
+        0.8999999761581421
+      ],
+      "echo.level": [
+        0.0,
+        1.0
+      ],
+      "eq.high_db": [
+        -12.0,
+        12.0
+      ],
+      "eq.low_db": [
+        -12.0,
+        12.0
+      ],
+      "eq.mid_db": [
+        -12.0,
+        12.0
+      ],
+      "eq.mid_hz": [
+        200.0,
+        8000.0
+      ],
+      "gain_db": [
+        -60.0,
+        12.0
+      ],
+      "gate.range_db": [
+        0.0,
+        80.0
+      ],
+      "gate.threshold_db": [
+        -80.0,
+        -10.0
+      ],
+      "high_pass_hz": [
+        0.0,
+        400.0
+      ],
+      "pan": [
+        -1.0,
+        1.0
+      ],
+      "reverb.level": [
+        0.0,
+        1.0
+      ],
+      "reverb.seconds": [
+        0.20000000298023224,
+        6.0
+      ],
+      "to_cue": [
+        0.0,
+        1.0
+      ],
+      "to_main": [
+        0.0,
+        1.0
+      ],
+      "to_monitor": [
+        0.0,
+        1.0
+      ]
+    },
+    "on": [
+      {
+        "kept": "guest-book",
+        "singer": "Ana"
+      },
+      null
+    ],
+    "presets": [
+      {
+        "id": "singer",
+        "name": "Singer"
+      },
+      {
+        "id": "soft-singer",
+        "name": "Soft singer"
+      },
+      {
+        "id": "loud-singer",
+        "name": "Loud singer"
+      },
+      {
+        "id": "mc",
+        "name": "MC"
+      },
+      {
+        "id": "instrument",
+        "name": "Instrument"
+      }
+    ],
+    "starved_frames": 0,
+    "strips": [
+      {
+        "compressor": {
+          "makeup_db": 8.0,
+          "ratio": 3.0,
+          "threshold_db": -28.0
+        },
+        "de_esser": {
+          "frequency_hz": 6500.0,
+          "threshold_db": -30.0
+        },
+        "echo": null,
+        "eq": null,
+        "gain_db": 0.0,
+        "gate": {
+          "range_db": 40.0,
+          "threshold_db": -52.0
+        },
+        "high_pass_hz": 100.0,
+        "open": false,
+        "pan": 0.0,
+        "preset": "soft-singer",
         "reverb": {
           "level": 0.18000000715255737,
           "seconds": 1.600000023841858

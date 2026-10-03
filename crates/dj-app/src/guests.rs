@@ -109,7 +109,7 @@ pub struct Performance {
 }
 
 /// A guest who sang.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Guest {
     /// Stable: made when the guest is first written down.
@@ -138,6 +138,14 @@ pub struct Guest {
     /// A recording of their voice made while they are singing, before the
     /// song is marked as sung; it goes onto that song when it is.
     pub take: Option<String>,
+    /// K3: the microphone chain they sounded best through — the compressor
+    /// and the room the host found for them — laid over a strip when they
+    /// are put on one (docs/KARAOKE.md §6). Settings for a voice with a name
+    /// on them are about a person, so they are kept here only with
+    /// [`Consent::keep`]; without it they are kept on the guest's place in
+    /// tonight's rotation ([`crate::karaoke::Singer::microphone`]) and go
+    /// with it.
+    pub microphone: Option<dj_vocal::Chain>,
 }
 
 impl Guest {
@@ -296,7 +304,7 @@ pub fn latest_voice(guest: &Guest) -> Option<&str> {
 }
 
 /// The journal: every guest kept, and tonight's.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Journal {
     pub guests: Vec<Guest>,
@@ -463,6 +471,12 @@ impl Journal {
         guest.sang = before.as_ref().map(|g| g.sang.clone()).unwrap_or_default();
         guest.since = before.as_ref().map_or(now, |g| g.since);
         guest.take = before.as_ref().and_then(|g| g.take.clone());
+        // Kept by the press that keeps it, never by the form — and not at
+        // all once the guest is not to be kept.
+        guest.microphone = before
+            .as_ref()
+            .and_then(|g| g.microphone)
+            .filter(|_| guest.consent.keep);
         let mut unlink = Vec::new();
         if !guest.consent.voice {
             for song in &mut guest.sang {
@@ -492,12 +506,7 @@ impl Journal {
     /// tonight's only until they are asked.
     pub fn sang(&mut self, name: &str, song: Performance, now: i64) -> String {
         let name = name.trim();
-        if let Some(guest) = self
-            .guests
-            .iter_mut()
-            .rev()
-            .find(|guest| same_name(&guest.name, name))
-        {
+        if let Some(guest) = self.named(name).map(|at| &mut self.guests[at]) {
             let mut song = song;
             if let Some(take) = guest.take.take() {
                 song.voice = Some(take);
@@ -515,6 +524,44 @@ impl Journal {
         let id = guest.id.clone();
         self.guests.push(guest);
         id
+    }
+
+    /// Where the guest a rotation's singer is stands in the journal, found by
+    /// name: tonight's guest of that name if there is one, else the latest
+    /// kept one.
+    fn named(&self, name: &str) -> Option<usize> {
+        self.guests
+            .iter()
+            .rposition(|guest| same_name(&guest.name, name))
+    }
+
+    /// K3: the microphone chain kept for the rotation's singer `name` — only
+    /// on a guest who has agreed to be kept, and held to the strip's limits,
+    /// because the journal is a file.
+    #[must_use]
+    pub fn microphone(&self, name: &str) -> Option<dj_vocal::Chain> {
+        let guest = &self.guests[self.named(name)?];
+        guest
+            .consent
+            .keep
+            .then_some(guest.microphone)
+            .flatten()
+            .map(|chain| chain.held())
+    }
+
+    /// K3: keep `chain` for the rotation's singer `name`, on their record —
+    /// when they are in the journal and have agreed to be kept. Answers
+    /// whether it was kept here; when it was not, it belongs on their place
+    /// in tonight's rotation.
+    pub fn keep_microphone(&mut self, name: &str, chain: dj_vocal::Chain) -> bool {
+        let Some(guest) = self.named(name).map(|at| &mut self.guests[at]) else {
+            return false;
+        };
+        if !guest.consent.keep {
+            return false;
+        }
+        guest.microphone = Some(chain.held());
+        true
     }
 
     /// Attach a recording of a guest's voice: to the song they are singing
@@ -1191,6 +1238,43 @@ mod tests {
         assert!(lines[1].starts_with("\"Ana, from Madrid\""));
         assert!(lines[1].contains("\"Say \"\"yes\"\"\""));
         assert!(lines[3].starts_with("Bo,"));
+    }
+
+    /// K3: **a guest's microphone chain is the journal's, kept only while
+    /// they agree to be kept.** A form cannot put one on a record or take one
+    /// off, and a guest who is not to be kept has none there to read — the
+    /// host keeps it on their place in tonight's rotation instead.
+    #[test]
+    fn a_microphone_chain_is_kept_only_with_keep() {
+        let soft = dj_vocal::Preset::SoftSinger
+            .applied_to(&dj_vocal::StripSettings::default())
+            .chain();
+        let mut journal = Journal::default();
+        let mut forged = guest("Ana");
+        forged.consent.keep = true;
+        forged.microphone = Some(soft);
+        let id = journal.save(forged, 1).expect("saved").id;
+        assert_eq!(journal.microphone("Ana"), None, "not the form's to set");
+
+        assert!(journal.keep_microphone("ana", soft));
+        assert_eq!(journal.microphone("Ana"), Some(soft));
+        let mut sent_back = journal.get(&id).expect("there").clone();
+        sent_back.microphone = None;
+        sent_back.notes = "sang in the window".to_owned();
+        journal.save(sent_back, 2).expect("saved");
+        assert_eq!(
+            journal.microphone("Ana"),
+            Some(soft),
+            "nor the form's to clear"
+        );
+
+        let mut tonight_only = journal.get(&id).expect("there").clone();
+        tonight_only.consent.keep = false;
+        journal.save(tonight_only, 3).expect("saved");
+        assert_eq!(journal.microphone("Ana"), None);
+        assert!(!journal.keep_microphone("Ana", soft));
+        assert!(journal.get(&id).expect("there").microphone.is_none());
+        assert!(!journal.keep_microphone("Nobody", soft));
     }
 
     fn agreeing(name: &str) -> Guest {

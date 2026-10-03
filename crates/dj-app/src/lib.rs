@@ -590,6 +590,8 @@ pub fn run() {
             commands::vocals_state,
             commands::vocal_strip_set,
             commands::vocal_strip_preset,
+            commands::vocal_strip_singer,
+            commands::vocal_strip_keep,
             commands::open_device,
             commands::active_device,
             commands::start_audio,

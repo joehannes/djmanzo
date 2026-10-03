@@ -19,8 +19,18 @@ const section = (page: Page) => page.getByRole("region", { name: "Microphones" }
 const calls = (page: Page) =>
   page.evaluate(
     () =>
-      (window as unknown as { __vocalCalls?: { cmd: string; strip?: number; preset?: string; deviceId?: string; settings?: StripSettings }[] })
-        .__vocalCalls ?? [],
+      (
+        window as unknown as {
+          __vocalCalls?: {
+            cmd: string;
+            strip?: number;
+            preset?: string;
+            deviceId?: string;
+            settings?: StripSettings;
+            singer?: string | null;
+          }[];
+        }
+      ).__vocalCalls ?? [],
   );
 
 /** The engine's readings, as the snapshot carries them. */
@@ -50,7 +60,7 @@ const TWO = {
 const dispatched = (page: Page) =>
   page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []);
 
-async function singers(page: Page) {
+async function singers(page: Page, answers: Record<string, unknown> = {}) {
   await openShell(
     page,
     "/",
@@ -59,6 +69,7 @@ async function singers(page: Page) {
       list_inputs: [
         { id: "usb", name: "USB interface", channels: 2, sample_rate: 48_000, is_default: true, supports_split_output: false },
       ],
+      ...answers,
     },
   );
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -124,6 +135,114 @@ test.describe("K3: the singers' microphones", () => {
    * rest of the strip as it was; switching the room off sends no room and
    * takes its controls away; a second press closes the chain.
    */
+  /**
+   * **A singer goes on a microphone from the rotation, and what they sound
+   * best through is kept for them.** The up-next singer has a button a
+   * microphone, the way a record has *Load on 1*: pressed, Rust is asked to
+   * put them on that strip, and its row is named for them; pressed on
+   * another, they move; pressed again, they come off. Behind the row, who is
+   * on it can be anybody in the rotation or nobody, it says where their
+   * chain came from, and *Keep for* keeps it. Where the chain comes from and
+   * where it is kept is Rust's, and held by `dj_app`'s tests; this holds
+   * that every press asks Rust for exactly that.
+   */
+  test("a singer is put on a microphone from the rotation, and their chain kept", async ({ page }) => {
+    const song = (title: string) => ({ title, track: null, path: null, key: 0 });
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [
+          { name: "Ana", songs: [song("Dancing Queen")], turns: 0, microphone: null },
+          { name: "Ben", songs: [song("Toxic")], turns: 0, microphone: null },
+          { name: "Maximiliane von Hohenberg-Lindqvist", songs: [song("Zombie")], turns: 0, microphone: null },
+        ],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    const here = section(page);
+    const onMic = page.getByRole("group", { name: "Ana on a microphone" });
+    await expect(onMic).toHaveCount(0);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const rows = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem");
+    const asked = async () => (await calls(page)).filter((c) => c.cmd === "vocal_strip_singer" || c.cmd === "vocal_strip_keep");
+
+    await onMic.getByRole("button", { name: "Mic 2" }).click();
+    expect(await asked()).toEqual([{ cmd: "vocal_strip_singer", strip: 1, singer: "Ana" }]);
+    await expect(onMic.getByRole("button", { name: "Mic 2" })).toHaveAttribute("aria-pressed", "true");
+    await expect(rows.nth(1)).toHaveAttribute("data-singer", "Ana");
+    await expect(rows.nth(1).getByRole("button", { name: "Ana", exact: true })).toBeVisible();
+
+    await onMic.getByRole("button", { name: "Mic 1" }).click();
+    expect((await asked()).at(-1)).toEqual({ cmd: "vocal_strip_singer", strip: 0, singer: "Ana" });
+    await expect(onMic.getByRole("button", { name: "Mic 2" })).toHaveAttribute("aria-pressed", "false");
+    await expect(rows.nth(1).getByRole("button", { name: "Mic 2", exact: true })).toBeVisible();
+
+    // Behind Ana's row: who is on it, where her chain is from, and keeping it.
+    await rows.nth(0).getByRole("button", { name: "Ana", exact: true }).click();
+    const who = here.getByRole("group", { name: "Who is on Mic 1" });
+    const picker = who.getByRole("combobox", { name: "Who is singing on Mic 1" });
+    await expect(picker).toHaveValue("Ana");
+    await expect(who).toContainText("nothing kept for Ana yet");
+    await who.getByRole("button", { name: "Keep for Ana" }).click();
+    expect((await asked()).at(-1)).toEqual({ cmd: "vocal_strip_keep", strip: 0 });
+    await expect(who).toContainText("Ana's own, kept for tonight");
+
+    // A long name on the row and behind it, docked and narrower: inside.
+    const list = here.getByRole("list", { name: "Singers' microphones" });
+    const overrun = () =>
+      list.evaluate((ul) => Array.from(ul.children).map((row) => Math.max(0, row.scrollWidth - row.clientWidth)));
+    await picker.selectOption("Maximiliane von Hohenberg-Lindqvist");
+    await expect(who.getByRole("button", { name: "Keep for Maximiliane von Hohenberg-Lindqvist" })).toBeVisible();
+    expect(await overrun()).toEqual([0, 0]);
+    await list.evaluate((ul) => {
+      (ul as HTMLElement).style.width = "280px";
+    });
+    expect(await overrun()).toEqual([0, 0]);
+    await list.evaluate((ul) => {
+      (ul as HTMLElement).style.width = "";
+    });
+
+    await picker.selectOption("Ben");
+    expect((await asked()).at(-1)).toEqual({ cmd: "vocal_strip_singer", strip: 0, singer: "Ben" });
+    await expect(rows.nth(0)).toHaveAttribute("data-singer", "Ben");
+    await expect(onMic.getByRole("button", { name: "Mic 1" })).toHaveAttribute("aria-pressed", "false");
+    await picker.selectOption("");
+    expect((await asked()).at(-1)).toEqual({ cmd: "vocal_strip_singer", strip: 0, singer: null });
+    await expect(rows.nth(0)).toHaveAttribute("data-singer", "");
+    await expect(who.getByRole("button", { name: /Keep for/ })).toHaveCount(0);
+
+    // Pressed again, off.
+    await onMic.getByRole("button", { name: "Mic 2" }).click();
+    await onMic.getByRole("button", { name: "Mic 2" }).click();
+    expect((await asked()).slice(-2)).toEqual([
+      { cmd: "vocal_strip_singer", strip: 1, singer: "Ana" },
+      { cmd: "vocal_strip_singer", strip: 1, singer: null },
+    ]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Rust's answer with a singer on a strip reads as it.** Ana on Mic 1,
+   * through the soft singer's chain kept on her guest-book record, as
+   * `dj_app::commands::vocals_for` answers it: her name on the row, the
+   * preset hers, and the chain said to be from the guest book.
+   */
+  test("a singer on a strip, as Rust answers it", async ({ page }) => {
+    await singers(page, { vocals_opened: vocals.singing });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const first = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem").nth(0);
+    await expect(first).toHaveAttribute("data-singer", "Ana");
+    await expect(first.getByRole("combobox", { name: "Mic 1 is for" })).toHaveValue("soft-singer");
+    await first.getByRole("button", { name: "Ana", exact: true }).click();
+    await expect(here.getByRole("group", { name: "Who is on Mic 1" })).toContainText("Ana's own, from the guest book");
+    // Ana is not in tonight's rotation, and is still who is on it.
+    await expect(here.getByRole("combobox", { name: "Who is singing on Mic 1" })).toHaveValue("Ana");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   test("a row's chain is behind a press on its name, over Rust's ranges", async ({ page }) => {
     await singers(page);
     const here = section(page);

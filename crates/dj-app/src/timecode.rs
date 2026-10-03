@@ -737,10 +737,184 @@ mod tests {
         );
         assert!(read.to_main.abs() < f32::EPSILON);
 
-        let dto = crate::commands::vocals_for(2, 0, 0, Vec::new(), 0.0);
+        let dto = crate::commands::vocals_for(2, 0, 0, Vec::new(), Vec::new(), 0.0);
         assert_eq!(dto.limits.len(), dj_vocal::LIMITS.len());
         assert_eq!(dto.limits["compressor.makeup_db"], [0.0, 24.0]);
         assert_eq!(dto.every_stage, dj_vocal::StripSettings::every_stage());
+    }
+
+    /// K3: **a singer's chain is laid over the strip they are put on, and
+    /// kept where the singer is.** What the engine is sent is read off the
+    /// command queue itself. Ana, in tonight's rotation only, goes on Mic 1
+    /// through the rig's own chain; the host turns her compressor up and the
+    /// fader down — the fader goes to the rig, the compressor only to what is
+    /// played for her. *Keep for this singer* puts her chain on her place in
+    /// the rotation; off the microphone, the rig plays again as it was; on
+    /// Mic 2 she is heard through her chain over Mic 2's row. Ben, who agreed
+    /// to be kept, has his MC chain kept in the guest book instead, and
+    /// putting Ana where he is takes him off. *New night* takes everybody
+    /// off and Ana's chain with her place — Ben's stays, until he is no
+    /// longer to be kept.
+    #[test]
+    fn a_singers_chain_is_laid_over_the_strip_and_kept_where_the_singer_is() {
+        use crate::commands::{keep_for_singer, put_on_mic, set_vocal_strip, vocals_dto};
+        use crate::karaoke::Kept;
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut sent = move || {
+            let mut sent = Vec::new();
+            while let Ok(command) = queue.pop() {
+                if let dj_engine::Command::VocalStrip { strip, settings } = command {
+                    sent.push((strip, settings));
+                }
+            }
+            sent
+        };
+
+        // The rig: Mic 1 open, to one side; Mic 2 a closed singer's strip.
+        let rig = dj_vocal::StripSettings {
+            open: true,
+            pan: 0.3,
+            ..dj_vocal::StripSettings::default()
+        };
+        set_vocal_strip(&state, 0, rig).expect("kept and sent");
+        assert_eq!(sent(), vec![(0, rig)]);
+        let mut rotation = state.karaoke();
+        assert!(rotation.ask("Ana", "Dancing Queen", None, None, None));
+        assert!(rotation.ask("Ben", "Toxic", None, None, None));
+        state.set_karaoke(&rotation);
+        let mut journal = state.guests();
+        let ben = crate::guests::Guest {
+            name: "Ben".to_owned(),
+            consent: crate::guests::Consent {
+                keep: true,
+                ..crate::guests::Consent::default()
+            },
+            ..crate::guests::Guest::default()
+        };
+        let ben_id = journal.save(ben, 1).expect("written down").id;
+        state.set_guests(&journal, &[]).expect("kept");
+
+        // Ana on Mic 1, with nothing kept for her: the rig's own chain.
+        put_on_mic(&state, 0, Some("Ana")).expect("on");
+        assert_eq!(sent(), vec![(0, rig)]);
+        let dto = vocals_dto(&state);
+        let on = dto.on[0].clone().expect("Ana is on Mic 1");
+        assert_eq!((on.singer.as_str(), on.kept), ("Ana", None));
+
+        // Her compressor up and the fader down.
+        let hers = dj_vocal::StripSettings {
+            gain_db: -6.0,
+            compressor: Some(dj_vocal::CompressorSettings {
+                ratio: 8.0,
+                ..dj_vocal::CompressorSettings::default()
+            }),
+            reverb: None,
+            ..rig
+        };
+        set_vocal_strip(&state, 0, hers).expect("played");
+        assert_eq!(sent(), vec![(0, hers)]);
+        let rig = dj_vocal::StripSettings {
+            gain_db: -6.0,
+            ..rig
+        };
+        assert_eq!(
+            state.read_vocal_settings()[0],
+            rig,
+            "the fader is the rig's, the compressor is not"
+        );
+        assert_eq!(vocals_dto(&state).strips[0], hers);
+        // Put on the strip she is already on: what was changed for her stays.
+        put_on_mic(&state, 0, Some("Ana")).expect("on");
+        assert_eq!(sent(), Vec::new());
+        assert_eq!(vocals_dto(&state).strips[0], hers);
+
+        // Kept for her: on her place tonight, she is not in the guest book.
+        keep_for_singer(&state, 0).expect("kept");
+        assert_eq!(state.karaoke().microphone("Ana"), Some(hers.chain()));
+        assert_eq!(state.guests().microphone("Ana"), None);
+        assert_eq!(
+            vocals_dto(&state).on[0].clone().expect("on").kept,
+            Some(Kept::Tonight)
+        );
+
+        // Off Mic 1: the rig, as it was.
+        put_on_mic(&state, 0, None).expect("off");
+        assert_eq!(sent(), vec![(0, rig)]);
+        assert_eq!(vocals_dto(&state).strips[0], rig);
+        assert!(keep_for_singer(&state, 0).is_err(), "nobody to keep it for");
+
+        // On Mic 2 — named as the host typed it: her chain over Mic 2's row.
+        put_on_mic(&state, 1, Some(" ana ")).expect("on");
+        let mic2 = dj_vocal::StripSettings::default().with_chain(&hers.chain());
+        assert_eq!(sent(), vec![(1, mic2)]);
+        assert_eq!(
+            vocals_dto(&state).on[1].clone().expect("on").kept,
+            Some(Kept::Tonight)
+        );
+
+        // Ben on Mic 1 as an MC, kept: in the guest book, not the rotation.
+        put_on_mic(&state, 0, Some("Ben")).expect("on");
+        assert_eq!(sent(), vec![(0, rig)]);
+        let mc = dj_vocal::Preset::Mc.applied_to(&rig);
+        set_vocal_strip(&state, 0, mc).expect("played");
+        assert_eq!(sent(), vec![(0, mc)]);
+        keep_for_singer(&state, 0).expect("kept");
+        assert_eq!(state.guests().microphone("Ben"), Some(mc.chain()));
+        assert_eq!(state.karaoke().microphone("Ben"), None);
+        assert_eq!(
+            state.read_vocal_settings()[0],
+            rig,
+            "the rig is not an MC's"
+        );
+
+        // Ana where Ben is: she leaves Mic 2, he leaves Mic 1.
+        put_on_mic(&state, 0, Some("Ana")).expect("on");
+        let mut moved = sent();
+        moved.sort_by_key(|(strip, _)| *strip);
+        assert_eq!(
+            moved,
+            vec![
+                (0, rig.with_chain(&hers.chain())),
+                (1, dj_vocal::StripSettings::default())
+            ]
+        );
+        let dto = vocals_dto(&state);
+        assert_eq!(dto.on[0].clone().expect("on").singer, "Ana");
+        assert!(dto.on[1].is_none());
+
+        // A new night: everybody off, Ana's chain gone with her place, Ben's
+        // kept with him.
+        crate::commands::new_night(&state);
+        assert_eq!(sent(), vec![(0, rig)]);
+        assert!(vocals_dto(&state).on.iter().all(Option::is_none));
+        put_on_mic(&state, 0, Some("Ana")).expect("on");
+        assert_eq!(sent(), vec![(0, rig)], "nothing kept for Ana now");
+        put_on_mic(&state, 0, Some("Ben")).expect("on");
+        assert_eq!(sent(), vec![(0, mc)]);
+        assert_eq!(
+            vocals_dto(&state).on[0].clone().expect("on").kept,
+            Some(Kept::GuestBook)
+        );
+
+        // Ben no longer to be kept: his chain goes from his record.
+        let mut journal = state.guests();
+        let mut ben = journal.get(&ben_id).expect("kept").clone();
+        ben.consent.keep = false;
+        journal.save(ben, 2).expect("saved");
+        state.set_guests(&journal, &[]).expect("kept");
+        assert_eq!(state.guests().microphone("Ben"), None);
+        assert!(
+            state
+                .guests()
+                .get(&ben_id)
+                .expect("still tonight's")
+                .microphone
+                .is_none()
+        );
     }
 
     /// K3: **a singers' input pulled out mid-song is brought back by itself,

@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A singer on a microphone, through their own sound (K3).** The singer up
+  next has a *Mic 1*, *Mic 2*… button beside *Load on 1*: pressed, they are on
+  that microphone, and its row carries their name. Whatever the host changes
+  in the chain while they sing is theirs, not the microphone's, and *Keep for
+  Ana* keeps it — on their guest-book record if they agreed to be kept,
+  otherwise for tonight. Next time they are put on any microphone, they sing
+  through it. The fader, the switch and the sends stay the microphone's.
+
 - **Every microphone's whole chain, behind its name (K3).** Press *Mic 1* on
   its row and its chain opens: low cut, pan, the PA, monitor and headphone
   sends, talkover, then gate, EQ, compressor, de-esser, echo and room, each on
