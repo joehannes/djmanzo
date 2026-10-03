@@ -118,5 +118,11 @@
     "title": "djmanzo - Presets",
     "detached": false,
     "surface": "presets"
+  },
+  {
+    "id": "log",
+    "title": "djmanzo - Session log",
+    "detached": false,
+    "surface": "log"
   }
 ]

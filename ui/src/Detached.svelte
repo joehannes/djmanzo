@@ -28,6 +28,7 @@
   import PressKit from "./PressKit.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Sampler from "./Sampler.svelte";
+  import SessionLog from "./SessionLog.svelte";
   import SideView from "./SideView.svelte";
   import SingerScreen from "./SingerScreen.svelte";
   import Singers from "./Singers.svelte";
@@ -131,6 +132,8 @@
     <Presets enabled={ready} {deckCount} />
   {:else if panel === "athand"}
     <AtHand enabled={ready} {send} />
+  {:else if panel === "log"}
+    <SessionLog />
   {:else if snapshot}
     {#if panel === "waveforms"}
       <!--

@@ -34,8 +34,9 @@ armBenchmark();
 // rendering strategy rather than measuring the waveform.
 armRenderBenchmark();
 // And DJMANZO_DEMO, which loads a couple of tracks so a headless run has
-// something to show.
-armDemo();
+// something to show — in the main window only: armed in every window, popping
+// a panel out loaded and played the demo's tracks all over again.
+if (!panel) armDemo();
 
 export default panel
   ? mount(Detached, { target, props: { panel } })

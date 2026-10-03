@@ -16,6 +16,10 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The session log pops out (§121)**, into a window of its own like the
+  other panels, and keeps up with the set while it is open — the log in the
+  main window used to show only what had happened when it was opened.
+
 ## v0.36.0 — The singers' microphones, finished
 
 - **A buffer for singing (K3).** Under "a singer hears themselves about 11 ms

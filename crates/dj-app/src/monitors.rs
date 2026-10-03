@@ -56,8 +56,8 @@ pub enum Panel {
     // §121: "pop out" on every panel that can be drawn from the snapshot
     // and its own commands alone. The ones drawn out of the main window's
     // own state — the event being played, the density, the key map, the
-    // controller mappings, the settings, the session log, and requests,
-    // whose Find opens the collection beside them — stay in it.
+    // controller mappings, the settings, and requests, whose Find opens the
+    // collection beside them — stay in it, for now.
     /// §61's preparation view.
     Prepare,
     /// What to play next.
@@ -84,10 +84,13 @@ pub enum Panel {
     Booth,
     /// Presets.
     Presets,
+    /// The session log: every action in order, saved and compared — a set's
+    /// record, worth a screen of its own while the set is being played.
+    Log,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 20] = [
+    pub const ALL: [Panel; 21] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -108,6 +111,7 @@ impl Panel {
         Panel::AtHand,
         Panel::Booth,
         Panel::Presets,
+        Panel::Log,
     ];
 
     /// The main window's surface this panel is (`cockpit`'s name for it),
@@ -152,6 +156,7 @@ impl Panel {
             Panel::AtHand => "athand",
             Panel::Booth => "booth",
             Panel::Presets => "presets",
+            Panel::Log => "log",
         }
     }
 
@@ -187,6 +192,7 @@ impl Panel {
             Panel::AtHand => "djmanzo - At hand",
             Panel::Booth => "djmanzo - Booth",
             Panel::Presets => "djmanzo - Presets",
+            Panel::Log => "djmanzo - Session log",
         }
     }
 
@@ -209,6 +215,7 @@ impl Panel {
             Panel::Pair | Panel::Room => (1100.0, 720.0),
             Panel::Next | Panel::Practice | Panel::Crowd | Panel::Mixes => (560.0, 760.0),
             Panel::AtHand | Panel::Booth | Panel::Presets => (560.0, 640.0),
+            Panel::Log => (760.0, 720.0),
         }
     }
 

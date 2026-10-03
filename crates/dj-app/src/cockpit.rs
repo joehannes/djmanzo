@@ -1242,7 +1242,7 @@ pub fn surfaces() -> &'static [Surface] {
             prefer: (900, 300),
             priority: 5,
             performance_critical: false,
-            detachable: false,
+            detachable: true,
             stackable: true,
             collapsible: true,
             contextual: false,

@@ -2309,6 +2309,11 @@ export async function openShell(
             if (cmd !== "share_preview") ((win.__shared ??= []) as string[]).push(slug);
             return Promise.resolve(structuredClone(said));
           }
+          // The session log as the test has it now (`__sessionLog`), so a
+          // test can make it grow and see a log on screen keep up.
+          if (cmd === "session_log") {
+            return Promise.resolve(win.__sessionLog ?? answers.session_log);
+          }
           // Opening the interface: recorded, and answered with what the test
           // gave (nothing, unless it asked) -- K3's buffer for singing opens it
           // again at another size.
