@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.36.0 — The singers' microphones, finished
+
 - **A buffer for singing (K3).** Under "a singer hears themselves about 11 ms
   late", the Singers surface now offers the interface's buffer, each size
   with what it means in milliseconds. It says what a smaller one costs before
