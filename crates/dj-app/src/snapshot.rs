@@ -819,7 +819,7 @@ impl Snapshot {
                         .collect(),
                     hot_cues: (1..=dj_core::HOT_CUE_SLOTS as u8)
                         .map(|slot| {
-                            let value = DeckParam::hot_cue(slot).map(&get)?;
+                            let value = DeckParam::hot_cue(slot).map(get)?;
                             // Negative means empty. Frame zero is a real cue.
                             (value >= 0.0).then_some(value)
                         })

@@ -1246,6 +1246,20 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   which is why controller mappings exist for Pioneer only. The owner supplies
   vendor MIDI tables when they can. Do not re-litigate this.
 - **Work happens on `main`.** No pull request unless one is asked for.
+- **CI builds with whatever Rust is stable today; the container keeps what it
+  was made with.** CI uses `dtolnay/rust-toolchain@stable` and
+  `RUSTFLAGS=-D warnings`, so a new stable's new warnings fail every job the
+  day it ships, on code nobody touched — Rust 1.99 deprecated
+  `fetch_update` and gained a clippy lint, and a push whose gates were all
+  green locally on 1.98 came back red on all four jobs. `rustup check`
+  before gating; if stable has moved, `rustup update stable` and `cargo
+  clean` first (the old toolchain's `target/` is ~20 GB the disk cannot
+  hold twice). The job logs themselves cannot be read from here — GitHub
+  serves them from a host the session's `gh` will not reach — but the
+  failing step's name and exit code can, and a clean local run on the new
+  toolchain reproduces the rest. Mind the workspace's `rust-version` (1.90)
+  when a lint suggests a newer API: clippy's `incompatible_msrv` turns that
+  suggestion into the next error.
 
 ## Where the work stands, and what is next
 

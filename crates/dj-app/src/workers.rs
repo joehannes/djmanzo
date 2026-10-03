@@ -92,13 +92,21 @@ impl Worker {
 /// just started as one that had been busy for five hundred years. Nothing here
 /// will reach it — `u64` nanoseconds is five centuries — and a counter whose
 /// overflow behaviour is "whatever `+` does" is one nobody can reason about.
+///
+/// The compare-and-swap loop written out, rather than `fetch_update`: Rust
+/// 1.99 deprecated that name for `try_update`, which the workspace's minimum
+/// (1.90) does not have, and CI builds with warnings as errors on both sides.
 fn add(counter: &AtomicU64, took: Duration) {
     let nanos = u64::try_from(took.as_nanos()).unwrap_or(u64::MAX);
-    counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
-            Some(held.saturating_add(nanos))
-        })
-        .ok();
+    let mut held = counter.load(Ordering::Relaxed);
+    while let Err(now) = counter.compare_exchange_weak(
+        held,
+        held.saturating_add(nanos),
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+    ) {
+        held = now;
+    }
 }
 
 #[cfg(test)]
@@ -147,6 +155,14 @@ mod tests {
         let worker = Worker::new();
         worker.worked(Duration::from_nanos(u64::MAX));
         worker.worked(Duration::from_secs(1));
+        // The counter itself: the share alone cannot tell, since a worker
+        // that never waited reads 1.0 whether its count saturated or wrapped
+        // round to a second.
+        assert_eq!(
+            worker.busy_nanos.load(Ordering::Relaxed),
+            u64::MAX,
+            "the busy count wrapped"
+        );
         assert_eq!(worker.share(), Some(1.0));
     }
 }
