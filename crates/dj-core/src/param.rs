@@ -509,6 +509,12 @@ pub enum GlobalParam {
     /// Nonzero means the input is not keeping up, which is a real fault with a
     /// real fix — a larger buffer — and completely invisible without a number.
     MicStarvedFrames,
+    /// 1.0 when the `Mic*` parameters are the first of the singers'
+    /// microphones rather than a microphone of their own: K3's strip 0
+    /// (docs/KARAOKE.md §6), with the singers' strips in and no microphone
+    /// attached to the DJ's own strip. A controller mapping or keyboard layout
+    /// written for the microphone then works Mic 1, and an interface says so.
+    MicStrip,
     /// 1.0 when the recorder has a buffer to write into.
     ///
     /// A state the interface has to be able to show, because it is not one the
@@ -721,6 +727,12 @@ pub enum GlobalParam {
     /// K3: frames the singers' input ring could not supply. Rising means the
     /// input has gone — unplugged, or its driver stopped delivering.
     VocalStarvedFrames,
+    /// K3: how many times the host has changed a singers' strip's settings —
+    /// a count, written by the host rather than the engine, so a screen
+    /// showing the strips asks for them again when anything changed them: a
+    /// key, a controller or the Booth's microphone panel working Mic 1, a
+    /// singer put on a microphone, a new night.
+    VocalSettingsRev,
     /// K3: whether the output device has a pair for the singers' monitor —
     /// eight channels or more, the pair after the headphones.
     MonitorAvailable,
@@ -926,7 +938,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since, two for §22's audition, and five for K3's singers.
-    pub const COUNT: usize = 142;
+    pub const COUNT: usize = 144;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -988,6 +1000,7 @@ impl GlobalParam {
             MicAttackMs,
             MicReleaseMs,
             MicStarvedFrames,
+            MicStrip,
             Sample1Loaded,
             Sample1Playing,
             Sample1Mode,
@@ -1077,6 +1090,7 @@ impl GlobalParam {
             VocalInputs,
             VocalWorking,
             VocalStarvedFrames,
+            VocalSettingsRev,
             MonitorAvailable,
             MonitorMusicDb,
         ]
@@ -1349,6 +1363,7 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::MicAttackMs => "mic_attack_ms",
         GlobalParam::MicReleaseMs => "mic_release_ms",
         GlobalParam::MicStarvedFrames => "mic_starved_frames",
+        GlobalParam::MicStrip => "mic_strip",
         GlobalParam::Sample1Loaded => "sample1_loaded",
         GlobalParam::Sample1Playing => "sample1_playing",
         GlobalParam::Sample1Mode => "sample1_mode",
@@ -1438,6 +1453,7 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::VocalInputs => "vocal_inputs",
         GlobalParam::VocalWorking => "vocal_working",
         GlobalParam::VocalStarvedFrames => "vocal_starved_frames",
+        GlobalParam::VocalSettingsRev => "vocal_settings_rev",
         GlobalParam::MonitorAvailable => "monitor_available",
         GlobalParam::MonitorMusicDb => "monitor_music_db",
         GlobalParam::Quantize => "quantize",

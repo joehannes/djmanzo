@@ -79,12 +79,20 @@
       .catch(() => {});
   });
 
-  /** How many strips the engine holds; the settings are asked for again when it changes. */
+  /**
+   * How many strips the engine holds. The settings are asked for again when
+   * it changes, and when the host says it changed them — a key, a controller
+   * or the Booth's microphone panel working Mic 1, a singer put on a
+   * microphone from the rotation — so the rows say what was done, wherever
+   * it was done.
+   */
   const count = $derived(live?.inputs ?? 0);
-  let known = -1;
+  const rev = $derived(live?.settings_rev ?? 0);
+  let known = "";
   $effect(() => {
-    if (count === known) return;
-    known = count;
+    const now = `${count}:${rev}`;
+    if (now === known) return;
+    known = now;
     void refresh();
   });
 

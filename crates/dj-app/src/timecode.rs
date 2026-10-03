@@ -743,6 +743,130 @@ mod tests {
         assert_eq!(dto.every_stage, dj_vocal::StripSettings::every_stage());
     }
 
+    /// K3: **with the singers' microphones open and nothing attached to the
+    /// DJ's own, the `mic` actions work Mic 1.** Through the real host thread
+    /// and the null interface: `mic on`, a gain, the headphones and talkover —
+    /// from the same road a key or a controller takes — reach strip 0 and
+    /// `vocal.json`, and the engine's `Mic*` parameters read them back; they
+    /// are in the session log, and the DJ's own channel is not armed by them.
+    /// Talkover's depth is the DJ's microphone's and goes to it. Attach a
+    /// microphone of the DJ's own and the actions work that again.
+    #[test]
+    fn the_mic_actions_work_mic_1_while_the_singers_are_in() {
+        use dj_core::param::GlobalParam;
+        let _guard = input_lock();
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        crate::commands::open_device_for(&state, None, None, None).expect("the null device opens");
+        let get = |param| state.registry().get(dj_core::ParamId::Global(param));
+        let settle = |want: &dyn Fn() -> bool| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                if want() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+        // Before the singers' input opens, a `mic` action is the DJ's own.
+        crate::commands::perform(&state, "mic gain 2").expect("performed");
+        assert!(settle(&|| (get(GlobalParam::MicGainDb) - 2.0).abs() < 1e-3));
+        assert!(
+            state.read_vocal_settings().is_empty(),
+            "no strip was touched"
+        );
+
+        state
+            .host()
+            .open_vocals(None, state.read_vocal_settings())
+            .expect("the null input opens");
+        assert!(
+            settle(&|| get(GlobalParam::MicStrip) > 0.5),
+            "Mic 1 never became the microphone"
+        );
+
+        let rev = || get(GlobalParam::VocalSettingsRev);
+        let before = rev();
+        for line in [
+            "mic on",
+            "mic gain -9",
+            "mic cue_on",
+            "mic talkover_on",
+            "mic duck 20",
+        ] {
+            crate::commands::perform(&state, line).expect("performed");
+        }
+        // Four of them changed Mic 1, and a screen showing it is told.
+        assert!(
+            (rev() - before - 4.0).abs() < f32::EPSILON,
+            "{} after {before}",
+            rev()
+        );
+        let strip = state.read_vocal_settings()[0];
+        assert!(strip.open, "{strip:?}");
+        assert!((strip.gain_db + 9.0).abs() < f32::EPSILON, "{strip:?}");
+        assert!((strip.to_cue - 1.0).abs() < f32::EPSILON, "{strip:?}");
+        assert!(strip.talkover, "{strip:?}");
+        assert!(
+            settle(&|| get(GlobalParam::MicOpen) > 0.5
+                && (get(GlobalParam::MicGainDb) + 9.0).abs() < 1e-3
+                && get(GlobalParam::MicCue) > 0.5),
+            "the engine's Mic* did not follow Mic 1"
+        );
+        assert!(
+            settle(&|| (get(GlobalParam::MicDuckDb) - 20.0).abs() < 1e-3),
+            "the ducker's depth went astray"
+        );
+        let logged: Vec<String> = state
+            .bus()
+            .log()
+            .iter()
+            .filter_map(|entry| match entry.event {
+                dj_control::SessionEvent::Action(action) => Some(action.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(logged.iter().any(|line| line == "mic on"), "{logged:?}");
+
+        // A switch already sending to the headphones keeps its level.
+        crate::commands::set_vocal_strip(
+            &state,
+            0,
+            dj_vocal::StripSettings {
+                to_cue: 0.4,
+                ..state.read_vocal_settings()[0]
+            },
+        )
+        .expect("kept");
+        crate::commands::perform(&state, "mic cue_on").expect("performed");
+        assert!((state.read_vocal_settings()[0].to_cue - 0.4).abs() < f32::EPSILON);
+        crate::commands::perform(&state, "mic cue_off").expect("performed");
+        assert!(state.read_vocal_settings()[0].to_cue.abs() < f32::EPSILON);
+
+        // A microphone of the DJ's own: the actions are its again, and the
+        // channel was not left armed by the ones that went to Mic 1.
+        state
+            .host()
+            .open_mic(None)
+            .expect("the DJ's microphone opens");
+        assert!(settle(&|| get(GlobalParam::MicStrip) < 0.5));
+        assert!(
+            get(GlobalParam::MicOpen) < 0.5,
+            "the DJ's channel was armed by Mic 1's switch"
+        );
+        crate::commands::perform(&state, "mic gain 3").expect("performed");
+        assert!(settle(&|| (get(GlobalParam::MicGainDb) - 3.0).abs() < 1e-3));
+        assert!(
+            (state.read_vocal_settings()[0].gain_db + 9.0).abs() < f32::EPSILON,
+            "Mic 1 moved"
+        );
+
+        state.host().close_mic().expect("closes");
+        state.host().close_vocals().expect("closes");
+    }
+
     /// K3: **a singer's chain is laid over the strip they are put on, and
     /// kept where the singer is.** What the engine is sent is read off the
     /// command queue itself. Ana, in tonight's rotation only, goes on Mic 1

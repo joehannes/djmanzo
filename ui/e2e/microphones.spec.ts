@@ -55,6 +55,7 @@ const TWO = {
     { level: 0, gate_open: false, compression_db: 0, working: false },
   ],
   monitor_music_db: null as number | null,
+  settings_rev: 0,
 };
 
 const dispatched = (page: Page) =>
@@ -240,6 +241,37 @@ test.describe("K3: the singers' microphones", () => {
     await expect(here.getByRole("group", { name: "Who is on Mic 1" })).toContainText("Ana's own, from the guest book");
     // Ana is not in tonight's rotation, and is still who is on it.
     await expect(here.getByRole("combobox", { name: "Who is singing on Mic 1" })).toHaveValue("Ana");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A change made anywhere else reaches the row.** A key, a controller or
+   * the Booth's microphone panel working Mic 1 changes a strip in Rust, not
+   * through this section; the host says so by moving `settings_rev`, and the
+   * section asks again — before, its row went on saying *Closed* over an open
+   * microphone, which driving the application found.
+   */
+  test("a change made elsewhere reaches the row", async ({ page }) => {
+    await singers(page);
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const first = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem").nth(0);
+    await expect(first.getByRole("button", { name: "Mic 1 closed" })).toBeVisible();
+    // What `mic on` from the Booth does in Rust: Mic 1 open, the count moved.
+    // A new answer, not the old one changed in place, so only asking again
+    // can show it.
+    await page.evaluate(() => {
+      const win = window as unknown as { __vocals: { strips: { open: boolean }[] } };
+      const next = structuredClone(win.__vocals);
+      next.strips[0].open = true;
+      win.__vocals = next;
+    });
+    const asked = async () => (await calls(page)).filter((c) => c.cmd === "vocals_state").length;
+    const before = await asked();
+    await readings(page, { ...TWO, settings_rev: 1 });
+    await expect(first.getByRole("button", { name: "Mic 1 open" })).toBeVisible();
+    expect(await asked()).toBe(before + 1);
     expect(errorsThrown(page)).toEqual([]);
   });
 

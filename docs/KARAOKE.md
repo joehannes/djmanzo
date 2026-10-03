@@ -746,8 +746,52 @@ taking him off and leaving Mic 2; *New night* taking everybody off and Ana's
 chain with her place, Ben's staying until he is no longer to be kept); a
 journal test (the form can neither set nor clear it); a golden of Rust's
 answer with a singer on a strip; and two browser tests.
-**Not yet:** strip 0 answering to today's `Mic*` parameters, and §123's voice
-take recording the strip its singer is on — which this makes possible.
+**And the microphone is Mic 1.** With the singers' strips in and nothing
+attached to the DJ's own microphone, the `Mic*` parameters are strip 0's:
+the engine publishes its switch, fader, talkover, headphone send, level and
+starvation count under the microphone's names and says so
+(`GlobalParam::MicStrip`, the snapshot's `master.mic.strip`). And a `mic`
+action — from a key, a controller, a script or the Booth's panel, all one
+road (`perform_by`) — goes to strip 0 through the host, which keeps that
+strip's settings: `mic on`, `mic gain`, `mic cue_on`/`cue_off` and
+`mic talkover_on`/`off` become strip 0's settings, held, kept in
+`vocal.json` and sent, so the Microphones row says what the controller did.
+They are written in the session log but not sent to the engine, so the DJ's
+own channel is not left armed for whatever is plugged into it later. The
+headphone send is a level on a strip and a switch on the microphone: switched
+on, a strip already sending keeps its level, one that was not sends all of
+it. Talkover's depth, threshold and timing are the DJ's own microphone's and
+go to it as before; a strip's talkover has no such settings, so the Booth's
+panel does not offer them while it is Mic 1, nor the ducking meter that reads
+the DJ's channel — it names the strip instead, and still offers to attach a
+microphone of the DJ's own, which makes the `mic` actions that microphone's
+again. With a singer on Mic 1, talkover is part of their chain (a `Chain`
+field), so `mic talkover_on` changes theirs. Held by an engine test (the
+parameters following strip 0 open and closed, a microphone of the DJ's own
+taking them back, nothing present with the rack gone), a host test through
+the real host thread and the null interface (`mic on`, a gain, the
+headphones and talkover reaching strip 0, `vocal.json` and the engine's
+`Mic*`; the ducker's depth reaching the DJ's channel; the action in the
+session log; the headphone level kept; the DJ's channel not armed; attached,
+the actions the DJ's microphone's again and Mic 1 left alone) and two
+browser tests. Driving it in the running application found two things no
+test had. The Booth's switch put Mic 1 on air and `vocal.json` said so, but
+the Singers surface's row went on saying *Closed*: that section asked Rust
+for the strips only when their number changed or when it changed one itself.
+The host now counts every change it makes to a strip
+(`GlobalParam::VocalSettingsRev`, the snapshot's
+`master.vocals.settings_rev`) and the section asks again when the count
+moves, so a row says what a key, a controller, the Booth or the rotation did
+(a host assertion and a browser test, the second failing with the count
+ignored). And the Booth's panel said *the input is not keeping up — 256
+frames missed* for the rest of the night: an input whose first block arrives
+after the output's misses a few hundred frames once, and the warning read
+the count rather than whether it was climbing — true of the DJ's own
+microphone too, and with Mic 1 it would have been every karaoke night. It
+now warns while the count climbs and for two seconds after, and not for the
+count it first sees (a browser test, failing with the old condition).
+**Not yet:** §123's voice take recording the strip its singer is on — which
+a singer put on a microphone now makes possible.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

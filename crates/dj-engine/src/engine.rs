@@ -1036,12 +1036,33 @@ impl Engine {
         let flag = |param, on: bool| set(param, if on { 1.0 } else { 0.0 });
         flag(GlobalParam::ClapLoaded, self.clap.is_some());
         flag(GlobalParam::ClapBypass, self.clap_bypass);
-        flag(GlobalParam::MicPresent, self.mic.has_input());
-        flag(GlobalParam::MicOpen, self.mic.is_open());
-        flag(GlobalParam::MicCue, self.mic.to_cue());
-        flag(GlobalParam::MicTalkover, self.mic.ducker().is_enabled());
-        set(GlobalParam::MicGainDb, self.mic.gain_db());
-        set(GlobalParam::MicLevel, self.mic.level());
+        // K3: with the singers' strips in and no microphone attached to the
+        // DJ's own strip, the microphone is Mic 1 — the `Mic*` parameters
+        // mean strip 0 (docs/KARAOKE.md §6), so a controller's light or a
+        // panel written for the microphone shows the one the host is using.
+        // The host sends what the `mic` actions ask for to that strip.
+        let strip = if self.mic.has_input() {
+            None
+        } else {
+            self.vocals.as_ref().and_then(|vocals| vocals.strip(0))
+        };
+        flag(GlobalParam::MicStrip, strip.is_some());
+        if let Some(strip) = strip {
+            let settings = strip.settings();
+            flag(GlobalParam::MicPresent, true);
+            flag(GlobalParam::MicOpen, settings.open);
+            flag(GlobalParam::MicCue, settings.to_cue > 0.0);
+            flag(GlobalParam::MicTalkover, settings.talkover);
+            set(GlobalParam::MicGainDb, settings.gain_db);
+            set(GlobalParam::MicLevel, strip.level());
+        } else {
+            flag(GlobalParam::MicPresent, self.mic.has_input());
+            flag(GlobalParam::MicOpen, self.mic.is_open());
+            flag(GlobalParam::MicCue, self.mic.to_cue());
+            flag(GlobalParam::MicTalkover, self.mic.ducker().is_enabled());
+            set(GlobalParam::MicGainDb, self.mic.gain_db());
+            set(GlobalParam::MicLevel, self.mic.level());
+        }
         set(GlobalParam::MicDuckingDb, self.mic.ducker().reduction_db());
         set(GlobalParam::MicDuckDb, -self.mic.ducker().depth_db());
         set(
@@ -1052,7 +1073,13 @@ impl Engine {
         set(GlobalParam::MicReleaseMs, self.mic.ducker().release_ms());
         set(
             GlobalParam::MicStarvedFrames,
-            self.mic.starved_frames() as f32,
+            if strip.is_some() {
+                self.vocals
+                    .as_ref()
+                    .map_or(0, |vocals| vocals.starved_frames()) as f32
+            } else {
+                self.mic.starved_frames() as f32
+            },
         );
         let (inputs, working, starved) = self.vocals.as_ref().map_or((0, 0, 0), |vocals| {
             (vocals.inputs(), vocals.working(), vocals.starved_frames())
@@ -5874,6 +5901,77 @@ mod mic_tests {
         }
         assert!(returned, "the rack was freed on the audio thread");
         assert!(rig.get(GlobalParam::VocalInputs).abs() < f32::EPSILON);
+    }
+
+    /// K3: **with the singers' strips in and nothing attached to the DJ's own
+    /// microphone, the `Mic*` parameters are Mic 1.** A controller's light or
+    /// a panel written for the microphone reads strip 0 — open, its fader,
+    /// talkover, the headphone send, its level — and says it is the strip;
+    /// attach a microphone of the DJ's own and they are that microphone again;
+    /// take the rack away and nothing claims to be present.
+    #[test]
+    fn the_microphone_is_mic_1_while_the_singers_are_in() {
+        const VOICE: f32 = 0.3;
+        let mut rig = rig();
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut ring, input) = rtrb::RingBuffer::new(48_000 * 2);
+        vocals.set_input(Some(input));
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, _) = strips();
+        let mic1 = dj_vocal::StripSettings {
+            gain_db: -6.0,
+            talkover: true,
+            to_cue: 0.5,
+            ..singer
+        };
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: mic1,
+        });
+        // The DJ's own strip, set differently, so the two cannot be confused.
+        rig.mic(MicChange::GainDb(3.0));
+        rig.mic(MicChange::SetTalkover(false));
+        for _ in 0..2_048 {
+            ring.push(VOICE).expect("ring full");
+            ring.push(0.0).expect("ring full");
+        }
+        rig.render_peak(2_048);
+        assert!((rig.get(GlobalParam::MicStrip) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicPresent) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicOpen) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicTalkover) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicCue) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicGainDb) + 6.0).abs() < f32::EPSILON);
+        assert!(rig.get(GlobalParam::MicLevel) > 0.05, "Mic 1's level");
+
+        // Closed, and the headphone send off: the parameters follow the strip.
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: dj_vocal::StripSettings {
+                open: false,
+                to_cue: 0.0,
+                ..mic1
+            },
+        });
+        rig.render_peak(64);
+        assert!(rig.get(GlobalParam::MicOpen).abs() < f32::EPSILON);
+        assert!(rig.get(GlobalParam::MicCue).abs() < f32::EPSILON);
+
+        // A microphone of the DJ's own: it is the microphone again.
+        rig.plug_in();
+        rig.render_peak(64);
+        assert!(rig.get(GlobalParam::MicStrip).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MicGainDb) - 3.0).abs() < f32::EPSILON);
+        assert!(rig.get(GlobalParam::MicTalkover).abs() < f32::EPSILON);
+
+        // Unplugged, and the rack taken away: nothing is the microphone.
+        rig.send(Command::MicInput { source: None });
+        rig.send(Command::Vocals { rack: None });
+        rig.render_peak(64);
+        assert!(rig.get(GlobalParam::MicStrip).abs() < f32::EPSILON);
+        assert!(rig.get(GlobalParam::MicPresent).abs() < f32::EPSILON);
     }
 
     /// K3: **an input that comes back gets a new ring, and the strips stay as

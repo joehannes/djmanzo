@@ -1039,14 +1039,16 @@
       "threshold_db": -30.0,
       "attack_ms": 15.0,
       "release_ms": 400.0,
-      "starved_frames": 0.0
+      "starved_frames": 0.0,
+      "strip": false
     },
     "vocals": {
       "inputs": 0,
       "working": 0,
       "starved_frames": 0.0,
       "strips": [],
-      "monitor_music_db": null
+      "monitor_music_db": null,
+      "settings_rev": 0.0
     },
     "automix": {
       "enabled": false,

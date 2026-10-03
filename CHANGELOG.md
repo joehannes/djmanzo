@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The microphone controls work Mic 1 (K3).** With the singers' microphones
+  open and no microphone of your own attached, the Booth's microphone panel,
+  the keys and any controller button mapped to the microphone switch, fade,
+  cue and talk over with Mic 1 — and the Singers surface's row shows what they
+  did. Attach a microphone of your own and they are its again.
+- **Fixed: "the input is not keeping up" stayed up all night.** A microphone
+  that missed a few hundred frames while starting — harmless, and common —
+  kept the warning for the rest of the night. It now shows only while the
+  input is actually falling behind.
+
 - **A singer on a microphone, through their own sound (K3).** The singer up
   next has a *Mic 1*, *Mic 2*… button beside *Load on 1*: pressed, they are on
   that microphone, and its row carries their name. Whatever the host changes

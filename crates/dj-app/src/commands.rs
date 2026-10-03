@@ -752,12 +752,20 @@ fn strip_index(strip: u8) -> Result<usize, String> {
     }
 }
 
+/// K3: say that a strip's settings changed, for a screen showing them to
+/// ask again ([`dj_core::param::GlobalParam::VocalSettingsRev`]).
+fn vocal_settings_changed(state: &AppState) {
+    let rev = dj_core::ParamId::Global(dj_core::param::GlobalParam::VocalSettingsRev);
+    state.registry().set(rev, state.registry().get(rev) + 1.0);
+}
+
 fn send_vocal_strip(
     state: &AppState,
     strip: usize,
     settings: dj_vocal::StripSettings,
 ) -> Result<(), String> {
     let strip = u8::try_from(strip).map_err(|_| "no such microphone".to_owned())?;
+    vocal_settings_changed(state);
     state
         .bus()
         .send_command(dj_engine::Command::VocalStrip { strip, settings })
@@ -885,12 +893,14 @@ pub(crate) fn keep_for_singer(state: &AppState, strip: u8) -> Result<(), String>
     if journal.keep_microphone(&singer.singer, singer.chain) {
         state.set_guests(&journal, &[])?;
         singer.kept = Some(Kept::GuestBook);
+        vocal_settings_changed(state);
         return Ok(());
     }
     let mut rotation = state.karaoke();
     if rotation.keep_microphone(&singer.singer, singer.chain) {
         state.set_karaoke(&rotation);
         singer.kept = Some(Kept::Tonight);
+        vocal_settings_changed(state);
         return Ok(());
     }
     Err(format!(
@@ -1739,6 +1749,22 @@ pub fn perform_action_by(
         }
     }
 
+    // K3: while the singers' strips are in and nothing is attached to the
+    // DJ's own microphone, the microphone is Mic 1 (docs/KARAOKE.md §6). What
+    // a `mic` action asks of the channel goes to strip 0 through the host,
+    // which keeps that strip's settings, so `vocal.json` and the Microphones
+    // row say what a controller did; it is logged, not sent, so the DJ's own
+    // channel is not left armed for whatever is plugged into it later. The
+    // ducker's depth and timing are the DJ's microphone's and go to it.
+    if let Action::Mixer(dj_core::MixerAction::Mic(change)) = parsed
+        && mic_is_strip(state)
+        && let Some(settings) = mic_on_strip(state, change)
+    {
+        set_vocal_strip(state, 0, settings)?;
+        state.bus().record_by(parsed, by);
+        return Ok(());
+    }
+
     // Grid edits are the other kind: they need the analyser's original to undo
     // to and a tap history to average, neither of which belongs on the audio
     // thread. Computed here and sent on as `SetGrid`, which is the same path
@@ -1760,6 +1786,47 @@ pub fn perform_action_by(
         .bus()
         .dispatch_by(parsed, by)
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
+}
+
+/// K3: whether the `Mic*` parameters are Mic 1 just now, as the engine last
+/// said ([`dj_core::param::GlobalParam::MicStrip`]).
+fn mic_is_strip(state: &AppState) -> bool {
+    state.registry().get(dj_core::ParamId::Global(
+        dj_core::param::GlobalParam::MicStrip,
+    )) > 0.5
+}
+
+/// K3: strip 0's settings with a `mic` action's change made — or `None` for
+/// a change the strip has no setting for (the ducker's depth and timing).
+/// The headphone send is a level on a strip and a switch on the microphone:
+/// switched on, a strip already sending keeps its level, and one that was
+/// not sends all of it.
+fn mic_on_strip(
+    state: &AppState,
+    change: dj_core::action::MicChange,
+) -> Option<dj_vocal::StripSettings> {
+    use dj_core::action::MicChange;
+    let strip = played_vocal_settings(state)
+        .first()
+        .copied()
+        .unwrap_or_default();
+    Some(match change {
+        MicChange::SetOpen(open) => dj_vocal::StripSettings { open, ..strip },
+        MicChange::GainDb(gain_db) => dj_vocal::StripSettings { gain_db, ..strip },
+        MicChange::SetCue(on) => dj_vocal::StripSettings {
+            to_cue: match (on, strip.to_cue > 0.0) {
+                (false, _) => 0.0,
+                (true, true) => strip.to_cue,
+                (true, false) => 1.0,
+            },
+            ..strip
+        },
+        MicChange::SetTalkover(talkover) => dj_vocal::StripSettings { talkover, ..strip },
+        MicChange::DuckDb(_)
+        | MicChange::ThresholdDb(_)
+        | MicChange::AttackMs(_)
+        | MicChange::ReleaseMs(_) => return None,
+    })
 }
 
 /// The grid edits, separated from the actions the engine handles itself.

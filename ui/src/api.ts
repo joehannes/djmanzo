@@ -575,6 +575,11 @@ export interface MicState {
    * keeping up — a real fault with a real fix, and invisible without this.
    */
   starved_frames: number;
+  /**
+   * K3: all of this is the first of the singers' microphones — their strips
+   * are in and nothing is attached to the DJ's own — and `mic` actions work it.
+   */
+  strip: boolean;
 }
 
 /** An input device feeding the microphone strip. */
@@ -780,6 +785,12 @@ export interface VocalsState {
    * the music is off and the wedge carries only the voices.
    */
   monitor_music_db: number | null;
+  /**
+   * How many times the host has changed a strip's settings — from a key, a
+   * controller, the Booth's microphone panel, a singer put on a microphone.
+   * A screen showing the strips asks for them again when this moves.
+   */
+  settings_rev: number;
 }
 
 /** `dj_engine::MONITOR_MUSIC_OFF_DB`: the bottom of the monitor's music range, meaning off. */

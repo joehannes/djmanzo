@@ -225,14 +225,12 @@ where
         self.dispatch_by(action, By::Hand)
     }
 
-    /// Submit an action, saying whose it is.
-    ///
-    /// §67's *AI interventions* and *manual interventions*. Every path that
-    /// knows it is djmanzo acting -- the autopilot's tick, a transaction the
-    /// DJ accepted, a staged move run -- comes through here with
-    /// [`By::Machine`]; everything else keeps [`dispatch`](Self::dispatch) and
-    /// is a person's, which is the safer default for the reason [`By`] gives.
-    pub fn dispatch_by(&self, action: Action, by: By) -> Result<(), BusFull> {
+    /// Write an action into the session log without sending it to the
+    /// engine: one the host carried out itself, by another road, and which a
+    /// replay or a review of the set must still find where it happened —
+    /// K3's `mic` actions, while the microphone is the first of the singers'
+    /// strips and the host is the one keeping that strip's settings.
+    pub fn record_by(&self, action: Action, by: By) {
         let at = self.started.elapsed();
         if let Ok(mut log) = self.log.lock() {
             log.record(TimedEvent {
@@ -241,6 +239,17 @@ where
                 by,
             });
         }
+    }
+
+    /// Submit an action, saying whose it is.
+    ///
+    /// §67's *AI interventions* and *manual interventions*. Every path that
+    /// knows it is djmanzo acting -- the autopilot's tick, a transaction the
+    /// DJ accepted, a staged move run -- comes through here with
+    /// [`By::Machine`]; everything else keeps [`dispatch`](Self::dispatch) and
+    /// is a person's, which is the safer default for the reason [`By`] gives.
+    pub fn dispatch_by(&self, action: Action, by: By) -> Result<(), BusFull> {
+        self.record_by(action, by);
         self.send_command(C::from(action))
     }
 

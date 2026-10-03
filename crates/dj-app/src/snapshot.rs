@@ -415,6 +415,10 @@ pub struct MicSnapshot {
     /// Frames the input ring could not supply. Non-zero means the input is not
     /// keeping up — a real fault with a real fix, and invisible without this.
     pub starved_frames: f64,
+    /// K3: all of the above is the first of the singers' microphones — the
+    /// singers' strips are in and nothing is attached to the DJ's own — and
+    /// the `mic` actions work it (docs/KARAOKE.md §6).
+    pub strip: bool,
 }
 
 /// K3: the singers' microphones, as the host watches them.
@@ -434,6 +438,9 @@ pub struct VocalsSnapshot {
     /// output device has no pair for one (fewer than eight channels, or the
     /// decks going out on pairs of their own).
     pub monitor_music_db: Option<f32>,
+    /// How many times the host has changed a strip's settings: a screen
+    /// showing them asks for them again when this moves.
+    pub settings_rev: f64,
 }
 
 /// K3: one singer's microphone's face.
@@ -988,6 +995,7 @@ impl Snapshot {
                         attack_ms: get(GlobalParam::MicAttackMs),
                         release_ms: get(GlobalParam::MicReleaseMs),
                         starved_frames: f64::from(get(GlobalParam::MicStarvedFrames)),
+                        strip: flag(GlobalParam::MicStrip),
                     }
                 },
                 vocals: {
@@ -1014,6 +1022,7 @@ impl Snapshot {
                             .collect(),
                         monitor_music_db: (get(GlobalParam::MonitorAvailable) >= 0.5)
                             .then(|| get(GlobalParam::MonitorMusicDb)),
+                        settings_rev: f64::from(get(GlobalParam::VocalSettingsRev)),
                     }
                 },
                 split_output: bridge.map(|stats| SplitOutputSnapshot {
