@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **An unplugged microphone interface comes back by itself (K3).** Pull the
+  singers' interface out mid-song and the music plays on; plug it back in and
+  djmanzo finds it within two seconds, every microphone as you left it.
+- **Fixed: a microphone that had gone quiet kept showing its last level.** An
+  MC's row in particular stayed lit after they stopped talking.
+
 - **A monitor for the singers (K3).** On an interface with eight outputs or
   more, outputs 7 and 8 are the singers' wedge: the music at a level of its own
   and each singer's microphone at its monitor send. The MC talking over the

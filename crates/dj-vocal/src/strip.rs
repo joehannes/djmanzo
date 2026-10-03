@@ -454,25 +454,34 @@ impl Strip {
     }
 
     /// How loud the voice is, after the chain, 0 to 1.
+    ///
+    /// Nothing once the strip is idle: the chain has stopped, and the meter
+    /// with it, so what it last read is no longer true.
     #[must_use]
     pub fn level(&self) -> f32 {
-        self.meter.peak()
+        if self.is_idle() {
+            0.0
+        } else {
+            self.meter.peak()
+        }
     }
 
-    /// How far the compressor is turning the voice down, in dB.
+    /// How far the compressor is turning the voice down, in dB. Nothing once
+    /// the strip is idle, for the meter's reason.
     #[must_use]
     pub fn compressing_db(&self) -> f32 {
-        if self.settings.compressor.is_some() {
+        if self.settings.compressor.is_some() && !self.is_idle() {
             self.compressor.reduction_db()
         } else {
             0.0
         }
     }
 
-    /// Whether the gate is letting a voice through.
+    /// Whether the gate is letting a voice through. Never on an idle strip:
+    /// nothing is coming through anything.
     #[must_use]
     pub fn gate_open(&self) -> bool {
-        self.settings.gate.is_none() || self.gate.is_open()
+        !self.is_idle() && (self.settings.gate.is_none() || self.gate.is_open())
     }
 
     /// Frames the chain has run since the strip was made.
@@ -558,6 +567,39 @@ mod tests {
         assert!(!strip.is_idle());
         assert_eq!(strip.processed_frames(), stopped_at + 1);
         assert!(woken.main[0] != 0.0 || woken.main[1] != 0.0 || strip.gate_open());
+    }
+
+    /// **A strip that has stopped reads as stopped.** An MC's strip — no
+    /// room, so almost no tail — speaks hard enough to be compressed, then
+    /// falls silent: once it is idle its level is nothing, its compressor is
+    /// doing nothing and no gate is letting anything through. The chain has
+    /// stopped running, so its meters stopped with it; left alone, they would
+    /// hold the last word's reading on the host's screen for as long as the
+    /// MC stayed quiet.
+    #[test]
+    fn a_strip_that_has_stopped_reads_as_stopped() {
+        let mut strip = Strip::new(RATE);
+        strip.apply(&Preset::Mc.applied_to(&open()));
+        for n in 0..24_000 {
+            strip.process(voice(n) * 3.0);
+        }
+        assert!(
+            strip.level() > 0.1,
+            "the MC was not heard ({})",
+            strip.level()
+        );
+        assert!(strip.compressing_db() > 0.5, "the compressor never worked");
+        for _ in 0..RATE as usize {
+            strip.process(0.0);
+        }
+        assert!(strip.is_idle(), "a silent MC's strip kept running");
+        assert!(
+            strip.level() < f32::EPSILON,
+            "the level held ({})",
+            strip.level()
+        );
+        assert!(strip.compressing_db() < f32::EPSILON);
+        assert!(!strip.gate_open());
     }
 
     /// **A preset changes the chain and keeps the host's hands.** Choosing

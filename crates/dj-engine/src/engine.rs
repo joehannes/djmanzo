@@ -553,6 +553,15 @@ impl Engine {
                         self.retire(Retired::Vocals(previous));
                     }
                 }
+                Command::VocalInput { ring } => {
+                    let displaced = match self.vocals.as_mut() {
+                        Some(vocals) => vocals.set_input(Some(ring)),
+                        None => Some(ring),
+                    };
+                    if let Some(displaced) = displaced {
+                        self.retire(Retired::MicInput(displaced));
+                    }
+                }
                 Command::VocalStrip { strip, settings } => {
                     if let Some(strip) = self
                         .vocals
@@ -5865,6 +5874,83 @@ mod mic_tests {
         }
         assert!(returned, "the rack was freed on the audio thread");
         assert!(rig.get(GlobalParam::VocalInputs).abs() < f32::EPSILON);
+    }
+
+    /// K3: **an input that comes back gets a new ring, and the strips stay as
+    /// they were.** A singer's strip hears their voice; the ring's far end
+    /// goes (the interface pulled out) and the count of frames it could not
+    /// supply climbs; a new ring arrives by `Command::VocalInput`, and the same
+    /// strip — its settings never sent again — hears the voice on it. The old
+    /// ring leaves through the retirement queue, the rack does not leave at
+    /// all, and a ring sent with no rack to take it goes straight back.
+    #[test]
+    fn a_singers_input_that_comes_back_keeps_the_strips() {
+        const VOICE: f32 = 0.3;
+        use dj_core::param::VocalParam;
+        let mut rig = rig();
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut first, ring) = rtrb::RingBuffer::new(48_000 * 2);
+        vocals.set_input(Some(ring));
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, _) = strips();
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: singer,
+        });
+        let level = |rig: &Rig| rig.registry.get(ParamId::Vocal(0, VocalParam::Level));
+        let sing = |ring: &mut rtrb::Producer<f32>, frames: usize| {
+            for _ in 0..frames {
+                ring.push(VOICE).expect("ring full");
+                ring.push(0.0).expect("ring full");
+            }
+        };
+
+        sing(&mut first, 2_048);
+        rig.render_peak(2_048);
+        assert!(level(&rig) > 0.1, "the singer was not heard at all");
+
+        // The interface goes: nothing more on the ring, and the count climbs.
+        drop(first);
+        for _ in 0..30 {
+            rig.render_peak(2_048);
+        }
+        assert!(level(&rig) < 0.01, "a voice from nowhere ({})", level(&rig));
+        let starved = rig.get(GlobalParam::VocalStarvedFrames);
+        assert!(starved > 40_000.0, "the ring running dry went uncounted");
+
+        // And comes back, on a new ring into the same rack.
+        let (mut second, ring) = rtrb::RingBuffer::new(48_000 * 2);
+        rig.send(Command::VocalInput { ring });
+        sing(&mut second, 2_048);
+        rig.render_peak(2_048);
+        assert!(
+            level(&rig) > 0.1,
+            "the singer was lost with the old ring ({})",
+            level(&rig)
+        );
+        assert!((rig.get(GlobalParam::VocalInputs) - 2.0).abs() < f32::EPSILON);
+        let mut rings = 0;
+        while let Ok(retired) = rig.retired.pop() {
+            assert!(
+                !matches!(retired, Retired::Vocals(_)),
+                "the rack was replaced"
+            );
+            rings += usize::from(matches!(retired, Retired::MicInput(_)));
+        }
+        assert_eq!(rings, 1, "the old ring did not come home");
+
+        // No rack: the ring goes straight back.
+        rig.send(Command::Vocals { rack: None });
+        let (_, ring) = rtrb::RingBuffer::new(8);
+        rig.send(Command::VocalInput { ring });
+        rig.render_peak(64);
+        let mut back = 0;
+        while let Ok(retired) = rig.retired.pop() {
+            back += usize::from(matches!(retired, Retired::MicInput(_)));
+        }
+        assert_eq!(back, 1, "a ring with no rack to take it was kept");
     }
 
     /// K3: **the singers' wedge has the music at a level of its own and each

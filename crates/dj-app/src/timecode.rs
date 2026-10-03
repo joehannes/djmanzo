@@ -684,6 +684,82 @@ mod tests {
         assert_eq!(dj_audio::null::live_input_streams(), 0);
     }
 
+    /// K3: **a singers' input pulled out mid-song is brought back by itself,
+    /// and the rack stays.** Through the real host thread and the null
+    /// backend's interface pulled out and plugged back: the host notices the
+    /// ring running dry, lets the silent stream go and keeps trying; the
+    /// engine holds its two strips all the while; plugged back, a new stream
+    /// opens and the ring runs again.
+    #[test]
+    fn a_lost_singers_input_is_tried_again_until_it_answers() {
+        let _guard = input_lock();
+        /// Plugs the interface back in however the test ends.
+        struct PlugBack;
+        impl Drop for PlugBack {
+            fn drop(&mut self) {
+                dj_audio::null::unplug_inputs(false);
+            }
+        }
+        let _plug = PlugBack;
+        let state = AppState::new(true);
+        crate::commands::open_device_for(&state, None, None, None).expect("the null device opens");
+        let global = |p| state.registry().get(dj_core::ParamId::Global(p));
+        use dj_core::param::GlobalParam::{VocalInputs, VocalStarvedFrames};
+        let within = |seconds: u64, done: &dyn Fn() -> bool| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+            while std::time::Instant::now() < deadline {
+                if done() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            false
+        };
+
+        state
+            .host()
+            .open_vocals(None, Vec::new())
+            .expect("the null input opens");
+        assert!(within(5, &|| (global(VocalInputs) - 2.0).abs() < f32::EPSILON));
+        assert_eq!(dj_audio::null::live_input_streams(), 1);
+
+        // Pulled out: the silent stream is let go, and a new one will not open.
+        dj_audio::null::unplug_inputs(true);
+        assert!(
+            within(5, &|| dj_audio::null::live_input_streams() == 0),
+            "the host never noticed the input had gone"
+        );
+        let dry = global(VocalStarvedFrames);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(
+            global(VocalStarvedFrames) > dry,
+            "the ring is not running dry"
+        );
+        assert!(
+            (global(VocalInputs) - 2.0).abs() < f32::EPSILON,
+            "the rack went with the input"
+        );
+
+        // Plugged back: tried again within two seconds, and the ring runs.
+        dj_audio::null::unplug_inputs(false);
+        assert!(
+            within(5, &|| dj_audio::null::live_input_streams() == 1),
+            "the input was never tried again"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let before = global(VocalStarvedFrames);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let climbed = global(VocalStarvedFrames) - before;
+        assert!(
+            climbed < 4_800.0,
+            "the ring still runs dry ({climbed} frames)"
+        );
+        assert!((global(VocalInputs) - 2.0).abs() < f32::EPSILON);
+
+        state.host().close_vocals().expect("closes");
+        assert!(within(5, &|| dj_audio::null::live_input_streams() == 0));
+    }
+
     /// **A control record actually attaches, end to end.**
     ///
     /// Command to host to device to state to the panel's own words. The engine

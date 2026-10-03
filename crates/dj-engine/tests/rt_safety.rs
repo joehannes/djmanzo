@@ -388,6 +388,9 @@ fn the_singers_microphones_never_allocate() {
     };
     let (mut voice, ring) = rtrb::RingBuffer::new(48_000 * STRIPS);
     let (_, spare_ring) = rtrb::RingBuffer::new(1_024 * STRIPS);
+    // The interface coming back: a new ring for the rack that is there.
+    let (_, returned_ring) = rtrb::RingBuffer::new(1_024 * STRIPS);
+    let mut returned_ring = Some(returned_ring);
     let first = rack(ring);
     let second = rack(spare_ring);
     let singing = dj_vocal::StripSettings {
@@ -429,6 +432,11 @@ fn the_singers_microphones_never_allocate() {
             if block == 200 {
                 rig.act(Action::Mixer(MixerAction::MonitorMusicDb(-9.0)));
             }
+            if block == 300
+                && let Some(ring) = returned_ring.take()
+            {
+                rig.send(Command::VocalInput { ring });
+            }
             rig.renderer.render_block();
         }
         rig.send(Command::Vocals { rack: Some(second) });
@@ -440,12 +448,15 @@ fn the_singers_microphones_never_allocate() {
         allocations, 0,
         "the singers' microphones allocated {allocations} times"
     );
-    // Both racks went home to be freed.
-    let mut returned = 0;
+    // Both racks went home to be freed, and the ring the interface's return
+    // displaced.
+    let (mut racks, mut rings) = (0, 0);
     while let Ok(retired) = rig.retired.pop() {
-        returned += usize::from(matches!(retired, Retired::Vocals(_)));
+        racks += usize::from(matches!(retired, Retired::Vocals(_)));
+        rings += usize::from(matches!(retired, Retired::MicInput(_)));
     }
-    assert_eq!(returned, 2);
+    assert_eq!(racks, 2);
+    assert_eq!(rings, 1);
 }
 
 /// Split cue is a separate branch again.

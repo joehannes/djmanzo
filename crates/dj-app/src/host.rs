@@ -21,7 +21,7 @@ use dj_core::SampleRate;
 use dj_engine::{Capture, Command, Engine, Retired};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender, channel, sync_channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A finished recording, as the host hands it on.
 #[derive(Debug)]
@@ -342,6 +342,9 @@ fn run_host(
     let mut mic_stream: Option<Box<dyn AudioStream>> = None;
     // K3: the singers' input, every channel of it, held like the microphone's.
     let mut vocal_stream: Option<Box<dyn AudioStream>> = None;
+    // And watched, from the moment it opens until it is closed, so that an
+    // interface pulled out mid-song is brought back by itself.
+    let mut vocal_watch: Option<VocalWatch> = None;
     // One input stream per deck on vinyl. A DJ with two turntables has two
     // cartridges on two inputs, and they are opened and closed independently.
     let mut timecode_streams: [Option<Box<dyn AudioStream>>; dj_core::MAX_DECKS] =
@@ -381,6 +384,8 @@ fn run_host(
                     let _ = previous.pause();
                     drop(previous);
                 }
+                // The rack goes with the engine; there is nothing to bring back.
+                vocal_watch = None;
                 let result = open_device(
                     backend.as_ref(),
                     &bus,
@@ -426,16 +431,25 @@ fn run_host(
                     Some(master) => open_vocals(
                         backend.as_ref(),
                         &bus,
-                        device,
+                        device.clone(),
                         &settings,
                         &master,
                         &mut vocal_stream,
                     ),
                     None => Err(HostError::NoDevice),
                 };
+                vocal_watch = result.as_ref().ok().map(|active| {
+                    VocalWatch::new(
+                        device,
+                        active.channels,
+                        vocal_starved(&registry),
+                        Instant::now(),
+                    )
+                });
                 let _ = reply.send(result);
             }
             Ok(HostCommand::CloseVocals(reply)) => {
+                vocal_watch = None;
                 close_vocals(&bus, &mut vocal_stream);
                 let _ = reply.send(Ok(()));
             }
@@ -499,7 +513,138 @@ fn run_host(
                 }
             }
         }
+
+        // K3: the singers' input, brought back when it goes.
+        if let Some(watch) = vocal_watch.as_mut()
+            && watch.due(vocal_starved(&registry), Instant::now())
+            && let Some(master) = stream.as_ref().map(|s| s.config().clone())
+        {
+            match reopen_vocals(backend.as_ref(), &bus, watch, &master, &mut vocal_stream) {
+                Ok(()) => tracing::info!("the singers' input is back"),
+                Err(error) => tracing::debug!("the singers' input is still gone: {error}"),
+            }
+        }
     }
+}
+
+/// K3: frames the singers' input ring could not supply, as the engine last
+/// published them.
+fn vocal_starved(registry: &ParameterRegistry) -> f32 {
+    registry.get(dj_core::ParamId::Global(
+        dj_core::param::GlobalParam::VocalStarvedFrames,
+    ))
+}
+
+/// K3: the singers' input, watched for the moment it goes, and brought back.
+///
+/// An interface unplugged mid-song, or a driver that stops delivering, leaves
+/// the stream object alive and its callback silent — nothing on this side is
+/// told. What *is* seen is the engine's ring running dry: its starvation count
+/// climbs on every block. Climbing for half a second is the input gone, and
+/// from then on the host tries the same device again every two seconds until
+/// it answers.
+///
+/// Only the stream and its ring are replaced, never the rack: the strips'
+/// settings, faders and tails are the strips', not the stream's, so a singer
+/// whose cable is plugged back in finds their microphone as they left it.
+#[derive(Debug)]
+struct VocalWatch {
+    /// The device the host opened, `None` for the system default.
+    device: Option<DeviceId>,
+    /// The width the rack was built for. A device that comes back narrower or
+    /// wider is not the one that went, and its frames would land on the wrong
+    /// strips.
+    channels: u16,
+    /// The starvation count at the last look.
+    last_starved: f32,
+    /// When the count started climbing without a pause.
+    dry_since: Option<Instant>,
+    /// No attempt before this.
+    next_try: Instant,
+}
+
+impl VocalWatch {
+    /// How long the ring must run dry before the input counts as gone. The
+    /// same half second the interface waits before saying so.
+    const LOST_AFTER: Duration = Duration::from_millis(500);
+    /// How often a lost input is tried again.
+    const RETRY_EVERY: Duration = Duration::from_secs(2);
+
+    fn new(device: Option<DeviceId>, channels: u16, starved: f32, now: Instant) -> Self {
+        Self {
+            device,
+            channels,
+            last_starved: starved,
+            dry_since: None,
+            next_try: now,
+        }
+    }
+
+    /// Whether to try the input again now, given the count read this look.
+    fn due(&mut self, starved: f32, now: Instant) -> bool {
+        let climbing = starved > self.last_starved;
+        self.last_starved = starved;
+        if !climbing {
+            self.dry_since = None;
+            return false;
+        }
+        let since = *self.dry_since.get_or_insert(now);
+        if now.duration_since(since) < Self::LOST_AFTER || now < self.next_try {
+            return false;
+        }
+        self.next_try = now + Self::RETRY_EVERY;
+        true
+    }
+}
+
+/// K3: the singers' input again, on the device it went from, into a new ring
+/// for the rack the engine already holds.
+///
+/// The old stream goes first — a device that has vanished can refuse to open
+/// while a stream on it is still held — and is not kept if the new one fails:
+/// it was delivering nothing. A device that answers with a different number of
+/// inputs is not the one that went, and is let go again.
+fn reopen_vocals(
+    backend: &dyn AudioBackend,
+    bus: &Arc<ActionBus<Command>>,
+    watch: &VocalWatch,
+    master: &ActiveConfig,
+    slot: &mut Option<Box<dyn AudioStream>>,
+) -> Result<(), HostError> {
+    if let Some(previous) = slot.take() {
+        let _ = previous.pause();
+        drop(previous);
+    }
+    let channels = usize::from(watch.channels.max(1));
+    let capacity = (master.sample_rate.as_f64() * MIC_RING_SECONDS) as usize * channels;
+    let (producer, consumer) = rtrb::RingBuffer::new(capacity);
+    let config = dj_audio::StreamConfig {
+        device: watch.device.clone(),
+        sample_rate: master.sample_rate,
+        buffer_frames: master.buffer_frames,
+        channels: watch.channels,
+    };
+    let stream = backend
+        .open_input_all(&config, producer)
+        .map_err(|e| HostError::Audio(e.to_string()))?;
+    if stream.config().channels != watch.channels {
+        return Err(HostError::Audio(format!(
+            "the interface came back with {} inputs, not {}",
+            stream.config().channels,
+            watch.channels
+        )));
+    }
+    if bus
+        .send_command(Command::VocalInput { ring: consumer })
+        .is_err()
+    {
+        return Err(HostError::Audio(
+            "command queue full; the singers' input could not be put back".to_owned(),
+        ));
+    }
+    stream.play().map_err(|e| HostError::Audio(e.to_string()))?;
+    *slot = Some(stream);
+    Ok(())
 }
 
 /// Close every input stream, without telling the engine.
@@ -1051,6 +1196,45 @@ mod tests {
             Box::new(|_| {}),
         );
         (host, bus, registry)
+    }
+
+    /// K3: **a ring running dry for half a second is an input gone, and it
+    /// is tried again every two seconds — never sooner, and never for a
+    /// hiccup.** A count that climbs and then holds still is a hiccup; one
+    /// that climbs for half a second is due at once; after an attempt the
+    /// next is two seconds on however dry the ring stays; and a count that
+    /// stops climbing starts the half second over.
+    #[test]
+    fn a_ring_that_keeps_running_dry_is_tried_again_every_two_seconds() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut watch = VocalWatch::new(None, 2, 0.0, start);
+        let mut starved = 0.0;
+        let mut look = |watch: &mut VocalWatch, ms: u64, climbing: bool| {
+            if climbing {
+                starved += 2_400.0;
+            }
+            watch.due(starved, at(ms))
+        };
+
+        // A hiccup: the count climbs once, then holds.
+        assert!(!look(&mut watch, 50, true));
+        assert!(!look(&mut watch, 100, false));
+        // Gone: climbing from 150 ms, due once it has for half a second.
+        let mut tried = Vec::new();
+        for ms in (150..=3_000).step_by(50) {
+            if look(&mut watch, ms, true) {
+                tried.push(ms);
+            }
+        }
+        assert_eq!(tried, vec![650, 2_650], "tried at {tried:?}");
+        // Back: it stops climbing, and nothing is tried.
+        assert!(!look(&mut watch, 3_050, false));
+        assert!(!look(&mut watch, 5_000, false));
+        // Gone again, long after: the half second starts over from here.
+        assert!(!look(&mut watch, 5_050, true));
+        assert!(!look(&mut watch, 5_500, true));
+        assert!(look(&mut watch, 5_550, true));
     }
 
     #[test]

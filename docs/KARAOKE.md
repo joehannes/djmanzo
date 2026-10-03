@@ -409,7 +409,7 @@ piece of this document lands among them.
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |
-| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen and the monitor built; reconnecting, a singer's own settings and the chain on screen next — §6 below |
+| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor and reconnecting built; a singer's own settings and the chain on screen next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
@@ -655,8 +655,31 @@ running application** on the null backend's two outputs: the section said
 there was no monitor on this output and what would give the singers one —
 first worded as *on its last pair*, which is wrong for an interface with more
 than eight, and now *on outputs 7 and 8*.
-**Not yet:** reconnecting a lost input by itself, a singer's own settings
-laid over the strip's, and the chain behind a press on the row.
+**And an input that goes comes back by itself.** The host watches the
+engine's count of frames the singers' ring could not supply; climbing for half
+a second is the interface gone, and from then on the host lets the silent
+stream go and opens the same device again every two seconds, off the audio
+thread, until it answers. Only the stream and its ring are replaced
+(`Command::VocalInput`, the old ring leaving through the retirement queue):
+the rack, its strips, their settings and tails stay in the engine throughout,
+so a singer whose cable goes back in finds their microphone as they left it. A
+device that answers with a different number of inputs is not the one that
+went, and is let go again. The section's alert says djmanzo is trying. Held by
+an engine test (a new ring into the same rack, the strip heard again without
+its settings being sent), the watch's rule on a clock the test holds (a hiccup
+is not a loss; due at half a second; then every two seconds, never sooner),
+`rt_safety` with the ring replaced mid-set, and the real host thread with the
+null backend's interface pulled out and plugged back — the silent stream let
+go, the rack kept, a new stream opened and the ring running again; the rule
+never firing, and the engine ignoring the new ring, each fail them. Writing
+the engine test found a fault of its own: a strip that had stopped still
+showed what its meters last read, because an idle chain is not run and its
+meters stop with it — an MC's row, with no reverb tail to decay through, kept
+its level lit and its compression shown for as long as the MC was quiet. An
+idle strip now reads as stopped: no level, no compression, no gate open
+(a `dj-vocal` test, failing before the fix).
+**Not yet:** a singer's own settings laid over the strip's, and the chain
+behind a press on the row.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

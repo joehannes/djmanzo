@@ -179,7 +179,7 @@
       {#if heavy}<strong>That is more than this machine should be asked for — close some.</strong>{/if}
     </p>
     {#if lost}
-      <p class="lost" role="alert">Microphones lost — reconnect the interface.</p>
+      <p class="lost" role="alert">Microphones lost — reconnect the interface; djmanzo tries it again every two seconds.</p>
     {/if}
     <ul class="strips" aria-label="Singers' microphones">
       {#each (vocals?.strips ?? []).slice(0, count) as strip, i (i)}

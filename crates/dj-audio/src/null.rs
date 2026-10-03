@@ -32,6 +32,22 @@ pub fn live_input_streams() -> usize {
     LIVE_INPUTS.load(Ordering::Relaxed)
 }
 
+/// Whether the null inputs' interface is pretending to be pulled out.
+///
+/// Test-visible state for the same reason as [`LIVE_INPUTS`]: what a
+/// vanished interface looks like — a capture callback that simply stops, and
+/// a device that will not open — cannot be produced any other way without
+/// hardware, and bringing it back by itself is exactly what has to be tested.
+static UNPLUGGED: AtomicBool = AtomicBool::new(false);
+
+/// Pull every null input's interface out (`true`) or plug it back (`false`).
+///
+/// Unplugged, the capture threads keep running and deliver nothing, and a
+/// new input refuses to open — as a real one does when its cable is pulled.
+pub fn unplug_inputs(unplugged: bool) {
+    UNPLUGGED.store(unplugged, Ordering::Relaxed);
+}
+
 /// A backend with no hardware behind it.
 #[derive(Debug, Default)]
 pub struct NullBackend;
@@ -223,6 +239,9 @@ impl AudioBackend for NullBackend {
         config: &StreamConfig,
         mut sink: rtrb::Producer<f32>,
     ) -> Result<Box<dyn AudioStream>, AudioError> {
+        if UNPLUGGED.load(Ordering::Relaxed) {
+            return Err(AudioError::NoInputDevice);
+        }
         let active = ActiveConfig {
             device_name: Self::input_device_info().name,
             sample_rate: config.sample_rate,
@@ -247,7 +266,7 @@ impl AudioBackend for NullBackend {
                     );
                     let mut next = std::time::Instant::now();
                     while alive.load(Ordering::Relaxed) {
-                        if running.load(Ordering::Relaxed) {
+                        if running.load(Ordering::Relaxed) && !UNPLUGGED.load(Ordering::Relaxed) {
                             // Whatever will fit and no more. A real capture
                             // callback drops what the ring will not take rather
                             // than blocking, and so does this one -- a reader

@@ -146,6 +146,14 @@ pub enum Command {
     Vocals {
         rack: Option<Box<dj_vocal::Vocals>>,
     },
+    /// K3: a new input ring for the singers' rack already installed — the
+    /// interface came back after going. Only the ring changes: the strips,
+    /// their settings and their tails stay as they were. The ring that was
+    /// there leaves through [`Retired::MicInput`]; with no rack, the new one
+    /// goes straight back the same way.
+    VocalInput {
+        ring: rtrb::Consumer<f32>,
+    },
     /// K3: one strip's settings, all of them. By value: settings are plain
     /// numbers, and a strip applying them does arithmetic, never allocates.
     /// A strip the rack does not have is ignored.
@@ -279,7 +287,8 @@ pub enum Retired {
     /// on some plugins leaves a thread running. The host has to hand it to
     /// `dj_clap::Loaded::deactivate`.
     Clap(Box<dj_clap::Processor>),
-    /// The receiving half of a detached microphone input, to be freed.
+    /// The receiving half of a detached microphone input — the DJ's, or the
+    /// singers' when theirs is replaced — to be freed.
     ///
     /// Same reasoning as [`Retired::Stream`]: dropping an `rtrb::Consumer`
     /// releases a share of the ring, and if the host's input callback has
