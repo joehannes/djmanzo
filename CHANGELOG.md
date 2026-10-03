@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A buffer for singing (K3).** Under "a singer hears themselves about 11 ms
+  late", the Singers surface now offers the interface's buffer, each size
+  with what it means in milliseconds. It says what a smaller one costs before
+  anything happens — the machine works harder, and reopening the interface
+  stops the music and empties the decks — and reopens only on the press.
+
 - **A guest's voice is recorded from the microphone they sing into (K3).**
   The guest book's fifteen-second voice take now comes from the singers'
   microphone the guest is on — their voice without the echo and the room —

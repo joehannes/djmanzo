@@ -275,6 +275,57 @@ test.describe("K3: the singers' microphones", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **A smaller buffer for singing, with what it costs said first.** The
+   * section offers the interface's buffer, each size with what it means in
+   * milliseconds; choosing one says the trade — sooner for a singer, more
+   * for the machine, and that opening the interface again stops the music and
+   * empties the decks — and nothing is reopened until the press that says so.
+   * Pressed, the interface opens at that size, the device and headphones as
+   * they were, and the singers' inputs open again on the same interface.
+   * Choosing the size it already has takes the offer away.
+   */
+  test("a smaller buffer for singing is offered with its cost, and opened on a press", async ({ page }) => {
+    await singers(page, {
+      open_device: {
+        name: "Null output",
+        sample_rate: 48_000,
+        buffer_frames: 128,
+        channels: 2,
+        latency_ms: 2.7,
+        cue: null,
+        cue_error: null,
+      },
+    });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const devices = () =>
+      page.evaluate(() => (window as unknown as { __devices?: { bufferFrames: number }[] }).__devices ?? []);
+    const before = (await devices()).length;
+    const picker = here.getByRole("combobox", { name: "Buffer for singing" });
+    await expect(picker).toHaveValue("256");
+    await expect(picker.locator("option[value='128']")).toHaveText("128 frames — 2.7 ms each way");
+    const reopen = here.getByRole("button", { name: /Reopen at/ });
+    await expect(reopen).toHaveCount(0);
+
+    await picker.selectOption("128");
+    await expect(here.locator("[data-trade]")).toContainText("empties the decks");
+    expect((await devices()).length, "nothing reopened by choosing").toBe(before);
+    await picker.selectOption("256");
+    await expect(reopen).toHaveCount(0);
+
+    await picker.selectOption("128");
+    await here.getByRole("button", { name: "Reopen at 128 frames" }).click();
+    await expect(reopen).toHaveCount(0);
+    const opened = await devices();
+    expect(opened.length).toBe(before + 1);
+    expect(opened.at(-1)).toMatchObject({ bufferFrames: 128 });
+    const reopened = (await calls(page)).filter((c) => c.cmd === "vocals_open");
+    expect(reopened.map((c) => c.deviceId)).toEqual(["usb", "usb"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   test("a row's chain is behind a press on its name, over Rust's ranges", async ({ page }) => {
     await singers(page);
     const here = section(page);

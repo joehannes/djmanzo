@@ -40,6 +40,12 @@ const FALLBACK: AudioPreference = { device: null, cue: null, bufferFrames: 256 }
 /** Buffer sizes the interface offers. Anything else is somebody else's typo. */
 const BUFFERS = [64, 128, 256, 512, 1024, 2048];
 
+/**
+ * The sizes a DJ picks from — in Settings, and on the singers' microphones
+ * (K3), where a smaller one is a singer hearing themselves sooner.
+ */
+export const BUFFER_CHOICES = [64, 128, 256, 512, 1024] as const;
+
 /** What was remembered, or the defaults. Never throws. */
 export function readAudioPreference(store: Storage | null = safeStorage()): AudioPreference {
   if (!store) return { ...FALLBACK };

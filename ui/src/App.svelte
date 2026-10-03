@@ -30,6 +30,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { watchFrameRate } from "./framerate";
   import {
+    BUFFER_CHOICES,
     deviceMissing,
     deviceToOpen,
     readAudioPreference,
@@ -2582,6 +2583,16 @@
     }
   }
 
+  /**
+   * K3: the buffer, set from the singers' microphones — the same choice as
+   * Settings' and kept the same way, by opening the interface again.
+   */
+  async function setBuffer(frames: number) {
+    bufferFrames = frames;
+    await connect();
+    if (!active) throw new Error(error ?? `the interface did not open at ${frames} frames`);
+  }
+
   async function connect() {
     try {
       active = await openDevice(selectedDevice, selectedCueDevice, bufferFrames);
@@ -2738,7 +2749,7 @@
         </select>
 
         <select aria-label="Buffer size" bind:value={bufferFrames}>
-          {#each [64, 128, 256, 512, 1024] as frames (frames)}
+          {#each BUFFER_CHOICES as frames (frames)}
             <option value={frames}>{frames} frames</option>
           {/each}
         </select>
@@ -3476,7 +3487,13 @@
   {/snippet}
 
   {#snippet surfaceKaraoke()}
-    <Singers enabled={ready} {deckCount} decks={snapshot?.decks ?? []} vocals={snapshot?.master.vocals} />
+    <Singers
+      enabled={ready}
+      {deckCount}
+      decks={snapshot?.decks ?? []}
+      vocals={snapshot?.master.vocals}
+      buffer={{ frames: bufferFrames, set: setBuffer }}
+    />
   {/snippet}
 
   {#snippet surfaceRequests()}

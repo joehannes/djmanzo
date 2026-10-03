@@ -808,9 +808,26 @@ the second alone, at its level, and says where it came from), an action test
 (singers counted from 1 in words, 0 and 17 refused) and the host test above
 (the strip a guest is on, Mic 1, and the DJ's own microphone again once
 attached).
-**Not yet:** the small-buffer setting for singing ("The delay a singer
-hears"): the round trip is measured and shown on the *Microphones* line, but
-the buffer is still chosen with the output device.
+**And a buffer for singing.** The *Microphones* line, under how late a singer
+hears themselves, offers the interface's buffer — the choice Settings has,
+each size with what it is in milliseconds each way at the rate the input
+opened at. Choosing one says the trade first — sooner for a singer, more for
+the machine, back up if it crackles, and that opening the interface again
+stops the music and empties the decks, so it is a setting for before the
+night — and nothing is reopened until *Reopen at 128 frames* is pressed.
+Then the interface opens again at that size, through the same road as
+Settings' *Reconnect*, kept the same way, and the singers' inputs open again
+on the same interface with their strips and whoever is on them, which are
+Rust's. Not offered in a popped-out Singers window, which cannot reopen the
+interface. Held by a browser test (the sizes in milliseconds, the trade said
+on choosing, nothing reopened by choosing, the offer gone for the size it
+has, and on the press the interface opened at that size and the inputs on
+the same interface) — mutation-tested: the inputs not reopened, the current
+size still offered, and the size not passed on each fail it. Driven: 256
+frames read *about 11 ms late*; 128 chosen, the trade shown, nothing moved;
+pressed, *about 5 ms late*, both rows back — and the decks empty, as said.
+**K3 is built.** What it cannot say is how any of it sounds: this container
+has no microphone and no speakers.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

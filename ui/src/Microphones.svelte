@@ -36,12 +36,14 @@
     type VocalsState,
   } from "./api";
   import StripChain from "./StripChain.svelte";
+  import { BUFFER_CHOICES } from "./audiopref";
 
   let {
     live,
     enabled = true,
     vocals = $bindable(null),
     singers = [],
+    buffer,
   }: {
     live?: VocalsState;
     enabled?: boolean;
@@ -49,6 +51,12 @@
     vocals?: Vocals | null;
     /** Tonight's rotation, by name: who can be put on a microphone. */
     singers?: string[];
+    /**
+     * The interface's buffer, and how to open it again at another — the
+     * choice Settings has, offered where its cost to a singer is said. Not
+     * in a popped-out window, which cannot reopen the interface.
+     */
+    buffer?: { frames: number; set: (frames: number) => Promise<void> };
   } = $props();
 
   let inputs = $state<Device[]>([]);
@@ -203,6 +211,34 @@
   /** Input buffer and output buffer: how late a singer hears themselves in a monitor. */
   const late = $derived(opened ? Math.round(opened.latencyMs * 2) : null);
 
+  /**
+   * K3: the buffer for singing (docs/KARAOKE.md §6, "The delay a singer
+   * hears"). Chosen first and opened on a press, because opening the
+   * interface again stops the music and empties the decks.
+   */
+  let wanted = $state<number | null>(null);
+  const chosen = $derived(wanted ?? buffer?.frames ?? 256);
+  /** One buffer, in milliseconds, at the rate the input opened at. */
+  const each = (frames: number) => Math.round((frames / (opened?.sampleRate ?? 48_000)) * 10_000) / 10;
+
+  async function rebuffer() {
+    if (!buffer || wanted === null) return;
+    busy = true;
+    error = "";
+    try {
+      await buffer.set(wanted);
+      wanted = null;
+      // A new interface closes every input, the singers' with it: open them
+      // again as they were — their strips' settings, and who is on them,
+      // are Rust's and come back with them.
+      opened = await vocalsOpen(device || null);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   /** The music in the singers' monitor; `null` when the output has no pair for one. */
   const monitor = $derived(live?.monitor_music_db ?? null);
   /** The level said as the host thinks of it: off at the bottom, dB above. */
@@ -237,6 +273,33 @@
       {#if late !== null}A singer hears themselves about {late} ms late.{/if}
       {#if heavy}<strong>That is more than this machine should be asked for — close some.</strong>{/if}
     </p>
+    {#if buffer}
+      <div class="buffer" role="group" aria-label="Buffer for singing">
+        <label>
+          <span>Buffer</span>
+          <select
+            aria-label="Buffer for singing"
+            value={chosen}
+            disabled={busy}
+            onchange={(e) => {
+              const frames = Number(e.currentTarget.value);
+              wanted = frames === buffer?.frames ? null : frames;
+            }}
+          >
+            {#each BUFFER_CHOICES as frames (frames)}
+              <option value={frames}>{frames} frames — {each(frames)} ms each way</option>
+            {/each}
+          </select>
+        </label>
+        {#if wanted !== null}
+          <p class="hint" data-trade>
+            Smaller is sooner for a singer and asks more of the machine — if the sound crackles, go back up. Opening the
+            interface again stops the music and empties the decks: set it before the night.
+          </p>
+          <button onclick={() => void rebuffer()} disabled={busy}>Reopen at {wanted} frames</button>
+        {/if}
+      </div>
+    {/if}
     {#if lost}
       <p class="lost" role="alert">Microphones lost — reconnect the interface; djmanzo tries it again every two seconds.</p>
     {/if}
@@ -495,6 +558,26 @@
 
   .silent {
     grid-column: 1 / -1;
+  }
+
+  .buffer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    font-size: 0.85em;
+  }
+
+  .buffer label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .buffer select {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .who {

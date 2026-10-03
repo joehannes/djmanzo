@@ -2309,6 +2309,13 @@ export async function openShell(
             if (cmd !== "share_preview") ((win.__shared ??= []) as string[]).push(slug);
             return Promise.resolve(structuredClone(said));
           }
+          // Opening the interface: recorded, and answered with what the test
+          // gave (nothing, unless it asked) -- K3's buffer for singing opens it
+          // again at another size.
+          if (cmd === "open_device") {
+            ((win.__devices ??= []) as unknown[]).push({ ...args });
+            return Promise.resolve(answers.open_device);
+          }
           if (cmd === "open_store") {
             ((win.__opened ??= []) as unknown[]).push({ ...args });
             return Promise.resolve(null);

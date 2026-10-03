@@ -42,7 +42,15 @@
     deckCount = 2,
     decks = [],
     vocals,
-  }: { enabled: boolean; deckCount?: number; decks?: DeckState[]; vocals?: VocalsState } = $props();
+    buffer,
+  }: {
+    enabled: boolean;
+    deckCount?: number;
+    decks?: DeckState[];
+    vocals?: VocalsState;
+    /** K3: the interface's buffer, and how to change it — not in a popped-out window. */
+    buffer?: { frames: number; set: (frames: number) => Promise<void> };
+  } = $props();
 
   /**
    * §107: what the room hears of the recorded singer, per deck. Out is
@@ -476,7 +484,13 @@
     </details>
   {/if}
 
-  <Microphones live={vocals} {enabled} bind:vocals={mics} singers={(rotation?.singers ?? []).map((s) => s.name)} />
+  <Microphones
+    live={vocals}
+    {enabled}
+    bind:vocals={mics}
+    singers={(rotation?.singers ?? []).map((s) => s.name)}
+    {buffer}
+  />
 
   <WordTiming {decks} {deckCount} />
 
