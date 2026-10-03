@@ -1594,12 +1594,14 @@ impl AppState {
     /// K3: each singer's microphone's settings, strip by strip, as the host
     /// left them — the rig, restored when djmanzo starts. Empty on a fresh
     /// install or an unreadable file, which gives every strip a singer's
-    /// defaults.
+    /// defaults. Held to `dj_vocal::LIMITS` on the way in, so a file edited
+    /// by hand cannot put a voice through more than the screen could.
     #[must_use]
     pub fn read_vocal_settings(&self) -> Vec<dj_vocal::StripSettings> {
         self.vocal_path()
             .and_then(|path| std::fs::read_to_string(path).ok())
-            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(|text| serde_json::from_str::<Vec<dj_vocal::StripSettings>>(&text).ok())
+            .map(|strips| strips.iter().map(dj_vocal::StripSettings::held).collect())
             .unwrap_or_default()
     }
 

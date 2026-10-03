@@ -684,6 +684,65 @@ mod tests {
         assert_eq!(dj_audio::null::live_input_streams(), 0);
     }
 
+    /// K3: **what a strip is set to is held to the limits before it is kept
+    /// or played.** The screen draws its controls over `dj_vocal::LIMITS`,
+    /// but the host does not trust it to: a makeup gain of +200 dB, a ratio
+    /// under 1 and a fader that is not a number come back as the most there
+    /// is, no compression and the fader's default — in `vocal.json`, and in
+    /// what the screen is told. A `vocal.json` edited by hand is held the same
+    /// way when it is read. And the screen is given the limits and every
+    /// stage's starting point, by name, from the same table.
+    #[test]
+    fn a_strips_settings_are_held_to_the_limits_before_they_are_kept() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let wild = dj_vocal::StripSettings {
+            open: true,
+            gain_db: f32::NAN,
+            compressor: Some(dj_vocal::CompressorSettings {
+                threshold_db: -20.0,
+                ratio: 0.2,
+                makeup_db: 200.0,
+            }),
+            ..dj_vocal::StripSettings::default()
+        };
+        crate::commands::set_vocal_strip(&state, 0, wild).expect("kept and sent");
+        let kept = state.read_vocal_settings()[0];
+        let compressor = kept.compressor.expect("still on");
+        assert!(
+            (compressor.makeup_db - 24.0).abs() < f32::EPSILON,
+            "{compressor:?}"
+        );
+        assert!(
+            (compressor.ratio - 1.0).abs() < f32::EPSILON,
+            "{compressor:?}"
+        );
+        assert!(kept.gain_db.abs() < f32::EPSILON, "{}", kept.gain_db);
+        assert!(kept.open, "the switch was not the limits' business");
+
+        let mut edited: serde_json::Value =
+            serde_json::to_value(vec![dj_vocal::StripSettings::default()]).expect("serializes");
+        edited[0]["reverb"]["seconds"] = serde_json::json!(600.0);
+        edited[0]["to_main"] = serde_json::json!(-3.0);
+        std::fs::write(
+            dir.path().join("vocal.json"),
+            serde_json::to_string(&edited).expect("writes"),
+        )
+        .expect("on disk");
+        let read = state.read_vocal_settings()[0];
+        assert!(
+            (read.reverb.expect("on").seconds - dj_vocal::LONGEST_REVERB_SECONDS).abs()
+                < f32::EPSILON
+        );
+        assert!(read.to_main.abs() < f32::EPSILON);
+
+        let dto = crate::commands::vocals_for(2, 0, 0, Vec::new(), 0.0);
+        assert_eq!(dto.limits.len(), dj_vocal::LIMITS.len());
+        assert_eq!(dto.limits["compressor.makeup_db"], [0.0, 24.0]);
+        assert_eq!(dto.every_stage, dj_vocal::StripSettings::every_stage());
+    }
+
     /// K3: **a singers' input pulled out mid-song is brought back by itself,
     /// and the rack stays.** Through the real host thread and the null
     /// backend's interface pulled out and plugged back: the host notices the

@@ -809,6 +809,13 @@ export interface StripSettings {
   reverb: { seconds: number; level: number } | null;
 }
 
+/**
+ * The least and the most of every number on a strip, by name — a stage's as
+ * `stage.number`. Rust's (`dj_vocal::LIMITS`), and Rust holds whatever is sent
+ * to them.
+ */
+export type VocalLimits = Record<string, [number, number]>;
+
 /** K3: the singers' microphones as `vocals_state` answers. See `dj_app::commands::VocalsDto`. */
 export interface Vocals {
   inputs: number;
@@ -819,6 +826,9 @@ export interface Vocals {
   /** One full chain's cost on this machine, as a share of one processor core. */
   chain_cost: number;
   presets: { id: VocalPreset; name: string }[];
+  limits: VocalLimits;
+  /** A strip with every stage on, each where it starts when switched on. */
+  every_stage: StripSettings;
 }
 
 export const vocalsState = () => invoke<Vocals>("vocals_state");

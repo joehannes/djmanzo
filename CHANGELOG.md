@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Every microphone's whole chain, behind its name (K3).** Press *Mic 1* on
+  its row and its chain opens: low cut, pan, the PA, monitor and headphone
+  sends, talkover, then gate, EQ, compressor, de-esser, echo and room, each on
+  or off and set. Every control's range is djmanzo's own, and whatever is sent
+  — or written into `vocal.json` by hand — is held to it: a compressor's
+  makeup gain can no longer be asked for at +200 dB.
+
 - **An unplugged microphone interface comes back by itself (K3).** Pull the
   singers' interface out mid-song and the music plays on; plug it back in and
   djmanzo finds it within two seconds, every microphone as you left it.

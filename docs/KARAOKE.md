@@ -409,7 +409,7 @@ piece of this document lands among them.
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |
-| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor and reconnecting built; a singer's own settings and the chain on screen next — §6 below |
+| N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
@@ -678,8 +678,42 @@ meters stop with it — an MC's row, with no reverb tail to decay through, kept
 its level lit and its compression shown for as long as the MC was quiet. An
 idle strip now reads as stopped: no level, no compression, no gate open
 (a `dj-vocal` test, failing before the fix).
-**Not yet:** a singer's own settings laid over the strip's, and the chain
-behind a press on the row.
+**And the chain is behind a press on the row.** *Mic 1* on a row is a button:
+pressed, every stage of that strip opens under it — the low cut, the pan and
+the three sends, talkover, then gate, EQ, compressor, de-esser, echo and room
+in the order the voice goes through them, each switched on or off and its
+numbers on sliders. Nothing on that screen decides what a voice may be put
+through. Every number a strip takes has a range in one table in Rust
+(`dj_vocal::LIMITS`, from `dj_vocal::range`), and the screen draws each slider
+over exactly that range — the row's fader too — from the answer it is given
+(`VocalsDto::limits`); a stage switched on starts at Rust's starting point for
+it (`StripSettings::every_stage`, the stages' own defaults), not one the screen
+guesses. And the host does not trust the screen to have kept to the ranges:
+what it is sent is held to them before it is kept or played
+(`StripSettings::held`, in `set_vocal_strip`), and so is a `vocal.json` read
+from disk — a number past its range comes back at the edge of it, one that is
+not a number at all at its default. Before this, nothing past the fader and
+the high-pass was bounded: a compressor's makeup gain of +200 dB would have
+reached the engine as sent. Held by a `dj-vocal` test that reads every number
+off the settings themselves and requires a range for each and no other, one
+that sends every number far past its range both ways and as not-a-number, a
+host test (the screen's wild values and a hand-edited file both held, the
+answer carrying the table), and a browser test (the chain behind the press,
+every slider over Rust's range, an echo switched on at Rust's starting point,
+one number moved and the rest of the strip sent exactly as it was, the room
+switched off). Mutation-tested: `held` skipping one number, a range's name
+drifting from its field, the host keeping or reading settings without holding
+them, a stage switched on at the screen's own starting point, sliders over a
+range of the screen's, and a move rebuilding the strip from defaults each
+fail one of them. Driving it in the running application found what no test
+had: the Singers surface docked at the side is narrower than a row's six
+things, so every row had always run past the panel's edge — the preset cut
+off — and the chain, as wide as its row, came out clipped with a scrollbar
+under it. A row now stays inside its panel, its level and compression going
+under the fader where the panel is narrow, and the chain fits the row — held
+by a browser test that narrows the list, and the preset select let give way
+because WebKitGTK draws one wider than the tests' Chromium does.
+**Not yet:** a singer's own settings laid over the strip's.
 
 **The order of the second step.** The engine holds a `Vocals`, built off the
 audio thread when the interface opens and installed by a command, the old one

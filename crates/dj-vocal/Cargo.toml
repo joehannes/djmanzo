@@ -13,5 +13,8 @@ dj-dsp = { workspace = true }
 rtrb = { workspace = true }
 serde = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

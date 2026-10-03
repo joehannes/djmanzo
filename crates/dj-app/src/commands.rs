@@ -577,6 +577,15 @@ pub struct VocalsDto {
     pub chain_cost: f64,
     /// What a strip can be made for, in the order a host reads them.
     pub presets: Vec<PresetDto>,
+    /// The least and the most of every number on a strip, by name — a
+    /// stage's as `stage.number` (`dj_vocal::LIMITS`). The chain behind a
+    /// row draws its controls over these and nothing wider, and Rust holds
+    /// whatever comes back to them.
+    pub limits: std::collections::BTreeMap<&'static str, [f32; 2]>,
+    /// A strip with every stage on, each at what it starts at when the host
+    /// switches it on (`StripSettings::every_stage`): a stage the screen
+    /// turns on starts where Rust says, not where the screen guesses.
+    pub every_stage: dj_vocal::StripSettings,
 }
 
 /// K3: one preset, as the row offers it.
@@ -635,6 +644,11 @@ pub fn vocals_for(
                 name: preset.name(),
             })
             .collect(),
+        limits: dj_vocal::LIMITS
+            .iter()
+            .map(|&(name, (min, max))| (name, [min, max]))
+            .collect(),
+        every_stage: dj_vocal::StripSettings::every_stage(),
     }
 }
 
@@ -665,8 +679,8 @@ pub fn vocals_state(state: State<'_, AppState>) -> VocalsDto {
     vocals_dto(&state)
 }
 
-/// K3: one strip's settings — kept for the next time djmanzo starts, and sent
-/// to the engine at once.
+/// K3: one strip's settings — held to `dj_vocal::LIMITS`, kept for the next
+/// time djmanzo starts, and sent to the engine at once.
 #[tauri::command]
 pub fn vocal_strip_set(
     state: State<'_, AppState>,
@@ -703,6 +717,8 @@ pub(crate) fn set_vocal_strip(
     if index >= dj_vocal::MOST_STRIPS {
         return Err(format!("djmanzo has no microphone {}", index + 1));
     }
+    // Whatever the screen sent, what is kept and played is inside the limits.
+    let settings = settings.held();
     let mut kept = state.read_vocal_settings();
     if kept.len() <= index {
         kept.resize(index + 1, dj_vocal::StripSettings::default());

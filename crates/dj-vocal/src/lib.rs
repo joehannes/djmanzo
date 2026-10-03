@@ -37,8 +37,8 @@ mod strip;
 pub use dynamics::{Compressor, DeEsser, Gate};
 pub use space::{Echo, LONGEST_ECHO_SECONDS, LONGEST_REVERB_SECONDS, Reverb};
 pub use strip::{
-    CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, Preset,
-    ReverbSettings, Strip, StripFrame, StripSettings,
+    CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, LIMITS, Preset,
+    ReverbSettings, Strip, StripFrame, StripSettings, range,
 };
 
 /// The most microphones djmanzo will run: the input count of a large

@@ -8,7 +8,8 @@
    * many are working and what that costs the audio thread, and how late a
    * singer hears themselves. The chain behind each strip is Rust's
    * (`dj_vocal`); this draws the snapshot's readings and sends the host's
-   * choices, which Rust keeps for the next time djmanzo starts. Below them,
+   * choices, which Rust keeps for the next time djmanzo starts. A press on a
+   * row's name opens the chain behind it (`StripChain`). Below them,
    * on an output with eight channels, the music's level in the singers'
    * monitor — the wedge's own, apart from the room's.
    */
@@ -28,6 +29,7 @@
     type Vocals,
     type VocalsState,
   } from "./api";
+  import StripChain from "./StripChain.svelte";
 
   let { live, enabled = true }: { live?: VocalsState; enabled?: boolean } = $props();
 
@@ -37,6 +39,10 @@
   let opened = $state<MicDevice | null>(null);
   let busy = $state(false);
   let error = $state("");
+  /** Which rows have their chain open. */
+  let chains = $state<boolean[]>([]);
+  /** The fader's range, Rust's. */
+  const fader = $derived(vocals?.limits.gain_db ?? [-60, 12]);
 
   async function refresh() {
     try {
@@ -191,7 +197,13 @@
           data-working={face?.working ?? false}
           data-gate={face?.gate_open ?? false}
         >
-          <span class="name">Mic {i + 1}</span>
+          <button
+            class="name"
+            aria-expanded={chains[i] ?? false}
+            title="The chain behind Mic {i + 1}"
+            onclick={() => (chains[i] = !chains[i])}
+            >Mic {i + 1}<span class="more" aria-hidden="true">{chains[i] ? " ▾" : " ▸"}</span></button
+          >
           <button
             class="switch"
             aria-pressed={strip.open}
@@ -201,8 +213,8 @@
           <input
             class="fader"
             type="range"
-            min="-60"
-            max="12"
+            min={fader[0]}
+            max={fader[1]}
             step="0.5"
             value={strip.gain_db}
             aria-label="Mic {i + 1} level"
@@ -225,6 +237,15 @@
           </select>
           {#if quiet[i]}
             <span class="silent">nothing on Mic {i + 1}</span>
+          {/if}
+          {#if chains[i] && vocals}
+            <StripChain
+              index={i}
+              {strip}
+              limits={vocals.limits}
+              everyStage={vocals.every_stage}
+              onchange={(settings) => void set(i, settings)}
+            />
           {/if}
         </li>
       {/each}
@@ -302,11 +323,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    container: mics / inline-size;
   }
 
   .strip {
     display: grid;
-    grid-template-columns: 3.4rem 4.6rem minmax(5rem, 1fr) 4rem 3.2rem auto;
+    grid-template-columns: max-content 4.6rem minmax(5rem, 1fr) 4rem 3.2rem auto;
     align-items: center;
     gap: 0.4rem;
     padding: 0.25rem 0.4rem;
@@ -319,8 +341,47 @@
     border-color: var(--accent);
   }
 
+  /* WebKitGTK draws a select wider than Chromium does: in the application
+     the preset ran past the panel's edge until it was let give way. The
+     browser tests cannot see it; the application could. */
+  .strip select {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* A narrow panel — the Singers surface docked at the side — has no room for
+     a row's six things on one line: the level and the compression go under
+     the fader, and the row stays inside the panel. */
+  @container mics (max-width: 30rem) {
+    .strip {
+      grid-template-columns: max-content max-content minmax(3rem, 1fr) minmax(5.5rem, 7rem);
+    }
+
+    .meter {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    .squeeze {
+      grid-column: 4;
+      grid-row: 2;
+    }
+  }
+
   .name {
+    font: inherit;
     font-weight: 600;
+    white-space: nowrap;
+    text-align: left;
+    padding: 0.1rem 0.2rem;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .more {
+    color: var(--text-dim);
   }
 
   .switch[aria-pressed="true"] {

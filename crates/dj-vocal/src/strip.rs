@@ -96,6 +96,68 @@ pub struct ReverbSettings {
     pub level: f32,
 }
 
+// What each stage starts at when the host switches it on: the stage's own
+// defaults, which are also a singer's ([`StripSettings::default`]).
+
+impl Default for GateSettings {
+    fn default() -> Self {
+        Self {
+            threshold_db: Gate::DEFAULT_THRESHOLD_DB,
+            range_db: Gate::DEFAULT_RANGE_DB,
+        }
+    }
+}
+
+impl Default for EqSettings {
+    /// Flat, with the middle band where a voice's body is.
+    fn default() -> Self {
+        Self {
+            low_db: 0.0,
+            mid_db: 0.0,
+            mid_hz: 1_000.0,
+            high_db: 0.0,
+        }
+    }
+}
+
+impl Default for CompressorSettings {
+    fn default() -> Self {
+        Self {
+            threshold_db: Compressor::DEFAULT_THRESHOLD_DB,
+            ratio: Compressor::DEFAULT_RATIO,
+            makeup_db: 3.0,
+        }
+    }
+}
+
+impl Default for DeEsserSettings {
+    fn default() -> Self {
+        Self {
+            frequency_hz: DeEsser::DEFAULT_FREQUENCY_HZ,
+            threshold_db: DeEsser::DEFAULT_THRESHOLD_DB,
+        }
+    }
+}
+
+impl Default for EchoSettings {
+    fn default() -> Self {
+        Self {
+            delay_ms: Echo::DEFAULT_DELAY_MS,
+            feedback: Echo::DEFAULT_FEEDBACK,
+            level: 0.25,
+        }
+    }
+}
+
+impl Default for ReverbSettings {
+    fn default() -> Self {
+        Self {
+            seconds: Reverb::DEFAULT_SECONDS,
+            level: 0.18,
+        }
+    }
+}
+
 impl Default for StripSettings {
     /// A singer's microphone, closed: a high-pass for handling noise, a gate,
     /// a compressor, a de-esser and a little room; no echo; no talkover; to
@@ -111,24 +173,189 @@ impl Default for StripSettings {
             to_cue: 0.0,
             to_monitor: 1.0,
             high_pass_hz: 100.0,
-            gate: Some(GateSettings {
-                threshold_db: Gate::DEFAULT_THRESHOLD_DB,
-                range_db: Gate::DEFAULT_RANGE_DB,
-            }),
+            gate: Some(GateSettings::default()),
             eq: None,
-            compressor: Some(CompressorSettings {
-                threshold_db: Compressor::DEFAULT_THRESHOLD_DB,
-                ratio: Compressor::DEFAULT_RATIO,
-                makeup_db: 3.0,
-            }),
-            de_esser: Some(DeEsserSettings {
-                frequency_hz: DeEsser::DEFAULT_FREQUENCY_HZ,
-                threshold_db: DeEsser::DEFAULT_THRESHOLD_DB,
-            }),
+            compressor: Some(CompressorSettings::default()),
+            de_esser: Some(DeEsserSettings::default()),
             echo: None,
-            reverb: Some(ReverbSettings {
-                seconds: Reverb::DEFAULT_SECONDS,
-                level: 0.18,
+            reverb: Some(ReverbSettings::default()),
+        }
+    }
+}
+
+/// The least and the most of every number a strip takes.
+///
+/// One table for both sides of the screen: the host holds settings to it
+/// before keeping or sending them ([`StripSettings::held`]), and the
+/// interface draws its controls over exactly these ranges ([`LIMITS`]), so
+/// neither decides alone what a voice may be put through.
+pub mod range {
+    /// The fader, dB.
+    pub const GAIN_DB: (f32, f32) = (-60.0, 12.0);
+    pub const PAN: (f32, f32) = (-1.0, 1.0);
+    /// Any send, 0 to 1.
+    pub const SEND: (f32, f32) = (0.0, 1.0);
+    /// 0 is off; anything else is at least 20 Hz.
+    pub const HIGH_PASS_HZ: (f32, f32) = (0.0, 400.0);
+    pub const GATE_THRESHOLD_DB: (f32, f32) = (-80.0, -10.0);
+    pub const GATE_RANGE_DB: (f32, f32) = (0.0, 80.0);
+    /// Any EQ band's cut or boost, dB.
+    pub const EQ_DB: (f32, f32) = (-12.0, 12.0);
+    pub const EQ_MID_HZ: (f32, f32) = (200.0, 8_000.0);
+    pub const COMPRESSOR_THRESHOLD_DB: (f32, f32) = (-50.0, 0.0);
+    /// 1 is no compression at all.
+    pub const COMPRESSOR_RATIO: (f32, f32) = (1.0, 20.0);
+    pub const COMPRESSOR_MAKEUP_DB: (f32, f32) = (0.0, 24.0);
+    pub const DE_ESSER_HZ: (f32, f32) = (2_000.0, 12_000.0);
+    pub const DE_ESSER_THRESHOLD_DB: (f32, f32) = (-60.0, 0.0);
+    /// Up to the longest echo a strip is built for.
+    pub const ECHO_DELAY_MS: (f32, f32) = (20.0, crate::LONGEST_ECHO_SECONDS * 1_000.0);
+    /// Short of 1, where the repeats would never die away.
+    pub const ECHO_FEEDBACK: (f32, f32) = (0.0, 0.9);
+    /// How much of an echo or a room is heard, 0 to 1.
+    pub const LEVEL: (f32, f32) = (0.0, 1.0);
+    /// Up to the longest room a strip is built for.
+    pub const REVERB_SECONDS: (f32, f32) = (0.2, crate::LONGEST_REVERB_SECONDS);
+    /// The lowest a high-pass that is on goes.
+    pub(crate) const HIGH_PASS_LOWEST_HZ: f32 = 20.0;
+}
+
+/// Every number a strip takes, by the name the interface knows it by — a
+/// stage's numbers as `stage.number` — with its range from [`range`].
+pub const LIMITS: [(&str, (f32, f32)); 22] = [
+    ("gain_db", range::GAIN_DB),
+    ("pan", range::PAN),
+    ("to_main", range::SEND),
+    ("to_cue", range::SEND),
+    ("to_monitor", range::SEND),
+    ("high_pass_hz", range::HIGH_PASS_HZ),
+    ("gate.threshold_db", range::GATE_THRESHOLD_DB),
+    ("gate.range_db", range::GATE_RANGE_DB),
+    ("eq.low_db", range::EQ_DB),
+    ("eq.mid_db", range::EQ_DB),
+    ("eq.mid_hz", range::EQ_MID_HZ),
+    ("eq.high_db", range::EQ_DB),
+    ("compressor.threshold_db", range::COMPRESSOR_THRESHOLD_DB),
+    ("compressor.ratio", range::COMPRESSOR_RATIO),
+    ("compressor.makeup_db", range::COMPRESSOR_MAKEUP_DB),
+    ("de_esser.frequency_hz", range::DE_ESSER_HZ),
+    ("de_esser.threshold_db", range::DE_ESSER_THRESHOLD_DB),
+    ("echo.delay_ms", range::ECHO_DELAY_MS),
+    ("echo.feedback", range::ECHO_FEEDBACK),
+    ("echo.level", range::LEVEL),
+    ("reverb.seconds", range::REVERB_SECONDS),
+    ("reverb.level", range::LEVEL),
+];
+
+/// `value` inside `(min, max)`; `fallback` when it is not a number at all.
+fn hold(value: f32, (min, max): (f32, f32), fallback: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(min, max)
+    } else {
+        fallback
+    }
+}
+
+impl StripSettings {
+    /// A singer's strip with every stage on, each at what it starts at when
+    /// the host switches it on — what the interface turns a stage on to, so
+    /// that a stage's starting point is Rust's, not the screen's.
+    #[must_use]
+    pub fn every_stage() -> Self {
+        Self {
+            eq: Some(EqSettings::default()),
+            echo: Some(EchoSettings::default()),
+            ..Self::default()
+        }
+    }
+
+    /// These settings held to [`LIMITS`]: every number inside its range, and
+    /// one that is not a number at all put back to its default. What the host
+    /// keeps and what the engine is sent, whatever the screen — or a hand-
+    /// edited `vocal.json` — asked for: a makeup gain of +200 dB is not a
+    /// setting, it is a speaker.
+    #[must_use]
+    pub fn held(&self) -> Self {
+        let singer = Self::default();
+        let high_pass_hz = match hold(self.high_pass_hz, range::HIGH_PASS_HZ, singer.high_pass_hz) {
+            hz if hz <= 0.0 => 0.0,
+            hz => hz.max(range::HIGH_PASS_LOWEST_HZ),
+        };
+        Self {
+            preset: self.preset,
+            open: self.open,
+            gain_db: hold(self.gain_db, range::GAIN_DB, singer.gain_db),
+            pan: hold(self.pan, range::PAN, singer.pan),
+            talkover: self.talkover,
+            to_main: hold(self.to_main, range::SEND, singer.to_main),
+            to_cue: hold(self.to_cue, range::SEND, singer.to_cue),
+            to_monitor: hold(self.to_monitor, range::SEND, singer.to_monitor),
+            high_pass_hz,
+            gate: self.gate.map(|gate| {
+                let start = GateSettings::default();
+                GateSettings {
+                    threshold_db: hold(
+                        gate.threshold_db,
+                        range::GATE_THRESHOLD_DB,
+                        start.threshold_db,
+                    ),
+                    range_db: hold(gate.range_db, range::GATE_RANGE_DB, start.range_db),
+                }
+            }),
+            eq: self.eq.map(|eq| {
+                let start = EqSettings::default();
+                EqSettings {
+                    low_db: hold(eq.low_db, range::EQ_DB, start.low_db),
+                    mid_db: hold(eq.mid_db, range::EQ_DB, start.mid_db),
+                    mid_hz: hold(eq.mid_hz, range::EQ_MID_HZ, start.mid_hz),
+                    high_db: hold(eq.high_db, range::EQ_DB, start.high_db),
+                }
+            }),
+            compressor: self.compressor.map(|compressor| {
+                let start = CompressorSettings::default();
+                CompressorSettings {
+                    threshold_db: hold(
+                        compressor.threshold_db,
+                        range::COMPRESSOR_THRESHOLD_DB,
+                        start.threshold_db,
+                    ),
+                    ratio: hold(compressor.ratio, range::COMPRESSOR_RATIO, start.ratio),
+                    makeup_db: hold(
+                        compressor.makeup_db,
+                        range::COMPRESSOR_MAKEUP_DB,
+                        start.makeup_db,
+                    ),
+                }
+            }),
+            de_esser: self.de_esser.map(|de_esser| {
+                let start = DeEsserSettings::default();
+                DeEsserSettings {
+                    frequency_hz: hold(
+                        de_esser.frequency_hz,
+                        range::DE_ESSER_HZ,
+                        start.frequency_hz,
+                    ),
+                    threshold_db: hold(
+                        de_esser.threshold_db,
+                        range::DE_ESSER_THRESHOLD_DB,
+                        start.threshold_db,
+                    ),
+                }
+            }),
+            echo: self.echo.map(|echo| {
+                let start = EchoSettings::default();
+                EchoSettings {
+                    delay_ms: hold(echo.delay_ms, range::ECHO_DELAY_MS, start.delay_ms),
+                    feedback: hold(echo.feedback, range::ECHO_FEEDBACK, start.feedback),
+                    level: hold(echo.level, range::LEVEL, start.level),
+                }
+            }),
+            reverb: self.reverb.map(|reverb| {
+                let start = ReverbSettings::default();
+                ReverbSettings {
+                    seconds: hold(reverb.seconds, range::REVERB_SECONDS, start.seconds),
+                    level: hold(reverb.level, range::LEVEL, start.level),
+                }
             }),
         }
     }
@@ -321,14 +548,16 @@ impl Strip {
     pub fn apply(&mut self, settings: &StripSettings) {
         let rate = self.sample_rate;
         self.fader.set_target(if settings.open {
-            db_to_linear(settings.gain_db.clamp(-60.0, 12.0))
+            db_to_linear(settings.gain_db.clamp(range::GAIN_DB.0, range::GAIN_DB.1))
         } else {
             0.0
         });
         if settings.high_pass_hz > 0.0 {
             self.high_pass.set_coefficients_from(&Biquad::high_pass(
                 rate,
-                settings.high_pass_hz.clamp(20.0, 400.0),
+                settings
+                    .high_pass_hz
+                    .clamp(range::HIGH_PASS_LOWEST_HZ, range::HIGH_PASS_HZ.1),
                 std::f32::consts::FRAC_1_SQRT_2,
             ));
         }
@@ -340,7 +569,7 @@ impl Strip {
                 .set_coefficients_from(&Biquad::low_shelf(rate, 200.0, eq.low_db));
             self.mid.set_coefficients_from(&Biquad::peaking(
                 rate,
-                eq.mid_hz.clamp(200.0, 8_000.0),
+                eq.mid_hz.clamp(range::EQ_MID_HZ.0, range::EQ_MID_HZ.1),
                 1.0,
                 eq.mid_db,
             ));
@@ -567,6 +796,137 @@ mod tests {
         assert!(!strip.is_idle());
         assert_eq!(strip.processed_frames(), stopped_at + 1);
         assert!(woken.main[0] != 0.0 || woken.main[1] != 0.0 || strip.gate_open());
+    }
+
+    /// Every number in `settings`, by its `LIMITS` name.
+    fn numbers(settings: &StripSettings) -> Vec<(String, f64)> {
+        fn walk(prefix: &str, value: &serde_json::Value, into: &mut Vec<(String, f64)>) {
+            match value {
+                serde_json::Value::Number(n) => {
+                    into.push((prefix.to_owned(), n.as_f64().unwrap_or(f64::NAN)));
+                }
+                serde_json::Value::Object(map) => {
+                    for (key, inner) in map {
+                        let name = if prefix.is_empty() {
+                            key.clone()
+                        } else {
+                            format!("{prefix}.{key}")
+                        };
+                        walk(&name, inner, into);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        walk(
+            "",
+            &serde_json::to_value(settings).expect("settings serialize"),
+            &mut found,
+        );
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        found
+    }
+
+    /// **Every number a strip takes has a range, and the table names nothing
+    /// else.** Read off the settings themselves — a strip with every stage
+    /// on, as it is serialized for the screen — so a number added to a stage
+    /// without a range fails here instead of reaching a slider unbounded.
+    #[test]
+    fn every_number_a_strip_takes_has_a_limit() {
+        let found: Vec<String> = numbers(&StripSettings::every_stage())
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let mut limited: Vec<String> = LIMITS.iter().map(|(name, _)| (*name).to_owned()).collect();
+        limited.sort();
+        assert_eq!(found, limited);
+        for (name, (min, max)) in LIMITS {
+            assert!(min < max, "{name}: {min} to {max}");
+        }
+    }
+
+    /// **Held settings are inside their ranges, and what was inside is left
+    /// alone.** Every preset, and every stage at what it starts at, comes
+    /// back from `held` unchanged; a strip with every number far past its
+    /// range comes back with every number at the edge of it; and a strip of
+    /// numbers that are not numbers comes back at the defaults.
+    #[test]
+    fn held_settings_stay_inside_the_limits() {
+        for preset in Preset::ALL {
+            let settings = preset.applied_to(&StripSettings::every_stage());
+            assert_eq!(settings.held(), settings, "{}", preset.name());
+        }
+        let start = StripSettings::every_stage();
+        assert_eq!(start.held(), start);
+
+        let everything = |value: f32| StripSettings {
+            gain_db: value,
+            pan: value,
+            to_main: value,
+            to_cue: value,
+            to_monitor: value,
+            high_pass_hz: value,
+            gate: Some(GateSettings {
+                threshold_db: value,
+                range_db: value,
+            }),
+            eq: Some(EqSettings {
+                low_db: value,
+                mid_db: value,
+                mid_hz: value,
+                high_db: value,
+            }),
+            compressor: Some(CompressorSettings {
+                threshold_db: value,
+                ratio: value,
+                makeup_db: value,
+            }),
+            de_esser: Some(DeEsserSettings {
+                frequency_hz: value,
+                threshold_db: value,
+            }),
+            echo: Some(EchoSettings {
+                delay_ms: value,
+                feedback: value,
+                level: value,
+            }),
+            reverb: Some(ReverbSettings {
+                seconds: value,
+                level: value,
+            }),
+            ..StripSettings::default()
+        };
+        let limit = |name: &str| {
+            LIMITS
+                .iter()
+                .find(|(limited, _)| *limited == name)
+                .map(|(_, range)| *range)
+                .expect("a limit")
+        };
+        for (name, held) in numbers(&everything(1.0e6).held()) {
+            let (_, max) = limit(&name);
+            assert!(
+                (held - f64::from(max)).abs() < 1e-3,
+                "{name}: {held}, not {max}"
+            );
+        }
+        for (name, held) in numbers(&everything(-1.0e6).held()) {
+            let (min, _) = limit(&name);
+            assert!(
+                (held - f64::from(min)).abs() < 1e-3,
+                "{name}: {held}, not {min}"
+            );
+        }
+        for wild in [f32::NAN, f32::INFINITY] {
+            assert_eq!(numbers(&everything(wild).held()), numbers(&start));
+        }
+        // A high-pass that is on is never under 20 Hz.
+        let low = StripSettings {
+            high_pass_hz: 5.0,
+            ..start
+        };
+        assert!((low.held().high_pass_hz - 20.0).abs() < f32::EPSILON);
     }
 
     /// **A strip that has stopped reads as stopped.** An MC's strip — no

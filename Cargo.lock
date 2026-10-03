@@ -1590,6 +1590,7 @@ dependencies = [
  "dj-dsp",
  "rtrb",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
