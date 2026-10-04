@@ -6010,6 +6010,8 @@ export interface LookLayer {
   colour: string;
   amount: number;
   blend: string;
+  /** For a `milkdrop` layer, the MilkDrop preset it draws. */
+  preset?: string | null;
 }
 
 /** §122: a look — its layers, bottom first. See `dj_app::looks::Look`. */
@@ -6029,6 +6031,8 @@ export interface LookChosen {
 export type LookScreen = "singers" | "video";
 
 export const looksCatalogue = () => invoke<Look[]>("looks_catalogue");
+/** §122: a MilkDrop preset djmanzo ships, in Butterchurn's own form. */
+export const milkdropPreset = (name: string) => invoke<Record<string, unknown>>("milkdrop_preset", { name });
 export const lookChosen = () => invoke<LookChosen>("look_chosen");
 export const lookChoose = (screen: LookScreen, name: string | null) =>
   invoke<LookChosen>("look_choose", { screen, name });

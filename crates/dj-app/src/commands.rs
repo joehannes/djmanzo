@@ -364,6 +364,15 @@ pub fn look_chosen(state: State<'_, AppState>) -> crate::looks::Chosen {
     state.looks().chosen()
 }
 
+/// §122: a MilkDrop preset djmanzo ships, as Butterchurn reads it.
+///
+/// # Errors
+/// No preset has that name.
+#[tauri::command]
+pub fn milkdrop_preset(name: String) -> Result<serde_json::Value, String> {
+    crate::looks::preset(&name)
+}
+
 /// §122: show a look on a screen, or none.
 ///
 /// # Errors

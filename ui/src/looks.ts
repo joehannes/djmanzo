@@ -11,8 +11,13 @@
 import type { AudioMetrics, Look, LookLayer } from "./api";
 import { share, type DeckForPicture } from "./videoMix";
 
-/** What a layer can draw. `dj_app::looks`' test holds the same list. */
-export const KINDS = ["wash", "pulse", "ripple", "sparks", "halo"] as const;
+/**
+ * What a layer can draw. `dj_app::looks`' test holds the same list.
+ *
+ * `milkdrop` is the look's *main* layer: Butterchurn drawing a MilkDrop
+ * preset (`./milkdrop.ts`), taken into the stack as a picture.
+ */
+export const KINDS = ["wash", "pulse", "ripple", "sparks", "halo", "milkdrop"] as const;
 /** What a layer can answer to. */
 export const SIGNALS = [
   "loudness",
@@ -43,6 +48,8 @@ export interface DrawLayer {
   colour: "record" | Rgb;
   amount: number;
   blend: Blend;
+  /** The MilkDrop preset a `milkdrop` layer draws. */
+  preset?: string;
 }
 
 /** `#rrggbb`, `#rgb` or `rgb(r g b)` / `rgb(r, g, b)`, as 0..1; null when it is none of them. */
@@ -89,6 +96,10 @@ export function validate(look: Look): { layers: DrawLayer[]; dropped: string[] }
       dropped.push(`${which}: "${layer.colour}" is not a colour`);
       return;
     }
+    if (layer.kind === "milkdrop" && !layer.preset) {
+      dropped.push(`${which}: a MilkDrop layer that names no preset`);
+      return;
+    }
     const amount = Number.isFinite(layer.amount) ? Math.min(1, Math.max(0, layer.amount)) : 0;
     layers.push({
       kind: layer.kind as Kind,
@@ -96,6 +107,7 @@ export function validate(look: Look): { layers: DrawLayer[]; dropped: string[] }
       colour,
       amount,
       blend: layer.blend as Blend,
+      ...(layer.kind === "milkdrop" ? { preset: layer.preset ?? undefined } : {}),
     });
   });
   return { layers, dropped };

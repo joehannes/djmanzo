@@ -1267,6 +1267,27 @@ line, and the command ends with exit 144 and nothing done after it. Stop the
 application in a command of its own, or write the pattern so it cannot match
 itself (`debug/djmanz[o]`).
 
+**WebKitGTK gives an `OffscreenCanvas` no WebGL 2.** The class exists, so a
+library that prefers it — Butterchurn does — asks it for `webgl2`, gets
+`null`, and fails at its first framebuffer. An ordinary canvas gets WebGL 2
+at once. Chromium gives both, so no browser test sees it unless it is told to
+refuse (`ui/e2e/visuals.spec.ts` does).
+
+**WebKitGTK's asynchronous WebAssembly never settles here.**
+`WebAssembly.instantiate` on an empty module neither resolved nor rejected,
+while `new WebAssembly.Module` compiled at once. Anything that awaits it waits
+forever with no error. `ui/src/milkdrop.ts`'s `withSyncWasm` compiles
+synchronously while a MilkDrop preset loads. Whether `'wasm-unsafe-eval'` is
+what stalls it was not settled: finding out would mean switching on
+`'unsafe-eval'`, and the session's permissions rightly refused even a
+throwaway build with it. Do not weaken the content rules to diagnose.
+
+**A nearly full disk crashes a browser test's page, not the build.** At 97%
+(1.5 GB left) a full Playwright run lost one page mid-test — *Page crashed*,
+in the phone camera's WebRTC test, which passed twelve times out of twelve
+once `target/debug/incremental` and old scratch homes were cleared. Check
+`df -h /` before a full run, and read *Page crashed* as the machine's.
+
 **A Svelte 5 variable called `state` breaks the `$state` rune** in that
 component: `svelte-check` reports *'$state' used before its declaration* and
 *untyped function calls may not accept type arguments*, because `$state` is

@@ -108,6 +108,55 @@
     ]
   },
   {
+    "name": "Drift",
+    "description": "A MilkDrop picture of djmanzo's own: slow rolling waves that swell with the bass and drift with the treble, the singer's glow over it — for long, building songs.",
+    "layers": [
+      {
+        "kind": "milkdrop",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.9,
+        "blend": "over",
+        "preset": "Drift"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
+    "name": "Bloom",
+    "description": "A MilkDrop picture of djmanzo's own: a burst of colour in the middle whose trails spread out on the kick, rings on the beat over it — for dance music and big choruses.",
+    "layers": [
+      {
+        "kind": "milkdrop",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.9,
+        "blend": "over",
+        "preset": "Bloom"
+      },
+      {
+        "kind": "pulse",
+        "signal": "beat",
+        "colour": "record",
+        "amount": 0.3,
+        "blend": "add"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
     "name": "Everything",
     "description": "Every layer at once — colours, beat, waves, sparks and the singer's glow: for a big chorus, and for seeing what the layers do.",
     "layers": [

@@ -8,9 +8,35 @@
  * canvas; and that nothing the layers do — a picture that will not compile,
  * no WebGL at all, a system asking for stillness — takes the words with it.
  */
+import { readFileSync } from "node:fs";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { errorsThrown, openShell } from "./shell";
+
+/** The content rules djmanzo's webview runs under, as `tauri.conf.json` has them. */
+const CONTENT_RULES = (
+  JSON.parse(readFileSync(new URL("../../crates/dj-app/tauri.conf.json", import.meta.url), "utf8")) as {
+    app: { security: { csp: string } };
+  }
+).app.security.csp;
+
+/**
+ * Serve the page under `rules`, as the application's webview does. The
+ * browser tests have no content rules of their own, so without this a
+ * library that evaluates JavaScript would pass here and fail in djmanzo.
+ */
+async function underRules(page: Page, rules: string) {
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() !== "document") return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      `<head><meta http-equiv="Content-Security-Policy" content="${rules}">`,
+    );
+    return route.fulfill({ response, body });
+  });
+}
 
 const WORDS = {
   lines: [
@@ -133,6 +159,20 @@ async function coverage(page: Page): Promise<number> {
   });
 }
 
+/** The canvas's colour, read back off the GPU: its mean brightness, 0..1. */
+async function brightness(page: Page): Promise<number> {
+  return page.locator(CANVAS).evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const gl = canvas.getContext("webgl") as WebGLRenderingContext;
+    const { width, height } = canvas;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    let sum = 0;
+    for (let i = 0; i < pixels.length; i += 4) sum += pixels[i] + pixels[i + 1] + pixels[i + 2];
+    return sum / (pixels.length / 4) / 3 / 255;
+  });
+}
+
 /** Coverage once the light has followed the sound: a few frames, then steady. */
 async function settled(page: Page): Promise<number> {
   await page.waitForTimeout(700);
@@ -235,6 +275,82 @@ test.describe("§122: layers behind the words", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **MilkDrop as the main layer, under djmanzo's own content rules.**
+   * Butterchurn compiles the preset's equations to WebAssembly and evaluates
+   * no JavaScript, so it draws with `'wasm-unsafe-eval'` and without
+   * `'unsafe-eval'`. What it draws moves: the picture read back twice, a
+   * second apart, differs.
+   */
+  test("MilkDrop draws as the main layer under djmanzo's content rules", async ({ page }) => {
+    await rig(page);
+    await underRules(page, CONTENT_RULES);
+    await open(page, "Drift");
+    await hear(page, { loudness: 0.7, bands: [0.6, 0.4, 0.3, 0.3], voice: 0 });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-milkdrop", "Drift");
+    // Butterchurn is loaded on demand and its preset compiled: waited for,
+    // not timed, so a busy machine is not a failure.
+    await expect(canvas).toHaveAttribute("data-milkdrop-state", "drawing", { timeout: 20_000 });
+    await page.waitForTimeout(500);
+    await expect(canvas).toHaveAttribute("data-failures", "");
+    const before = await brightness(page);
+    await page.waitForTimeout(1_000);
+    const after = await brightness(page);
+    expect(before + after).toBeGreaterThan(0.01);
+    expect(Math.abs(after - before)).toBeGreaterThan(0.0005);
+    await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText("First line");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **As WebKitGTK is: an offscreen canvas with no WebGL 2.** djmanzo's Linux
+   * webview has the `OffscreenCanvas` class and refuses it WebGL 2, and
+   * Butterchurn, which draws into one whenever the class exists, failed there
+   * at its first framebuffer. Driving it found that; this holds it, by giving
+   * Chromium the same refusal.
+   */
+  test("MilkDrop draws where an offscreen canvas has no WebGL 2", async ({ page }) => {
+    await page.addInitScript(() => {
+      const original = OffscreenCanvas.prototype.getContext;
+      // @ts-expect-error -- the overloads are not worth restating for a test.
+      OffscreenCanvas.prototype.getContext = function (kind: string, attributes?: unknown) {
+        return kind === "webgl2" ? null : original.call(this, kind as "2d", attributes as never);
+      };
+    });
+    await rig(page);
+    await underRules(page, CONTENT_RULES);
+    await open(page, "Drift");
+    await hear(page, { loudness: 0.7, bands: [0.6, 0.4, 0.3, 0.3], voice: 0 });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-milkdrop-state", "drawing", { timeout: 20_000 });
+    await page.waitForTimeout(500);
+    await expect(canvas).toHaveAttribute("data-failures", "");
+    const before = await brightness(page);
+    await page.waitForTimeout(1_000);
+    expect(Math.abs((await brightness(page)) - before)).toBeGreaterThan(0.0005);
+    // And the class is back as it was, for anything else that uses it.
+    expect(await page.evaluate(() => typeof OffscreenCanvas)).toBe("function");
+  });
+
+  /**
+   * Without WebAssembly allowed — content rules that are `'self'` alone —
+   * MilkDrop cannot run: it is left out and named, and the look's other
+   * layers are drawn. This is also what shows the rule is what lets it run.
+   */
+  test("with WebAssembly refused, MilkDrop is left out and the rest drawn", async ({ page }) => {
+    await rig(page);
+    await underRules(page, CONTENT_RULES.replace(" 'wasm-unsafe-eval'", ""));
+    await open(page, "Bloom");
+    await hear(page, { loudness: 0.7, bands: [0.6, 0.4, 0.3, 0.3], voice: 0.9 });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-failures", /milkdrop:/, { timeout: 20_000 });
+    await expect(canvas).toHaveAttribute("data-milkdrop-state", "failed");
+    await expect(canvas).toHaveAttribute("data-visuals", "drawing");
+    expect(await settled(page)).toBeGreaterThan(0.005);
+    await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText("First line");
+  });
+
   /** No WebGL: nothing drawn, and the screen is K1's, as before there were looks. */
   test("with no WebGL the words and the record's background are as they were", async ({ page }) => {
     await rig(page, { noWebgl: true });
@@ -299,7 +415,7 @@ test.describe("§122: picking the look", () => {
     await expect(picker).toHaveValue("");
     const names = await picker.locator("option").allTextContents();
     expect(names[0]).toMatch(/^Off/);
-    expect(names.slice(1)).toEqual(["Glow", "Pulse", "Waves", "Sparkle", "Everything"]);
+    expect(names.slice(1)).toEqual(["Glow", "Pulse", "Waves", "Sparkle", "Drift", "Bloom", "Everything"]);
 
     await picker.selectOption("Pulse");
     await expect(page.locator("[data-look-description]")).toContainText("every beat");

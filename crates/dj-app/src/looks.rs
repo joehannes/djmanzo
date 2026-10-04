@@ -35,6 +35,10 @@ pub struct Layer {
     pub amount: f32,
     /// How it lies over what is below: `over`, `add` or `screen`.
     pub blend: String,
+    /// For a `milkdrop` layer, the MilkDrop preset it draws (step 4): one of
+    /// [`PRESETS`]. Absent for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
 }
 
 /// A look: its name, what it is for, and its layers, bottom first.
@@ -54,7 +58,42 @@ fn layer(kind: &str, signal: &str, amount: f32, blend: &str) -> Layer {
         colour: "record".to_owned(),
         amount,
         blend: blend.to_owned(),
+        preset: None,
     }
+}
+
+/// A MilkDrop layer — Butterchurn drawing `preset` — as the look's main layer.
+fn milkdrop(preset: &str, amount: f32) -> Layer {
+    Layer {
+        preset: Some(preset.to_owned()),
+        ..layer("milkdrop", "loudness", amount, "over")
+    }
+}
+
+/// The MilkDrop presets djmanzo ships, by name: written for djmanzo, under
+/// its own licence (`docs/VISUALS.md` step 4).
+///
+/// Butterchurn's own format, and only its WebAssembly half: every equation is
+/// MilkDrop's own language (`*_eqs_eel`) and none is JavaScript (`*_eqs_str`),
+/// because the interface runs Butterchurn with `onlyUseWASM` and its content
+/// rules allow WebAssembly to be compiled but never JavaScript to be
+/// evaluated. The warp and composite shaders are empty, which is Butterchurn's
+/// default pair — no shader code is shipped.
+pub const PRESETS: [(&str, &str); 2] = [
+    ("Drift", include_str!("../presets/milkdrop/drift.json")),
+    ("Bloom", include_str!("../presets/milkdrop/bloom.json")),
+];
+
+/// The preset called `name`, as Butterchurn reads it.
+///
+/// # Errors
+/// No preset has that name, which is a look naming one djmanzo does not ship.
+pub fn preset(name: &str) -> Result<serde_json::Value, String> {
+    let (_, text) = PRESETS
+        .iter()
+        .find(|(known, _)| *known == name)
+        .ok_or_else(|| format!("there is no MilkDrop preset called {name:?}"))?;
+    serde_json::from_str(text).map_err(|e| format!("the preset {name:?} is not JSON: {e}"))
 }
 
 /// The looks djmanzo ships, all its own.
@@ -107,6 +146,29 @@ pub fn built_in() -> Vec<Look> {
                 layer("wash", "loudness", 0.35, "over"),
                 layer("pulse", "band.bass", 0.5, "add"),
                 layer("sparks", "band.treble", 0.9, "add"),
+                layer("halo", "voice", 0.5, "screen"),
+            ],
+        },
+        Look {
+            name: "Drift".to_owned(),
+            description: "A MilkDrop picture of djmanzo's own: slow rolling waves that swell with \
+                          the bass and drift with the treble, the singer's glow over it — for \
+                          long, building songs."
+                .to_owned(),
+            layers: vec![
+                milkdrop("Drift", 0.9),
+                layer("halo", "voice", 0.5, "screen"),
+            ],
+        },
+        Look {
+            name: "Bloom".to_owned(),
+            description: "A MilkDrop picture of djmanzo's own: a burst of colour in the middle \
+                          whose trails spread out on the kick, rings on the beat over it — for \
+                          dance music and big choruses."
+                .to_owned(),
+            layers: vec![
+                milkdrop("Bloom", 0.9),
+                layer("pulse", "beat", 0.3, "add"),
                 layer("halo", "voice", 0.5, "screen"),
             ],
         },
@@ -245,7 +307,7 @@ mod tests {
     /// list so a typo in a built-in look fails a test rather than leaving a
     /// layer out on someone's projector; `ui/src/looks.ts` has the same lists
     /// and its own test that they are these.
-    const KINDS: [&str; 5] = ["wash", "pulse", "ripple", "sparks", "halo"];
+    const KINDS: [&str; 6] = ["wash", "pulse", "ripple", "sparks", "halo", "milkdrop"];
     const SIGNALS: [&str; 11] = [
         "loudness",
         "band.bass",
@@ -294,6 +356,16 @@ mod tests {
                     look.name
                 );
                 assert_eq!(layer.colour, "record");
+                // A MilkDrop layer names a preset djmanzo ships; nothing else names one.
+                if layer.kind == "milkdrop" {
+                    let name = layer
+                        .preset
+                        .as_deref()
+                        .expect("a MilkDrop layer names its preset");
+                    assert!(preset(name).is_ok(), "{}: {name} is not shipped", look.name);
+                } else {
+                    assert_eq!(layer.preset, None, "{}: {layer:?}", look.name);
+                }
             }
             // The words' halo answers to whoever is singing *now*.
             assert!(
@@ -305,6 +377,75 @@ mod tests {
                 look.name
             );
         }
+    }
+
+    /// **Every shipped preset runs with no JavaScript evaluated.** The
+    /// interface gives Butterchurn `onlyUseWASM`, and its content rules
+    /// forbid `eval`: a preset carrying JavaScript equations would be
+    /// refused the night it was chosen. Each must also have the four
+    /// shapes and four waves Butterchurn's WebAssembly path indexes, or it
+    /// throws while loading.
+    #[test]
+    fn every_shipped_preset_is_milkdrops_own_language_and_whole() {
+        for (name, _) in PRESETS {
+            let preset = preset(name).unwrap();
+            let text = preset.to_string();
+            assert!(
+                !text.contains("_eqs_str"),
+                "{name} carries JavaScript equations"
+            );
+            for field in [
+                "init_eqs_eel",
+                "frame_eqs_eel",
+                "pixel_eqs_eel",
+                "warp",
+                "comp",
+            ] {
+                assert!(preset[field].is_string(), "{name} has no {field}");
+            }
+            assert!(preset["baseVals"].is_object(), "{name} has no base values");
+            assert_eq!(
+                preset["shapes"].as_array().map(Vec::len),
+                Some(4),
+                "{name}'s shapes"
+            );
+            assert_eq!(
+                preset["waves"].as_array().map(Vec::len),
+                Some(4),
+                "{name}'s waves"
+            );
+            for wave in preset["waves"].as_array().unwrap() {
+                assert!(wave["point_eqs_eel"].is_string(), "{name}: {wave}");
+            }
+        }
+        assert!(preset("Lasers").unwrap_err().contains("Lasers"));
+    }
+
+    /// **MilkDrop's equations may be compiled; JavaScript may never be
+    /// evaluated.** Butterchurn compiles a preset's equations to WebAssembly,
+    /// which the content rules must allow (`'wasm-unsafe-eval'`) or no
+    /// MilkDrop layer ever draws in the application — the browser tests,
+    /// which have no such rule unless they add it, would not notice. And
+    /// `'unsafe-eval'` must never be the price of it: it would let any
+    /// string anywhere in the interface run as code.
+    #[test]
+    fn the_content_rules_let_milkdrop_compile_and_nothing_evaluate() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("the config is JSON");
+        let csp = config["app"]["security"]["csp"]
+            .as_str()
+            .expect("a content security policy");
+        let scripts: Vec<&str> = csp
+            .split(';')
+            .map(str::trim)
+            .find_map(|rule| rule.strip_prefix("script-src "))
+            .expect("a script-src rule")
+            .split_whitespace()
+            .collect();
+        assert!(scripts.contains(&"'wasm-unsafe-eval'"), "{scripts:?}");
+        assert!(scripts.contains(&"'self'"), "{scripts:?}");
+        assert!(!csp.contains("'unsafe-eval'"), "{csp}");
+        assert!(!scripts.contains(&"'unsafe-inline'"), "{scripts:?}");
     }
 
     #[test]

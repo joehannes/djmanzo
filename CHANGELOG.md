@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **MilkDrop, as a layer (§122).** Two new looks, *Drift* and *Bloom*, draw a
+  MilkDrop picture of djmanzo's own — through Butterchurn — behind the
+  words on the singers' screen or on the projector, fed by the room's bass,
+  mids and treble. MilkDrop's equations are compiled, never run as script.
+
 - **A look instead of black on the projector (§122).** The Video panel's
   *With no picture* picks one of djmanzo's looks to show whenever no deck
   with a video is heard. It gives way to the pictures as they come in, and

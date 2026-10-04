@@ -89,6 +89,20 @@ describe("§122: a look's layers, checked before they are drawn", () => {
     expect(dropped[3]).toContain("sort of blue");
   });
 
+  it("keeps a MilkDrop layer only with the preset it draws", () => {
+    const look: Look = {
+      name: "Main",
+      description: "",
+      layers: [{ ...layer("milkdrop"), preset: "Drift" }, layer("milkdrop"), { ...layer("wash"), preset: "Drift" }],
+    };
+    const { layers, dropped } = validate(look);
+    expect(layers.map((l) => [l.kind, l.preset])).toEqual([
+      ["milkdrop", "Drift"],
+      ["wash", undefined],
+    ]);
+    expect(dropped).toEqual(["Main, layer 2: a MilkDrop layer that names no preset"]);
+  });
+
   it("holds an amount to 0..1", () => {
     const look: Look = { name: "Loud", description: "", layers: [layer("wash", "loudness", "over", "record", 7)] };
     expect(validate(look).layers[0].amount).toBe(1);

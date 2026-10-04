@@ -18,8 +18,9 @@
    * The 60-a-second work writes to the canvas from a frame loop; nothing
    * reactive moves at that rate.
    */
-  import type { AudioMetrics, DeckState, Look } from "./api";
+  import { milkdropPreset, type AudioMetrics, type DeckState, type Look } from "./api";
   import { follow, palette, phase, signals, SILENT, validate, type Hearing, type Signals } from "./looks";
+  import { createMilkdrop, type Milkdrop } from "./milkdrop";
   import { createStack, type Stack } from "./visualStack";
 
   let {
@@ -73,6 +74,53 @@
   /** On or off, apart from which look: changing looks keeps the context. */
   const on = $derived(look !== null);
 
+  /** The canvas's size for a screen of this size: half each way, at most half a 1080p projector's. */
+  function sized(target: HTMLCanvasElement) {
+    return {
+      width: Math.min(960, Math.max(1, Math.round(target.clientWidth * SCALE))),
+      height: Math.min(540, Math.max(1, Math.round(target.clientHeight * SCALE))),
+    };
+  }
+
+  /**
+   * Butterchurn, when the look has a MilkDrop layer and the stack is drawing:
+   * a plain variable the frame loop reads, made again when the preset changes.
+   * If it cannot be made — no WebGL 2, WebAssembly refused, a preset it will
+   * not compile — the layer is left out and the reason said, as a picture
+   * that will not compile is.
+   */
+  const presetName = $derived(checked.layers.find((l) => l.kind === "milkdrop")?.preset ?? null);
+  let milkdrop: Milkdrop | null = null;
+  let milkdropFailed = $state<string | null>(null);
+  /** Where Butterchurn is, for whoever looks: loading, drawing, or failed. */
+  let milkdropState = $state<"" | "loading" | "drawing" | "failed">("");
+  $effect(() => {
+    const name = presetName;
+    if (!canvas || status !== "drawing" || !name) return;
+    let alive = true;
+    milkdropState = "loading";
+    const { width, height } = sized(canvas);
+    void milkdropPreset(name)
+      .then((preset) => createMilkdrop(preset, width, height))
+      .then((made) => {
+        if (!alive) return;
+        milkdrop = made;
+        milkdropState = "drawing";
+      })
+      .catch((error) => {
+        if (!alive) return;
+        milkdropState = "failed";
+        milkdropFailed = `milkdrop: ${error instanceof Error ? error.message : String(error)}`;
+        console.warn(`[visuals] would not draw ${milkdropFailed}`);
+      });
+    return () => {
+      alive = false;
+      milkdrop = null;
+      milkdropFailed = null;
+      milkdropState = "";
+    };
+  });
+
   $effect(() => {
     if (!canvas || !on) {
       status = "off";
@@ -99,8 +147,7 @@
     // full size and sixty a second took a core and a sixth more than K1's
     // background alone, and a third of a core at this size and thirty.
     const fit = () => {
-      const width = Math.min(960, Math.max(1, Math.round(target.clientWidth * SCALE)));
-      const height = Math.min(540, Math.max(1, Math.round(target.clientHeight * SCALE)));
+      const { width, height } = sized(target);
       if (target.width !== width) target.width = width;
       if (target.height !== height) target.height = height;
     };
@@ -120,12 +167,26 @@
       const seconds = (now - before) / 1000;
       before = now;
       followed = follow(followed, signals(latest.hearing), seconds);
+      const pictures: Parameters<Stack["draw"]>[0]["pictures"] = {};
+      if (milkdrop) {
+        try {
+          milkdrop.resize(target.width, target.height);
+          milkdrop.render(latest.hearing.audio.bands, seconds);
+          pictures.milkdrop = milkdrop.canvas;
+        } catch (error) {
+          milkdrop = null;
+          milkdropState = "failed";
+          milkdropFailed = `milkdrop: ${error instanceof Error ? error.message : String(error)}`;
+          console.warn(`[visuals] stopped drawing ${milkdropFailed}`);
+        }
+      }
       stack.draw({
         layers: latest.layers,
         signals: followed,
         phase: phase(latest.hearing),
         colours: latest.colours,
         time: now / 1000,
+        pictures,
       });
       if (stack.lost()) {
         status = "lost";
@@ -157,7 +218,9 @@
   data-look={look?.name ?? ""}
   data-layers={checked.layers.map((l) => l.kind).join(" ")}
   data-dropped={checked.dropped.length}
-  data-failures={failures.join(" | ")}
+  data-failures={[...failures, ...(milkdropFailed ? [milkdropFailed] : [])].join(" | ")}
+  data-milkdrop={presetName ?? ""}
+  data-milkdrop-state={milkdropState}
 ></canvas>
 
 <style>

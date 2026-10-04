@@ -643,6 +643,7 @@ pub fn run() {
             commands::looks_catalogue,
             commands::look_chosen,
             commands::look_choose,
+            commands::milkdrop_preset,
             commands::deck_pictures,
             commands::youtube_settings,
             commands::youtube_settings_set,

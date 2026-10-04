@@ -218,6 +218,74 @@ and lets the DJ load their own preset files from disk — theirs to answer for,
 never redistributed. Whether any published collection carries a licence clear
 enough to ship is a question to answer before any is bundled, not after.
 
+**Step 4a — built: MilkDrop as the main layer, with djmanzo's own presets.**
+
+- **Which Butterchurn.** `butterchurn` 3.0.0-beta.5 (MIT, July 2025), not
+  2.6.7. Both evaluate a preset's equations as JavaScript with `new Function`
+  when given them so; only the 3.0 beta can instead compile MilkDrop's own
+  equation language to WebAssembly (`eel-wasm`), and with `onlyUseWASM` it
+  never reaches `new Function` at all. djmanzo's content rules gain
+  `'wasm-unsafe-eval'` — WebAssembly may be compiled — and still forbid
+  `'unsafe-eval'`. A Rust test holds both halves.
+- **Its sound.** Butterchurn takes a block of samples and finds its own bass
+  (20–320 Hz), mid (320–2,800 Hz) and treble (2,800–11,025 Hz). djmanzo's
+  audio is Rust's, so the block is **made from the master's four bands**: a
+  tone at 100, 600, 2,000 and 6,000 Hz, each as loud as its band, carried on
+  from one block to the next (`ui/src/milkdrop.ts`; vitest measures each
+  tone's strength with a Goertzel filter). No audio context is created.
+- **In the stack.** A `milkdrop` layer names its preset; Butterchurn draws
+  into a canvas of its own at the stack's size, which the stack takes in as a
+  picture — a texture drawn with the layer's amount and blend, under the
+  other layers. Butterchurn is loaded only when a look has such a layer.
+- **The presets.** *Drift* (slow rolling waves) and *Bloom* (a burst of
+  colour whose trails spread on the kick), in Butterchurn's own JSON with
+  equations only in MilkDrop's language and empty warp and composite shaders
+  (Butterchurn's defaults) — no shader code shipped. A Rust test holds that
+  no preset carries JavaScript and each has the four shapes and four waves
+  Butterchurn's WebAssembly path indexes. Served by `milkdrop_preset`. Two
+  looks use them, *Drift* and *Bloom*. **First drafts**: tuned only against
+  this container's synthetic demo records.
+
+**What driving it in WebKitGTK found** — each passed every browser test, and
+each stopped MilkDrop dead in djmanzo's Linux webview:
+
+1. **An `OffscreenCanvas` has no WebGL 2 there.** Butterchurn draws into one
+   whenever the class exists; WebKitGTK 2.52 has the class and gives it no
+   WebGL 2 context, so Butterchurn failed at its first framebuffer. djmanzo
+   now hides the class from Butterchurn while it is made, where an offscreen
+   canvas cannot have WebGL 2, and it draws into an ordinary canvas. A
+   browser test gives Chromium the same refusal.
+2. **Asynchronous WebAssembly never settles there.** `WebAssembly.instantiate`
+   neither resolved nor rejected — not even for an empty module — while
+   `new WebAssembly.Module` compiled at once under the same content rules.
+   Butterchurn's loaders compile asynchronously, so the first preset waited
+   forever with nothing to say. While a preset loads, djmanzo compiles
+   synchronously; Chromium refuses a synchronous compile of more than a few
+   kilobytes on the main thread with a `RangeError`, and that falls back to
+   the asynchronous call. Whether the content rule is what stalls it was not
+   settled: the diagnostic would have meant switching on `'unsafe-eval'`,
+   and that is not done, even for a moment.
+
+After both, in WebKitGTK: *Bloom* and *Drift* drawn in the Video panel,
+moving between captures, a Butterchurn frame taking about 8 ms at 177×100.
+
+**Tested:**
+- Rust: the shipped presets in MilkDrop's language only and whole; the
+  content rules allowing WebAssembly and forbidding `eval`; every MilkDrop
+  layer naming a shipped preset.
+- 7 vitest: the tones in Butterchurn's bands, each as loud as its band and
+  only its band, silence and no clipping, carried on between blocks; a
+  module got where the asynchronous calls never settle (as in WebKitGTK),
+  and the asynchronous call used where a synchronous one is refused (as in
+  Chromium); a MilkDrop layer kept only with its preset.
+- 3 browser tests under djmanzo's real content rules, read back off the
+  GPU: MilkDrop drawn and moving; drawn where an offscreen canvas has no
+  WebGL 2; and, with WebAssembly refused, left out and named while the rest
+  is drawn.
+- **Mutation-tested:** thirteen mutants fail them.
+
+**Not yet (step 4b):** the DJ's own preset files from disk.
+
 ## 5. Artist images
 
 A layer kind showing images of the artist playing, from Wikimedia Commons and

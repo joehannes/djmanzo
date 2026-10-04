@@ -78,6 +78,9 @@ import packs from "./packs.json" with { type: "json" };
  *  not offer. */
 import columns from "./columns.json" with { type: "json" };
 import looks from "./looks.json" with { type: "json" };
+// §122: the MilkDrop presets djmanzo ships, read from where Rust includes them.
+import presetBloom from "../../crates/dj-app/presets/milkdrop/bloom.json" with { type: "json" };
+import presetDrift from "../../crates/dj-app/presets/milkdrop/drift.json" with { type: "json" };
 /** §81's six kinds of night, generated from `dj_app::setting::Setting::ALL` by
  *  the same Rust test. Hand-written here they would be the copy the panel was
  *  just relieved of, one file further out. */
@@ -766,6 +769,7 @@ export const ANSWERS: Record<string, unknown> = {
   // the singers' screen shows none until one is chosen.
   looks_catalogue: looks,
   look_chosen: { singers: null, video: null },
+  milkdrop_presets: { Drift: presetDrift, Bloom: presetBloom },
   phone_camera_status: {
     on: false,
     phone_url: null,
@@ -2418,6 +2422,11 @@ export async function openShell(
           // the phone and OBS are doing.
           // §122: which look each screen shows, kept as Rust keeps it, and
           // refused for a name that is not in the catalogue.
+          if (cmd === "milkdrop_preset") {
+            const shipped = answers.milkdrop_presets as Record<string, unknown>;
+            const preset = shipped[String(args.name)];
+            return preset ? Promise.resolve(structuredClone(preset)) : Promise.reject(`there is no MilkDrop preset called "${args.name}"`);
+          }
           if (cmd === "look_chosen" || cmd === "look_choose") {
             const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;
             if (cmd === "look_choose") {

@@ -116,7 +116,18 @@ void main() {
   float glow = smoothstep(1.0, 0.2, e);
   gl_FragColor = paint(u_c0, glow * u_value * u_amount);
 }`,
+  // What Butterchurn drew this frame (./milkdrop.ts), as a picture: never
+  // fully faded, since MilkDrop answers to the sound itself.
+  milkdrop: `// djmanzo: milkdrop
+uniform sampler2D u_picture;
+void main() {
+  vec3 colour = texture2D(u_picture, v_uv).rgb;
+  gl_FragColor = paint(colour, u_amount * (0.35 + 0.65 * u_value));
+}`,
 };
+
+/** Kinds drawn from a picture made elsewhere, rather than by their shader alone. */
+const PICTURED: ReadonlySet<Kind> = new Set<Kind>(["milkdrop"]);
 
 /** What one frame draws. */
 export interface Frame {
@@ -128,6 +139,12 @@ export interface Frame {
   colours: Rgb[];
   /** Seconds, for the pictures that drift. */
   time: number;
+  /**
+   * The pictures layers are made from: Butterchurn's canvas for `milkdrop`.
+   * A layer whose picture is not here — not loaded yet, or failed — is not
+   * drawn this frame.
+   */
+  pictures?: Partial<Record<Kind, TexImageSource>>;
 }
 
 export interface Stack {
@@ -146,7 +163,7 @@ interface Program {
   uniforms: Record<string, WebGLUniformLocation | null>;
 }
 
-const UNIFORMS = ["u_time", "u_value", "u_phase", "u_amount", "u_res", "u_c0", "u_c1", "u_c2", "u_c3"];
+const UNIFORMS = ["u_time", "u_value", "u_phase", "u_amount", "u_res", "u_c0", "u_c1", "u_c2", "u_c3", "u_picture"];
 
 /**
  * A stack drawing into `canvas`, or null when this webview has no WebGL —
@@ -176,6 +193,16 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
 
   const programs = new Map<Kind, Program | null>();
   const failed: string[] = [];
+
+  /** One texture, refilled from whichever picture a layer is drawn from. */
+  const texture = context.createTexture();
+  context.bindTexture(context.TEXTURE_2D, texture);
+  // A picture of any size, stretched: WebGL 1 allows that only clamped and
+  // without mipmaps.
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
 
   function compile(type: number, source: string): WebGLShader | string {
     const shader = context.createShader(type);
@@ -251,8 +278,17 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
       context.enable(context.BLEND);
       context.bindBuffer(context.ARRAY_BUFFER, quad);
       for (const layer of frame.layers) {
+        const picture = PICTURED.has(layer.kind) ? frame.pictures?.[layer.kind] : undefined;
+        if (PICTURED.has(layer.kind) && !picture) continue;
         const made = program(layer.kind);
         if (!made) continue;
+        if (picture) {
+          context.activeTexture(context.TEXTURE0);
+          context.bindTexture(context.TEXTURE_2D, texture);
+          // A canvas's first row is its top; a texture's is its bottom.
+          context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, true);
+          context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, context.RGBA, context.UNSIGNED_BYTE, picture);
+        }
         const colours = layer.colour === "record" ? frame.colours : [layer.colour, layer.colour, layer.colour, layer.colour];
         context.useProgram(made.program);
         context.enableVertexAttribArray(made.position);
@@ -267,6 +303,7 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
         context.uniform3fv(u.u_c1, colours[1]);
         context.uniform3fv(u.u_c2, colours[2]);
         context.uniform3fv(u.u_c3, colours[3]);
+        context.uniform1i(u.u_picture, 0);
         blend(layer.blend);
         context.drawArrays(context.TRIANGLES, 0, 3);
       }
@@ -278,6 +315,7 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
       for (const made of programs.values()) if (made) context.deleteProgram(made.program);
       programs.clear();
       context.deleteBuffer(quad);
+      context.deleteTexture(texture);
     },
   };
 }

@@ -1,0 +1,91 @@
+{
+  "version": 2,
+  "baseVals": {
+    "decay": 0.955,
+    "gammaadj": 1.7,
+    "wave_mode": 7,
+    "additivewave": 1,
+    "wave_thick": 1,
+    "wave_a": 0.8,
+    "wave_scale": 1.2,
+    "wave_smoothing": 0.6,
+    "modwavealphabyvolume": 1,
+    "wrap": 1,
+    "zoom": 1.01,
+    "warp": 0.5,
+    "warpanimspeed": 0.6,
+    "warpscale": 1.5,
+    "ob_size": 0,
+    "ib_size": 0,
+    "mv_a": 0
+  },
+  "shapes": [
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": ""
+    }
+  ],
+  "waves": [
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": "",
+      "point_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": "",
+      "point_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": "",
+      "point_eqs_eel": ""
+    },
+    {
+      "baseVals": {
+        "enabled": 0
+      },
+      "init_eqs_eel": "",
+      "frame_eqs_eel": "",
+      "point_eqs_eel": ""
+    }
+  ],
+  "init_eqs_eel": "q1 = 0;",
+  "frame_eqs_eel": "q1 = q1 + 0.01*bass_att;\nzoom = 1.005 + 0.025*bass_att;\nrot = 0.004*sin(time*0.21) + 0.006*(treb_att - 1);\nwave_r = 0.6 + 0.4*sin(time*0.53);\nwave_g = 0.4 + 0.4*sin(time*0.71 + 2.1);\nwave_b = 0.7 + 0.3*sin(time*0.37 + 4.2);\ndx = 0.002*sin(time*0.13);\ndy = 0.002*cos(time*0.17);",
+  "pixel_eqs_eel": "zoom = zoom + 0.015*rad*(mid_att - 1);\nrot = rot + 0.01*(1 - rad)*sin(time*0.3 + q1);",
+  "warp": "",
+  "comp": ""
+}
