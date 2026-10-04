@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Your own MilkDrop presets (§122).** In the Singers panel, *Add MilkDrop
+  presets…* takes MilkDrop's `.milk` files (and Butterchurn's `.json`); each
+  becomes a look, *Yours: …*, behind the words or on the projector. A preset
+  djmanzo cannot draw is said, with why; MilkDrop 2 shaders are left out, and
+  the preset says so.
+
 - **MilkDrop, as a layer (§122).** Two new looks, *Drift* and *Bloom*, draw a
   MilkDrop picture of djmanzo's own — through Butterchurn — behind the
   words on the singers' screen or on the projector, fed by the room's bass,

@@ -1288,6 +1288,12 @@ in the phone camera's WebRTC test, which passed twelve times out of twelve
 once `target/debug/incremental` and old scratch homes were cleared. Check
 `df -h /` before a full run, and read *Page crashed* as the machine's.
 
+**A path-escape test needs the folder it escapes from.** `folder/../x`
+fails on Linux when `folder` does not exist, whether or not the code guards
+against `..` — so a test of "a name reaches nothing outside the folder" passed
+with the guard removed until it created the folder first
+(`dj_app::looks`'s `a_presets_name_reaches_nothing_outside_the_folder`).
+
 **A Svelte 5 variable called `state` breaks the `$state` rune** in that
 component: `svelte-check` reports *'$state' used before its declaration* and
 *untyped function calls may not accept type arguments*, because `$state` is

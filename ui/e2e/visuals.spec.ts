@@ -436,3 +436,59 @@ test.describe("§122: picking the look", () => {
     await expect(page.getByText(/asks for reduced motion/)).toBeVisible();
   });
 });
+
+test.describe("§122: the DJ's own MilkDrop presets", () => {
+  /**
+   * **Added from the dialog, offered as a look, refused with why, removed.**
+   * Reading the files is Rust's (`dj_app::milk`, `dj_app::looks`), tested
+   * there; this holds what the DJ sees of it.
+   */
+  test("added from the dialog, offered as looks, refused with why, and removed", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke");
+    await page.evaluate(() => {
+      (window as unknown as { __dialogAnswer: unknown }).__dialogAnswer = [
+        "/home/dj/presets/Night Drive.milk",
+        "/home/dj/presets/refuse-scripted.json",
+      ];
+    });
+    await page.getByRole("button", { name: "Add MilkDrop presets…" }).click();
+    await expect(page.locator('[data-preset="Night Drive"]')).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "refuse-scripted.json" })).toContainText("JavaScript");
+    const asked = await page.evaluate(() => (window as unknown as { __milkdropAsked: unknown[] }).__milkdropAsked);
+    expect(asked).toEqual([
+      { cmd: "milkdrop_add", paths: ["/home/dj/presets/Night Drive.milk", "/home/dj/presets/refuse-scripted.json"] },
+    ]);
+
+    const picker = page.getByRole("combobox", { name: "The look behind the words" });
+    await expect.poll(() => picker.locator("option").allTextContents()).toContain("Yours: Night Drive");
+    await picker.selectOption("Yours: Night Drive");
+    await expect(page.locator("[data-look-description]")).toContainText("Night Drive.milk");
+
+    await page.getByRole("button", { name: "Remove Night Drive" }).click();
+    await expect(page.locator('[data-preset="Night Drive"]')).toHaveCount(0);
+    await expect.poll(() => picker.locator("option").allTextContents()).not.toContain("Yours: Night Drive");
+    await expect(picker).toHaveValue("");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** One of them, chosen, is drawn behind the words like djmanzo's own. */
+  test("a preset of the DJ's own is drawn behind the words", async ({ page }) => {
+    await rig(page);
+    await underRules(page, CONTENT_RULES);
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        milkdrop_yours: [{ name: "Night Drive", file: "Night Drive.milk", note: null, problem: null }],
+        look_chosen: { singers: "Yours: Night Drive", video: null },
+      },
+    );
+    await hear(page, { loudness: 0.7, bands: [0.6, 0.4, 0.3, 0.3], voice: 0 });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-milkdrop", "yours/Night Drive");
+    await expect(canvas).toHaveAttribute("data-milkdrop-state", "drawing", { timeout: 20_000 });
+    await expect(canvas).toHaveAttribute("data-failures", "");
+  });
+});

@@ -84,7 +84,7 @@ pub const PRESETS: [(&str, &str); 2] = [
     ("Bloom", include_str!("../presets/milkdrop/bloom.json")),
 ];
 
-/// The preset called `name`, as Butterchurn reads it.
+/// The shipped preset called `name`, as Butterchurn reads it.
 ///
 /// # Errors
 /// No preset has that name, which is a look naming one djmanzo does not ship.
@@ -188,6 +188,60 @@ pub fn built_in() -> Vec<Look> {
     ]
 }
 
+/// The folder, beside the other settings, that holds the DJ's own MilkDrop
+/// presets.
+const FOLDER: &str = "milkdrop";
+
+/// How a layer names one of the DJ's own presets rather than a shipped one.
+const YOURS: &str = "yours/";
+
+/// One of the DJ's own MilkDrop presets, as the list shows it (step 4b).
+///
+/// Theirs to answer for: djmanzo draws it and never sends it anywhere.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Yours {
+    /// The file's name without its extension: what the look is called after.
+    pub name: String,
+    pub file: String,
+    /// Worth knowing, such as shaders left out.
+    pub note: Option<String>,
+    /// Why it cannot be drawn, when it cannot; it then has no look.
+    pub problem: Option<String>,
+}
+
+/// What adding presets came to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Added {
+    /// Every preset there is now.
+    pub presets: Vec<Yours>,
+    /// Each file not taken, and why, in words.
+    pub refused: Vec<String>,
+}
+
+/// A file's text, read as MilkDrop's own files are — mostly ASCII, and
+/// Windows-1252 where they are not, so anything that is not UTF-8 is read
+/// leniently rather than refused.
+fn text_of(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// The look a preset of the DJ's own is offered as.
+fn look_for(yours: &Yours) -> Look {
+    let mut description = format!("Your own MilkDrop preset, from {}", yours.file);
+    if let Some(note) = &yours.note {
+        description.push_str(&format!(" — {note}"));
+    }
+    description.push('.');
+    Look {
+        name: format!("Yours: {}", yours.name),
+        description,
+        layers: vec![
+            milkdrop(&format!("{YOURS}{}", yours.name), 0.9),
+            layer("halo", "voice", 0.5, "screen"),
+        ],
+    }
+}
+
 /// Where a look can be shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -240,12 +294,12 @@ impl Looks {
     /// Read what was kept in `dir`. A look no longer in the catalogue is
     /// forgotten rather than shown as a name that draws nothing.
     pub fn start(&self, dir: &Path) {
-        let mut inner = self.inner();
-        inner.dir = Some(dir.to_path_buf());
+        self.inner().dir = Some(dir.to_path_buf());
         let mut chosen: Chosen = std::fs::read_to_string(dir.join(SETTINGS))
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
+        // Not under the lock: the catalogue takes it to find the presets.
         let catalogue = self.catalogue();
         for kept in [&mut chosen.singers, &mut chosen.video] {
             if let Some(name) = kept
@@ -254,13 +308,167 @@ impl Looks {
                 *kept = None;
             }
         }
-        inner.chosen = chosen;
+        self.inner().chosen = chosen;
     }
 
-    /// Every look there is, as the DJ is offered them.
+    /// Every look there is, as the DJ is offered them: djmanzo's own, then one
+    /// for each of the DJ's presets that can be drawn.
     #[must_use]
     pub fn catalogue(&self) -> Vec<Look> {
-        built_in()
+        let mut looks = built_in();
+        looks.extend(
+            self.yours()
+                .iter()
+                .filter(|y| y.problem.is_none())
+                .map(look_for),
+        );
+        looks
+    }
+
+    fn folder(&self) -> Option<PathBuf> {
+        self.inner().dir.as_ref().map(|dir| dir.join(FOLDER))
+    }
+
+    /// The preset files in the folder, by name: `.milk` and `.json` only.
+    fn files(&self) -> Vec<PathBuf> {
+        let Some(folder) = self.folder() else {
+            return Vec::new();
+        };
+        let mut files: Vec<PathBuf> = std::fs::read_dir(folder)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                        e.eq_ignore_ascii_case("milk") || e.eq_ignore_ascii_case("json")
+                    })
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    /// The DJ's own presets, each read to say whether it can be drawn.
+    #[must_use]
+    pub fn yours(&self) -> Vec<Yours> {
+        self.files()
+            .iter()
+            .map(|path| {
+                let file = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let name = path
+                    .file_stem()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let read = std::fs::read(path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|bytes| crate::milk::read(&file, &text_of(&bytes)));
+                match read {
+                    Ok(read) => Yours {
+                        name,
+                        file,
+                        note: read.note,
+                        problem: None,
+                    },
+                    Err(problem) => Yours {
+                        name,
+                        file,
+                        note: None,
+                        problem: Some(problem),
+                    },
+                }
+            })
+            .collect()
+    }
+
+    /// The preset a layer names, as Butterchurn reads it: one djmanzo ships,
+    /// or one of the DJ's own (`yours/<name>`), read from its file now.
+    ///
+    /// # Errors
+    /// No such preset, or the DJ's file cannot be read.
+    pub fn preset(&self, name: &str) -> Result<serde_json::Value, String> {
+        let Some(theirs) = name.strip_prefix(YOURS) else {
+            return preset(name);
+        };
+        // Found among the files listed, never by joining the name to a path.
+        let path = self
+            .files()
+            .into_iter()
+            .find(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() == theirs))
+            .ok_or_else(|| format!("there is no preset of yours called {theirs:?}"))?;
+        let file = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        crate::milk::read(&file, &text_of(&bytes)).map(|read| read.preset)
+    }
+
+    /// Copy the DJ's preset files into the folder, each only if it can be
+    /// drawn, and say why of each that is not.
+    pub fn add(&self, paths: &[PathBuf]) -> Added {
+        let mut refused = Vec::new();
+        match self.folder() {
+            None => refused.push("djmanzo has nowhere to keep presets yet".to_owned()),
+            Some(folder) => {
+                for path in paths {
+                    let file = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let taken = std::fs::metadata(path)
+                        .map_err(|e| e.to_string())
+                        .and_then(|meta| {
+                            if meta.len() > crate::milk::LARGEST {
+                                Err("it is too large to be a preset".to_owned())
+                            } else {
+                                std::fs::read(path).map_err(|e| e.to_string())
+                            }
+                        })
+                        .and_then(|bytes| crate::milk::read(&file, &text_of(&bytes)).map(|_| bytes))
+                        .and_then(|bytes| {
+                            std::fs::create_dir_all(&folder)
+                                .and_then(|()| std::fs::write(folder.join(&file), bytes))
+                                .map_err(|e| e.to_string())
+                        });
+                    if let Err(why) = taken {
+                        refused.push(format!("{file}: {why}"));
+                    }
+                }
+            }
+        }
+        Added {
+            presets: self.yours(),
+            refused,
+        }
+    }
+
+    /// Remove one of the DJ's presets; a screen showing its look shows none.
+    ///
+    /// # Errors
+    /// No preset of theirs has that name, or the file would not go.
+    pub fn remove(&self, name: &str) -> Result<Vec<Yours>, String> {
+        let path = self
+            .files()
+            .into_iter()
+            .find(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() == name))
+            .ok_or_else(|| format!("there is no preset of yours called {name:?}"))?;
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        let look = format!("Yours: {name}");
+        let chosen = self.chosen();
+        for (screen, kept) in [
+            (Screen::Singers, chosen.singers),
+            (Screen::Video, chosen.video),
+        ] {
+            if kept.as_deref() == Some(look.as_str()) {
+                self.choose(screen, None)?;
+            }
+        }
+        Ok(self.yours())
     }
 
     #[must_use]
@@ -446,6 +654,106 @@ mod tests {
         assert!(scripts.contains(&"'self'"), "{scripts:?}");
         assert!(!csp.contains("'unsafe-eval'"), "{csp}");
         assert!(!scripts.contains(&"'unsafe-inline'"), "{scripts:?}");
+    }
+
+    /// A MilkDrop preset of the DJ's own, as a `.milk` file.
+    const THEIRS: &str = "[preset00]\nfDecay=0.950000\nzoom=1.020000\nper_frame_1=rot = 0.01;\n";
+
+    /// **The DJ's own presets: taken when they can be drawn, refused with
+    /// the reason when they cannot, offered as looks, drawn from their file,
+    /// and gone — with the screens showing them — when removed.**
+    #[test]
+    fn the_djs_own_presets_are_taken_offered_and_removed() {
+        let home = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let looks = Looks::new();
+        looks.start(home.path());
+        assert!(looks.yours().is_empty());
+
+        let file = |name: &str, bytes: &[u8]| {
+            let path = elsewhere.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path
+        };
+        let added = looks.add(&[
+            file("Night Drive.milk", THEIRS.as_bytes()),
+            file("scripted.json", br#"{"init_eqs_str":"a.q1=0;"}"#),
+            file("notes.txt", b"fDecay=0.9"),
+            // A valid preset, refused for its size alone.
+            file("huge.milk", "fDecay=0.9\n".repeat(60_000).as_bytes()),
+        ]);
+        assert_eq!(added.presets.len(), 1, "{added:?}");
+        assert_eq!(added.presets[0].name, "Night Drive");
+        assert_eq!(added.presets[0].problem, None);
+        assert_eq!(added.refused.len(), 3, "{added:?}");
+        assert!(
+            added.refused[0].starts_with("scripted.json: ")
+                && added.refused[0].contains("JavaScript")
+        );
+        assert!(added.refused[1].starts_with("notes.txt: "));
+        assert!(added.refused[2].contains("too large"));
+
+        // Offered as a look, drawn from the file.
+        let look = looks
+            .catalogue()
+            .into_iter()
+            .find(|l| l.name == "Yours: Night Drive")
+            .expect("a look for the preset");
+        assert_eq!(look.layers[0].kind, "milkdrop");
+        let name = look.layers[0].preset.clone().unwrap();
+        let drawn = looks.preset(&name).unwrap();
+        assert_eq!(drawn["baseVals"]["decay"], 0.95);
+        assert_eq!(drawn["frame_eqs_eel"], "rot = 0.01;");
+        // Shipped presets are still found by their own names.
+        assert!(looks.preset("Drift").is_ok());
+
+        // A file that cannot be drawn is listed with why, and has no look.
+        std::fs::write(home.path().join(FOLDER).join("broken.json"), "not json").unwrap();
+        let broken = looks
+            .yours()
+            .into_iter()
+            .find(|y| y.name == "broken")
+            .unwrap();
+        assert!(broken.problem.is_some());
+        assert!(!looks.catalogue().iter().any(|l| l.name == "Yours: broken"));
+
+        // Chosen, then removed: the file goes, and so does the choice.
+        looks
+            .choose(Screen::Singers, Some("Yours: Night Drive".to_owned()))
+            .unwrap();
+        looks
+            .choose(Screen::Video, Some("Glow".to_owned()))
+            .unwrap();
+        let left = looks.remove("Night Drive").unwrap();
+        assert_eq!(
+            left.iter().map(|y| y.name.as_str()).collect::<Vec<_>>(),
+            ["broken"]
+        );
+        assert!(!home.path().join(FOLDER).join("Night Drive.milk").exists());
+        assert_eq!(looks.chosen().singers, None);
+        assert_eq!(
+            looks.chosen().video.as_deref(),
+            Some("Glow"),
+            "another screen's choice stays"
+        );
+        assert!(looks.remove("Night Drive").is_err());
+    }
+
+    /// A preset's name finds a file in the folder, and nothing outside it.
+    #[test]
+    fn a_presets_name_reaches_nothing_outside_the_folder() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join("outside.milk"), THEIRS).unwrap();
+        // The folder exists, as it does once the DJ has added one: a path
+        // through it to `..` would then resolve, so only the listing stops it.
+        std::fs::create_dir_all(home.path().join(FOLDER)).unwrap();
+        std::fs::write(home.path().join(FOLDER).join("inside.milk"), THEIRS).unwrap();
+        let looks = Looks::new();
+        looks.start(home.path());
+        assert!(looks.preset("yours/inside").is_ok());
+        assert!(looks.preset("yours/../outside").is_err());
+        assert!(looks.remove("../outside").is_err());
+        assert!(home.path().join("outside.milk").exists());
     }
 
     #[test]

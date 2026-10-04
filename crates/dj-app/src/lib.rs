@@ -62,6 +62,7 @@ pub mod library;
 pub mod live;
 pub mod looks;
 pub mod memory;
+pub mod milk;
 pub mod mission;
 pub mod mixes;
 pub mod monitors;
@@ -644,6 +645,9 @@ pub fn run() {
             commands::look_chosen,
             commands::look_choose,
             commands::milkdrop_preset,
+            commands::milkdrop_presets,
+            commands::milkdrop_add,
+            commands::milkdrop_remove,
             commands::deck_pictures,
             commands::youtube_settings,
             commands::youtube_settings_set,

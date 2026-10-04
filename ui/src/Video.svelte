@@ -139,14 +139,16 @@
   /** §122: the look beneath the pictures, kept in Rust as the singers' screen's is. */
   let looks = $state<Look[]>([]);
   let lookName = $state<string | null>(null);
-  $effect(() => {
+  /** Asked again when the list is opened: the DJ may have added presets of their own since. */
+  function readLooks() {
     void Promise.all([looksCatalogue(), lookChosen()])
       .then(([all, chosen]) => {
         looks = all;
         lookName = chosen.video;
       })
       .catch(() => {});
-  });
+  }
+  $effect(() => readLooks());
   const look = $derived(looks.find((l) => l.name === lookName) ?? null);
 
   async function pickLook(name: string | null) {
@@ -263,6 +265,7 @@
           <select
             aria-label="The look when no picture plays"
             value={lookName ?? ""}
+            onfocus={readLooks}
             onchange={(e) => void pickLook(e.currentTarget.value === "" ? null : e.currentTarget.value)}
           >
             <option value="">Black</option>

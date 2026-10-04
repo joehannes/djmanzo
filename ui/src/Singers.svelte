@@ -11,6 +11,7 @@
   import BuyLinks from "./BuyLinks.svelte";
   import Guests from "./Guests.svelte";
   import Microphones from "./Microphones.svelte";
+  import MilkdropPresets from "./MilkdropPresets.svelte";
   import WordTiming from "./WordTiming.svelte";
   import { validate } from "./looks";
   import {
@@ -102,14 +103,17 @@
    */
   let looks = $state<Look[]>([]);
   let lookName = $state<string | null>(null);
-  $effect(() => {
-    if (!enabled) return;
+  function readLooks() {
     void Promise.all([looksCatalogue(), lookChosen()])
       .then(([all, chosen]) => {
         looks = all;
         lookName = chosen.singers;
       })
       .catch(() => {});
+  }
+  $effect(() => {
+    if (!enabled) return;
+    readLooks();
   });
   const chosenLook = $derived(looks.find((l) => l.name === lookName) ?? null);
   const leftOut = $derived(chosenLook ? validate(chosenLook).dropped : []);
@@ -564,6 +568,7 @@
           record's cover and colours.
         </p>
       {/if}
+      <MilkdropPresets onchange={readLooks} />
     </section>
   {/if}
 

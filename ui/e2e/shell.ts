@@ -769,7 +769,9 @@ export const ANSWERS: Record<string, unknown> = {
   // the singers' screen shows none until one is chosen.
   looks_catalogue: looks,
   look_chosen: { singers: null, video: null },
-  milkdrop_presets: { Drift: presetDrift, Bloom: presetBloom },
+  milkdrop_shipped: { Drift: presetDrift, Bloom: presetBloom },
+  // §122 step 4b: the DJ's own presets, none until a test adds some.
+  milkdrop_yours: [],
   phone_camera_status: {
     on: false,
     phone_url: null,
@@ -2422,16 +2424,69 @@ export async function openShell(
           // the phone and OBS are doing.
           // §122: which look each screen shows, kept as Rust keeps it, and
           // refused for a name that is not in the catalogue.
+          // §122 step 4b: the DJ's own presets, kept as Rust keeps them, and
+          // each that can be drawn offered as a look, as `dj_app::looks` does.
+          type Yours = { name: string; file: string; note: string | null; problem: string | null };
+          const yours = () => (win.__milkdropYours ??= structuredClone(answers.milkdrop_yours)) as Yours[];
+          const catalogue = () => [
+            ...(answers.looks_catalogue as { name: string }[]),
+            ...yours()
+              .filter((y) => !y.problem)
+              .map((y) => ({
+                name: `Yours: ${y.name}`,
+                description: `Your own MilkDrop preset, from ${y.file}.`,
+                layers: [
+                  { kind: "milkdrop", signal: "loudness", colour: "record", amount: 0.9, blend: "over", preset: `yours/${y.name}` },
+                  { kind: "halo", signal: "voice", colour: "record", amount: 0.5, blend: "screen" },
+                ],
+              })),
+          ];
+          if (cmd === "looks_catalogue") return Promise.resolve(structuredClone(catalogue()));
+          if (cmd === "milkdrop_presets") return Promise.resolve(structuredClone(yours()));
+          if (cmd === "milkdrop_add") {
+            ((win.__milkdropAsked ??= []) as unknown[]).push({ cmd, ...args });
+            const refused: string[] = [];
+            for (const path of args.paths as string[]) {
+              const file = path.split("/").pop() ?? path;
+              // A test names the files it wants refused; Rust's reasons are its own tests'.
+              if (file.startsWith("refuse-")) {
+                refused.push(`${file}: its equations are only in JavaScript, which djmanzo does not run`);
+                continue;
+              }
+              const name = file.replace(/\.(milk|json)$/i, "");
+              const list = yours();
+              const at = list.findIndex((y) => y.name === name);
+              if (at >= 0) list.splice(at, 1);
+              list.push({ name, file, note: null, problem: null });
+              list.sort((a, b) => a.file.localeCompare(b.file));
+            }
+            return Promise.resolve({ presets: structuredClone(yours()), refused });
+          }
+          if (cmd === "milkdrop_remove") {
+            const list = yours();
+            const at = list.findIndex((y) => y.name === args.name);
+            if (at < 0) return Promise.reject(`there is no preset of yours called "${args.name}"`);
+            list.splice(at, 1);
+            // A screen showing its look shows none, as Rust's remove does.
+            const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;
+            for (const screen of Object.keys(chosen)) {
+              if (chosen[screen] === `Yours: ${args.name}`) chosen[screen] = null;
+            }
+            return Promise.resolve(structuredClone(list));
+          }
           if (cmd === "milkdrop_preset") {
-            const shipped = answers.milkdrop_presets as Record<string, unknown>;
-            const preset = shipped[String(args.name)];
+            const shipped = answers.milkdrop_shipped as Record<string, unknown>;
+            // One of the DJ's own draws as a shipped one does: the reading of
+            // the file is Rust's, tested there.
+            const name = String(args.name);
+            const preset = name.startsWith("yours/") && yours().some((y) => `yours/${y.name}` === name) ? shipped.Drift : shipped[name];
             return preset ? Promise.resolve(structuredClone(preset)) : Promise.reject(`there is no MilkDrop preset called "${args.name}"`);
           }
           if (cmd === "look_chosen" || cmd === "look_choose") {
             const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;
             if (cmd === "look_choose") {
               const name = (args.name ?? null) as string | null;
-              const known = answers.looks_catalogue as { name: string }[];
+              const known = catalogue();
               if (name !== null && !known.some((l) => l.name === name)) {
                 return Promise.reject(`there is no look called "${name}"`);
               }

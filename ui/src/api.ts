@@ -6031,8 +6031,29 @@ export interface LookChosen {
 export type LookScreen = "singers" | "video";
 
 export const looksCatalogue = () => invoke<Look[]>("looks_catalogue");
-/** §122: a MilkDrop preset djmanzo ships, in Butterchurn's own form. */
+/** §122: a MilkDrop preset — djmanzo's, or the DJ's own (`yours/<name>`) — in Butterchurn's own form. */
 export const milkdropPreset = (name: string) => invoke<Record<string, unknown>>("milkdrop_preset", { name });
+
+/** §122: one of the DJ's own MilkDrop presets. See `dj_app::looks::Yours`. */
+export interface MilkdropYours {
+  name: string;
+  file: string;
+  /** Worth knowing, such as shaders left out. */
+  note: string | null;
+  /** Why it cannot be drawn; it then has no look. */
+  problem: string | null;
+}
+
+/** §122: what adding presets came to. */
+export interface MilkdropAdded {
+  presets: MilkdropYours[];
+  /** Each file not taken, and why. */
+  refused: string[];
+}
+
+export const milkdropPresets = () => invoke<MilkdropYours[]>("milkdrop_presets");
+export const milkdropAdd = (paths: string[]) => invoke<MilkdropAdded>("milkdrop_add", { paths });
+export const milkdropRemove = (name: string) => invoke<MilkdropYours[]>("milkdrop_remove", { name });
 export const lookChosen = () => invoke<LookChosen>("look_chosen");
 export const lookChoose = (screen: LookScreen, name: string | null) =>
   invoke<LookChosen>("look_choose", { screen, name });

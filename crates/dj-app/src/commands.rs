@@ -364,13 +364,45 @@ pub fn look_chosen(state: State<'_, AppState>) -> crate::looks::Chosen {
     state.looks().chosen()
 }
 
-/// §122: a MilkDrop preset djmanzo ships, as Butterchurn reads it.
+/// §122: a MilkDrop preset — one djmanzo ships, or one of the DJ's own
+/// (`yours/<name>`) — as Butterchurn reads it.
 ///
 /// # Errors
-/// No preset has that name.
+/// No preset has that name, or the DJ's file cannot be read.
 #[tauri::command]
-pub fn milkdrop_preset(name: String) -> Result<serde_json::Value, String> {
-    crate::looks::preset(&name)
+pub fn milkdrop_preset(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    state.looks().preset(&name)
+}
+
+/// §122: the DJ's own MilkDrop presets, each with whether it can be drawn.
+#[tauri::command]
+#[must_use]
+pub fn milkdrop_presets(state: State<'_, AppState>) -> Vec<crate::looks::Yours> {
+    state.looks().yours()
+}
+
+/// §122: copy the DJ's preset files into djmanzo's folder, each only if it
+/// can be drawn.
+#[tauri::command]
+#[must_use]
+pub fn milkdrop_add(state: State<'_, AppState>, paths: Vec<String>) -> crate::looks::Added {
+    let paths: Vec<std::path::PathBuf> = paths.into_iter().map(Into::into).collect();
+    state.looks().add(&paths)
+}
+
+/// §122: remove one of the DJ's presets.
+///
+/// # Errors
+/// No preset of theirs has that name, or its file would not go.
+#[tauri::command]
+pub fn milkdrop_remove(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<Vec<crate::looks::Yours>, String> {
+    state.looks().remove(&name)
 }
 
 /// §122: show a look on a screen, or none.

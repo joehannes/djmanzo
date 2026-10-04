@@ -284,7 +284,59 @@ moving between captures, a Butterchurn frame taking about 8 ms at 177×100.
   is drawn.
 - **Mutation-tested:** thirteen mutants fail them.
 
-**Not yet (step 4b):** the DJ's own preset files from disk.
+**Step 4b — built: the DJ's own presets.** In the Singers panel, *Add
+MilkDrop presets…* takes MilkDrop's own `.milk` files or Butterchurn's
+`.json` and copies each into `milkdrop/` beside the other settings, only if it
+can be drawn. Each that can becomes a look, *Yours: <name>*, wherever looks
+are picked. The Video panel's list is read again when it is opened.
+
+- **A `.milk` file is read by Rust** (`dj_app::milk`). The `key=value`
+  settings become Butterchurn's base values by a table of the 37 names
+  MilkDrop and Butterchurn spell differently, taken from Butterchurn's own
+  reader `milkdrop-preset-utils` (MIT; data, not a dependency). The numbered
+  equation lines are joined in the order of their numbers, not of the file —
+  `per_frame_10` after `per_frame_2`. The four custom waves and shapes keep
+  theirs.
+- **MilkDrop 2's shaders are HLSL**, which nothing here translates. They are
+  left out, the preset draws with Butterchurn's default pair, and the list
+  says so.
+- **A Butterchurn `.json` is taken as it is** when its equations are in
+  MilkDrop's language. One with only JavaScript equations is refused with the
+  reason, and any JavaScript beside MilkDrop's own is stripped.
+- **Either is made whole**: four shapes, four waves, every field a string.
+- **Refused, each with why:** larger than 512 KB, not `.milk` or `.json`,
+  nothing MilkDrop in it.
+- **A preset's name finds a file only among those listed**, never by joining
+  it to a path: `yours/../x` reaches nothing.
+- **Removing one** clears any screen showing its look.
+- **They are the DJ's to answer for**: djmanzo draws them and never sends them
+  anywhere, which the panel says.
+
+**Tested:**
+- 4 Rust tests of the reading:
+  - a MilkDrop 2 file read whole — renamed and plain settings, lines past
+    nine in the order of their numbers, a custom wave and shape, HLSL left
+    out and said
+  - any preset made whole
+  - JavaScript refused or stripped
+  - only `.milk` and `.json` taken
+- 2 Rust tests of the folder:
+  - taken, refused with why (JavaScript, the wrong kind, too large), offered
+    as a look, drawn from the file, a broken one listed with no look, and
+    removed with the choice
+  - no name reaching outside the folder
+- 2 browser tests:
+  - added from the dialog, offered, refused with why, and removed
+  - one drawn behind the words under the real content rules
+- **Mutation-tested:** eleven mutants fail them. The path test first passed
+  with a name joined straight to the folder: Linux will not resolve `..`
+  through a folder that does not exist, and the test had none. It makes the
+  folder now.
+
+**Driven in WebKitGTK:** a `.milk` of djmanzo's own making, written as
+MilkDrop writes them, with a custom wave drawn from its own per-point
+equations. It sat in the folder, was chosen for the Video panel as *Yours:
+Night Drive*, and drew — its ring and trails moving between captures.
 
 ## 5. Artist images
 
