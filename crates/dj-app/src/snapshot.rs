@@ -85,6 +85,10 @@ pub struct DeckSnapshot {
     pub stem_mutes: [bool; 4],
     /// Volume states for the 4 stems (Vocal, Drums, Bass, Other).
     pub stem_volumes: [f32; 4],
+    /// §122: each stem's peak in the last block (Vocal, Drums, Bass, Other),
+    /// after its tone (the deck's EQ included), volume and mute, and before
+    /// the deck's fader — what the visuals answer to. All zero for a record not yet separated.
+    pub stem_levels: [f32; 4],
     /// Per-stem EQ trim for the 4 stems, each low/mid/high.
     ///
     /// The DJ's own setting, on top of the deck's EQ rather than instead of
@@ -751,6 +755,12 @@ impl Snapshot {
                         get(DeckParam::StemDrumsVolume),
                         get(DeckParam::StemBassVolume),
                         get(DeckParam::StemOtherVolume),
+                    ],
+                    stem_levels: [
+                        get(DeckParam::StemVocalLevel),
+                        get(DeckParam::StemDrumsLevel),
+                        get(DeckParam::StemBassLevel),
+                        get(DeckParam::StemOtherLevel),
                     ],
                     stem_eq: [
                         [

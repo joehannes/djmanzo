@@ -1810,6 +1810,18 @@ impl AudioCallback for Engine {
                     ParamId::Deck(id, DeckParam::PreFaderLevel),
                     levels.pre_fader,
                 );
+                // In `dj_core::Stem`'s order, as `DeckLevels::stems` is.
+                for (param, level) in [
+                    DeckParam::StemVocalLevel,
+                    DeckParam::StemDrumsLevel,
+                    DeckParam::StemBassLevel,
+                    DeckParam::StemOtherLevel,
+                ]
+                .into_iter()
+                .zip(levels.stems)
+                {
+                    self.registry.set(ParamId::Deck(id, param), level);
+                }
             }
         }
 

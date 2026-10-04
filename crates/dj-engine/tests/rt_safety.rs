@@ -1902,6 +1902,42 @@ fn clearing_stem_out_restores_the_mix() {
     );
 }
 
+/// §122: **each stem's level reaches the registry, under its own name.**
+///
+/// The deck measures them (its own test holds the measuring); this holds the
+/// last step, which nothing else would catch going wrong: four levels
+/// published in the wrong order would read as a bass drum lighting up the
+/// singer's halo. The fixture's stems are 0.1 to 0.4, so each parameter must
+/// read its own multiple of the vocal's — and a second deck, playing a record
+/// with no stems, none.
+#[test]
+fn each_stem_level_reaches_the_registry_under_its_own_name() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    rig.load_and_play(2, 500_000);
+    rig.warm_up(40);
+
+    let read = |rig: &Rig, n: u8| {
+        [
+            DeckParam::StemVocalLevel,
+            DeckParam::StemDrumsLevel,
+            DeckParam::StemBassLevel,
+            DeckParam::StemOtherLevel,
+        ]
+        .map(|param| rig.registry.get(ParamId::Deck(deck(n), param)))
+    };
+    let levels = read(&rig, 1);
+    assert!(levels[0] > 0.05, "no vocal level published: {levels:?}");
+    for (stem, expected) in [1.0_f32, 2.0, 3.0, 4.0].into_iter().enumerate() {
+        let ratio = levels[stem] / levels[0];
+        assert!(
+            (ratio - expected).abs() < 1e-3,
+            "stem {stem} published {ratio} times the vocal, not {expected}: {levels:?}"
+        );
+    }
+    assert_eq!(read(&rig, 2), [0.0; 4], "a record with no stems has none");
+}
+
 /// A track whose stems have not been separated yet gets silence on the pairs,
 /// not the mix.
 ///

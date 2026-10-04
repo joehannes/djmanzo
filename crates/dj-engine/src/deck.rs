@@ -123,6 +123,10 @@ pub struct Deck {
 
     /// The four independent stem channels (Vocal, Drums, Bass, Other).
     pub stem_channels: [StemChannel; 4],
+    /// §122: each stem's peak so far this block, after its own volume and
+    /// mute, for the visuals. Reset at the start of every block and handed out
+    /// in [`DeckLevels::stems`].
+    stem_peaks: [f32; 4],
     /// Pitch shifter used when keylock is on. Always built, so engaging keylock
     /// mid-set never allocates.
     keylock: Keylock,
@@ -268,6 +272,7 @@ impl Deck {
                 StemChannel::new(sr),
                 StemChannel::new(sr),
             ],
+            stem_peaks: [0.0; 4],
             spin: None,
             jog: Jog::new(device_rate),
             jog_step: None,
@@ -1857,6 +1862,9 @@ impl Deck {
                     };
                     mixed_left += l;
                     mixed_right += r;
+                    // A muted stem is never measured, so it reads silent: a
+                    // vocal the DJ took out is out of the visuals too.
+                    self.stem_peaks[i] = self.stem_peaks[i].max(l.abs()).max(r.abs());
                 }
             }
             ([mixed_left, mixed_right], true)
@@ -1962,6 +1970,7 @@ impl Deck {
         tap: Option<&mut Recorder>,
         own_out: Option<(usize, usize)>,
     ) -> DeckLevels {
+        self.stem_peaks = [0.0; 4];
         if self.source.is_empty() {
             return DeckLevels::default();
         }
@@ -1983,11 +1992,14 @@ impl Deck {
         // A search goes down the direct path for the same reason a brake does:
         // the shifter works on blocks at a settled tempo, and a hand winding a
         // wheel is neither.
-        if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() && !searching {
-            self.process_keylocked(out, layout, tap, own_out)
-        } else {
-            self.process_direct(out, layout, tap, own_out)
-        }
+        let mut levels =
+            if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() && !searching {
+                self.process_keylocked(out, layout, tap, own_out)
+            } else {
+                self.process_direct(out, layout, tap, own_out)
+            };
+        levels.stems = self.stem_peaks;
+        levels
     }
 
     /// The plain path: read, shape, mix. What runs whenever keylock is off.
@@ -2403,6 +2415,15 @@ impl Spin {
 pub struct DeckLevels {
     pub pre_fader: f32,
     pub post_fader: f32,
+    /// §122: each stem's peak — vocal, drums, bass, other, in
+    /// [`dj_core::Stem`]'s order — after the stem's own tone, volume and mute
+    /// (its tone carries the deck's EQ and filter, so a kill is in it), and
+    /// before the trim, the effects and the fader. What each stem is
+    /// contributing to the deck, for visuals that answer to one of them; how
+    /// much of the deck the room hears is the fader's business, and the
+    /// visuals weigh it in as the Video panel does. All zero for a record not
+    /// yet separated.
+    pub stems: [f32; 4],
 }
 
 #[cfg(test)]
@@ -4204,6 +4225,104 @@ mod slicer_tests {
             "{}",
             share(level(0.25, 0.5))
         );
+    }
+
+    /// §122: **each stem reports its own level, as the deck plays it.**
+    ///
+    /// The fixture's stems carry 0.1, 0.2, 0.3 and 0.4, so each level must
+    /// come out in those proportions — a transposed pair would not. Compared
+    /// to the vocal's rather than to the constants, for the reason the mute
+    /// test above gives: each stem's own EQ and filter overshoot on a
+    /// constant, and identically, so the ratios are exact where the absolute
+    /// values are not.
+    ///
+    /// Then what the visuals rely on: a stem's own volume scales it, a mute
+    /// silences it *in the next block* — the peak is per block, not held — the
+    /// deck's EQ is in it, its fader is not, and a paused deck or a record
+    /// with no stems reports none.
+    #[test]
+    fn each_stem_reports_its_own_level_as_the_deck_plays_it() {
+        let layout = BusLayout::for_channels(2);
+        let block = |deck: &mut Deck| {
+            let mut out = vec![0.0; 512 * layout.channels];
+            deck.process(&mut out, &layout, None, None).stems
+        };
+        let settled = || {
+            let mut deck = Deck::new(SR);
+            let _ = deck.load(separated(200_000));
+            deck.play();
+            // Past the stems' own filters settling.
+            let _ = peak(&mut deck, &layout, 9_600);
+            deck
+        };
+
+        let mut deck = settled();
+        let levels = block(&mut deck);
+        assert!(levels[0] > 0.05, "the vocal reports nothing: {levels:?}");
+        for (stem, expected) in [1.0_f32, 2.0, 3.0, 4.0].into_iter().enumerate() {
+            let ratio = levels[stem] / levels[0];
+            assert!(
+                (ratio - expected).abs() < 1e-3,
+                "stem {stem} is {ratio} times the vocal, not {expected}: {levels:?}"
+            );
+        }
+
+        // A stem's own volume scales it, and only it.
+        deck.set_stem_volume(Stem::Drums.index(), 0.5);
+        let _ = peak(&mut deck, &layout, 4_800);
+        let halved = block(&mut deck);
+        assert!(
+            (halved[1] / halved[0] - 1.0).abs() < 1e-2,
+            "the drums at half should read as the vocal does: {halved:?}"
+        );
+        assert!((halved[3] / halved[0] - 4.0).abs() < 1e-3, "{halved:?}");
+
+        // Muted: silent from the next block on, not held at its last peak.
+        deck.set_stem_mute(Stem::Bass.index(), true);
+        let muted = block(&mut deck);
+        assert_eq!(muted[2], 0.0, "a muted bass still reads {muted:?}");
+        assert!(muted[3] > 0.0, "{muted:?}");
+
+        // The deck's own EQ is in each stem's tone, so a DJ's kill is in its
+        // level: these stems are constants, all low band, and killing the
+        // lows takes them out.
+        let mut killed = settled();
+        killed.set_eq_low(0.0);
+        let _ = peak(&mut killed, &layout, 48_000);
+        let lows_killed = block(&mut killed);
+        assert!(
+            lows_killed
+                .iter()
+                .zip(levels)
+                .all(|(now, was)| *now < was * 0.1),
+            "killing the deck's lows left the stems at {lows_killed:?}, from {levels:?}"
+        );
+
+        // The deck's fader is the room's business, not the stem's.
+        let mut faded = settled();
+        faded.set_volume(0.0);
+        let _ = peak(&mut faded, &layout, 4_800);
+        let under_a_closed_fader = block(&mut faded);
+        assert!(
+            (under_a_closed_fader[0] - levels[0]).abs() < 1e-3,
+            "a closed fader changed the vocal's level: {under_a_closed_fader:?} against {levels:?}"
+        );
+
+        // Paused: nothing.
+        deck.pause();
+        assert_eq!(block(&mut deck), [0.0; 4]);
+
+        // Not yet separated: nothing, though the record plays.
+        let mut plain = Deck::new(SR);
+        let _ = plain.load(Arc::new(AudioBuffer::from_interleaved(
+            vec![0.5; 200_000 * 2],
+            SR,
+        )));
+        plain.play();
+        let mut out = vec![0.0; 512 * layout.channels];
+        let unseparated = plain.process(&mut out, &layout, None, None);
+        assert!(unseparated.pre_fader > 0.1, "{unseparated:?}");
+        assert_eq!(unseparated.stems, [0.0; 4]);
     }
 
     /// §107's fallback, **before a record is separated**: the centre of the

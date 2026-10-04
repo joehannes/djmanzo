@@ -160,6 +160,12 @@ export interface DeckState {
   /** Volume states for the 4 stems (Vocal, Drums, Bass, Other). */
   stem_volumes: [number, number, number, number];
   /**
+   * §122: each stem's peak in the last block (Vocal, Drums, Bass, Other),
+   * after its tone (the deck's EQ included), volume and mute, and before the
+   * deck's fader — what the visuals answer to. All zero for a record not yet separated.
+   */
+  stem_levels: [number, number, number, number];
+  /**
    * Per-stem EQ trim for the 4 stems, each low/mid/high.
    *
    * The DJ's own setting on top of the deck's EQ rather than instead of it —

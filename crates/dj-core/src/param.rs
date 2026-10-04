@@ -235,6 +235,14 @@ pub enum DeckParam {
     /// Last on purpose: the order is the memory layout, and a parameter added
     /// in the middle would move every one after it.
     Voice,
+    /// §122: each stem's peak in the last block, 0.0..=1.0, after the stem's
+    /// tone (the deck's EQ and filter included), volume and mute, and before
+    /// the deck's fader — what the visuals answer to. A muted stem reads 0.0, and so does every stem of a record
+    /// not yet separated. See `docs/VISUALS.md`.
+    StemVocalLevel,
+    StemDrumsLevel,
+    StemBassLevel,
+    StemOtherLevel,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -266,7 +274,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 92;
+    pub const COUNT: usize = 96;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -369,6 +377,10 @@ impl DeckParam {
             StemOtherEqHigh,
             StemOtherFilter,
             Voice,
+            StemVocalLevel,
+            StemDrumsLevel,
+            StemBassLevel,
+            StemOtherLevel,
         ]
     }
 }
@@ -1308,6 +1320,10 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::StemOtherEqHigh => "stem_other_eq_high",
         DeckParam::StemOtherFilter => "stem_other_filter",
         DeckParam::Voice => "voice",
+        DeckParam::StemVocalLevel => "stem_vocal_level",
+        DeckParam::StemDrumsLevel => "stem_drums_level",
+        DeckParam::StemBassLevel => "stem_bass_level",
+        DeckParam::StemOtherLevel => "stem_other_level",
     }
 }
 
