@@ -234,6 +234,88 @@ pub fn keep_interface_density(kept: &std::sync::Mutex<String>, name: &str) -> Op
     Some(name)
 }
 
+/// §119: how djmanzo reaches OBS, without the password itself — the screen
+/// is told only whether one is kept.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ObsSettingsDto {
+    pub on: bool,
+    pub host: String,
+    pub port: u16,
+    pub has_password: bool,
+}
+
+fn obs_settings_dto(settings: &crate::obs::Settings) -> ObsSettingsDto {
+    ObsSettingsDto {
+        on: settings.on,
+        host: settings.host.clone(),
+        port: settings.port,
+        has_password: !settings.password.is_empty(),
+    }
+}
+
+/// §119: what the link to OBS is doing.
+#[tauri::command]
+#[must_use]
+pub fn obs_status(state: State<'_, AppState>) -> crate::obs::Status {
+    state.obs().status()
+}
+
+/// §119: how djmanzo reaches OBS.
+#[tauri::command]
+#[must_use]
+pub fn obs_settings(state: State<'_, AppState>) -> ObsSettingsDto {
+    obs_settings_dto(&state.obs().settings())
+}
+
+/// §119: switch the link to OBS on or off, and say where OBS is. A
+/// `password` left out keeps the one there is; an empty one clears it.
+#[tauri::command]
+#[must_use]
+pub fn obs_settings_set(
+    state: State<'_, AppState>,
+    on: bool,
+    host: String,
+    port: u16,
+    password: Option<String>,
+) -> ObsSettingsDto {
+    let mut next = state.obs().settings();
+    next.on = on;
+    let host = host.trim();
+    next.host = if host.is_empty() {
+        "localhost".to_owned()
+    } else {
+        host.to_owned()
+    };
+    next.port = if port == 0 {
+        dj_net::obs::DEFAULT_PORT
+    } else {
+        port
+    };
+    if let Some(password) = password {
+        next.password = password;
+    }
+    state.obs().set(next.clone());
+    obs_settings_dto(&next)
+}
+
+/// §119: start or stop the stream in OBS.
+///
+/// # Errors
+/// The link off or not connected, or OBS's own refusal.
+#[tauri::command]
+pub fn obs_stream(state: State<'_, AppState>, on: bool) -> Result<(), String> {
+    state.obs().ask(crate::obs::Ask::Stream(on))
+}
+
+/// §119: put one of OBS's scenes on air.
+///
+/// # Errors
+/// As [`obs_stream`] — a scene OBS does not have, in OBS's words.
+#[tauri::command]
+pub fn obs_scene(state: State<'_, AppState>, scene: String) -> Result<(), String> {
+    state.obs().ask(crate::obs::Ask::Scene(scene))
+}
+
 /// Every panel, and which of them are in windows of their own.
 #[must_use]
 pub fn panels_dto(detached: &crate::monitors::Detached) -> Vec<PanelDto> {

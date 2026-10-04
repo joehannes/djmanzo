@@ -66,6 +66,7 @@ pub mod mixes;
 pub mod monitors;
 pub mod mood;
 pub mod night;
+pub mod obs;
 pub mod outline;
 pub mod parts;
 pub mod peersync;
@@ -425,7 +426,14 @@ pub fn run() {
                 for problem in problems {
                     tracing::warn!(%problem, "a user mapping could not be loaded");
                 }
-                state.set_config_dir(dir);
+                state.set_config_dir(dir.clone());
+                // §119: the link to OBS, off until the DJ switches it on.
+                state.obs().start(
+                    Some(&dir),
+                    Some(std::sync::Arc::clone(state.secrets())),
+                    crate::obs::connect(),
+                    crate::obs::Timing::default(),
+                );
             }
 
             // §77. Read once here so the pump has the handle; the state seeds
@@ -574,6 +582,11 @@ pub fn run() {
             commands::window_ask,
             commands::interface_density,
             commands::interface_density_set,
+            commands::obs_status,
+            commands::obs_settings,
+            commands::obs_settings_set,
+            commands::obs_stream,
+            commands::obs_scene,
             commands::attach_panel,
             commands::list_plugins,
             commands::plugin_state,

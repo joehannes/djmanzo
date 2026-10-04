@@ -63,6 +63,8 @@ pub enum SecretKind {
     TidalClientSecret,
     SoundCloudClientId,
     SoundCloudClientSecret,
+    /// §119: the password OBS's WebSocket server asks for.
+    ObsPassword,
 }
 
 impl SecretKind {
@@ -92,6 +94,7 @@ impl SecretKind {
             SecretKind::TidalClientSecret => "tidal.client_secret",
             SecretKind::SoundCloudClientId => "soundcloud.client_id",
             SecretKind::SoundCloudClientSecret => "soundcloud.client_secret",
+            SecretKind::ObsPassword => "obs.password",
         }
     }
 
@@ -118,6 +121,7 @@ impl SecretKind {
             SecretKind::TidalClientSecret => "TIDAL client secret",
             SecretKind::SoundCloudClientId => "SoundCloud client ID",
             SecretKind::SoundCloudClientSecret => "SoundCloud client secret",
+            SecretKind::ObsPassword => "OBS WebSocket password",
         }
     }
 
@@ -153,6 +157,7 @@ impl SecretKind {
             SecretKind::SoundCloudClientId | SecretKind::SoundCloudClientSecret => {
                 "https://developers.soundcloud.com/"
             }
+            SecretKind::ObsPassword => "https://obsproject.com/kb/remote-control-guide",
         }
     }
 
@@ -202,6 +207,10 @@ impl SecretKind {
                 "API registration has been closed to new applications for years. \
                  Go+ for DJs is a partner programme."
             }
+            SecretKind::ObsPassword => {
+                "Free, and OBS's own: Tools -> WebSocket Server Settings, in OBS 28 \
+                 or later."
+            }
         }
     }
 
@@ -239,6 +248,7 @@ impl SecretKind {
             TidalClientSecret,
             SoundCloudClientId,
             SoundCloudClientSecret,
+            ObsPassword,
         ]
     }
 }

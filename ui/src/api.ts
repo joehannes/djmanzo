@@ -1477,6 +1477,32 @@ export interface LiveStatus {
 export const liveStatus = () => invoke<LiveStatus>("live_status");
 export const setLive = (on: boolean) => invoke<LiveStatus>("set_live", { on });
 
+/** §119: what the link to OBS is doing (`dj_app::obs::Status`). */
+export interface ObsStatus {
+  on: boolean;
+  connected: boolean;
+  /** Why not, or what OBS last refused. */
+  error: string | null;
+  streaming: boolean;
+  scenes: { current: string; all: string[] };
+}
+
+/** §119: how djmanzo reaches OBS — never the password, only whether one is kept. */
+export interface ObsSettings {
+  on: boolean;
+  host: string;
+  port: number;
+  has_password: boolean;
+}
+
+export const obsStatus = () => invoke<ObsStatus>("obs_status");
+export const obsSettings = () => invoke<ObsSettings>("obs_settings");
+/** `password` left out keeps the one there is; an empty one clears it. */
+export const obsSettingsSet = (on: boolean, host: string, port: number, password?: string) =>
+  invoke<ObsSettings>("obs_settings_set", { on, host, port, password: password ?? null });
+export const obsStream = (on: boolean) => invoke<void>("obs_stream", { on });
+export const obsScene = (scene: string) => invoke<void>("obs_scene", { scene });
+
 export const singerLyrics = (deck: number) => invoke<SingerLyrics>("singer_lyrics", { deck });
 
 export const melodyLine = (deck: number, theme: string) =>

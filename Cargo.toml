@@ -123,6 +123,9 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 # existing control server; an async runtime would be a large dependency for
 # three routes. See ADR-0010.
 tiny_http = "0.12"
+# §119: the WebSocket under obs-websocket. No TLS: OBS listens on this
+# computer over plain ws://.
+tungstenite = "0.30"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 base64 = "0.22"
 tokio = { version = "1", default-features = false }

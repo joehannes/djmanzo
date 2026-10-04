@@ -300,6 +300,8 @@ pub struct AppState {
     /// §121: the density band the main window is wearing, by name, as it
     /// last said — for a panel in a window of its own, which cannot read it.
     interface_density: Mutex<String>,
+    /// §119: the link to OBS.
+    obs: crate::obs::Link,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -590,6 +592,7 @@ impl AppState {
             breaks: Mutex::new(crate::breaks::Held::default()),
             on_mics: Mutex::new(Vec::new()),
             interface_density: Mutex::new("Standard".to_owned()),
+            obs: crate::obs::Link::new(),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1569,6 +1572,12 @@ impl AppState {
     /// §121: the density band the main window is wearing, by name.
     pub fn interface_density(&self) -> &Mutex<String> {
         &self.interface_density
+    }
+
+    /// §119: the link to OBS.
+    #[must_use]
+    pub fn obs(&self) -> &crate::obs::Link {
+        &self.obs
     }
 
     /// K3: who is on each singers' microphone, strip by strip — `None` for

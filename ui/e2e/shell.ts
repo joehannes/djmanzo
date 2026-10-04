@@ -749,6 +749,8 @@ export const ANSWERS: Record<string, unknown> = {
   keyboard_keys: [],
   session_log: [],
   interface_density: "Standard",
+  obs_settings: { on: false, host: "localhost", port: 4455, has_password: false },
+  obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
   leader_tree: leaderTree,
   boards: boardList,
   // §123: the questions a guest is asked, in Rust's words.
@@ -2332,6 +2334,22 @@ export async function openShell(
           // and the density band the main window says it wears, kept.
           if (cmd === "window_ask") {
             ((win.__windowAsked ??= []) as unknown[]).push(args.run);
+            return Promise.resolve(null);
+          }
+          // §119: the link to OBS, held the way Rust holds it -- the
+          // password kept and never read back -- and every ask recorded.
+          if (cmd === "obs_settings" || cmd === "obs_settings_set") {
+            const kept = (win.__obs ??= structuredClone(answers.obs_settings)) as Record<string, unknown>;
+            if (cmd === "obs_settings_set") {
+              ((win.__obsSet ??= []) as unknown[]).push({ ...args });
+              Object.assign(kept, { on: args.on, host: args.host, port: args.port });
+              if (typeof args.password === "string") kept.has_password = args.password !== "";
+            }
+            return Promise.resolve(structuredClone(kept));
+          }
+          if (cmd === "obs_status") return Promise.resolve(structuredClone(win.__obsStatus ?? answers.obs_status));
+          if (cmd === "obs_stream" || cmd === "obs_scene") {
+            ((win.__obsAsked ??= []) as unknown[]).push({ cmd, ...args });
             return Promise.resolve(null);
           }
           // The keyboard's switch, recorded with what it was set to.

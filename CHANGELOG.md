@@ -41,6 +41,10 @@ Versioning follows semver, with one project-specific convention:
   reach the main window from the settings' own window.
 - **The Next rail ranks by your knowledge pack from the start**, not only
   once the settings had been opened; popped out, it was never given it.
+- **djmanzo drives OBS (§119).** Switch the link on in the settings, give it
+  OBS's WebSocket address and password, and start or stop the stream and put
+  a scene on air from djmanzo. It reconnects by itself when OBS is restarted;
+  the password is kept in the system keychain.
 
 ## v0.36.0 — The singers' microphones, finished
 

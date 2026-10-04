@@ -9,6 +9,7 @@ pub mod announce;
 pub mod control;
 pub mod front;
 pub mod midi_clock;
+pub mod obs;
 pub mod osc;
 pub mod overlay;
 pub mod page;

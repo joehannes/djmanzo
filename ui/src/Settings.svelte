@@ -11,6 +11,7 @@
   import Downloads from "./Downloads.svelte";
   import AiSetup from "./AiSetup.svelte";
   import GoingLive from "./GoingLive.svelte";
+  import Obs from "./Obs.svelte";
   import Screens from "./Screens.svelte";
   import {
     adaptationLevels,
@@ -1667,6 +1668,15 @@
       one the room hears most, and changes once per mix, not back and forth.
     </p>
     <GoingLive />
+  </div>
+
+  <div class="block" data-settings="obs">
+    <h3>OBS</h3>
+    <p class="hint">
+      Start and stop the stream and switch scenes from here, with OBS doing the
+      streaming — djmanzo talks to it over its own WebSocket server.
+    </p>
+    <Obs />
   </div>
 
   <div class="block">
