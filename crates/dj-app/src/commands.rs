@@ -129,6 +129,91 @@ pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
     panels_dto(&state.detached())
 }
 
+/// §121: what a panel in a window of its own may ask of the main window,
+/// checked — the few things only the main window can do: wear a density band
+/// (`density <slug>`), search its collection (`find <words>`), go to an
+/// activity (`switch activity <name>`), and read the keys again after one
+/// was changed (`keys changed`). Anything else is refused, so a window of its
+/// own is not a second way to run whatever the main window can.
+///
+/// # Errors
+/// A line that is none of those.
+pub fn window_ask_checked(run: &str) -> Result<&str, String> {
+    let run = run.trim();
+    let (kind, rest) = run.split_once(' ').unwrap_or((run, ""));
+    let ok = match kind {
+        "density" => !rest.is_empty() && rest.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+        "find" => !rest.trim().is_empty() && rest.chars().count() <= 200,
+        "switch" => rest.strip_prefix("activity ").is_some_and(|name| {
+            !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        }),
+        "keys" => rest == "changed",
+        _ => false,
+    };
+    if ok {
+        Ok(run)
+    } else {
+        Err(format!(
+            "a window of its own cannot ask the main window for {run:?}"
+        ))
+    }
+}
+
+/// §121: ask the main window for something only it can do
+/// ([`window_ask_checked`]); it carries it out as it would a key.
+///
+/// # Errors
+/// A request that is not one of those, or a main window not there to ask.
+#[tauri::command]
+pub fn window_ask(app: tauri::AppHandle, run: String) -> Result<(), String> {
+    use tauri::Emitter;
+    let run = window_ask_checked(&run)?;
+    app.emit_to("main", "leaf", run).map_err(|e| e.to_string())
+}
+
+/// §121: the density band the main window is wearing, by name — what a
+/// panel in a window of its own reads, since it cannot read the main
+/// window's own.
+#[tauri::command]
+#[must_use]
+pub fn interface_density(state: State<'_, AppState>) -> String {
+    state
+        .interface_density()
+        .lock()
+        .map(|name| name.clone())
+        .unwrap_or_default()
+}
+
+/// §121: the main window says which density band it is wearing; every window
+/// is told (`interface-density`) when that is a change.
+#[tauri::command]
+pub fn interface_density_set(app: tauri::AppHandle, state: State<'_, AppState>, name: String) {
+    use tauri::Emitter;
+    if let Some(name) = keep_interface_density(state.interface_density(), &name) {
+        let _ = app.emit("interface-density", &name);
+    }
+}
+
+/// Keep the band the main window says it wears; the name to tell the other
+/// windows, or `None` when there is nothing to tell — the same band again, or
+/// no name at all.
+#[must_use]
+pub fn keep_interface_density(kept: &std::sync::Mutex<String>, name: &str) -> Option<String> {
+    let name = name.trim().chars().take(40).collect::<String>();
+    if name.is_empty() {
+        return None;
+    }
+    let mut kept = kept.lock().ok()?;
+    if *kept == name {
+        return None;
+    }
+    kept.clone_from(&name);
+    Some(name)
+}
+
 /// Every panel, and which of them are in windows of their own.
 #[must_use]
 pub fn panels_dto(detached: &crate::monitors::Detached) -> Vec<PanelDto> {
@@ -4692,6 +4777,77 @@ mod tests {
             log[0].event.to_line()
         );
         assert!(rendered.contains("deck 1 play"), "got {rendered:?}");
+    }
+
+    /// §121: a window of its own may ask the main window for the few things
+    /// only it can do, and for nothing else — it is not a second way to run
+    /// whatever the main window can.
+    #[test]
+    fn a_window_of_its_own_asks_the_main_window_for_little() {
+        for allowed in [
+            "density pro-dense",
+            "find Tune Rising",
+            "switch activity mix",
+            "keys changed",
+        ] {
+            assert_eq!(window_ask_checked(allowed), Ok(allowed), "{allowed:?}");
+        }
+        assert_eq!(window_ask_checked("  find x  "), Ok("find x"));
+        for refused in [
+            // What the main window runs from a key, which a window of its own
+            // has its own road to or no business asking for.
+            "action deck 1 play",
+            "uiop forget workspace",
+            "surface library",
+            "ui palette",
+            // The allowed kinds, malformed.
+            "density",
+            "density Pro Dense",
+            "density ../x",
+            "find",
+            "find    ",
+            &format!("find {}", "a".repeat(201)),
+            "switch workspace mine",
+            "switch activity",
+            "switch activity mix now",
+            "keys",
+            "keys reset",
+            "",
+        ] {
+            assert!(
+                window_ask_checked(refused).is_err(),
+                "{refused:?} let through"
+            );
+        }
+        // Every kind it lets through is one the main window carries out.
+        let app = include_str!("../../../ui/src/App.svelte");
+        for kind in ["density", "find", "switch", "keys"] {
+            assert!(
+                app.contains(&format!("kind === \"{kind}\"")),
+                "App.svelte's runLeaf does nothing with {kind:?}"
+            );
+        }
+    }
+
+    /// §121: the main window's band, as it last said, for a window of its
+    /// own to read — `Standard` before it has said anything.
+    #[test]
+    fn the_main_windows_density_is_kept_for_the_others() {
+        let state = AppState::new(true);
+        let kept = state.interface_density();
+        assert_eq!(*kept.lock().unwrap(), "Standard");
+        // Said again, nothing to tell: the main window says it on every
+        // change it makes, and a band it already wore is not one.
+        assert_eq!(keep_interface_density(kept, "Standard"), None);
+        assert_eq!(
+            keep_interface_density(kept, " Pro Dense "),
+            Some("Pro Dense".to_owned())
+        );
+        assert_eq!(*kept.lock().unwrap(), "Pro Dense");
+        assert_eq!(keep_interface_density(kept, "Pro Dense"), None);
+        // No name is not a band.
+        assert_eq!(keep_interface_density(kept, "  "), None);
+        assert_eq!(*kept.lock().unwrap(), "Pro Dense");
     }
 }
 

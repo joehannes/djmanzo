@@ -81,6 +81,7 @@
     detachPanel,
     listPanels,
     onPanelClosed,
+    interfaceDensitySet,
     liveEvent,
     setLiveEvent,
     welcomeState,
@@ -1734,6 +1735,12 @@
   /** The same band, by name — what §81 stores as a night's density. */
   let densityName = $state("Standard");
 
+  // §121: a panel in a window of its own — the night — cannot read this
+  // window's band, so Rust keeps it and tells every window when it moves.
+  $effect(() => {
+    void interfaceDensitySet(densityName).catch(() => {});
+  });
+
   function fitDensity() {
     // §78: *no automatic surface resizing*. The density band is the only thing
     // in djmanzo that resizes a surface without being asked, so this is where
@@ -1940,6 +1947,18 @@
       // §41's operations, which a DJ's own key may name because the palette
       // offers them; carried out the way the palette carries them out.
       await uiDo(rest).catch(() => {});
+    } else if (kind === "density") {
+      // §121: the rest come from a panel in a window of its own, through
+      // `window_ask`, asking for what only this window can do. The night
+      // wears a band here, where `--density` is.
+      applyDensity(rest);
+    } else if (kind === "find") {
+      // Requests' *Find*: the collection it searches is this window's.
+      if (!isOpen("library")) await toggleSurface("library");
+      findInCollection(rest);
+    } else if (kind === "keys") {
+      // A key changed in the key map's own window: read the tree again.
+      leaderVersion += 1;
     }
   }
 

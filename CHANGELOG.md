@@ -19,6 +19,13 @@ Versioning follows semver, with one project-specific convention:
 - **The session log pops out (§121)**, into a window of its own like the
   other panels, and keeps up with the set while it is open — the log in the
   main window used to show only what had happened when it was opened.
+- **The night and requests pop out (§121).** A window of its own can now ask
+  the main window for the few things only it can do: the night, popped out,
+  notes the density the main window is wearing and follows it, and taking its
+  density sets the main window's; *Find it* on a request searches the main
+  window's collection. Rust lets through those requests and nothing else.
+  Requests in a window of their own also offer the room page's languages,
+  which they did not.
 
 ## v0.36.0 — The singers' microphones, finished
 

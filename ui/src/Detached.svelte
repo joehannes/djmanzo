@@ -20,12 +20,14 @@
   import Mic from "./Mic.svelte";
   import Mixes from "./Mixes.svelte";
   import Next from "./Next.svelte";
+  import Night from "./Night.svelte";
   import Pair from "./Pair.svelte";
   import Plan from "./Plan.svelte";
   import Plugin from "./Plugin.svelte";
   import Practice from "./Practice.svelte";
   import Presets from "./Presets.svelte";
   import PressKit from "./PressKit.svelte";
+  import Requests from "./Requests.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Sampler from "./Sampler.svelte";
   import SessionLog from "./SessionLog.svelte";
@@ -34,7 +36,15 @@
   import Singers from "./Singers.svelte";
   import Watershed from "./Watershed.svelte";
   import Waveform from "./Waveform.svelte";
-  import { dispatch, getSnapshot, onSnapshot, type Snapshot } from "./api";
+  import {
+    dispatch,
+    getSnapshot,
+    interfaceDensity,
+    onInterfaceDensity,
+    onSnapshot,
+    windowAsk,
+    type Snapshot,
+  } from "./api";
   import { emptyWorld, getWorld, type World } from "./world";
 
   let { panel }: { panel: string } = $props();
@@ -99,6 +109,29 @@
     };
   });
 
+  /*
+    §121: the night and requests need something of the main window's — the
+    density band it is wearing, the collection it searches — and ask it
+    through Rust, which checks the request and hands it to the main window as
+    a key would (`window_ask`). The band is mirrored the other way: the main
+    window says which it wears and every window is told.
+  */
+  let mainDensity = $state<string | undefined>(undefined);
+  $effect(() => {
+    if (panel !== "night") return;
+    const unlisten = onInterfaceDensity((name) => (mainDensity = name));
+    void interfaceDensity()
+      .then((name) => (mainDensity ??= name))
+      .catch(() => (mainDensity ??= "Standard"));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
+
+  function ask(run: string) {
+    void windowAsk(run).catch((e) => (error = String(e)));
+  }
+
   /** The decks with a river in the world, in order — as `App` picks them. */
   const rivers = $derived(
     world.entities
@@ -134,6 +167,17 @@
     <AtHand enabled={ready} {send} />
   {:else if panel === "log"}
     <SessionLog />
+  {:else if panel === "night"}
+    <!--
+      Not drawn until the main window's band is known: the night notes the
+      density it is played at, and a guess here would be a wrong note.
+    -->
+    {#if mainDensity !== undefined}
+      <Night enabled={ready} density={mainDensity} onDensity={(slug) => ask(`density ${slug}`)} />
+    {/if}
+  {:else if panel === "requests"}
+    <!-- What a guest typed can run long; the collection's search needs the start of it. -->
+    <Requests enabled={ready} onFind={(text) => ask(`find ${text.trim().slice(0, 200)}`)} />
   {:else if snapshot}
     {#if panel === "waveforms"}
       <!--

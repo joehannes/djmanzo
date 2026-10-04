@@ -1168,6 +1168,25 @@ export const attachPanel = (panel: string) =>
   invoke<void>("attach_panel", { panel });
 
 /**
+ * §121: a panel in a window of its own asks the main window for something
+ * only it can do — `density <slug>`, `find <words>`, `switch activity <name>`,
+ * `keys changed` — which it carries out as it would a key. Rust checks the
+ * line and refuses anything else.
+ */
+export const windowAsk = (run: string) => invoke<void>("window_ask", { run });
+
+/** §121: the density band the main window is wearing, by name. */
+export const interfaceDensity = () => invoke<string>("interface_density");
+
+/** §121: the main window says which density band it is wearing. */
+export const interfaceDensitySet = (name: string) =>
+  invoke<void>("interface_density_set", { name });
+
+/** §121: the main window's density band changed; the payload is its name. */
+export const onInterfaceDensity = (handler: (name: string) => void): Promise<UnlistenFn> =>
+  listen<string>("interface-density", (event) => handler(event.payload));
+
+/**
  * Open the output.
  *
  * `cueDeviceId` puts the headphone cue on a *second* sound card. Only worth it

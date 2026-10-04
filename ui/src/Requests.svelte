@@ -43,7 +43,6 @@
   } from "./api";
   import IconButton from "./controls/IconButton.svelte";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { onMount } from "svelte";
 
   interface Props {
     enabled: boolean;
@@ -85,13 +84,16 @@
     }
   }
 
-  onMount(async () => {
-    if (!enabled) return;
-    try {
-      languages = await audienceLanguages();
-    } catch (e) {
-      error = String(e);
-    }
+  // Once, when the engine is up -- not at mount: a window of its own mounts
+  // this before its first snapshot, and a mount that found `enabled` false
+  // left the room's language with no languages to choose from for good.
+  let languagesAsked = false;
+  $effect(() => {
+    if (!enabled || languagesAsked) return;
+    languagesAsked = true;
+    audienceLanguages()
+      .then((got) => (languages = got))
+      .catch((e) => (error = String(e)));
   });
 
   $effect(() => {

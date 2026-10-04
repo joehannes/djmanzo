@@ -741,6 +741,7 @@ export const ANSWERS: Record<string, unknown> = {
     // The two the keyboard and log surfaces need. Both are `Vec` in Rust.
   keyboard_keys: [],
   session_log: [],
+  interface_density: "Standard",
   leader_tree: leaderTree,
   boards: boardList,
   // §123: the questions a guest is asked, in Rust's words.
@@ -1088,6 +1089,11 @@ export const ANSWERS: Record<string, unknown> = {
   },
   audience_waiting: [],
   audience_all: [],
+  // Two of `Audience::languages`, the shape Rust sends: tag, then name.
+  audience_languages: [
+    ["en", "English"],
+    ["de", "Deutsch"],
+  ],
   /** Nothing chosen: djmanzo is running the way it shipped, which is the state
    *  the axis exists to end and the one a fresh install is actually in. */
   standing: { level: "", departures: [], locked: [] },
@@ -2313,6 +2319,21 @@ export async function openShell(
           // test can make it grow and see a log on screen keep up.
           if (cmd === "session_log") {
             return Promise.resolve(win.__sessionLog ?? answers.session_log);
+          }
+          // §121: what a panel in a window of its own asks the main window
+          // for, recorded -- Rust checks it and hands it on, tested there --
+          // and the density band the main window says it wears, kept.
+          if (cmd === "window_ask") {
+            ((win.__windowAsked ??= []) as unknown[]).push(args.run);
+            return Promise.resolve(null);
+          }
+          if (cmd === "interface_density") {
+            return Promise.resolve(win.__interfaceDensity ?? answers.interface_density);
+          }
+          if (cmd === "interface_density_set") {
+            win.__interfaceDensity = args.name;
+            ((win.__densitySaid ??= []) as unknown[]).push(args.name);
+            return Promise.resolve(null);
           }
           // Opening the interface: recorded, and answered with what the test
           // gave (nothing, unless it asked) -- K3's buffer for singing opens it

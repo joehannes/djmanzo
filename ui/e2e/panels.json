@@ -124,5 +124,17 @@
     "title": "djmanzo - Session log",
     "detached": false,
     "surface": "log"
+  },
+  {
+    "id": "night",
+    "title": "djmanzo - The night",
+    "detached": false,
+    "surface": "night"
+  },
+  {
+    "id": "requests",
+    "title": "djmanzo - Requests",
+    "detached": false,
+    "surface": "requests"
   }
 ]

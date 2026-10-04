@@ -297,6 +297,9 @@ pub struct AppState {
     breaks: Mutex<crate::breaks::Held>,
     /// K3: who is on each singers' microphone, strip by strip.
     on_mics: Mutex<Vec<Option<crate::karaoke::OnMic>>>,
+    /// §121: the density band the main window is wearing, by name, as it
+    /// last said — for a panel in a window of its own, which cannot read it.
+    interface_density: Mutex<String>,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -586,6 +589,7 @@ impl AppState {
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
             on_mics: Mutex::new(Vec::new()),
+            interface_density: Mutex::new("Standard".to_owned()),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1560,6 +1564,11 @@ impl AppState {
     #[must_use]
     pub fn breaks(&self) -> &Mutex<crate::breaks::Held> {
         &self.breaks
+    }
+
+    /// §121: the density band the main window is wearing, by name.
+    pub fn interface_density(&self) -> &Mutex<String> {
+        &self.interface_density
     }
 
     /// K3: who is on each singers' microphone, strip by strip — `None` for

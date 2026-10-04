@@ -53,11 +53,11 @@ pub enum Panel {
     Watershed,
     /// §107: the words, for the singers — a screen facing the microphone.
     Singers,
-    // §121: "pop out" on every panel that can be drawn from the snapshot
-    // and its own commands alone. The ones drawn out of the main window's
-    // own state — the event being played, the density, the key map, the
-    // controller mappings, the settings, and requests, whose Find opens the
-    // collection beside them — stay in it, for now.
+    // §121: "pop out" on every panel. Most are drawn from the snapshot and
+    // their own commands alone; the night and requests need something of the
+    // main window's — its density, its collection to search — and ask it
+    // through Rust (`commands::window_ask`). The event being played, the key
+    // map, the controller mappings and the settings stay in it, for now.
     /// §61's preparation view.
     Prepare,
     /// What to play next.
@@ -87,10 +87,16 @@ pub enum Panel {
     /// The session log: every action in order, saved and compared — a set's
     /// record, worth a screen of its own while the set is being played.
     Log,
+    /// §81's night: what kind of night this is and what djmanzo would fit to
+    /// it — the density it asks the main window to wear.
+    Night,
+    /// §109: the room's requests — whose *Find* searches the main window's
+    /// collection.
+    Requests,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 21] = [
+    pub const ALL: [Panel; 23] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -112,6 +118,8 @@ impl Panel {
         Panel::Booth,
         Panel::Presets,
         Panel::Log,
+        Panel::Night,
+        Panel::Requests,
     ];
 
     /// The main window's surface this panel is (`cockpit`'s name for it),
@@ -157,6 +165,8 @@ impl Panel {
             Panel::Booth => "booth",
             Panel::Presets => "presets",
             Panel::Log => "log",
+            Panel::Night => "night",
+            Panel::Requests => "requests",
         }
     }
 
@@ -193,6 +203,8 @@ impl Panel {
             Panel::Booth => "djmanzo - Booth",
             Panel::Presets => "djmanzo - Presets",
             Panel::Log => "djmanzo - Session log",
+            Panel::Night => "djmanzo - The night",
+            Panel::Requests => "djmanzo - Requests",
         }
     }
 
@@ -216,6 +228,7 @@ impl Panel {
             Panel::Next | Panel::Practice | Panel::Crowd | Panel::Mixes => (560.0, 760.0),
             Panel::AtHand | Panel::Booth | Panel::Presets => (560.0, 640.0),
             Panel::Log => (760.0, 720.0),
+            Panel::Night | Panel::Requests => (560.0, 760.0),
         }
     }
 
