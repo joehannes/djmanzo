@@ -1006,7 +1006,7 @@ pub fn surfaces() -> &'static [Surface] {
             prefer: (440, 560),
             priority: 30,
             performance_critical: false,
-            detachable: false,
+            detachable: true,
             stackable: true,
             collapsible: true,
             // Opened by the DJ, never by a phase: a preparation appearing by

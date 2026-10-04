@@ -11,6 +11,7 @@
  */
 import { expect, test } from "@playwright/test";
 
+import events from "./events.json" with { type: "json" };
 import panels from "./panels.json" with { type: "json" };
 import { errorsThrown, openShell } from "./shell";
 
@@ -48,6 +49,7 @@ test("the session log in its own window keeps up with the set", async ({ page })
 
 type Asking = {
   __windowAsked?: string[];
+  __eventCalls?: Record<string, unknown>[];
   __night?: { density?: string };
   __interfaceDensity?: string;
   __densitySaid?: string[];
@@ -168,6 +170,59 @@ test.describe("§121: a panel in a window of its own asks the main window", () =
     await expect(
       page.locator('.surface[data-surface="library"]').getByPlaceholder(/search/i).first(),
     ).toHaveValue("Tune Rising");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
+/**
+ * §121: the event, in a window of its own. Which event is being played is
+ * Rust's, and Rust tells every window when it changes, so the event's own
+ * window and the main window's night line cannot disagree about it.
+ */
+test.describe("§121: the event in a window of its own", () => {
+  const asking = (page: import("@playwright/test").Page) =>
+    page.evaluate(() => {
+      const win = window as unknown as Asking;
+      return { __eventCalls: win.__eventCalls, __windowAsked: win.__windowAsked };
+    });
+
+  /**
+   * **Play it live, from its own window, plays the event and takes the main
+   * window to the decks** — what the same press does in the main window.
+   */
+  test("playing the event from its own window asks the main window for the mix", async ({ page }) => {
+    await openShell(page, "/?panel=event");
+    const play = page.getByRole("button", { name: "Play it live" });
+    await play.click();
+    await expect
+      .poll(async () => (await asking(page)).__eventCalls?.find((c) => c.cmd === "set_live_event"))
+      .toEqual({ cmd: "set_live_event", id: events.wedding.gig.id });
+    await expect.poll(async () => (await asking(page)).__windowAsked ?? []).toEqual(["switch activity mix"]);
+    await expect(page.getByRole("button", { name: "Playing" })).toBeDisabled();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** **The night ended in the main window ends it here.** */
+  test("the event's own window follows the night ended elsewhere", async ({ page }) => {
+    await openShell(page, "/?panel=event", {}, { live_event: events.wedding.gig.id });
+    await expect(page.getByRole("button", { name: "Playing" })).toBeDisabled();
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("live-event", null));
+    await expect(page.getByRole("button", { name: "Play it live" })).toBeEnabled();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The main window follows an event played, or forgotten, in the event's
+   * own window**: the night's line comes and goes with it.
+   */
+  test("the main window's night line follows the event played elsewhere", async ({ page }) => {
+    await openShell(page, "/");
+    const line = page.locator(".tonight");
+    await expect(line).toHaveCount(0);
+    await page.evaluate((id) => (window as unknown as Asking).__emitEvent("live-event", id), events.wedding.gig.id);
+    await expect(line).toBeVisible();
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("live-event", null));
+    await expect(line).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

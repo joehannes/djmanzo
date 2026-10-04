@@ -26,6 +26,11 @@ Versioning follows semver, with one project-specific convention:
   window's collection. Rust lets through those requests and nothing else.
   Requests in a window of their own also offer the room page's languages,
   which they did not.
+- **The event pops out (§121).** *Play it live* in its own window plays the
+  event and takes the main window to the decks; ending the night anywhere
+  ends it in every window. Forgetting the event being played now ends the
+  night too — the main window used to keep its line up for an event that
+  was gone.
 
 ## v0.36.0 — The singers' microphones, finished
 

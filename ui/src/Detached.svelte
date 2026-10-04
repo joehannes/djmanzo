@@ -16,6 +16,7 @@
   import Automix from "./Automix.svelte";
   import Browse from "./Browse.svelte";
   import Crowd from "./Crowd.svelte";
+  import EventPanel from "./Event.svelte";
   import Fx from "./Fx.svelte";
   import Mic from "./Mic.svelte";
   import Mixes from "./Mixes.svelte";
@@ -40,8 +41,11 @@
     dispatch,
     getSnapshot,
     interfaceDensity,
+    liveEvent,
     onInterfaceDensity,
+    onLiveEvent,
     onSnapshot,
+    setLiveEvent,
     windowAsk,
     type Snapshot,
   } from "./api";
@@ -132,6 +136,33 @@
     void windowAsk(run).catch((e) => (error = String(e)));
   }
 
+  /*
+    The event being played is Rust's, and Rust tells every window when it
+    changes; playing one here also takes the main window to the decks and
+    the mixer, as it does there.
+  */
+  let liveId = $state<string | null>(null);
+  $effect(() => {
+    if (panel !== "event") return;
+    const unlisten = onLiveEvent((id) => (liveId = id));
+    void liveEvent()
+      .then((id) => (liveId = id))
+      .catch(() => {});
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
+
+  async function goLive(id: string) {
+    try {
+      liveId = await setLiveEvent(id);
+    } catch (e) {
+      error = String(e);
+      return;
+    }
+    ask("switch activity mix");
+  }
+
   /** The decks with a river in the world, in order — as `App` picks them. */
   const rivers = $derived(
     world.entities
@@ -175,6 +206,8 @@
     {#if mainDensity !== undefined}
       <Night enabled={ready} density={mainDensity} onDensity={(slug) => ask(`density ${slug}`)} />
     {/if}
+  {:else if panel === "event"}
+    <EventPanel {liveId} onGoLive={(id) => void goLive(id)} />
   {:else if panel === "requests"}
     <!-- What a guest typed can run long; the collection's search needs the start of it. -->
     <Requests enabled={ready} onFind={(text) => ask(`find ${text.trim().slice(0, 200)}`)} />

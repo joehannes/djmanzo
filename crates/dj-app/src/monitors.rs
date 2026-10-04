@@ -54,10 +54,11 @@ pub enum Panel {
     /// §107: the words, for the singers — a screen facing the microphone.
     Singers,
     // §121: "pop out" on every panel. Most are drawn from the snapshot and
-    // their own commands alone; the night and requests need something of the
-    // main window's — its density, its collection to search — and ask it
-    // through Rust (`commands::window_ask`). The event being played, the key
-    // map, the controller mappings and the settings stay in it, for now.
+    // their own commands alone; the night, requests and the event need
+    // something of the main window's — its density, its collection to
+    // search, its activity — and ask it through Rust
+    // (`commands::window_ask`). The key map, the controller mappings and the
+    // settings stay in it, for now.
     /// §61's preparation view.
     Prepare,
     /// What to play next.
@@ -93,10 +94,13 @@ pub enum Panel {
     /// §109: the room's requests — whose *Find* searches the main window's
     /// collection.
     Requests,
+    /// §118: preparing a night and playing it — whose *Play it live* takes
+    /// the main window to the Mix activity.
+    Event,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 23] = [
+    pub const ALL: [Panel; 24] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -120,6 +124,7 @@ impl Panel {
         Panel::Log,
         Panel::Night,
         Panel::Requests,
+        Panel::Event,
     ];
 
     /// The main window's surface this panel is (`cockpit`'s name for it),
@@ -167,6 +172,7 @@ impl Panel {
             Panel::Log => "log",
             Panel::Night => "night",
             Panel::Requests => "requests",
+            Panel::Event => "event",
         }
     }
 
@@ -205,6 +211,7 @@ impl Panel {
             Panel::Log => "djmanzo - Session log",
             Panel::Night => "djmanzo - The night",
             Panel::Requests => "djmanzo - Requests",
+            Panel::Event => "djmanzo - The event",
         }
     }
 
@@ -229,6 +236,7 @@ impl Panel {
             Panel::AtHand | Panel::Booth | Panel::Presets => (560.0, 640.0),
             Panel::Log => (760.0, 720.0),
             Panel::Night | Panel::Requests => (560.0, 760.0),
+            Panel::Event => (720.0, 820.0),
         }
     }
 

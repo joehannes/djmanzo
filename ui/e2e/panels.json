@@ -136,5 +136,11 @@
     "title": "djmanzo - Requests",
     "detached": false,
     "surface": "requests"
+  },
+  {
+    "id": "event",
+    "title": "djmanzo - The event",
+    "detached": false,
+    "surface": "event"
   }
 ]

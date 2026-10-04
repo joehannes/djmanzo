@@ -15799,11 +15799,15 @@ pub fn take_event_idea(
 /// An id djmanzo did not make, or the file system's refusal.
 #[tauri::command]
 pub fn forget_event(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<crate::gig::Summary>, String> {
     let dir = events_dir(&state)?;
     crate::gig::forget(&dir, &id)?;
+    // Forgetting the event being played ends the night (`gig::live` reads
+    // `None` once its file is gone), and every window is told so.
+    tell_live_event(&app, &dir);
     Ok(crate::gig::list(&dir)
         .iter()
         .map(crate::gig::summary)
@@ -15857,12 +15861,23 @@ pub fn guides(state: State<'_, AppState>, decks: u8) -> Vec<crate::guide::Guide>
 /// An event that is not kept, or the file system's refusal.
 #[tauri::command]
 pub fn set_live_event(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     id: Option<String>,
 ) -> Result<Option<String>, String> {
     let dir = events_dir(&state)?;
     crate::gig::set_live(&dir, id.as_deref())?;
-    Ok(crate::gig::live(&dir))
+    Ok(tell_live_event(&app, &dir))
+}
+
+/// §121: tell every window which event is being played (`live-event`) —
+/// the main window draws the night's line from it, and the event panel in a
+/// window of its own says which event is playing. Either may change it.
+fn tell_live_event(app: &tauri::AppHandle, dir: &std::path::Path) -> Option<String> {
+    use tauri::Emitter;
+    let live = crate::gig::live(dir);
+    let _ = app.emit("live-event", &live);
+    live
 }
 
 /// §118b: the welcome's answers so far, and whether it has been finished.

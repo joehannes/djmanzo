@@ -2018,6 +2018,11 @@ mod tests {
         assert_eq!(list(&dir).len(), 1, "the live file was read as an event");
         set_live(&dir, None).expect("the night ends");
         assert_eq!(live(&dir), None);
+        // §121: forgetting the event being played ends the night too — what
+        // `commands::forget_event` tells every window.
+        set_live(&dir, Some(&gig.id)).expect("played again");
+        forget(&dir, &gig.id).expect("forgotten");
+        assert_eq!(live(&dir), None, "a forgotten event is still being played");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

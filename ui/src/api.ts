@@ -5573,6 +5573,12 @@ export const eventTonight = (id: string, at: Date = new Date()) => {
 };
 export const liveEvent = () => invoke<string | null>("live_event");
 export const setLiveEvent = (id: string | null) => invoke<string | null>("set_live_event", { id });
+/**
+ * §121: the event being played changed — played, ended, or forgotten — in
+ * whichever window; the payload is the one now playing, if any.
+ */
+export const onLiveEvent = (handler: (id: string | null) => void): Promise<UnlistenFn> =>
+  listen<string | null>("live-event", (event) => handler(event.payload));
 
 // -- §118b: the welcome --------------------------------------------------------
 

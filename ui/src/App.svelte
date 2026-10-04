@@ -84,6 +84,7 @@
     interfaceDensitySet,
     liveEvent,
     setLiveEvent,
+    onLiveEvent,
     welcomeState,
     type WelcomeAnswers,
     type WelcomeApplied,
@@ -648,6 +649,11 @@
     liveEvent()
       .then((id) => (liveId = id))
       .catch(() => {});
+    // §121: played or ended in the event's own window, or forgotten there.
+    const unlisten = onLiveEvent((id) => (liveId = id));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   });
 
   /**
