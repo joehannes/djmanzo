@@ -292,6 +292,29 @@ pub fn youtube_status(state: State<'_, AppState>) -> crate::youtube::Status {
     state.youtube().status()
 }
 
+/// §119: the phone camera — its addresses, its QR code, and what the phone
+/// and OBS are doing.
+#[tauri::command]
+#[must_use]
+pub fn phone_camera_status(state: State<'_, AppState>) -> crate::phone_camera::Status {
+    state.phone_camera().status()
+}
+
+/// §119: switch the phone camera's page on or off.
+#[tauri::command]
+#[must_use]
+pub fn phone_camera_set(state: State<'_, AppState>, on: bool) -> crate::phone_camera::Status {
+    state.phone_camera().set(on)
+}
+
+/// §119: a new address for the phone. The old one stops working at once,
+/// and OBS's stays.
+#[tauri::command]
+#[must_use]
+pub fn phone_camera_new_link(state: State<'_, AppState>) -> crate::phone_camera::Status {
+    state.phone_camera().new_phone_link()
+}
+
 /// §119: the switch and the Google client, as kept.
 #[tauri::command]
 #[must_use]

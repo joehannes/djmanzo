@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>djmanzo · phone camera for OBS</title>
+<link rel="icon" href="data:,">
+<style>
+  /* Nothing but the picture, and nothing at all without one: an idle source
+     puts nothing on the stream. OBS's browser source is transparent where
+     the page is. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  video { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+  video[hidden] { display: none; }
+</style>
+</head>
+<body>
+<video id="phone" autoplay playsinline muted hidden></video>
+<script>
+"use strict";
+const base = location.pathname.replace(/\/+$/, "");
+const video = document.getElementById("phone");
+// `?fit=cover` fills the source and crops, for a phone held the other way.
+if (new URLSearchParams(location.search).get("fit") === "cover") video.style.objectFit = "cover";
+
+let pc = null;
+let after = 0;
+let beat = null;
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function tell(now) {
+  return fetch(base + "/state?now=" + now, { method: "POST" }).catch(() => {});
+}
+
+function gathered(peer) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      if (peer.iceGatheringState === "complete") {
+        peer.removeEventListener("icegatheringstatechange", done);
+        resolve();
+      }
+    };
+    peer.addEventListener("icegatheringstatechange", done);
+    setTimeout(resolve, 2000);
+  });
+}
+
+function blank() {
+  video.hidden = true;
+  video.srcObject = null;
+  clearInterval(beat);
+  void tell("waiting");
+}
+
+/** Answer the phone's offer `id`. */
+async function answer(id, sdp) {
+  if (pc) pc.close();
+  const peer = new RTCPeerConnection();
+  pc = peer;
+  peer.addEventListener("track", (e) => {
+    if (pc !== peer) return;
+    video.srcObject = e.streams[0] || new MediaStream([e.track]);
+    void video.play().catch(() => {});
+  });
+  peer.addEventListener("connectionstatechange", () => {
+    if (pc !== peer) return;
+    if (peer.connectionState === "failed" || peer.connectionState === "closed") blank();
+  });
+  await peer.setRemoteDescription({ type: "offer", sdp });
+  await peer.setLocalDescription(await peer.createAnswer());
+  await gathered(peer);
+  await fetch(base + "/answer?id=" + id, {
+    method: "POST",
+    body: peer.localDescription.sdp,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
+video.addEventListener("playing", () => {
+  video.hidden = false;
+  void tell("showing");
+  clearInterval(beat);
+  beat = setInterval(() => void tell("showing"), 15000);
+});
+
+/** Wait for offers, for as long as the page is open. A newer one — a phone
+    that reloaded, or another phone — replaces the picture. */
+async function listen() {
+  void tell("waiting");
+  for (;;) {
+    let got;
+    try {
+      got = await fetch(base + "/offer?after=" + after);
+    } catch (_) {
+      await pause(2000);
+      continue;
+    }
+    if (got.status === 200) {
+      const next = await got.json();
+      after = next.id;
+      if (next.sdp === null) {
+        // The phone stopped, or its link was replaced: let the picture go.
+        if (pc) { pc.close(); pc = null; }
+        blank();
+        continue;
+      }
+      try {
+        await answer(next.id, next.sdp);
+      } catch (e) {
+        console.warn("could not answer the phone", e);
+      }
+    } else if (got.status !== 204) {
+      await pause(2000);
+    }
+  }
+}
+
+void listen();
+</script>
+</body>
+</html>

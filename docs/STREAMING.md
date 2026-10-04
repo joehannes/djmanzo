@@ -189,16 +189,130 @@ A page on the local network, opened on a phone by its QR code, that sends
 the phone's camera to a second page OBS shows as a browser source, the two
 joined directly (WebRTC) with djmanzo carrying only their introduction.
 
-**The catch, to be solved before it is built:** a phone's browser gives a
-page its camera only on a secure origin — `https://`, or `localhost` — and a
-page at `http://192.168.1.20:…` is neither. The ways round it are a
-certificate the phone trusts (djmanzo's own, installed once on the phone, or
-one for a name the DJ owns) or not using the browser (Camo, DroidCam, OBS's
-own phone apps, which the first answer to *which camera* already covers).
-This is the last of the six for that reason.
+**The catch:** a phone's browser gives a page its camera only on a secure
+origin — `https://`, or `localhost` — and a page at `http://192.168.1.20:…`
+is neither. The ways round it are a certificate the phone trusts, or not
+using the browser (Camo, DroidCam, OBS's own phone apps, which the first
+answer to *which camera* already covers). This is the last of the six for
+that reason.
+
+### The design (4 October)
+
+**One port, both kinds of connection.** djmanzo listens on one port (8443
+unless it is taken) and looks at the first byte of each connection: a TLS
+handshake is the phone, anything else is plain HTTP. Plain HTTP is answered
+only from this computer — the page OBS loads, at
+`http://127.0.0.1:8443/v/<key>/`, which is a secure origin because it is
+local. From anywhere else, plain HTTP gets a page saying to use the code.
+
+**HTTPS with djmanzo's own certificate authority.** Made once, the first
+time the phone camera is switched on, and kept beside the settings:
+
+- an authority whose name constraints confine it to private addresses
+  (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10)
+  and to `.local` and `localhost`, so that even if its key were taken it
+  could vouch for no real website;
+- for each connection, a certificate for the address the phone actually
+  reached — read from the socket, so a laptop that changes networks needs
+  nothing redone — made on the spot and kept for the run.
+
+The phone then has two ways in:
+
+1. **Tap through the warning.** The phone's browser says the connection is
+   not private; *Advanced → Proceed* (Chrome), *Show Details → visit this
+   website* (Safari), *Accept the risk* (Firefox). djmanzo shows the
+   authority's fingerprint so the DJ can check it is djmanzo's.
+2. **Install djmanzo's authority once.** The phone page offers it as a
+   download, with the steps for Android and iPhone; after that the page
+   opens without a warning on any network.
+
+**Whether a phone's browser gives a page reached by tapping through the
+warning its camera is the one thing here this container cannot show.** The
+reports are that Chrome and Firefox on Android do. Safari on an iPhone is
+less clear, and the second way is for it. Both are recorded as unverified
+until a phone has been pointed at it.
+
+**Two keys, both random, both kept.** The phone's address carries one
+(`/p/<key>`), the QR code is the only place it is shown, and *New phone
+link* replaces it — for when someone in the room photographed the screen.
+The OBS page carries another (`/v/<key>`), so a new phone link does not
+break the browser source. A request without the right key is told nothing
+exists; the OBS page's paths answer only this computer. With the key on the
+OBS side too, no other website open on this computer can post an answer
+that would send the phone's picture somewhere else.
+
+**The introduction.** The phone offers, the OBS page answers, each in one
+piece once its candidates are gathered (no trickle: on a local network they
+are all there within a second, and one request each way is a protocol a
+test can hold). Each side waits for the other with a held request of up to
+twenty seconds. A new offer replaces the old one, so a phone that reloads,
+or a second phone, takes over, and the OBS page follows. There are no STUN
+or TURN servers. Both ends are on the same network, and nothing leaves it.
+
+**The phone page:** asks for the camera on a press, the back camera first,
+with a switch for the front. It shows its own picture, keeps the screen
+awake while it sends, and sends up to 1280×720. It sends **video only**:
+the phone's microphone in a room with a PA is an echo.
+
+**The OBS page:** the picture filling the source, and nothing at all when
+no phone is sending, so an idle source puts nothing on the stream.
+
+**In djmanzo:** the Camera panel gains a second tab, *A phone*. It has the
+switch, the QR code (shown on a press and hidden again once a phone is
+sending), the address for OBS with a copy button, what the phone and OBS
+are doing, *New phone link*, and the fingerprint.
+
+**What is built on:** `rustls` 0.23 and `ring` 0.17, already in djmanzo for
+its HTTPS requests; `httparse`, already here; `rcgen` for the certificates,
+which is new (see RESEARCH.md). Not `tiny_http`'s TLS feature, which was
+refused for pinning a 2021 `rustls` and an unmaintained `ring`. The request
+parsing is `httparse`'s, and the limits are this server's own: one request
+per connection, 16 KB of headers, 64 KB of body, no chunked bodies, at most
+32 connections at once, ten seconds to send a request.
+
+### Built (4 October)
+
+`dj_net::authority`, `dj_net::secure`, `dj_net::phone` and its two pages
+(`crates/dj-net/src/phone/`), `dj_app::phone_camera`, and the Camera
+panel's tab *A phone* (`PhoneCamera.svelte`). `cargo run -p dj-net
+--example phone_camera` serves it on its own, for trying with a phone
+without the rest of djmanzo.
+
+Two things the design did not foresee, found while building it:
+
+- **A phone stopping says which offer it is stopping.** Otherwise a second
+  phone that opened the page and pressed *Stop* ended the first one's
+  picture.
+- **A phone whose link to OBS went asks before offering again.** OBS lets go
+  of one phone to show the next, and the first one used to take it back at
+  once, so the two of them took turns. It now asks whether its offer is
+  still the current one: if another phone's is, it stops and says so; if its
+  link was replaced, it says that.
+
+Driven in WebKitGTK with djmanzo's own server, against Chromium standing in
+for both the phone (its fake camera, the certificate tapped past) and OBS:
+
+- Switched on, the panel showed the code and `https://192.0.2.2:8443/p/…`,
+  and OBS's address. The settings and the authority were kept, its key
+  readable by its owner only.
+- The phone page was a secure context and sent. OBS's page decoded it at
+  480 × 270, rising. The panel said *A phone is sending its camera* and *OBS
+  is showing the phone*, and had put the code away by itself.
+- Restarted, djmanzo served again at the same address for OBS.
+- *New phone link* while the phone was sending: OBS let go of the picture
+  744 ms later. The cut-off phone said *This link was replaced* when it
+  noticed, 12 s later. The new code came up, and OBS's address was the same.
+- In the browser test, OBS's page reloaded (as OBS does when it restarts a
+  source) had the phone back within about 16 s: the time the phone takes to
+  notice the old page has gone.
+
+**What is still not known:** whether a real phone's browser lends its camera
+to a page reached by tapping past the warning. Chromium here was told to,
+and no phone has been pointed at it. Nor has OBS's own browser source, which
+is Chromium too.
 
 ## Order
 
 1, 2 and 3 first: each is whole without anything the owner still has to do.
 4 waits on the owner's Google Cloud registration for its last step and is
-built up to it. 5 and 6 last, 6 after its catch is settled.
+built up to it. 5 and 6 last, 6 after its catch is settled — as above.

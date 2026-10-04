@@ -306,6 +306,8 @@ pub struct AppState {
     obs: crate::obs::Link,
     /// §119: YouTube's live chat, read into the crowd.
     youtube: crate::youtube::Link,
+    /// §119: a phone as a camera, from djmanzo's own page.
+    phone_camera: crate::phone_camera::PhoneCamera,
     /// §119: the DJ asked for the camera in this run. Kept here, not on disk,
     /// so a panel popped out shows it without asking again and a workspace
     /// restored at launch never turns a camera on by itself.
@@ -603,6 +605,7 @@ impl AppState {
             interface_density: Mutex::new("Standard".to_owned()),
             obs: crate::obs::Link::new(),
             youtube: crate::youtube::Link::new(),
+            phone_camera: crate::phone_camera::PhoneCamera::new(),
             camera_wanted: std::sync::atomic::AtomicBool::new(false),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
@@ -1601,6 +1604,12 @@ impl AppState {
     #[must_use]
     pub fn youtube(&self) -> &crate::youtube::Link {
         &self.youtube
+    }
+
+    /// §119: the phone camera.
+    #[must_use]
+    pub fn phone_camera(&self) -> &crate::phone_camera::PhoneCamera {
+        &self.phone_camera
     }
 
     /// §119: whether the DJ asked for the camera in this run.

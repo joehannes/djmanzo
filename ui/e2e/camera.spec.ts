@@ -149,4 +149,72 @@ test.describe("§119: the camera", () => {
       await browser.close();
     }
   });
+
+  /**
+   * **The phone's tab: the switch, the code, OBS's address, and what each is
+   * doing.** Switched on, the code for the phone and the address for OBS are
+   * shown; a new phone link changes the code and not OBS's address; the code
+   * goes away once a phone is sending; and the webcam on the other tab keeps
+   * going while this one is looked at.
+   */
+  test("a phone as a camera: the code, OBS's address, and what each is doing", async () => {
+    const browser = await launch();
+    try {
+      const page = await openCamera(browser);
+      const panel = page.locator("[data-camera]");
+      // The computer's camera on first, to see it survive the tab change.
+      await panel.getByRole("button", { name: "Show the camera" }).click();
+      await expect.poll(async () => (await seen(page)).shown).toBe("live");
+
+      await panel.getByRole("tab", { name: "A phone" }).click();
+      const phone = panel.locator("[data-phone-camera]");
+      await expect(phone).toContainText("the phone only has to be on the same wifi");
+      await expect(panel.locator("video")).toBeHidden();
+
+      await phone.getByRole("checkbox", { name: "Let a phone be a camera" }).check();
+      const code = phone.locator("[data-phone-code]");
+      await expect(code.locator("svg")).toHaveAttribute("data-says", "firstkey");
+      await expect(code).toContainText("https://192.168.1.20:8443/p/firstkey/");
+      const obs = phone.getByRole("textbox", { name: "Address for OBS" });
+      await expect(obs).toHaveValue("http://127.0.0.1:8443/v/obskey/");
+      await expect(phone.locator("[data-phone-now]")).toHaveText("No phone has the page open.");
+      await expect(phone.locator("[data-obs-now]")).toHaveText("OBS's page is not open.");
+
+      await phone.getByRole("button", { name: "New phone link" }).click();
+      await expect(code.locator("svg")).toHaveAttribute("data-says", "secondkey");
+      await expect(obs).toHaveValue("http://127.0.0.1:8443/v/obskey/");
+
+      // A phone starts sending, and OBS shows it: the code goes away.
+      await page.evaluate(() => {
+        const w = window as unknown as { __phoneCamera: Record<string, unknown> };
+        Object.assign(w.__phoneCamera, { phone: "sending", viewer: "showing" });
+      });
+      await expect(phone.locator("[data-phone-now]")).toHaveText("A phone is sending its camera.", {
+        timeout: 5_000,
+      });
+      await expect(phone.locator("[data-obs-now]")).toHaveText("OBS is showing the phone.");
+      await expect(code).toHaveCount(0);
+      // And can be shown again.
+      await phone.getByRole("button", { name: "Show the code" }).click();
+      await page.waitForTimeout(2_500);
+      await expect(code).toBeVisible();
+
+      // The computer's camera kept going, asked for once.
+      await panel.getByRole("tab", { name: "This computer" }).click();
+      await expect(panel.locator("video")).toBeVisible();
+      expect((await seen(page)).shown).toBe("live");
+      expect((await seen(page)).asked).toBe(1);
+
+      const asked = await page.evaluate(
+        () => (window as unknown as { __phoneCameraAsked: { cmd: string }[] }).__phoneCameraAsked,
+      );
+      expect(asked.filter((a) => a.cmd !== "phone_camera_status")).toEqual([
+        { cmd: "phone_camera_set", on: true },
+        { cmd: "phone_camera_new_link" },
+      ]);
+      expect(errorsThrown(page)).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
 });

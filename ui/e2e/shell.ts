@@ -759,6 +759,16 @@ export const ANSWERS: Record<string, unknown> = {
   },
   obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
   camera_wanted: false,
+  phone_camera_status: {
+    on: false,
+    phone_url: null,
+    qr: null,
+    obs_url: null,
+    fingerprint: null,
+    phone: "away",
+    viewer: "away",
+    note: null,
+  },
   youtube_settings: { on: false, client_id: "", client_secret: "" },
   youtube_status: { on: false, client: false, signed_in: false, reading: null, read: 0, note: null },
   leader_tree: leaderTree,
@@ -2394,6 +2404,33 @@ export async function openShell(
             win.__cameraWanted = args.on;
             ((win.__cameraSet ??= []) as unknown[]).push(args.on);
             return Promise.resolve(null);
+          }
+          // §119: the phone camera, held the way Rust holds it: switched on, it
+          // has both addresses and a code; a new link changes the phone's
+          // address and not OBS's. A test sets `__phoneCamera` fields for what
+          // the phone and OBS are doing.
+          if (cmd.startsWith("phone_camera_")) {
+            const status = (win.__phoneCamera ??= structuredClone(answers.phone_camera_status)) as Record<
+              string,
+              unknown
+            >;
+            ((win.__phoneCameraAsked ??= []) as unknown[]).push({ cmd, ...args });
+            const link = (key: string) => {
+              status.phone_url = `https://192.168.1.20:8443/p/${key}/`;
+              status.qr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" data-says="${key}"><rect width="10" height="10"/></svg>`;
+            };
+            if (cmd === "phone_camera_set") {
+              status.on = args.on;
+              if (args.on) {
+                link("firstkey");
+                status.obs_url = "http://127.0.0.1:8443/v/obskey/";
+                status.fingerprint = "AB:CD:EF";
+              } else {
+                Object.assign(status, { phone_url: null, qr: null, obs_url: null, phone: "away", viewer: "away" });
+              }
+            }
+            if (cmd === "phone_camera_new_link") link("secondkey");
+            return Promise.resolve(structuredClone(status));
           }
           // §119: YouTube's live chat, held the way Rust holds it -- what
           // signing in gives is never shown -- and every ask recorded. A test

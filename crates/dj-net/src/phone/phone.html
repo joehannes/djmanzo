@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>djmanzo · phone camera</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #101114;
+    --panel: #1b1d22;
+    --text: #eceef2;
+    --dim: #9aa0ab;
+    --accent: #ff9a3c;
+    --ok: #4cd08a;
+    --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  header { padding: 0.8rem 1rem 0.4rem; }
+  h1 { margin: 0; font-size: 1.15rem; }
+  #state { margin: 0.2rem 0 0; color: var(--dim); }
+  #state[data-now="sending"] { color: var(--ok); }
+  #state[data-now="error"] { color: var(--bad); }
+  main { flex: 1 1 auto; min-height: 0; display: flex; padding: 0 1rem; }
+  video {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    object-fit: contain;
+    background: #000;
+    border-radius: 10px;
+  }
+  /* The front camera as a mirror, as every phone shows it. Only here: OBS
+     gets the picture as the camera sees it. */
+  video.mirrored { transform: scaleX(-1); }
+  .buttons { display: flex; gap: 0.6rem; padding: 0.8rem 1rem; flex-wrap: wrap; }
+  button {
+    flex: 1 1 8rem;
+    font: inherit;
+    font-weight: 600;
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    border: 1px solid #343842;
+    background: var(--panel);
+    color: var(--text);
+  }
+  button.go { background: var(--accent); border-color: var(--accent); color: #1a1205; }
+  button[hidden] { display: none; }
+  details { margin: 0 1rem 1rem; padding: 0.6rem 0.8rem; background: var(--panel); border-radius: 10px; color: var(--dim); }
+  summary { color: var(--text); }
+  details p, details ol { margin: 0.5rem 0; }
+  .print { font: 12px ui-monospace, monospace; word-break: break-all; color: var(--text); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>djmanzo · phone camera</h1>
+  <p id="state" role="status">Press start, and allow the camera.</p>
+</header>
+<main><video id="me" autoplay playsinline muted></video></main>
+<div class="buttons">
+  <button id="start" class="go">Start the camera</button>
+  <button id="flip" hidden>Switch camera</button>
+  <button id="stop" hidden>Stop</button>
+</div>
+<details>
+  <summary>Stop the browser warning for good</summary>
+  <p>The warning before this page is because djmanzo vouches for itself.
+    Install djmanzo's certificate on this phone once, on a network you trust,
+    and the page opens without it on any network. It can vouch only for
+    private addresses, never for a real website.</p>
+  <p><a href="djmanzo.crt" id="cert">Download djmanzo's certificate</a></p>
+  <p>Its fingerprint, to check against the one djmanzo shows:</p>
+  <p class="print">{{FINGERPRINT}}</p>
+  <p><b>Android:</b> Settings → Security → Encryption &amp; credentials →
+    Install a certificate → CA certificate, then choose djmanzo.crt. The
+    names differ a little between phones.</p>
+  <p><b>iPhone:</b> download it in Safari, then Settings → General → VPN &amp;
+    Device Management → install the djmanzo profile; then Settings → General
+    → About → Certificate Trust Settings → turn djmanzo on.</p>
+</details>
+<script>
+"use strict";
+// The page's own address is its key: everything it asks for is under it.
+const base = location.pathname.replace(/\/+$/, "");
+const me = document.getElementById("me");
+const state = document.getElementById("state");
+const startButton = document.getElementById("start");
+const flipButton = document.getElementById("flip");
+const stopButton = document.getElementById("stop");
+document.getElementById("cert").href = base + "/djmanzo.crt";
+
+let stream = null;
+let pc = null;
+let facing = "environment";
+let running = false;
+let round = 0;
+let wake = null;
+let beat = null;
+/** The number djmanzo gave this phone's offer: what its state is said about. */
+let offered = 0;
+
+function say(text, now) {
+  state.textContent = text;
+  state.dataset.now = now || "";
+}
+
+function why(e) {
+  const name = e && e.name;
+  if (name === "NotAllowedError") return "The camera was not allowed. Allow it for this page in the browser's settings.";
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "This phone has no camera the page can use.";
+  if (name === "NotReadableError") return "The camera is busy: another app may have it.";
+  if (!window.isSecureContext) return "This page is not secure, so the browser will not lend it the camera. Open it with the code djmanzo shows.";
+  return String(e && e.message || e);
+}
+
+async function camera() {
+  return navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: facing },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+    },
+    // Video only: a phone's microphone in a room with a PA is an echo.
+    audio: false,
+  });
+}
+
+async function post(path, body) {
+  return fetch(base + path, { method: "POST", body: body || "", headers: { "Content-Type": "text/plain" } });
+}
+
+/** Everything gathered, or what there is after two seconds. */
+function gathered(peer) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      if (peer.iceGatheringState === "complete") {
+        peer.removeEventListener("icegatheringstatechange", done);
+        resolve();
+      }
+    };
+    peer.addEventListener("icegatheringstatechange", done);
+    setTimeout(resolve, 2000);
+  });
+}
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** The link to OBS went. If another phone took over — OBS lets go of one
+    phone to show the next — this one stops, rather than taking it back and
+    starting the two of them taking turns. Otherwise it offers again. */
+async function again(peer, mine) {
+  if (pc !== peer || !running || mine !== round) return;
+  clearInterval(beat);
+  try {
+    const mineStill = await fetch(base + "/answer?id=" + offered);
+    if (mineStill.status === 404) {
+      say("This link was replaced. Scan the new code djmanzo shows.", "error");
+      halt(false);
+      return;
+    }
+    if (mineStill.status === 410) {
+      say("Another phone took over. Press start to take it back.");
+      halt(false);
+      return;
+    }
+  } catch (_) {}
+  say("The link to OBS was lost. Trying again…");
+  await post("/state?now=stopped&id=" + offered).catch(() => {});
+  setTimeout(() => running && mine === round && void connect(), 1000);
+}
+
+/** Offer the picture to OBS, and wait for its answer. */
+async function connect() {
+  const mine = ++round;
+  if (pc) pc.close();
+  const peer = new RTCPeerConnection();
+  pc = peer;
+  const track = stream.getVideoTracks()[0];
+  track.contentHint = "motion";
+  const sender = peer.addTrack(track, stream);
+  let lost = null;
+  peer.addEventListener("connectionstatechange", () => {
+    if (pc !== peer || !running) return;
+    const now = peer.connectionState;
+    clearTimeout(lost);
+    if (now === "connected") {
+      say("Live: OBS is showing this camera.", "sending");
+      void post("/state?now=sending&id=" + offered);
+      clearInterval(beat);
+      beat = setInterval(() => void post("/state?now=sending&id=" + offered), 15000);
+    } else if (now === "failed" || now === "closed") {
+      void again(peer, mine);
+    } else if (now === "disconnected") {
+      // Often back by itself within a second or two; if not, it is gone.
+      lost = setTimeout(() => void again(peer, mine), 5000);
+    }
+  });
+  await peer.setLocalDescription(await peer.createOffer());
+  await gathered(peer);
+  // A local network carries far more than a browser's default.
+  try {
+    const p = sender.getParameters();
+    p.encodings = p.encodings && p.encodings.length ? p.encodings : [{}];
+    p.encodings[0].maxBitrate = 4000000;
+    await sender.setParameters(p);
+  } catch (_) {}
+  say("Waiting for OBS to open djmanzo's page…");
+  let id;
+  for (;;) {
+    if (!running || mine !== round) return;
+    try {
+      const sent = await post("/offer", peer.localDescription.sdp);
+      if (sent.status === 404) {
+        say("This link was replaced. Scan the new code djmanzo shows.", "error");
+        halt(false);
+        return;
+      }
+      if (!sent.ok) throw new Error("djmanzo did not take the offer (" + sent.status + ")");
+      id = (await sent.json()).id;
+      offered = id;
+      break;
+    } catch (e) {
+      say("Cannot reach djmanzo. Is the phone on the same network? Trying again…", "error");
+      await pause(2000);
+    }
+  }
+  for (;;) {
+    if (!running || mine !== round) return;
+    let got;
+    try {
+      got = await fetch(base + "/answer?id=" + id);
+    } catch (e) {
+      say("Cannot reach djmanzo. Trying again…", "error");
+      await pause(2000);
+      continue;
+    }
+    if (got.status === 200) {
+      await peer.setRemoteDescription({ type: "answer", sdp: await got.text() });
+      say("Connecting to OBS…");
+      return;
+    }
+    if (got.status === 410) {
+      // Another phone, or this one in another tab, took over.
+      say("Another phone took over. Press start to take it back.");
+      halt(false);
+      return;
+    }
+    if (got.status !== 204) {
+      say("djmanzo said " + got.status + ". Trying again…", "error");
+      await pause(2000);
+    }
+  }
+}
+
+async function keepAwake() {
+  try {
+    if ("wakeLock" in navigator && document.visibilityState === "visible") {
+      wake = await navigator.wakeLock.request("screen");
+    }
+  } catch (_) {}
+}
+
+async function start() {
+  startButton.disabled = true;
+  say("Asking for the camera…");
+  try {
+    stream = await camera();
+  } catch (e) {
+    say(why(e), "error");
+    startButton.disabled = false;
+    return;
+  }
+  me.srcObject = stream;
+  me.classList.toggle("mirrored", facing === "user");
+  running = true;
+  startButton.hidden = true;
+  stopButton.hidden = false;
+  flipButton.hidden = false;
+  startButton.disabled = false;
+  void keepAwake();
+  void connect();
+}
+
+async function flip() {
+  facing = facing === "environment" ? "user" : "environment";
+  let next;
+  try {
+    next = await camera();
+  } catch (e) {
+    facing = facing === "environment" ? "user" : "environment";
+    say(why(e), "error");
+    return;
+  }
+  const old = stream;
+  stream = next;
+  me.srcObject = next;
+  me.classList.toggle("mirrored", facing === "user");
+  // The other camera on the same connection: OBS never notices.
+  const sender = pc && pc.getSenders().find((s) => s.track && s.track.kind === "video");
+  if (sender) await sender.replaceTrack(next.getVideoTracks()[0]);
+  for (const t of old.getTracks()) t.stop();
+}
+
+function halt(tell) {
+  running = false;
+  round++;
+  clearInterval(beat);
+  if (pc) { pc.close(); pc = null; }
+  me.srcObject = null;
+  if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
+  if (wake) { void wake.release().catch(() => {}); wake = null; }
+  startButton.hidden = false;
+  stopButton.hidden = true;
+  flipButton.hidden = true;
+  if (tell) {
+    void post("/state?now=stopped&id=" + offered);
+    say("Stopped.");
+  }
+}
+
+startButton.addEventListener("click", () => void start());
+stopButton.addEventListener("click", () => halt(true));
+flipButton.addEventListener("click", () => void flip());
+document.addEventListener("visibilitychange", () => { if (running) void keepAwake(); });
+window.addEventListener("pagehide", () => {
+  if (running) navigator.sendBeacon(base + "/state?now=stopped&id=" + offered, "");
+});
+</script>
+</body>
+</html>

@@ -83,6 +83,13 @@ jobs:
         working-directory: ui
         run: npx playwright install --with-deps chromium
 
+      # §119's phone camera is two pages Rust serves -- HTTPS for the phone,
+      # plain HTTP for OBS -- so its browser test runs them against the real
+      # server, on its own as this example. Built here so the test does not
+      # spend its own time compiling.
+      - name: Build the phone camera's server for its browser test
+        run: cargo build -p dj-net --example phone_camera
+
       - name: The first screen is for mixing
         working-directory: ui
         run: npm run budget

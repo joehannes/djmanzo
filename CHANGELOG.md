@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A phone as a camera, from djmanzo's own page (§119).** In the Camera
+  panel's *A phone* tab, switch it on and scan the code with the phone: the
+  phone's camera goes straight to OBS, as a *Browser* source at the address
+  shown, over your own network and nowhere else. The phone's browser warns
+  once (djmanzo vouches for itself); the page offers djmanzo's certificate to
+  install so it stops. *New phone link* cuts off whoever had the old code.
+
 - **The computer's webcam, inside djmanzo (§119).** A *Camera* panel shows it
   when you ask, never before; pop it out and OBS can capture its window,
   *djmanzo - Camera*, with *Hide the controls* leaving only the picture.

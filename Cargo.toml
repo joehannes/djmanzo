@@ -130,6 +130,19 @@ tiny_http = "0.12"
 # computer over plain ws://.
 tungstenite = "0.30"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+# §119: the phone camera page's HTTPS (dj_net::secure). The rustls and ring
+# already in the build under reqwest, chosen explicitly: ring rather than
+# aws-lc-rs, which would need cmake and NASM to build on Windows. Apache-2.0
+# OR ISC OR MIT.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Its requests, read by the parser already here under hyper and tungstenite.
+# MIT OR Apache-2.0.
+httparse = "1.10"
+# djmanzo's own certificate authority for that page (dj_net::authority).
+# MIT OR Apache-2.0; brings yasna (MIT OR Apache-2.0). No PEM: only DER is
+# written, served and kept.
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "ring"] }
+time = { version = "0.3", default-features = false, features = ["std"] }
 base64 = "0.22"
 tokio = { version = "1", default-features = false }
 

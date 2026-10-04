@@ -72,6 +72,7 @@ pub mod parts;
 pub mod peersync;
 pub mod persist;
 pub mod persona;
+pub mod phone_camera;
 pub mod plan;
 pub mod plugins;
 pub mod practice;
@@ -455,6 +456,8 @@ pub fn run() {
                     sink,
                     crate::youtube::Timing::default(),
                 );
+                // §119: a phone as a camera, serving again if it was left on.
+                state.phone_camera().start(&dir);
                 // §119: what the crowd said that the rules could not place,
                 // read by the DJ's provider a batch at a time. A thread of
                 // its own, never near the audio; the asking is async and
@@ -630,6 +633,9 @@ pub fn run() {
             commands::youtube_status,
             commands::camera_wanted,
             commands::set_camera_wanted,
+            commands::phone_camera_status,
+            commands::phone_camera_set,
+            commands::phone_camera_new_link,
             commands::youtube_settings,
             commands::youtube_settings_set,
             commands::youtube_sign_in,

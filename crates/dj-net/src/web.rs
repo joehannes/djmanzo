@@ -335,7 +335,7 @@ fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
 }
 
 /// Split `"/a/b?x=1&y=2"` into its path and its decoded parameters.
-fn split_query(raw: &str) -> (String, Vec<(String, String)>) {
+pub(crate) fn split_query(raw: &str) -> (String, Vec<(String, String)>) {
     let (path, rest) = raw.split_once('?').unwrap_or((raw, ""));
     (decode(path), pairs(rest))
 }

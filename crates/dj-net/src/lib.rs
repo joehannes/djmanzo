@@ -6,6 +6,7 @@
 //! engine directly.
 
 pub mod announce;
+pub mod authority;
 pub mod control;
 pub mod front;
 pub mod midi_clock;
@@ -14,7 +15,9 @@ pub mod osc;
 pub mod overlay;
 pub mod page;
 pub mod peer;
+pub mod phone;
 pub mod room;
+pub mod secure;
 pub mod server;
 pub mod sticker;
 pub mod tempo;

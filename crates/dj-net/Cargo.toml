@@ -22,6 +22,10 @@ mdns-sd = { version = "0.21.1", default-features = false }
 sha2.workspace = true
 base64.workspace = true
 tungstenite.workspace = true
+rustls.workspace = true
+httparse.workspace = true
+rcgen.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 rtrb.workspace = true

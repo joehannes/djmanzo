@@ -5955,6 +5955,27 @@ export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_vi
 export const cameraWanted = () => invoke<boolean>("camera_wanted");
 export const setCameraWanted = (on: boolean) => invoke<void>("set_camera_wanted", { on });
 
+// -- §119: a phone as a camera ----------------------------------------------------
+
+/** `phone_camera::Status`: the addresses, the code, and what each side is doing. */
+export interface PhoneCameraStatus {
+  on: boolean;
+  /** The phone's address with its key: what the code says. */
+  phone_url: string | null;
+  /** The code, as SVG. */
+  qr: string | null;
+  /** The address for OBS's browser source. */
+  obs_url: string | null;
+  fingerprint: string | null;
+  phone: "away" | "open" | "sending";
+  viewer: "away" | "open" | "showing";
+  note: string | null;
+}
+
+export const phoneCameraStatus = () => invoke<PhoneCameraStatus>("phone_camera_status");
+export const phoneCameraSet = (on: boolean) => invoke<PhoneCameraStatus>("phone_camera_set", { on });
+export const phoneCameraNewLink = () => invoke<PhoneCameraStatus>("phone_camera_new_link");
+
 // -- §119: YouTube's live chat ----------------------------------------------------
 
 /** `youtube::Settings`: the switch and the Google client djmanzo signs in as. */

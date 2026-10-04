@@ -9,11 +9,17 @@
    * (`commands::camera_wanted`), so a panel popped out shows the camera
    * without asking again, and a workspace restored at launch never turns one
    * on by itself.
+   *
+   * Its second tab is the other camera djmanzo offers, a phone
+   * (`PhoneCamera.svelte`). Switching tabs leaves this one's camera as it is:
+   * OBS may be capturing it while the phone is set up.
    */
   import { cameraWanted, setCameraWanted } from "./api";
+  import PhoneCamera from "./PhoneCamera.svelte";
 
   const MIRROR_KEY = "djmanzo.camera.mirror";
   const DEVICE_KEY = "djmanzo.camera.device";
+  const TAB_KEY = "djmanzo.camera.tab";
 
   function remembered(key: string): string {
     try {
@@ -41,6 +47,7 @@
   /** Only the picture: what OBS captures, with nothing of djmanzo's on it. */
   let clean = $state(false);
   let error = $state("");
+  let tab = $state<"computer" | "phone">(remembered(TAB_KEY) === "phone" ? "phone" : "computer");
 
   /** Why the camera did not open, in the DJ's terms. */
   function why(e: unknown): string {
@@ -125,51 +132,69 @@
   });
 
   $effect(() => remember(MIRROR_KEY, mirrored ? "1" : "0"));
+  $effect(() => remember(TAB_KEY, tab));
 </script>
 
 <div class="camera" class:clean data-camera data-on={on}>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <video
-    bind:this={video}
-    class:mirrored
-    class:hidden={!on}
-    autoplay
-    playsinline
-    muted
-    aria-label="The camera"
-    onclick={() => (clean = false)}
-  ></video>
-
-  {#if !on}
-    <div class="off">
-      <p>The camera is off. It is turned on only when you ask, and only djmanzo's own window can see it.</p>
-      <button class="primary" disabled={starting} onclick={() => void start()}>
-        {starting ? "Asking for the camera…" : "Show the camera"}
+  {#if !clean}
+    <div class="tabs" role="tablist" aria-label="Whose camera">
+      <button role="tab" aria-selected={tab === "computer"} onclick={() => (tab = "computer")}>
+        This computer
+      </button>
+      <button role="tab" aria-selected={tab === "phone"} onclick={() => (tab = "phone")}>
+        A phone
       </button>
     </div>
   {/if}
 
-  {#if !clean}
-    <div class="controls">
-      {#if on}
-        <button onclick={() => void stop()}>Turn the camera off</button>
-        {#if devices.length > 1}
-          <select aria-label="Which camera" value={chosen} onchange={(e) => pick(e.currentTarget.value)}>
-            {#each devices as d (d.id)}<option value={d.id}>{d.label}</option>{/each}
-          </select>
-        {/if}
-      {/if}
-      <label><input type="checkbox" bind:checked={mirrored} /> Mirror</label>
-      {#if on}
-        <button onclick={() => (clean = true)} title="Click the picture to bring them back">Hide the controls</button>
-      {/if}
-      <span class="hint">For OBS: pop this panel out and add a <em>Window Capture</em> of “djmanzo - Camera”.</span>
-    </div>
+  {#if tab === "phone" && !clean}
+    <PhoneCamera />
   {/if}
 
-  {#if error}
-    <p class="error" role="alert">{error}</p>
-  {/if}
+  <div class="computer" class:away={tab !== "computer" && !clean}>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <video
+      bind:this={video}
+      class:mirrored
+      class:hidden={!on}
+      autoplay
+      playsinline
+      muted
+      aria-label="The camera"
+      onclick={() => (clean = false)}
+    ></video>
+
+    {#if !on}
+      <div class="off">
+        <p>The camera is off. It is turned on only when you ask, and only djmanzo's own window can see it.</p>
+        <button class="primary" disabled={starting} onclick={() => void start()}>
+          {starting ? "Asking for the camera…" : "Show the camera"}
+        </button>
+      </div>
+    {/if}
+
+    {#if !clean}
+      <div class="controls">
+        {#if on}
+          <button onclick={() => void stop()}>Turn the camera off</button>
+          {#if devices.length > 1}
+            <select aria-label="Which camera" value={chosen} onchange={(e) => pick(e.currentTarget.value)}>
+              {#each devices as d (d.id)}<option value={d.id}>{d.label}</option>{/each}
+            </select>
+          {/if}
+        {/if}
+        <label><input type="checkbox" bind:checked={mirrored} /> Mirror</label>
+        {#if on}
+          <button onclick={() => (clean = true)} title="Click the picture to bring them back">Hide the controls</button>
+        {/if}
+        <span class="hint">For OBS: pop this panel out and add a <em>Window Capture</em> of “djmanzo - Camera”.</span>
+      </div>
+    {/if}
+
+    {#if error}
+      <p class="error" role="alert">{error}</p>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -181,6 +206,34 @@
     min-height: 0;
     padding: 0.4rem;
     box-sizing: border-box;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0.3rem;
+    flex: none;
+  }
+
+  .tabs button[aria-selected="true"] {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tabs button[aria-selected="false"] {
+    color: var(--text-dim);
+  }
+
+  .computer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Out of sight, not unmounted: the camera keeps going. */
+  .computer.away {
+    display: none;
   }
 
   /*
