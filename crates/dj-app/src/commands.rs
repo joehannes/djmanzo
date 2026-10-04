@@ -349,6 +349,34 @@ pub fn phone_camera_new_link(state: State<'_, AppState>) -> crate::phone_camera:
     state.phone_camera().new_phone_link()
 }
 
+/// §122: every look there is, for the Singers panel's list.
+#[tauri::command]
+#[must_use]
+pub fn looks_catalogue(state: State<'_, AppState>) -> Vec<crate::looks::Look> {
+    state.looks().catalogue()
+}
+
+/// §122: which look each screen shows. The singers' screen asks every few
+/// seconds, since it is picked in another window.
+#[tauri::command]
+#[must_use]
+pub fn look_chosen(state: State<'_, AppState>) -> crate::looks::Chosen {
+    state.looks().chosen()
+}
+
+/// §122: show a look on a screen, or none.
+///
+/// # Errors
+/// No look has that name.
+#[tauri::command]
+pub fn look_choose(
+    state: State<'_, AppState>,
+    screen: crate::looks::Screen,
+    name: Option<String>,
+) -> Result<crate::looks::Chosen, String> {
+    state.looks().choose(screen, name)
+}
+
 /// §119: the switch and the Google client, as kept.
 #[tauri::command]
 #[must_use]

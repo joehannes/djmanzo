@@ -193,6 +193,11 @@ export interface DeckState {
    */
   effective_bpm: number | null;
   /**
+   * Where in the current beat the playhead is, 0..1: the living interface's
+   * clock (ADR-0009). 0 with no grid, where nothing pulses.
+   */
+  beat_phase: number;
+  /**
    * True when the grid is solid enough for sync to accept it. Used to disable
    * the button rather than let it fail silently.
    */
@@ -5996,6 +6001,35 @@ export interface PhoneCameraStatus {
 export const phoneCameraStatus = () => invoke<PhoneCameraStatus>("phone_camera_status");
 export const phoneCameraSet = (on: boolean) => invoke<PhoneCameraStatus>("phone_camera_set", { on });
 export const phoneCameraNewLink = () => invoke<PhoneCameraStatus>("phone_camera_new_link");
+
+/** §122: one layer of a look. See `dj_app::looks::Layer`; `./looks` checks it. */
+export interface LookLayer {
+  kind: string;
+  signal: string;
+  /** `record`, or a fixed `#rrggbb`. */
+  colour: string;
+  amount: number;
+  blend: string;
+}
+
+/** §122: a look — its layers, bottom first. See `dj_app::looks::Look`. */
+export interface Look {
+  name: string;
+  description: string;
+  layers: LookLayer[];
+}
+
+/** §122: which look each screen shows; null is off. */
+export interface LookChosen {
+  singers: string | null;
+}
+
+export type LookScreen = "singers";
+
+export const looksCatalogue = () => invoke<Look[]>("looks_catalogue");
+export const lookChosen = () => invoke<LookChosen>("look_chosen");
+export const lookChoose = (screen: LookScreen, name: string | null) =>
+  invoke<LookChosen>("look_choose", { screen, name });
 
 // -- §119: YouTube's live chat ----------------------------------------------------
 

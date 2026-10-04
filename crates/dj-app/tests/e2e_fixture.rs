@@ -252,6 +252,45 @@ fn the_browser_fixture_has_the_columns_djmanzo_offers() {
     );
 }
 
+/// §122's looks, as a golden file.
+///
+/// The singers' screen and the Singers panel are tested against these, and
+/// `ui/src/looks.ts` is what decides whether each layer is one it can draw —
+/// so a look added or changed here and not drawable there shows up as a
+/// browser test that cannot find it, rather than as a blank projector.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_looks_djmanzo_ships() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/looks.json");
+    let fresh =
+        serde_json::to_string_pretty(&dj_app::looks::built_in()).expect("the looks serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the looks");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored looks are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh looks are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe looks have changed, so the browser is drawing looks djmanzo no \
+         longer ships.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// §16's knowledge packs, as a golden file.
 ///
 /// `knowledge_packs` is a pure function of `dj_assistant::pack::ALL` and the

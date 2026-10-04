@@ -1,0 +1,151 @@
+[
+  {
+    "name": "Glow",
+    "description": "The record's colours breathing with the room's loudness, and a glow around the words when someone sings: calm, for anything.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.8,
+        "blend": "over"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.6,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
+    "name": "Pulse",
+    "description": "Rings from the centre on every beat, as strong as the drums: for dance music, anything with a kick.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "over"
+      },
+      {
+        "kind": "pulse",
+        "signal": "stem.drums",
+        "colour": "record",
+        "amount": 0.8,
+        "blend": "add"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
+    "name": "Waves",
+    "description": "Slow waves crossing the screen with the instruments and the mids: for ballads and anything that sways.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.6,
+        "blend": "over"
+      },
+      {
+        "kind": "ripple",
+        "signal": "stem.other",
+        "colour": "record",
+        "amount": 0.6,
+        "blend": "screen"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
+    "name": "Sparkle",
+    "description": "Sparks that flare with the treble over a dark wash, the bass pulsing beneath: for disco, bright pop and anything with hi-hats.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.35,
+        "blend": "over"
+      },
+      {
+        "kind": "pulse",
+        "signal": "band.bass",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "add"
+      },
+      {
+        "kind": "sparks",
+        "signal": "band.treble",
+        "colour": "record",
+        "amount": 0.9,
+        "blend": "add"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
+    "name": "Everything",
+    "description": "Every layer at once — colours, beat, waves, sparks and the singer's glow: for a big chorus, and for seeing what the layers do.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.6,
+        "blend": "over"
+      },
+      {
+        "kind": "pulse",
+        "signal": "beat",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "add"
+      },
+      {
+        "kind": "ripple",
+        "signal": "band.low_mid",
+        "colour": "record",
+        "amount": 0.4,
+        "blend": "screen"
+      },
+      {
+        "kind": "sparks",
+        "signal": "band.treble",
+        "colour": "record",
+        "amount": 0.7,
+        "blend": "add"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  }
+]

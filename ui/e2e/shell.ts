@@ -77,6 +77,7 @@ import packs from "./packs.json" with { type: "json" };
  *  comment claiming fourteen, and a sixteenth the picker in these tests could
  *  not offer. */
 import columns from "./columns.json" with { type: "json" };
+import looks from "./looks.json" with { type: "json" };
 /** §81's six kinds of night, generated from `dj_app::setting::Setting::ALL` by
  *  the same Rust test. Hand-written here they would be the copy the panel was
  *  just relieved of, one file further out. */
@@ -761,6 +762,10 @@ export const ANSWERS: Record<string, unknown> = {
   camera_wanted: false,
   // §122: no deck has a video on it unless a test says so.
   deck_pictures: [],
+  // §122: djmanzo's own looks, generated from `dj_app::looks::built_in`;
+  // the singers' screen shows none until one is chosen.
+  looks_catalogue: looks,
+  look_chosen: { singers: null },
   phone_camera_status: {
     on: false,
     phone_url: null,
@@ -2411,6 +2416,21 @@ export async function openShell(
           // has both addresses and a code; a new link changes the phone's
           // address and not OBS's. A test sets `__phoneCamera` fields for what
           // the phone and OBS are doing.
+          // §122: which look each screen shows, kept as Rust keeps it, and
+          // refused for a name that is not in the catalogue.
+          if (cmd === "look_chosen" || cmd === "look_choose") {
+            const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;
+            if (cmd === "look_choose") {
+              const name = (args.name ?? null) as string | null;
+              const known = answers.looks_catalogue as { name: string }[];
+              if (name !== null && !known.some((l) => l.name === name)) {
+                return Promise.reject(`there is no look called "${name}"`);
+              }
+              chosen[String(args.screen)] = name;
+              ((win.__lookChoices ??= []) as unknown[]).push({ ...args });
+            }
+            return Promise.resolve(structuredClone(chosen));
+          }
           if (cmd.startsWith("phone_camera_")) {
             const status = (win.__phoneCamera ??= structuredClone(answers.phone_camera_status)) as Record<
               string,

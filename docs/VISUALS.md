@@ -81,13 +81,104 @@ One canvas, one WebGL context, each layer drawn as a full-screen quad into it
 in order with its blend. A look's layers are validated before they are drawn:
 an unknown kind or signal is dropped with its name said, not guessed at.
 
+**Step 2 — built.** Where each part lives:
+
+- **The looks are data, in Rust** (`dj_app::looks`). The DJ's AI provider
+  will be told them by name and description (step 6), and packs will add to
+  them (step 7). The choice is kept in `looks.json`, because the screen that
+  draws it is another window: the Singers panel writes it, and the singers'
+  screen asks for it every three seconds, as it asks for the rotation.
+- **Checking a layer is the interface's** (`ui/src/looks.ts`). The interface
+  is what knows what it can draw. Its lists of kinds, signals and blends are
+  held to Rust's by a test that reads `looks.rs`.
+- **The signals** are in `looks.ts` too:
+  - **Stems** are weighed by each deck's share of what is heard (step 1).
+  - **The beat** is the most-heard deck with a grid: struck on the beat and
+    falling through it.
+  - **The voice** is the loudest singer's microphone.
+  - **Every signal is followed as a light follows sound:** up in 30 ms and
+    down over 250 ms. The arithmetic depends on time, not frames, so a
+    projector at 30 frames a second looks like a screen at 120.
+- **The pictures** are `ui/src/visualStack.ts`: WebGL 1, one shader of a few
+  dozen lines per kind. The shaders write premultiplied colour, so *over*,
+  *add* and *screen* are three blend functions.
+- **The component** is `ui/src/Visuals.svelte`: the canvas, and a frame loop
+  that writes to it directly.
+
+djmanzo ships five looks, all its own: *Glow*, *Pulse*, *Waves*, *Sparkle*
+and *Everything*.
+
+**Their `halo` answers to the singers' microphones, not the vocal stem.** On
+a karaoke screen the record's singer is usually the one thing taken *out*, so
+the vocal stem is near silence exactly when a glow around the words is
+wanted. A test in `dj_app::looks` holds every built-in halo to `voice`.
+
+**What it costs.** Measured in this container, driving the real application
+under Xvfb, where WebGL is drawn by the processor (llvmpipe). The singers'
+screen was a window of 640×360 showing *Everything*, and the figure is its
+WebKit process's processor time:
+
+| What the screen shows | Processor time |
+|---|---|
+| K1's background alone | about 100% |
+| *Everything* at full size, sixty a second | about 217% |
+| *Everything* at half size each way, thirty a second | about 133% |
+
+The layers are soft fields and glows, and a canvas stretched to fill the
+screen looks as one drawn whole, so **half size and thirty a second are the
+setting everywhere**. Choosing by renderer was tried and does not work:
+WebKitGTK names its renderer *Apple GPU* whatever draws it (HANDOFF's
+traps). On a graphics card the cost is presumably far smaller. Nothing here
+can measure that.
+
+### Nothing the layers do takes the words down
+
+- **The canvas lies inside K1's background and under its veil.** The veil
+  darkens the middle of the screen, where the words are, so the layers never
+  take the contrast a singer reads by.
+- **A picture that will not compile is left out and named.** The name goes
+  in the window's console and on the canvas's `data-failures`. The other
+  layers are drawn.
+- **No WebGL, or a lost context, leaves the canvas clear.** K1's background
+  shows as before.
+- **A system asking for reduced motion gets no layers at all.** The Singers
+  panel says so, so a DJ is not left wondering why nothing moves.
+
+**Tested:**
+- 3 in Rust:
+  - every built-in look drawable and named once, its halo on the voice
+  - a choice kept between runs, and off a choice
+  - a look not there refused, and forgotten if kept from before
+- A golden `ui/e2e/looks.json`, generated from `built_in()`.
+- 16 of the arithmetic (vitest).
+- 11 in a browser, reading the canvas back off the GPU:
+  - every layer drawn under the veil, with the words above
+  - the canvas at half size and thirty frames a second
+  - the wash dark when the room is quiet and full when it is loud
+  - the drums lighting the pulse, and a closed fader putting it out
+  - one picture failing to compile, and the rest drawn
+  - no WebGL
+  - reduced motion
+  - off
+  - a look picked in another window, followed and turned off
+  - the panel's list
+  - the panel's note on reduced motion
+
+**Driven in WebKitGTK:**
+- *Everything* behind the words, with the beat's rings moving out between
+  captures.
+- The picker in the Singers panel, kept in `looks.json`.
+- The screen following a change within its poll.
+
+Not seen: a graphics card, macOS and Windows.
+
 ## 3. Where it shows
 
-First **behind the words on the singers' screen**, where it was asked for.
-The DJ picks the look in the Singers panel, from those djmanzo ships, or
-*Off*. Then the **Video** window (`docs/VIDEO.md`): when no deck with a
-picture is heard, it shows the look instead of black, so the projector is
-never dark.
+First **behind the words on the singers' screen**, where it was asked for —
+built in step 2. The DJ picks the look in the Singers panel, from those
+djmanzo ships, or *Off*. Then the **Video** window (`docs/VIDEO.md`): when no
+deck with a picture is heard, it shows the look instead of black, so the
+projector is never dark.
 
 ## 4. MilkDrop: Butterchurn as the main layer
 

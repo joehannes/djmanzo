@@ -1240,6 +1240,38 @@ the restore silently removed the test. It was caught because the test was fresh
 in mind; a week later it would have been a test that quietly stopped existing.
 One backup per mutation, taken in the same command.
 
+**WebKit will not say whether WebGL is drawn by a graphics card.** Asked for
+its renderer — `WEBGL_debug_renderer_info` included — WebKitGTK answers
+*Apple GPU* under Xvfb with llvmpipe doing the drawing: a fixed name, against
+fingerprinting. Anything that decides by the renderer's name decides wrongly
+in djmanzo's Linux and macOS webviews. §122's layers are drawn at half size
+and thirty a second everywhere for that reason, measured rather than guessed
+at (`docs/VISUALS.md`).
+
+**Software-drawn WebGL here costs real processor time, and the badge shows
+it.** Under Xvfb the singers' screen with five layers at full size took more
+than a core on top of the window's own, and the main window's *UI fps* badge
+fell to single figures. `top -b -n 2 -d 3`, read for the `WebKitWebProcess`
+lines, is how to see it: each window is a process of its own.
+
+**K1's glows draw as hard-edged blocks with compositing switched off.** With
+`WEBKIT_DISABLE_COMPOSITING_MODE=1`, which this container needs, the singers'
+screen's colour glows come out as rectangles with straight edges at fixed
+fractions of the window — seen with no look drawn at all, so not §122's. Not
+investigated further: real installations run with compositing on, and nothing
+here can show what they draw.
+
+**`pkill -f <path>` kills the shell running it** when the same command line
+starts that path afterwards — the pattern matches the shell's own command
+line, and the command ends with exit 144 and nothing done after it. Stop the
+application in a command of its own, or write the pattern so it cannot match
+itself (`debug/djmanz[o]`).
+
+**A Svelte 5 variable called `state` breaks the `$state` rune** in that
+component: `svelte-check` reports *'$state' used before its declaration* and
+*untyped function calls may not accept type arguments*, because `$state` is
+read as the store `state` auto-subscribed. Name it anything else.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

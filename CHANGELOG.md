@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Layers behind the words on the singers' screen (§122).** In the Singers
+  panel, *Behind the words* picks one of djmanzo's own looks — *Glow*,
+  *Pulse*, *Waves*, *Sparkle* or *Everything* — or *Off*. Each is a stack of
+  layers over the record's cover and colours: a wash breathing with the
+  room's loudness, rings on the beat as strong as the drums, waves with the
+  instruments, sparks with the treble, and a glow around the words when
+  someone sings into a singer's microphone. The words stay on top and as
+  legible as before; a computer without WebGL, or one asking for reduced
+  motion, shows the cover and colours as it always did.
+
 ## v0.38.0 — Video on a deck, cameras for the stream, and YouTube's chat
 
 - **Each stem's level, published (§122).** Every deck now reports how loud

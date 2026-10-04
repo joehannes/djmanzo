@@ -60,6 +60,7 @@ pub mod lens;
 pub mod level;
 pub mod library;
 pub mod live;
+pub mod looks;
 pub mod memory;
 pub mod mission;
 pub mod mixes;
@@ -459,6 +460,8 @@ pub fn run() {
                 );
                 // §119: a phone as a camera, serving again if it was left on.
                 state.phone_camera().start(&dir);
+                // §122: which look the singers' screen shows behind the words.
+                state.looks().start(&dir);
                 // §119: what the crowd said that the rules could not place,
                 // read by the DJ's provider a batch at a time. A thread of
                 // its own, never near the audio; the asking is async and
@@ -637,6 +640,9 @@ pub fn run() {
             commands::phone_camera_status,
             commands::phone_camera_set,
             commands::phone_camera_new_link,
+            commands::looks_catalogue,
+            commands::look_chosen,
+            commands::look_choose,
             commands::deck_pictures,
             commands::youtube_settings,
             commands::youtube_settings_set,

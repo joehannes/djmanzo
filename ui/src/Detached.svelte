@@ -375,7 +375,12 @@
         </section>
       </div>
     {:else if panel === "singers"}
-      <SingerScreen decks={snapshot.decks} />
+      <SingerScreen
+        decks={snapshot.decks}
+        crossfader={snapshot.master.crossfader}
+        audio={snapshot.context.audio}
+        vocals={snapshot.master.vocals}
+      />
     {:else if panel === "video"}
       <Video decks={snapshot.decks} crossfader={snapshot.master.crossfader} />
     {:else if panel === "karaoke"}

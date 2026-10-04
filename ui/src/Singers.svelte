@@ -12,6 +12,7 @@
   import Guests from "./Guests.svelte";
   import Microphones from "./Microphones.svelte";
   import WordTiming from "./WordTiming.svelte";
+  import { validate } from "./looks";
   import {
     detachPanel,
     dispatch,
@@ -27,11 +28,15 @@
     karaokeSang,
     librarySearch,
     loadTrack,
+    lookChoose,
+    lookChosen,
+    looksCatalogue,
     vocalsState,
     vocalStripSinger,
     type Breaks,
     type DeckState,
     type LibraryTrack,
+    type Look,
     type Rotation,
     type Vocals,
     type VocalsState,
@@ -90,6 +95,34 @@
     if (!enabled) return;
     void refresh();
   });
+
+  /**
+   * §122: the look behind the words on the singers' screen — djmanzo's own
+   * layers, or off. Kept in Rust, because the screen is another window.
+   */
+  let looks = $state<Look[]>([]);
+  let lookName = $state<string | null>(null);
+  $effect(() => {
+    if (!enabled) return;
+    void Promise.all([looksCatalogue(), lookChosen()])
+      .then(([all, chosen]) => {
+        looks = all;
+        lookName = chosen.singers;
+      })
+      .catch(() => {});
+  });
+  const chosenLook = $derived(looks.find((l) => l.name === lookName) ?? null);
+  const leftOut = $derived(chosenLook ? validate(chosenLook).dropped : []);
+  const stillScreen =
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+  async function pickLook(name: string | null) {
+    try {
+      lookName = (await lookChoose("singers", name)).singers;
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /**
    * §123: counted up on every change, so the guest book reads the journal
@@ -504,6 +537,36 @@
     >Singers' screen — the words, on a display of its own</button
   >
 
+  {#if looks.length > 0}
+    <section class="look" aria-label="Behind the words" data-look-picker>
+      <label>
+        Behind the words
+        <select
+          aria-label="The look behind the words"
+          value={lookName ?? ""}
+          onchange={(e) => void pickLook(e.currentTarget.value === "" ? null : e.currentTarget.value)}
+        >
+          <option value="">Off — the record's cover and colours</option>
+          {#each looks as look (look.name)}
+            <option value={look.name} title={look.description}>{look.name}</option>
+          {/each}
+        </select>
+      </label>
+      {#if chosenLook}
+        <p class="hint" data-look-description>{chosenLook.description}</p>
+      {/if}
+      {#each leftOut as note (note)}
+        <p class="hint" role="note">Left out, because this djmanzo cannot draw it: {note}</p>
+      {/each}
+      {#if chosenLook && stillScreen}
+        <p class="hint" role="note">
+          This computer asks for reduced motion, so the singers' screen draws no looks — only the
+          record's cover and colours.
+        </p>
+      {/if}
+    </section>
+  {/if}
+
   <button class="quiet new-night" onclick={() => void newNight()}
     title="Everybody's keys are kept, and so are the guests who agreed to be"
     >New night — clear the list and tonight's guests</button
@@ -707,5 +770,22 @@
   .new-night {
     align-self: flex-start;
     font-size: 0.85em;
+  }
+
+  .look {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.9em;
+  }
+
+  .look label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .look .hint {
+    margin: 0;
   }
 </style>

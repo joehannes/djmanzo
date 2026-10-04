@@ -18,20 +18,43 @@
    * first, always, so the screen is never blank while a cover loads or when
    * one fails. Plain CSS over black: nothing the words wait on, nothing a
    * graphics driver can take down with them.
+   *
+   * Over that background and under the veil that keeps the words legible
+   * (§122), the look the DJ picked in the Singers panel, if any: djmanzo's
+   * own layers, answering to the mix and the singers' microphones
+   * (`./Visuals.svelte`). They are a canvas the words do not depend on — no
+   * WebGL, a lost context or a picture that will not compile leaves K1's
+   * background as it was.
    */
   import {
     artUrl,
     karaokeRotation,
+    lookChosen,
+    looksCatalogue,
     singerBackdrop,
     singerLyrics,
+    type AudioMetrics,
     type DeckState,
+    type Look,
     type Rotation,
     type SingerBackdrop,
     type SingerLyrics,
+    type VocalsState,
   } from "./api";
   import { lyricsAt } from "./lyricsAt";
+  import Visuals from "./Visuals.svelte";
 
-  let { decks }: { decks: DeckState[] } = $props();
+  let {
+    decks,
+    crossfader = 0,
+    audio = { loudness: 0, bands: [0, 0, 0, 0] },
+    vocals,
+  }: {
+    decks: DeckState[];
+    crossfader?: number;
+    audio?: AudioMetrics;
+    vocals?: VocalsState;
+  } = $props();
 
   /**
    * The deck a singer is singing to: the one playing with its vocal taken out
@@ -108,6 +131,13 @@
 
   /** The rotation, looked at every few seconds: it changes when a host marks a song sung. */
   let rotation = $state<Rotation | null>(null);
+  /**
+   * §122: the look behind the words, asked for as often: it is picked in the
+   * Singers panel, in another window. The catalogue is asked again only when
+   * the chosen name is not in it.
+   */
+  let catalogue: Look[] = [];
+  let shown = $state<Look | null>(null);
   $effect(() => {
     let alive = true;
     const look = async () => {
@@ -116,6 +146,14 @@
           rotation = await karaokeRotation();
         } catch {
           // A screen for singers says nothing rather than an error.
+        }
+        try {
+          const name = (await lookChosen()).singers;
+          if (name && !catalogue.some((l) => l.name === name)) catalogue = await looksCatalogue();
+          const found = name ? (catalogue.find((l) => l.name === name) ?? null) : null;
+          if (found?.name !== shown?.name) shown = found;
+        } catch {
+          // No look: K1's background alone, as before there were looks.
         }
         await new Promise((r) => setTimeout(r, 3_000));
       }
@@ -156,6 +194,16 @@
     {/each}
     {#if backdrop && backdrop.source !== "sound" && !coverFailed}
       <img class="cover" src={artUrl(backdrop.track)} alt="" onerror={() => (coverFailed = true)} />
+    {/if}
+    {#if shown}
+      <Visuals
+        look={shown}
+        {decks}
+        {crossfader}
+        {audio}
+        voices={(vocals?.strips ?? []).map((s) => s.level)}
+        shades={backdrop?.shades ?? []}
+      />
     {/if}
   </div>
 
