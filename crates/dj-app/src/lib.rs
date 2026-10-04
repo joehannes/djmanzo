@@ -111,6 +111,7 @@ pub mod widgets;
 pub mod wordtimes;
 pub mod workers;
 pub mod world;
+pub mod youtube;
 
 pub use host::{AudioHost, HostError};
 pub use snapshot::{Snapshot, SnapshotPump};
@@ -434,6 +435,26 @@ pub fn run() {
                     crate::obs::connect(),
                     crate::obs::Timing::default(),
                 );
+                // §119: YouTube's live chat, into this run's reactions — each
+                // once, however often YouTube's pages repeat it or djmanzo is
+                // restarted during a broadcast.
+                let config = dir.clone();
+                let session = state.session_id();
+                let sink: crate::youtube::Sink = std::sync::Arc::new(move |said| {
+                    crate::crowd::append_new(&config, &session, said).unwrap_or_else(|error| {
+                        tracing::warn!(%error, "YouTube's chat was not kept");
+                        0
+                    })
+                });
+                state.youtube().start(
+                    Some(&dir),
+                    Some(std::sync::Arc::clone(state.secrets())),
+                    std::sync::Arc::new(crate::youtube::Http::new(
+                        crate::youtube::Endpoints::from_env(),
+                    )),
+                    sink,
+                    crate::youtube::Timing::default(),
+                );
                 // §119: what the crowd said that the rules could not place,
                 // read by the DJ's provider a batch at a time. A thread of
                 // its own, never near the audio; the asking is async and
@@ -606,6 +627,11 @@ pub fn run() {
             commands::obs_moments_set,
             commands::crowd_read_now,
             commands::crowd_compare,
+            commands::youtube_status,
+            commands::youtube_settings,
+            commands::youtube_settings_set,
+            commands::youtube_sign_in,
+            commands::youtube_sign_out,
             commands::obs_stream,
             commands::obs_scene,
             commands::attach_panel,

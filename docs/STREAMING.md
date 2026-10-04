@@ -122,6 +122,53 @@ own broadcast (`liveBroadcasts.list` for the active one, then
 crowd as it arrives. Until a client id is set, the YouTube row says what to
 register and the log route stays.
 
+*Built 4 October* (`dj_app::youtube`, Settings → *YouTube live chat*). The
+DJ's browser is sent to Google's sign-in with PKCE (`S256`) and a random
+`state`; it comes back to a loopback address only djmanzo is listening on,
+for at most five minutes; the code is traded with the verifier, and the
+refresh token goes to the keychain (`SecretKind::YouTubeSignIn`). A thread
+of its own finds the live broadcast (`liveBroadcasts.list`,
+`broadcastStatus=active`) and reads its chat (`liveChatMessages.list`), page
+after page with `pageToken`, at YouTube's `pollingIntervalMillis` but never
+more often than every ten seconds. Text, Super Chats and Super Stickers
+become reactions of the night with their author and YouTube's own
+timestamp; the rest (new members, polls, deletions) is left; each message
+is kept once, across pages and restarts. A chat that ends sends it looking
+for the next broadcast; a sign-in Google no longer accepts is forgotten and
+the settings say to sign in again; a spent quota rests ten minutes.
+`liveChatMessages.streamList`, which `RESEARCH.md` names as the way round
+the quota, is not used: its documentation does not give an HTTP form that
+could be built and checked here without a Google account, and the polled
+`list` is documented to the field.
+
+### What the owner registers
+
+1. **A Google Cloud project** for djmanzo, at console.cloud.google.com.
+2. **APIs & Services → Library → YouTube Data API v3 → Enable.**
+3. **OAuth consent screen** (*Google Auth Platform*): user type
+   *External*; the app's name, a support e-mail, the home page and privacy
+   policy addresses; the one scope
+   `https://www.googleapis.com/auth/youtube.readonly`. While the app is in
+   *Testing*, only the Google accounts listed as test users can sign in
+   (up to 100), and their sign-ins lapse after seven days.
+4. **Credentials → Create credentials → OAuth client ID → Desktop app.**
+   Its client id goes in djmanzo's settings (and, if Google's token address
+   asks for it, its secret, which Google says a desktop app cannot keep and
+   so is not one). To ship it inside djmanzo instead of having each DJ paste
+   it, it can be made the default in `youtube::Settings` — ask, and it will
+   be.
+5. **Verification.** `youtube.readonly` is a *sensitive* scope: before
+   strangers can sign in without a warning screen, Google reviews the app —
+   a privacy policy on the app's domain, the domain verified in Search
+   Console, a short video of the sign-in and of what the scope is used for.
+   It takes days to weeks.
+6. **Quota.** A project has 10,000 units a day across everyone signing in
+   with its client id. Finding the broadcast costs 1 and each page of chat
+   costs 1, and djmanzo reads a page at most every ten seconds: a
+   three-hour set is about 1,080 units, so about nine such sets a day per
+   project. More needs YouTube's quota extension form (an audit of the
+   app). A DJ can always paste a client of their own, with its own quota.
+
 ## 5. The computer's webcam, inside djmanzo
 
 A panel showing the camera, which OBS can capture as a window; the webview's

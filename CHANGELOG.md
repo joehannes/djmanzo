@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **YouTube's live chat, as it arrives (§119).** Settings → *YouTube live
+  chat*: give djmanzo a Google client id, sign in with Google in your own
+  browser, and while your broadcast is live its chat comes into the Crowd
+  panel with every other reaction, placed on the music it was about. Read
+  only: djmanzo cannot post, delete or moderate anything; the sign-in is kept
+  in the system keychain.
+
 - **A night on one line, and nights side by side (§119).** The Crowd panel
   draws a night as the room heard it — each record, its drops, breakdowns
   and the voice coming in, every reaction where it landed, and how busy each

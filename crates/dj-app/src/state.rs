@@ -304,6 +304,8 @@ pub struct AppState {
     interface_density: Mutex<String>,
     /// §119: the link to OBS.
     obs: crate::obs::Link,
+    /// §119: YouTube's live chat, read into the crowd.
+    youtube: crate::youtube::Link,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -596,6 +598,7 @@ impl AppState {
             on_mics: Mutex::new(Vec::new()),
             interface_density: Mutex::new("Standard".to_owned()),
             obs: crate::obs::Link::new(),
+            youtube: crate::youtube::Link::new(),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1587,6 +1590,12 @@ impl AppState {
     #[must_use]
     pub fn obs(&self) -> &crate::obs::Link {
         &self.obs
+    }
+
+    /// §119: YouTube's live chat, read into the crowd.
+    #[must_use]
+    pub fn youtube(&self) -> &crate::youtube::Link {
+        &self.youtube
     }
 
     /// K3: who is on each singers' microphone, strip by strip — `None` for

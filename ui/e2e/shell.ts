@@ -758,6 +758,8 @@ export const ANSWERS: Record<string, unknown> = {
     moments: { base: "", drop: "", singer: "", end: "", hold: 8 },
   },
   obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
+  youtube_settings: { on: false, client_id: "", client_secret: "" },
+  youtube_status: { on: false, client: false, signed_in: false, reading: null, read: 0, note: null },
   leader_tree: leaderTree,
   boards: boardList,
   // §123: the questions a guest is asked, in Rust's words.
@@ -2377,6 +2379,25 @@ export async function openShell(
           if (cmd === "obs_stream" || cmd === "obs_scene") {
             ((win.__obsAsked ??= []) as unknown[]).push({ cmd, ...args });
             return Promise.resolve(null);
+          }
+          // §119: YouTube's live chat, held the way Rust holds it -- what
+          // signing in gives is never shown -- and every ask recorded. A test
+          // sets `__youtubeStatus` for what the reading is doing.
+          if (cmd.startsWith("youtube_")) {
+            const kept = (win.__youtube ??= structuredClone(answers.youtube_settings)) as Record<string, unknown>;
+            const status = (win.__youtubeStatus ??= structuredClone(answers.youtube_status)) as Record<string, unknown>;
+            ((win.__youtubeAsked ??= []) as unknown[]).push({ cmd, ...args });
+            if (cmd === "youtube_settings") return Promise.resolve(structuredClone(kept));
+            if (cmd === "youtube_settings_set") {
+              Object.assign(kept, { on: args.on, client_id: args.clientId, client_secret: args.clientSecret });
+              Object.assign(status, { on: args.on, client: args.clientId !== "" });
+            }
+            if (cmd === "youtube_sign_in") {
+              if (typeof win.__youtubeSignInFails === "string") return Promise.reject(win.__youtubeSignInFails);
+              status.signed_in = true;
+            }
+            if (cmd === "youtube_sign_out") status.signed_in = false;
+            return Promise.resolve(structuredClone(status));
           }
           // The keyboard's switch, recorded with what it was set to.
           if (cmd === "set_keyboard_enabled") {

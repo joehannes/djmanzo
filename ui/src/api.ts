@@ -5951,6 +5951,34 @@ export interface CrowdCompared {
 }
 
 export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_view", { session });
+// -- §119: YouTube's live chat ----------------------------------------------------
+
+/** `youtube::Settings`: the switch and the Google client djmanzo signs in as. */
+export interface YouTubeSettings {
+  on: boolean;
+  client_id: string;
+  client_secret: string;
+}
+
+/** `youtube::Status`: what reading the chat is doing. */
+export interface YouTubeStatus {
+  on: boolean;
+  /** A client id is set. */
+  client: boolean;
+  signed_in: boolean;
+  /** The broadcast whose chat is being read. */
+  reading: string | null;
+  read: number;
+  note: string | null;
+}
+
+export const youtubeSettings = () => invoke<YouTubeSettings>("youtube_settings");
+export const youtubeStatus = () => invoke<YouTubeStatus>("youtube_status");
+export const youtubeSettingsSet = (on: boolean, clientId: string, clientSecret: string) =>
+  invoke<YouTubeStatus>("youtube_settings_set", { on, clientId, clientSecret });
+export const youtubeSignIn = () => invoke<YouTubeStatus>("youtube_sign_in");
+export const youtubeSignOut = () => invoke<YouTubeStatus>("youtube_sign_out");
+
 /** §119: two or more nights side by side. */
 export const crowdCompare = (sessions: string[]) => invoke<CrowdCompared>("crowd_compare", { sessions });
 export const crowdAdd = (text: string, who: string | null, source: CrowdSource) =>

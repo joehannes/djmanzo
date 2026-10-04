@@ -1184,6 +1184,28 @@ pub fn append(config: &Path, session: &str, reactions: &[Reaction]) -> Result<()
     Ok(())
 }
 
+/// Add the reactions not already kept — the same moment, the same name, the
+/// same words — and say how many were new: a source that hands the same
+/// message over twice, or again after a restart, keeps it once.
+///
+/// # Errors
+/// The file system's own sentence.
+pub fn append_new(config: &Path, session: &str, reactions: Vec<Reaction>) -> Result<usize, String> {
+    let kept = load(config, session);
+    let mut fresh: Vec<Reaction> = Vec::new();
+    for reaction in reactions {
+        let same =
+            |k: &Reaction| k.at == reaction.at && k.who == reaction.who && k.text == reaction.text;
+        if !kept.iter().any(same) && !fresh.iter().any(same) {
+            fresh.push(reaction);
+        }
+    }
+    if !fresh.is_empty() {
+        append(config, session, &fresh)?;
+    }
+    Ok(fresh.len())
+}
+
 /// A session's reactions, oldest first. A line that is not a reaction is
 /// skipped rather than losing the night for one bad line.
 #[must_use]
@@ -2158,6 +2180,37 @@ mod tests {
         let waiting = unread(&busy, &[]);
         assert!(due(&waiting, 500), "a full batch goes at once");
         assert!(!due(&waiting[1..], 500));
+    }
+
+    /// **What is handed over twice is kept once** — the same moment, name
+    /// and words, whether already kept or twice in one handing — and a
+    /// different message from the same person at the same second is kept.
+    #[test]
+    fn what_is_handed_over_twice_is_kept_once() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let first = vec![said(1, "hola"), said(2, "this drop 🔥")];
+        assert_eq!(append_new(config, "session-1", first.clone()), Ok(2));
+        let again = vec![
+            said(2, "this drop 🔥"),
+            said(2, "this drop 🔥"),
+            said(2, "and again"),
+            said(3, "hola"),
+        ];
+        assert_eq!(append_new(config, "session-1", again), Ok(2));
+        assert_eq!(
+            load(config, "session-1")
+                .iter()
+                .map(|r| (r.at, r.text.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (1, "hola"),
+                (2, "this drop 🔥"),
+                (2, "and again"),
+                (3, "hola")
+            ]
+        );
+        assert_eq!(append_new(config, "session-1", first), Ok(0));
     }
 
     /// **Kept beside the night, in a folder of its own**, so it is never

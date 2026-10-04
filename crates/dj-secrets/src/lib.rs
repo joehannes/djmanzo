@@ -65,6 +65,9 @@ pub enum SecretKind {
     SoundCloudClientSecret,
     /// §119: the password OBS's WebSocket server asks for.
     ObsPassword,
+    /// §119: what Google gave djmanzo when the DJ signed in to read their
+    /// own YouTube live chat — a refresh token, never typed by anyone.
+    YouTubeSignIn,
 }
 
 impl SecretKind {
@@ -95,6 +98,7 @@ impl SecretKind {
             SecretKind::SoundCloudClientId => "soundcloud.client_id",
             SecretKind::SoundCloudClientSecret => "soundcloud.client_secret",
             SecretKind::ObsPassword => "obs.password",
+            SecretKind::YouTubeSignIn => "youtube.sign-in",
         }
     }
 
@@ -122,6 +126,7 @@ impl SecretKind {
             SecretKind::SoundCloudClientId => "SoundCloud client ID",
             SecretKind::SoundCloudClientSecret => "SoundCloud client secret",
             SecretKind::ObsPassword => "OBS WebSocket password",
+            SecretKind::YouTubeSignIn => "YouTube sign-in",
         }
     }
 
@@ -158,6 +163,9 @@ impl SecretKind {
                 "https://developers.soundcloud.com/"
             }
             SecretKind::ObsPassword => "https://obsproject.com/kb/remote-control-guide",
+            SecretKind::YouTubeSignIn => {
+                "https://developers.google.com/youtube/v3/live/docs/liveChatMessages/list"
+            }
         }
     }
 
@@ -211,6 +219,10 @@ impl SecretKind {
                 "Free, and OBS's own: Tools -> WebSocket Server Settings, in OBS 28 \
                  or later."
             }
+            SecretKind::YouTubeSignIn => {
+                "Free: signing in with Google from djmanzo's settings; reading a \
+                 chat costs the app's YouTube quota, not the DJ's money."
+            }
         }
     }
 
@@ -249,6 +261,7 @@ impl SecretKind {
             SoundCloudClientId,
             SoundCloudClientSecret,
             ObsPassword,
+            YouTubeSignIn,
         ]
     }
 }

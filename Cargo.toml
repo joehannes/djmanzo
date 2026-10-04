@@ -113,6 +113,9 @@ reqwest = { version = "0.12", default-features = false, features = [
 rustfft = "6"
 async-trait = "0.1"
 urlencoding = "2"
+# PKCE and the sign-in's state for YouTube (§119): the operating system's own
+# randomness. Already in the build through `rand`. MIT OR Apache-2.0.
+getrandom = "0.3"
 # §111: album downloads arrive as .zip. Read, and deflate only: no
 # encryption, bzip2, zstd, lzma or xz. MIT. `deflate` is the feature that
 # turns flate2 on, and it compiles the zopfli compressor (Apache-2.0) too,

@@ -271,6 +271,105 @@ pub fn obs_moments_set(
     obs_settings_dto(&next)
 }
 
+/// §119: what reading YouTube's live chat is doing.
+#[tauri::command]
+#[must_use]
+pub fn youtube_status(state: State<'_, AppState>) -> crate::youtube::Status {
+    state.youtube().status()
+}
+
+/// §119: the switch and the Google client, as kept.
+#[tauri::command]
+#[must_use]
+pub fn youtube_settings(state: State<'_, AppState>) -> crate::youtube::Settings {
+    state.youtube().settings()
+}
+
+/// §119: the switch and the Google client djmanzo signs in as.
+#[tauri::command]
+#[must_use]
+pub fn youtube_settings_set(
+    state: State<'_, AppState>,
+    on: bool,
+    client_id: String,
+    client_secret: String,
+) -> crate::youtube::Status {
+    state.youtube().set(crate::youtube::Settings {
+        on,
+        client_id: client_id.trim().to_owned(),
+        client_secret: client_secret.trim().to_owned(),
+    });
+    state.youtube().status()
+}
+
+/// §119: sign in with Google in the DJ's own browser, and keep what it
+/// gives. The browser comes back to a loopback address only this waits on,
+/// for at most five minutes; the code is traded with PKCE's verifier, so a
+/// code seen by anything else is no use to it.
+///
+/// # Errors
+/// No client id, the browser not opening, the DJ declining, the time
+/// running out, or Google refusing.
+#[tauri::command]
+pub async fn youtube_sign_in(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::youtube::Status, String> {
+    use base64::Engine as _;
+    use tauri_plugin_opener::OpenerExt as _;
+    let settings = state.youtube().settings();
+    if settings.client_id.trim().is_empty() {
+        return Err("a Google client id is needed first".to_owned());
+    }
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+    let redirect = format!(
+        "http://127.0.0.1:{}",
+        listener.local_addr().map_err(|e| e.to_string())?.port()
+    );
+    let pkce = crate::youtube::pkce(&crate::youtube::random()?);
+    let sent = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(crate::youtube::random()?);
+    let google = crate::youtube::Http::new(crate::youtube::Endpoints::from_env());
+    let address = crate::youtube::sign_in_address(
+        &google.endpoints,
+        &settings.client_id,
+        &redirect,
+        &pkce.challenge,
+        &sent,
+    );
+    app.opener()
+        .open_url(address, None::<&str>)
+        .map_err(|e| format!("the browser did not open: {e}"))?;
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        crate::youtube::await_callback(&listener, &sent, std::time::Duration::from_secs(300))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let answer = google
+        .token_async(&crate::youtube::code_form(
+            &settings,
+            &code,
+            &pkce.verifier,
+            &redirect,
+        ))
+        .await?;
+    let tokens = crate::youtube::tokens(&answer).map_err(|refused| match refused {
+        crate::youtube::Refused::SignInAgain(said) | crate::youtube::Refused::Other(said) => said,
+    })?;
+    let refresh = tokens
+        .refresh
+        .ok_or_else(|| "Google signed in without a refresh token".to_owned())?;
+    state.youtube().signed_in(&refresh)?;
+    Ok(state.youtube().status())
+}
+
+/// §119: forget the sign-in.
+#[tauri::command]
+#[must_use]
+pub fn youtube_sign_out(state: State<'_, AppState>) -> crate::youtube::Status {
+    state.youtube().sign_out();
+    state.youtube().status()
+}
+
 /// §119: what the link to OBS is doing.
 #[tauri::command]
 #[must_use]

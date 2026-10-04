@@ -12,6 +12,7 @@
   import AiSetup from "./AiSetup.svelte";
   import GoingLive from "./GoingLive.svelte";
   import Obs from "./Obs.svelte";
+  import YouTube from "./YouTube.svelte";
   import Screens from "./Screens.svelte";
   import {
     adaptationLevels,
@@ -1677,6 +1678,15 @@
       streaming — djmanzo talks to it over its own WebSocket server.
     </p>
     <Obs />
+  </div>
+
+  <div class="block" data-settings="youtube">
+    <h3>YouTube live chat</h3>
+    <p class="hint">
+      What people write in your stream's chat, on the music they wrote it about,
+      as it arrives — in the Crowd panel with every other reaction.
+    </p>
+    <YouTube />
   </div>
 
   <div class="block">
