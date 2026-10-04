@@ -204,14 +204,14 @@ test.describe("§121: the controls on a panel's border", () => {
       .toEqual(["browser"]);
     await expect(page.locator(LIBRARY)).toHaveCount(0);
 
-    // The settings have no window of their own yet, so they offer none. (It
-    // was the night, then the key map, until each got one; the night's
-    // button was hidden behind a `count()` that let this half pass with
-    // nothing on screen.)
+    // The settings were the last panel without a window of their own; they
+    // offer one too now. (This half used to show a panel with no window
+    // carrying no button: the night, then the key map, then the settings,
+    // each until it got one.)
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.locator('.surface[data-surface="settings"]');
     await expect(settings).toBeVisible();
-    await expect(settings.getByRole("button", { name: /^Pop .* out$/ })).toHaveCount(0);
+    await expect(settings.getByRole("button", { name: "Pop Settings out" })).toHaveCount(1);
     expect(errorsThrown(page)).toEqual([]);
   });
 

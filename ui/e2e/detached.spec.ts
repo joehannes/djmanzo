@@ -314,3 +314,127 @@ test.describe("§121: the key map and the controllers in windows of their own", 
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §121: the settings, in a window of their own — the last of the panels.
+ * What Rust holds (the toolbars, the knowledge pack, the arrangement's locks
+ * as last written, the logo) Rust tells every window about; what only the
+ * main window can do (store the locks on its arrangement, open a preset's
+ * arrangement, open the welcome) the settings ask it for; and the theme is
+ * followed by every window through the storage they share.
+ */
+test.describe("§121: the settings in a window of their own", () => {
+  type Saved = { name?: string; locked?: string[] };
+  const seen = (page: import("@playwright/test").Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as Asking & { __saved?: Saved[] };
+      return { windowAsked: w.__windowAsked ?? [], asked: w.__asked ?? [], saved: w.__saved ?? [] };
+    });
+  const lock = (page: import("@playwright/test").Page, slug: string) =>
+    page.locator(`.locks .lock-list li[data-lock="${slug}"] input`);
+
+  /**
+   * **A lock pressed in the settings' own window is stored by the main
+   * window**, and the switches show the arrangement as Rust last kept it —
+   * whichever window wrote it.
+   */
+  test("a lock pressed in the settings' own window asks the main window", async ({ page }) => {
+    await openShell(page, "/?panel=settings");
+    await expect(lock(page, "theme")).not.toBeChecked();
+    await lock(page, "theme").check();
+    await expect.poll(async () => (await seen(page)).windowAsked).toEqual(["locks theme"]);
+    await page.evaluate(() =>
+      (window as unknown as Asking).__emitEvent("cockpit-workspace", { name: "Perform", locked: ["density"] }),
+    );
+    await expect(lock(page, "density")).toBeChecked();
+    await expect(lock(page, "theme")).not.toBeChecked();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** **The toolbars and the welcome, from the settings' own window.** */
+  test("the toolbars are Rust's and the welcome is the main window's", async ({ page }) => {
+    await openShell(page, "/?panel=settings");
+    const toolbars = page.getByRole("checkbox", { name: /Show the toolbars above the decks/ });
+    await expect(toolbars).toBeChecked();
+    await toolbars.uncheck();
+    await expect.poll(async () => (await seen(page)).asked).toContain("set_toolbars");
+    await page.evaluate(() =>
+      (window as unknown as Asking).__emitEvent("interface-settings", { toolbars: true, uses: {} }),
+    );
+    await expect(toolbars).toBeChecked();
+    await page.getByRole("button", { name: "Open the welcome" }).click();
+    await expect.poll(async () => (await seen(page)).windowAsked).toEqual(["welcome"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The main window carries out the settings' asks**: the locks stored on
+   * its arrangement — none at all included — a shipped arrangement opened, the
+   * welcome opened.
+   */
+  test("the main window stores the locks, opens an arrangement and the welcome when asked", async ({ page }) => {
+    await openShell(page, "/");
+    const leaf = (run: string) => page.evaluate((r) => (window as unknown as Asking).__emitEvent("leaf", r), run);
+    await leaf("locks theme density");
+    await expect.poll(async () => (await seen(page)).saved.at(-1)?.locked).toEqual(["theme", "density"]);
+    await leaf("locks");
+    await expect.poll(async () => (await seen(page)).saved.at(-1)?.locked).toEqual([]);
+    // Another arrangement than the one open (Perform), so a write of the
+    // open one cannot pass for it.
+    await leaf("setup - Laptop Compact");
+    await expect.poll(async () => (await seen(page)).saved.at(-1)?.name).toBe("Laptop Compact");
+    await leaf("welcome");
+    await expect(page.getByRole("dialog", { name: "Welcome to djmanzo" })).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The main window follows what Rust tells it**: the toolbars switched in
+   * the settings' window, a logo set there.
+   */
+  test("the main window follows the toolbars and the logo changed elsewhere", async ({ page }) => {
+    await openShell(page, "/");
+    // With the toolbars shown the launcher is among them; with them off it
+    // stands alone at the top, the dashboard's way in.
+    const launcher = page.getByRole("button", { name: /^Launcher/ });
+    await expect(launcher).toHaveCount(0);
+    await page.evaluate(() =>
+      (window as unknown as Asking).__emitEvent("interface-settings", { toolbars: false, uses: {} }),
+    );
+    await expect(launcher).toBeVisible();
+    const logos = async () => (await seen(page)).asked.filter((cmd) => cmd === "has_brand_logo").length;
+    const before = await logos();
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("brand-logo", null));
+    await expect.poll(logos).toBeGreaterThan(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The Next rail in its own window ranks by the pack Rust holds**, and asks
+   * again when it changes — in its own window it was never told.
+   */
+  test("the Next rail in its own window follows the knowledge pack", async ({ page }) => {
+    await openShell(page, "/?panel=next");
+    const asks = async () => (await seen(page)).asked.filter((cmd) => cmd === "profile_tonight").length;
+    await expect.poll(asks).toBeGreaterThan(0);
+    const before = await asks();
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("knowledge-pack", "latin"));
+    await expect.poll(asks).toBeGreaterThan(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A theme chosen in one window is worn in the other.** The windows share
+   * their storage, and a write in one is an event in every other — two pages
+   * of one browser context are the same arrangement.
+   */
+  test("a theme chosen in one window is worn in every other", async ({ page, context }) => {
+    await openShell(page, "/");
+    const other = await context.newPage();
+    await openShell(other, "/?panel=settings");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await other.evaluate(() => localStorage.setItem("djmanzo.theme", "light"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

@@ -34,6 +34,7 @@
   import RoomSense from "./RoomSense.svelte";
   import Sampler from "./Sampler.svelte";
   import SessionLog from "./SessionLog.svelte";
+  import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
   import SideView from "./SideView.svelte";
   import SingerScreen from "./SingerScreen.svelte";
@@ -41,18 +42,26 @@
   import Watershed from "./Watershed.svelte";
   import Waveform from "./Waveform.svelte";
   import {
+    activeDevice,
     attachPanel,
+    chosenPack,
+    cockpitWorkspace,
     controlMappings,
     controlStatus,
     dispatch,
     getSnapshot,
     interfaceDensity,
+    interfaceSettings,
     liveEvent,
+    onCockpitWorkspace,
     onInterfaceDensity,
+    onInterfaceSettings,
     onKeyboardEnabled,
+    onKnowledgePack,
     onLiveEvent,
     onSnapshot,
     setLiveEvent,
+    setToolbars,
     windowAsk,
     type MappingInfo,
     type Snapshot,
@@ -200,6 +209,55 @@
       .catch((e) => (error = String(e)));
   });
 
+  /*
+    The settings. What Rust holds — the toolbars, the knowledge pack, the
+    arrangement's locks as last written — is read here and followed, since
+    Rust tells every window when it changes. What only the main window can
+    do — store the locks on its arrangement, open a preset's arrangement and
+    theme, open the welcome — is asked of it. The theme itself is followed
+    by every window through its own storage (`theme.svelte`).
+  */
+  let locked = $state<string[]>([]);
+  let toolbars = $state(false);
+  $effect(() => {
+    if (panel !== "settings") return;
+    void cockpitWorkspace()
+      .then((resolved) => (locked = [...resolved.workspace.locked]))
+      .catch(() => {});
+    void interfaceSettings()
+      .then((settings) => (toolbars = settings.toolbars))
+      .catch(() => {});
+    const unwatchWorkspace = onCockpitWorkspace((workspace) => (locked = [...workspace.locked]));
+    const unwatchSettings = onInterfaceSettings((settings) => (toolbars = settings.toolbars));
+    return () => {
+      void unwatchWorkspace.then((fn) => fn());
+      void unwatchSettings.then((fn) => fn());
+    };
+  });
+
+  /** The open device's width, read again whenever the engine comes back. */
+  let channels = $state<number | null>(null);
+  $effect(() => {
+    if (panel !== "settings" || !ready) return;
+    void snapshot?.master.sample_rate;
+    void activeDevice()
+      .then((device) => (channels = device?.channels ?? null))
+      .catch(() => {});
+  });
+
+  /** The knowledge pack the Next rail ranks by, as Rust holds it. */
+  let pack = $state("");
+  $effect(() => {
+    if (panel !== "next") return;
+    void chosenPack()
+      .then((held) => (pack = held))
+      .catch(() => {});
+    const unlisten = onKnowledgePack((held) => (pack = held));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
+
   /** The decks with a river in the world, in order — as `App` picks them. */
   const rivers = $derived(
     world.entities
@@ -258,6 +316,23 @@
       <Controllers {mappings} />
       <MappingEditor {mappings} />
     </div>
+  {:else if panel === "settings"}
+    <Settings
+      onLogoChange={() => {}}
+      deviceChannels={channels}
+      {locked}
+      onLock={(next) => {
+        locked = next;
+        ask(`locks ${next.join(" ")}`.trim());
+      }}
+      onSetUp={(workspace, theme) => ask(`setup ${theme || "-"} ${workspace}`)}
+      onWelcome={() => ask("welcome")}
+      {toolbars}
+      onToolbars={(on) =>
+        void setToolbars(on)
+          .then((settings) => (toolbars = settings.toolbars))
+          .catch((e) => (error = String(e)))}
+    />
   {:else if panel === "requests"}
     <!-- What a guest typed can run long; the collection's search needs the start of it. -->
     <Requests enabled={ready} onFind={(text) => ask(`find ${text.trim().slice(0, 200)}`)} />
@@ -302,7 +377,7 @@
     {:else if panel === "prepare"}
       <SideView enabled={ready} {deckCount} decks={snapshot.decks} />
     {:else if panel === "next"}
-      <Next enabled={ready} {deckCount} decks={snapshot.decks} />
+      <Next enabled={ready} {deckCount} decks={snapshot.decks} {pack} />
     {:else if panel === "pair"}
       <Pair enabled={ready} {deckCount} decks={snapshot.decks} />
     {:else if panel === "booth"}

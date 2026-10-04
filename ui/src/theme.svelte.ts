@@ -141,6 +141,23 @@ class Theme {
       this.#systemLight = event.matches;
       this.#apply();
     });
+    // §121: a panel in a window of its own wears what the main window wears.
+    // The windows share this storage, and a write in one is an event in every
+    // other, so a theme chosen in either — the settings may be popped out —
+    // is worn by both.
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", (event) => {
+        if (event.key === STORAGE_KEY) {
+          this.preference = load();
+          this.#apply();
+        } else if (event.key === PKG_STORAGE_KEY) {
+          this.#pkgId = loadPackage();
+          this.#apply();
+        } else if (event.key === PARTS_STORAGE_KEY) {
+          this.#parts = loadParts();
+        }
+      });
+    }
     this.#apply();
   }
 

@@ -1718,6 +1718,9 @@ export const resolveSourceTrack = (track: SourceTrack) =>
 export const setBrandLogo = (path: string) => invoke<void>("set_brand_logo", { path });
 export const clearBrandLogo = () => invoke<void>("clear_brand_logo");
 export const hasBrandLogo = () => invoke<boolean>("has_brand_logo");
+/** §121: the logo was set or cleared, in whichever window. */
+export const onBrandLogo = (handler: () => void): Promise<UnlistenFn> =>
+  listen<null>("brand-logo", () => handler());
 
 /**
  * URL for the user's logo.
@@ -2016,6 +2019,9 @@ export const knowledgePacks = () => invoke<KnowledgePack[]>("knowledge_packs");
 
 /** The pack the DJ has chosen, or empty for all of djmanzo's knowledge. */
 export const chosenPack = () => invoke<string>("chosen_pack");
+/** §121: the knowledge pack Rust holds changed; the payload is the one it holds. */
+export const onKnowledgePack = (handler: (pack: string) => void): Promise<UnlistenFn> =>
+  listen<string>("knowledge-pack", (event) => handler(event.payload));
 
 /**
  * Choose a pack, and take back what will actually be used.
@@ -2202,6 +2208,9 @@ export interface Dashboard {
 
 export const interfaceSettings = () => invoke<InterfaceSettings>("interface_settings");
 export const setToolbars = (on: boolean) => invoke<InterfaceSettings>("set_toolbars", { on });
+/** §121: the interface settings changed, in whichever window. */
+export const onInterfaceSettings = (handler: (settings: InterfaceSettings) => void): Promise<UnlistenFn> =>
+  listen<InterfaceSettings>("interface-settings", (event) => handler(event.payload));
 /** The dashboard for the activity the DJ is in (`current`, empty for none). */
 export const dashboard = (current: string) => invoke<Dashboard>("dashboard", { current });
 
@@ -3727,6 +3736,9 @@ export interface LockOption {
  */
 export const cockpitLocks = () => invoke<LockOption[]>("cockpit_locks");
 export const cockpitWorkspace = () => invoke<ResolvedWorkspace>("cockpit_workspace");
+/** §121: the arrangement was written; the payload is the one now kept. */
+export const onCockpitWorkspace = (handler: (workspace: Workspace) => void): Promise<UnlistenFn> =>
+  listen<Workspace>("cockpit-workspace", (event) => handler(event.payload));
 /**
  * Store an arrangement and take back what was kept.
  *

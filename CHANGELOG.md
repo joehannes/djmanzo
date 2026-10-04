@@ -35,6 +35,12 @@ Versioning follows semver, with one project-specific convention:
   in either window switches the main window's keys.
 - **The keyboard switch in the Controllers panel works.** *Turn it off while
   typing* changed a setting nothing read: the keys went on playing decks.
+- **The settings pop out (§121): every panel can now have a window of its
+  own.** A theme chosen in any window is worn by all of them, the panels
+  already popped out included; the toolbars, the locks and the welcome
+  reach the main window from the settings' own window.
+- **The Next rail ranks by your knowledge pack from the start**, not only
+  once the settings had been opened; popped out, it was never given it.
 
 ## v0.36.0 — The singers' microphones, finished
 

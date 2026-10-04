@@ -48,6 +48,10 @@
     leaderTree,
     uiDo,
     interfaceSettings,
+    onInterfaceSettings,
+    onKnowledgePack,
+    onBrandLogo,
+    chosenPack as heldPack,
     setToolbars,
     dashboard as fetchDashboard,
     boards as fetchBoards,
@@ -455,6 +459,17 @@
    * rail that has already asked.
    */
   let chosenPack = $state("");
+  // What Rust holds from the start, rather than only once the settings have
+  // been opened and said so; and whatever it is changed to, in any window.
+  $effect(() => {
+    void heldPack()
+      .then((pack) => (chosenPack = pack))
+      .catch(() => {});
+    const unlisten = onKnowledgePack((pack) => (chosenPack = pack));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
 
   /**
    * §54's half of a functional preset that the shell owns.
@@ -1883,6 +1898,11 @@
     void interfaceSettings()
       .then((settings) => (chrome = settings))
       .catch(() => {});
+    // §121: the toolbars switched in the settings' own window.
+    const unlisten = onInterfaceSettings((settings) => (chrome = settings));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   });
 
   async function showToolbars(on: boolean) {
@@ -1927,9 +1947,10 @@
 
   /** Carry out one leaf of the tree. */
   async function runLeaf(run: string) {
+    // A line of one word is all kind: `welcome`, `locks` with none on.
     const space = run.indexOf(" ");
-    const kind = run.slice(0, space);
-    const rest = run.slice(space + 1);
+    const kind = space < 0 ? run : run.slice(0, space);
+    const rest = space < 0 ? "" : run.slice(space + 1);
     if (kind === "action") {
       await send(rest);
     } else if (kind === "surface") {
@@ -1966,6 +1987,17 @@
     } else if (kind === "keys") {
       // A key changed in the key map's own window: read the tree again.
       leaderVersion += 1;
+    } else if (kind === "locks") {
+      // The settings' own window: §79's locks are fields of the arrangement,
+      // which is this window's to write.
+      await saveLocks(rest.split(" ").filter(Boolean));
+    } else if (kind === "setup") {
+      // A preset's arrangement and theme: `setup <theme or -> <arrangement>`.
+      const at = rest.indexOf(" ");
+      const pack = rest.slice(0, at);
+      setUpForTonight(rest.slice(at + 1), pack === "-" ? "" : pack);
+    } else if (kind === "welcome") {
+      await openWelcome();
     }
   }
 
@@ -2517,6 +2549,14 @@
     logo = await hasBrandLogo();
     logoVersion += 1;
   }
+
+  // §121: a logo set or cleared in the settings' own window.
+  $effect(() => {
+    const unlisten = onBrandLogo(() => void refreshLogo());
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
 
   /**
    * The identity mark is also its control. This keeps a booth-critical action

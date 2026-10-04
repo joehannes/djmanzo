@@ -132,9 +132,12 @@ pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
 /// §121: what a panel in a window of its own may ask of the main window,
 /// checked — the few things only the main window can do: wear a density band
 /// (`density <slug>`), search its collection (`find <words>`), go to an
-/// activity (`switch activity <name>`), and read the keys again after one
-/// was changed (`keys changed`). Anything else is refused, so a window of its
-/// own is not a second way to run whatever the main window can.
+/// activity (`switch activity <name>`), read the keys again after one was
+/// changed (`keys changed`), and, for the settings, store §79's locks on its
+/// arrangement (`locks <lock>...`), open a preset's arrangement and theme
+/// (`setup <theme or -> <arrangement>`) and open the welcome (`welcome`).
+/// Anything else is refused, so a window of its own is not a second way to
+/// run whatever the main window can.
 ///
 /// # Errors
 /// A line that is none of those.
@@ -151,6 +154,23 @@ pub fn window_ask_checked(run: &str) -> Result<&str, String> {
                     .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         }),
         "keys" => rest == "changed",
+        // The settings: §79's locks, every one named; a preset's arrangement
+        // and theme (`setup <theme or -> <arrangement>`), the arrangement one
+        // djmanzo ships; the welcome again.
+        "locks" => rest.split_whitespace().all(|name| {
+            crate::cockpit::Lock::ALL
+                .iter()
+                .any(|lock| lock.name() == name)
+        }),
+        "setup" => rest.split_once(' ').is_some_and(|(theme, name)| {
+            (theme == "-"
+                || (!theme.is_empty()
+                    && theme
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')))
+                && crate::cockpit::workspaces().iter().any(|w| w.name == name)
+        }),
+        "welcome" => rest.is_empty(),
         _ => false,
     };
     if ok {
@@ -4793,6 +4813,31 @@ mod tests {
             assert_eq!(window_ask_checked(allowed), Ok(allowed), "{allowed:?}");
         }
         assert_eq!(window_ask_checked("  find x  "), Ok("find x"));
+        // The settings' three, with an arrangement djmanzo ships.
+        let shipped = crate::cockpit::workspaces()[0].name.clone();
+        for allowed in [
+            "locks".to_owned(),
+            "locks theme density".to_owned(),
+            format!("setup - {shipped}"),
+            format!("setup pkg-latin {shipped}"),
+            "welcome".to_owned(),
+        ] {
+            assert!(window_ask_checked(&allowed).is_ok(), "{allowed:?} refused");
+        }
+        for refused in [
+            "locks everything".to_owned(),
+            "locks theme ../x".to_owned(),
+            "setup".to_owned(),
+            format!("setup {shipped}"),
+            "setup - Somebody Else's Arrangement".to_owned(),
+            format!("setup Pkg_Latin {shipped}"),
+            "welcome back".to_owned(),
+        ] {
+            assert!(
+                window_ask_checked(&refused).is_err(),
+                "{refused:?} let through"
+            );
+        }
         for refused in [
             // What the main window runs from a key, which a window of its own
             // has its own road to or no business asking for.
@@ -4821,7 +4866,9 @@ mod tests {
         }
         // Every kind it lets through is one the main window carries out.
         let app = include_str!("../../../ui/src/App.svelte");
-        for kind in ["density", "find", "switch", "keys"] {
+        for kind in [
+            "density", "find", "switch", "keys", "locks", "setup", "welcome",
+        ] {
             assert!(
                 app.contains(&format!("kind === \"{kind}\"")),
                 "App.svelte's runLeaf does nothing with {kind:?}"
@@ -10774,10 +10821,18 @@ pub fn interface_settings(state: State<'_, AppState>) -> crate::dashboard::Inter
 /// §117: show the toolbars, or keep the space for the activity.
 #[tauri::command]
 #[must_use]
-pub fn set_toolbars(state: State<'_, AppState>, on: bool) -> crate::dashboard::Interface {
+pub fn set_toolbars(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    on: bool,
+) -> crate::dashboard::Interface {
+    use tauri::Emitter;
     let mut interface = state.interface();
     interface.toolbars = on;
     state.set_interface(&interface);
+    // §121: the main window draws its header from this, and the settings may
+    // be in a window of their own.
+    let _ = app.emit("interface-settings", &interface);
     interface
 }
 
@@ -13888,11 +13943,16 @@ pub fn cockpit_workspace(state: State<'_, AppState>) -> crate::cockpit::Resolved
 #[tauri::command]
 #[must_use]
 pub fn set_cockpit_workspace(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     workspace: crate::cockpit::Workspace,
 ) -> crate::cockpit::Resolved {
+    use tauri::Emitter;
     let resolved = crate::cockpit::resolve(&workspace);
     state.set_workspace(&resolved.workspace);
+    // §121: the arrangement is the main window's to write; the settings in a
+    // window of their own draw §79's locks from it, so they are told.
+    let _ = app.emit("cockpit-workspace", &resolved.workspace);
     resolved
 }
 
@@ -16118,13 +16178,16 @@ pub fn chosen_pack(state: State<'_, AppState>) -> String {
 /// the coach teaching inside no pack is what that means.
 #[tauri::command]
 #[must_use]
-pub fn set_chosen_pack(state: State<'_, AppState>, pack: String) -> String {
+pub fn set_chosen_pack(app: tauri::AppHandle, state: State<'_, AppState>, pack: String) -> String {
+    use tauri::Emitter;
     // A slug this build does not have is dropped rather than stored, the same
     // round trip every other picker here makes.
     let kept = dj_assistant::pack::pack(&pack)
         .map(|p| p.id.to_owned())
         .unwrap_or_default();
     state.set_chosen_pack(&kept);
+    // §121: the Next rail ranks by it, in whichever window it is drawn.
+    let _ = app.emit("knowledge-pack", &kept);
     kept
 }
 

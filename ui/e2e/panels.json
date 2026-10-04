@@ -154,5 +154,11 @@
     "title": "djmanzo - Controllers",
     "detached": false,
     "surface": "controllers"
+  },
+  {
+    "id": "settings",
+    "title": "djmanzo - Settings",
+    "detached": false,
+    "surface": "settings"
   }
 ]

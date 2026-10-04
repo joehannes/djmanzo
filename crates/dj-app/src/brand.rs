@@ -132,12 +132,23 @@ fn config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// Replace the wordmark with the user's own image.
 #[tauri::command]
 pub fn set_brand_logo(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    set_logo(&config_dir(&app)?, Path::new(&path)).map_err(|e| e.to_string())
+    set_logo(&config_dir(&app)?, Path::new(&path)).map_err(|e| e.to_string())?;
+    tell_logo(&app);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn clear_brand_logo(app: tauri::AppHandle) -> Result<(), String> {
-    clear_logo(&config_dir(&app)?).map_err(|e| e.to_string())
+    clear_logo(&config_dir(&app)?).map_err(|e| e.to_string())?;
+    tell_logo(&app);
+    Ok(())
+}
+
+/// §121: the logo changed — the main window draws it, and the settings that
+/// changed it may be in a window of their own.
+fn tell_logo(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    let _ = app.emit("brand-logo", ());
 }
 
 /// Whether a logo is set, so the header knows whether to draw one.

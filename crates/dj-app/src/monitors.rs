@@ -54,10 +54,10 @@ pub enum Panel {
     /// §107: the words, for the singers — a screen facing the microphone.
     Singers,
     // §121: "pop out" on every panel. Most are drawn from the snapshot and
-    // their own commands alone; the night, requests, the event and the key
-    // map need something of the main window's — its density, its collection
-    // to search, its activity, its keys — and ask it through Rust
-    // (`commands::window_ask`). The settings stay in it, for now.
+    // their own commands alone; the night, requests, the event, the key map
+    // and the settings need something of the main window's — its density,
+    // its collection to search, its activity, its keys, its arrangement —
+    // and ask it through Rust (`commands::window_ask`).
     /// §61's preparation view.
     Prepare,
     /// What to play next.
@@ -101,10 +101,13 @@ pub enum Panel {
     Keys,
     /// The controllers: what is connected, and the mapping editor.
     Controllers,
+    /// The settings — whose locks, presets and welcome are the main
+    /// window's to carry out.
+    Settings,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 26] = [
+    pub const ALL: [Panel; 27] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -131,6 +134,7 @@ impl Panel {
         Panel::Event,
         Panel::Keys,
         Panel::Controllers,
+        Panel::Settings,
     ];
 
     /// The main window's surface this panel is (`cockpit`'s name for it),
@@ -181,6 +185,7 @@ impl Panel {
             Panel::Event => "event",
             Panel::Keys => "keys",
             Panel::Controllers => "controllers",
+            Panel::Settings => "settings",
         }
     }
 
@@ -222,6 +227,7 @@ impl Panel {
             Panel::Event => "djmanzo - The event",
             Panel::Keys => "djmanzo - Keys",
             Panel::Controllers => "djmanzo - Controllers",
+            Panel::Settings => "djmanzo - Settings",
         }
     }
 
@@ -249,6 +255,7 @@ impl Panel {
             Panel::Event => (720.0, 820.0),
             Panel::Keys => (640.0, 780.0),
             Panel::Controllers => (760.0, 820.0),
+            Panel::Settings => (760.0, 860.0),
         }
     }
 
