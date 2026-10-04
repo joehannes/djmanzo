@@ -92,6 +92,19 @@ on the measures the goals already use (warmth, busiest minute, moments,
 questions about the record, requests, cold reactions), and the records two
 nights share with how each night met them.
 
+*Built 4 October* (`crowd::timeline`, `crowd::compare`, in the Crowd panel).
+The line is the records as the room heard them, measured where the night was
+(`crowd::Hearing`), by arrival for a night kept before that; each stretch
+ends at the record's own end when the collection knows its length. Drops,
+breakdowns and the voice are drawn where the room heard them, the reactions
+where what they were about was heard (less the stream's delay), and the
+reactions per minute beneath. The cursor follows the pointer, or the arrows
+(ten seconds) and Page Up/Down (a minute), and names the moment: the clock,
+the record, how far in, the part just heard, how busy that minute was.
+**The session log's actions are not on it:** the log lives in memory for
+the run and is not kept per night, so a past night has none to show; that
+waits for the log to be kept. Compare takes any two or more kept nights.
+
 ## 4. YouTube's live chat, as it arrives
 
 *Through a verified djmanzo Google app.*

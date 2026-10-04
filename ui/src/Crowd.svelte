@@ -18,12 +18,15 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     crowdAdd,
+    crowdCompare,
     crowdImport,
     crowdReadNow,
     crowdSettingsSave,
     crowdView,
     formatTime,
     type CrowdAbout,
+    type CrowdCompared,
+    type CrowdMet,
     type CrowdGoal,
     type CrowdMeasure,
     type CrowdPart,
@@ -222,7 +225,123 @@
   };
 
   const feed = $derived((view?.placed ?? []).slice(-40).reverse());
-  const tallest = $derived(Math.max(1, ...(view?.summary.pace ?? [0])));
+
+  // -- nights side by side ---------------------------------------------------
+  //
+  // Which nights and what is said of them are Rust's (`crowd::compare`): the
+  // goals' measures, and the records they share with how each met them.
+
+  let picked = $state<string[]>([]);
+  let compared = $state<CrowdCompared | null>(null);
+
+  /** The night shown and the one before it, until the DJ picks otherwise. */
+  $effect(() => {
+    if (!view || picked.length > 0) return;
+    const at = view.sessions.indexOf(view.session);
+    const other = view.sessions[at + 1] ?? view.sessions[at - 1];
+    if (other) picked = [view.session, other];
+  });
+
+  function pick(session: string, on: boolean) {
+    picked = on ? [...picked, session] : picked.filter((s) => s !== session);
+    compared = null;
+  }
+
+  async function compareNow() {
+    try {
+      // In the order the list has them, newest first.
+      compared = await crowdCompare((view?.sessions ?? []).filter((s) => picked.includes(s)));
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  const nightName = (s: string) => (s === view?.sessions[0] ? "This night" : nightOf(s));
+
+  function metSays(met: CrowdMet): string {
+    if (!met.played) return "not played";
+    if (met.reactions === 0) return "played, nothing said";
+    const said = [`${met.reactions}`, `${met.up} warm`];
+    if (met.down > 0) said.push(`${met.down} cold`);
+    if (met.moments > 0) said.push(met.moments === 1 ? "1 moment" : `${met.moments} moments`);
+    return said.join(" · ");
+  }
+
+  // -- the night on one line ------------------------------------------------
+  //
+  // The line is Rust's (`crowd::timeline`): what the room heard and when,
+  // the parts of it, when each reaction was about. Here it is drawn, and a
+  // cursor names the moment under it -- the clock, the record, how far in,
+  // the part, how busy that minute was. Moved by the pointer, or by the
+  // arrows (ten seconds) and Page Up/Down (a minute), as a slider is.
+
+  const line = $derived(view?.timeline ?? null);
+  const tallestMinute = $derived(Math.max(1, ...(line?.per_minute ?? [0])));
+  let cursor = $state<number | null>(null);
+
+  /** The cursor kept on the line it is on: a night changed under it starts it again. */
+  $effect(() => {
+    if (!line) {
+      cursor = null;
+    } else if (cursor !== null && (cursor < line.from || cursor > line.to)) {
+      cursor = line.from;
+    }
+  });
+
+  const LANDMARK: Record<CrowdPart, string> = {
+    drop: "the drop",
+    breakdown: "the breakdown",
+    voice: "the voice coming in",
+    record: "",
+  };
+
+  function clockOf(t: number): string {
+    return new Date(t * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  /** The moment at `t`, in words. */
+  function momentAt(t: number): string {
+    if (!line || !view) return "";
+    const said: string[] = [clockOf(t)];
+    const span = line.spans.find((s) => s.from <= t && t < s.to);
+    if (span) {
+      const record = view.played[span.record];
+      said.push(record?.title || "a record");
+      said.push(`${formatTime(span.into + (t - span.from))} in`);
+      // The part just heard, as a reaction to the moment would be placed.
+      const part = [...line.landmarks].reverse().find((l) => l.record === span.record && l.at <= t && t - l.at <= 20);
+      if (part) said.push(LANDMARK[part.part]);
+    } else {
+      said.push("between records");
+    }
+    const minute = Math.floor((t - line.from) / 60);
+    const busy = line.per_minute[minute] ?? 0;
+    said.push(busy === 1 ? "1 reaction that minute" : `${busy} reactions that minute`);
+    return said.join(" · ");
+  }
+
+  const across = (t: number) => (line ? ((t - line.from) / Math.max(1, line.to - line.from)) * 100 : 0);
+
+  function point(e: PointerEvent) {
+    if (!line) return;
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const share = Math.min(1, Math.max(0, (e.clientX - box.left) / Math.max(1, box.width)));
+    cursor = Math.round(line.from + share * (line.to - line.from));
+  }
+
+  function step(e: KeyboardEvent) {
+    if (!line) return;
+    const by: Record<string, number> = { ArrowRight: 10, ArrowLeft: -10, PageUp: 60, PageDown: -60 };
+    const now = cursor ?? line.from;
+    let next: number | null = null;
+    if (e.key in by) next = now + by[e.key];
+    else if (e.key === "Home") next = line.from;
+    else if (e.key === "End") next = line.to;
+    if (next === null) return;
+    e.preventDefault();
+    cursor = Math.min(line.to, Math.max(line.from, next));
+  }
 </script>
 
 <div class="crowd">
@@ -319,12 +438,56 @@
       <div class="tile"><strong data-count="requests">{view.summary.requests}</strong><span>requests</span></div>
     </div>
 
-    {#if view.summary.pace.length > 0}
-      <svg class="pace" viewBox="0 0 {view.summary.pace.length} 10" preserveAspectRatio="none" role="img" aria-label="Reactions per minute">
-        {#each view.summary.pace as n, i (i)}
-          <rect x={i + 0.1} width="0.8" y={10 - (n / tallest) * 10} height={(n / tallest) * 10} />
-        {/each}
-      </svg>
+    {#if line}
+      <div class="night-line" data-night-line>
+        <p class="now" data-moment aria-live="polite">{cursor === null ? `${clockOf(line.from)} – ${clockOf(line.to)}` : momentAt(cursor)}</p>
+        <div
+          class="lanes"
+          role="slider"
+          tabindex="0"
+          aria-label="The night, on one line"
+          aria-valuemin={line.from}
+          aria-valuemax={line.to}
+          aria-valuenow={cursor ?? line.from}
+          aria-valuetext={momentAt(cursor ?? line.from)}
+          onpointermove={point}
+          onpointerdown={point}
+          onkeydown={step}
+        >
+          <div class="lane records">
+            {#each line.spans as span, i (i)}
+              <span
+                class="span"
+                data-span={span.record}
+                class:odd={span.record % 2 === 1}
+                style:left="{across(span.from)}%"
+                style:width="{across(span.to) - across(span.from)}%"
+              ></span>
+            {/each}
+            {#each line.landmarks as mark, i (i)}
+              <span class="landmark" data-landmark={mark.part} style:left="{across(mark.at)}%"></span>
+            {/each}
+          </div>
+          <div class="lane said">
+            {#each line.heard as at, i (i)}
+              <span class="dot" data-lean={view.placed[i]?.lean} style:left="{across(at)}%"></span>
+            {/each}
+          </div>
+          <div class="lane minutes">
+            {#each line.per_minute as n, i (i)}
+              <span
+                class="bar"
+                style:left="{(i / line.per_minute.length) * 100}%"
+                style:width="{100 / line.per_minute.length}%"
+                style:height="{(n / tallestMinute) * 100}%"
+              ></span>
+            {/each}
+          </div>
+          {#if cursor !== null}
+            <span class="cursor" style:left="{across(cursor)}%"></span>
+          {/if}
+        </div>
+      </div>
     {/if}
 
     <h3>Goals</h3>
@@ -377,6 +540,58 @@
           </li>
         {/each}
       </ul>
+    {/if}
+
+    <h3>Compare nights</h3>
+    {#if view.sessions.length < 2}
+      <p class="hint">Another night with reactions kept, and this one can be set beside it.</p>
+    {:else}
+      <div class="compare-pick" role="group" aria-label="Nights to compare">
+        {#each view.sessions as s (s)}
+          <label>
+            <input type="checkbox" checked={picked.includes(s)} onchange={(e) => pick(s, e.currentTarget.checked)} />
+            {nightName(s)}
+          </label>
+        {/each}
+        <button type="button" disabled={picked.length < 2} onclick={() => void compareNow()}>Compare</button>
+      </div>
+      {#if compared}
+        <table class="compare" data-compare>
+          <thead>
+            <tr>
+              <th></th>
+              {#each compared.sessions as s (s)}<th scope="col">{nightName(s)}</th>{/each}
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-measure="reactions">
+              <th scope="row">Reactions</th>
+              {#each compared.compared.reactions as n, i (i)}<td>{n}</td>{/each}
+            </tr>
+            {#each compared.compared.measures as [measure, values] (measure)}
+              <tr data-measure={measure}>
+                <th scope="row">{compared.measures.find((m) => m.measure === measure)?.title ?? measure}</th>
+                {#each values as value, i (i)}<td>{shown(measure, value)}</td>{/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if compared.compared.shared.length > 0}
+          <table class="compare shared" data-shared>
+            <caption>Played on more than one of them</caption>
+            <tbody>
+              {#each compared.compared.shared as record (record.track_id)}
+                <tr data-record={record.track_id}>
+                  <th scope="row">{record.title}<span class="artist">{record.artist}</span></th>
+                  {#each record.nights as met, i (i)}<td data-played={met.played}>{metSays(met)}</td>{/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}
+          <p class="hint">No record was played on more than one of them.</p>
+        {/if}
+      {/if}
     {/if}
 
     <h3>What was said</h3>
@@ -499,10 +714,148 @@
     color: var(--text-dim);
   }
 
-  .pace {
+  .compare-pick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.7rem;
+    font-size: 0.85em;
+  }
+
+  .compare-pick label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .compare {
     width: 100%;
-    height: 2.5rem;
-    fill: var(--active);
+    border-collapse: collapse;
+    font-size: 0.85em;
+  }
+
+  .compare th,
+  .compare td {
+    padding: 0.2rem 0.35rem;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    vertical-align: top;
+  }
+
+  .compare th[scope="row"],
+  .compare caption {
+    text-align: left;
+    font-weight: normal;
+    color: var(--text-dim);
+  }
+
+  .compare caption {
+    padding: 0.4rem 0 0.2rem;
+  }
+
+  .compare .artist {
+    display: block;
+    font-size: 0.85em;
+  }
+
+  .compare td[data-played="false"] {
+    color: var(--text-dim);
+  }
+
+  .night-line {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .night-line .now {
+    margin: 0;
+    font-size: 0.85em;
+    color: var(--text-dim);
+    min-height: 1.3em;
+  }
+
+  .lanes {
+    position: relative;
+    display: grid;
+    grid-template-rows: 1.1rem 0.8rem 1.4rem;
+    gap: 2px;
+    cursor: crosshair;
+    touch-action: none;
+    border-radius: var(--radius-s, 4px);
+  }
+
+  .lanes:focus-visible {
+    outline: 2px solid var(--active);
+    outline-offset: 2px;
+  }
+
+  .lane {
+    position: relative;
+    background: var(--sunken);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--active) 45%, transparent);
+    border-right: 1px solid var(--surface, var(--sunken));
+  }
+
+  .span.odd {
+    background: color-mix(in srgb, var(--active) 25%, transparent);
+  }
+
+  .landmark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text);
+  }
+
+  .landmark[data-landmark="drop"] {
+    background: var(--audience);
+    width: 3px;
+  }
+
+  .dot {
+    position: absolute;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+
+  .dot[data-lean="up"] {
+    background: var(--active);
+  }
+
+  .dot[data-lean="down"] {
+    background: var(--warn);
+  }
+
+  .bar {
+    position: absolute;
+    bottom: 0;
+    background: var(--text-dim);
+    opacity: 0.6;
+  }
+
+  .cursor {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text);
+    pointer-events: none;
   }
 
   h3 {

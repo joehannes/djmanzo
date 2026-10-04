@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A night on one line, and nights side by side (§119).** The Crowd panel
+  draws a night as the room heard it — each record, its drops, breakdowns
+  and the voice coming in, every reaction where it landed, and how busy each
+  minute was — with a cursor (pointer or arrow keys) that names the moment
+  under it. *Compare nights* sets two or more nights side by side on the
+  goals' measures, with the records they share and how each night met them.
+
 - **What the crowd said that djmanzo's rules cannot place goes to your AI
   provider (§119)**, a batch at a time while you play, or at once with *Read
   them now* for any night: only those reactions, only their words and what

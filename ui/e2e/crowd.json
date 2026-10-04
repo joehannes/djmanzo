@@ -1,4 +1,130 @@
 {
+  "compare": {
+    "compared": {
+      "measures": [
+        [
+          "warmth",
+          [
+            0.8,
+            0.0
+          ]
+        ],
+        [
+          "busiest-minute",
+          [
+            5.0,
+            1.0
+          ]
+        ],
+        [
+          "moments",
+          [
+            4.0,
+            0.0
+          ]
+        ],
+        [
+          "asked",
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        [
+          "requests",
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        [
+          "down",
+          [
+            1.0,
+            1.0
+          ]
+        ]
+      ],
+      "reactions": [
+        8,
+        2
+      ],
+      "shared": [
+        {
+          "artist": "Juan Luis Guerra",
+          "nights": [
+            {
+              "down": 1,
+              "moments": 4,
+              "played": true,
+              "reactions": 7,
+              "up": 4
+            },
+            {
+              "down": 1,
+              "moments": 0,
+              "played": true,
+              "reactions": 2,
+              "up": 0
+            }
+          ],
+          "title": "Ojalá Que Llueva Café",
+          "track_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "artist": "Juan Luis Guerra",
+          "nights": [
+            {
+              "down": 0,
+              "moments": 0,
+              "played": true,
+              "reactions": 1,
+              "up": 0
+            },
+            {
+              "down": 0,
+              "moments": 0,
+              "played": true,
+              "reactions": 0,
+              "up": 0
+            }
+          ],
+          "title": "Burbujas de Amor",
+          "track_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ]
+    },
+    "measures": [
+      {
+        "measure": "warmth",
+        "title": "Share of reactions that were warm"
+      },
+      {
+        "measure": "busiest-minute",
+        "title": "Reactions in the busiest minute"
+      },
+      {
+        "measure": "moments",
+        "title": "Reactions to a moment in the music"
+      },
+      {
+        "measure": "asked",
+        "title": "Times people asked what was playing"
+      },
+      {
+        "measure": "requests",
+        "title": "Requests"
+      },
+      {
+        "measure": "down",
+        "title": "Reactions that were cold"
+      }
+    ],
+    "sessions": [
+      "session-1790000000",
+      "session-1789913600"
+    ]
+  },
   "marks": [
     {
       "count": 4,
@@ -212,6 +338,7 @@
         "drops": [
           60.0
         ],
+        "length": null,
         "title": "Ojalá Que Llueva Café",
         "track_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "vocal": 20.0
@@ -221,6 +348,7 @@
         "at": 1790000200,
         "breakdowns": [],
         "drops": [],
+        "length": 240.0,
         "title": "Burbujas de Amor",
         "track_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "vocal": null
@@ -290,6 +418,61 @@
       "requests": 1,
       "up": 4,
       "warmth": 0.8
+    },
+    "timeline": {
+      "from": 1790000000,
+      "heard": [
+        1790000002,
+        1790000062,
+        1790000063,
+        1790000065,
+        1790000072,
+        1790000066,
+        1790000142,
+        1790000252
+      ],
+      "landmarks": [
+        {
+          "at": 1790000020,
+          "part": "voice",
+          "record": 0
+        },
+        {
+          "at": 1790000040,
+          "part": "breakdown",
+          "record": 0
+        },
+        {
+          "at": 1790000060,
+          "part": "drop",
+          "record": 0
+        }
+      ],
+      "per_minute": [
+        1,
+        5,
+        1,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "spans": [
+        {
+          "from": 1790000000,
+          "into": 0.0,
+          "record": 0,
+          "to": 1790000200
+        },
+        {
+          "from": 1790000200,
+          "into": 0.0,
+          "record": 1,
+          "to": 1790000440
+        }
+      ],
+      "to": 1790000440
     }
   }
 }

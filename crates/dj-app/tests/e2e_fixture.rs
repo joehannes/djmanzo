@@ -1752,6 +1752,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
             drops: vec![60.0],
             breakdowns: vec![(40.0, 60.0)],
             vocal: Some(20.0),
+            length: None,
         },
         Played {
             at: start + 200,
@@ -1761,6 +1762,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
             drops: Vec::new(),
             breakdowns: Vec::new(),
             vocal: None,
+            length: Some(240.0),
         },
     ];
     let said = |at: i64, source: Source, who: &str, text: &str| Reaction {
@@ -1805,6 +1807,8 @@ fn the_browser_fixture_has_a_nights_crowd() {
     let summary = crowd::summary(&placed, &played);
     let goals = crowd::answer(&crowd::goals_for(Some(Setting::Wedding)), &summary);
     let placed_by_model = placed.iter().filter(|p| p.by_model).count();
+    // Kept before the room was measured: drawn by arrival.
+    let timeline = crowd::timeline(&played, &[], &placed, delay);
     let view = CrowdView {
         // In the form `AppState` names a run's session: when it began.
         session: format!("session-{start}"),
@@ -1833,8 +1837,46 @@ fn the_browser_fixture_has_a_nights_crowd() {
             busy: false,
             error: None,
         },
+        timeline,
     };
-    let fixture = serde_json::json!({ "view": view, "marks": marks });
+    // §119: the night above beside an earlier one that played its first
+    // record to a quieter room, its second to silence, and one of its own.
+    let earlier_played = vec![
+        Played {
+            at: start - 86_400,
+            ..view.played[0].clone()
+        },
+        Played {
+            at: start - 86_400 + 200,
+            ..view.played[1].clone()
+        },
+        Played {
+            at: start - 86_400 + 440,
+            track_id: "c".repeat(64),
+            title: "La Bilirrubina".to_owned(),
+            ..view.played[1].clone()
+        },
+    ];
+    let earlier_placed = crowd::place(
+        &[
+            said(10 - 86_400, Source::YouTube, "Ana", "hello again"),
+            said(150 - 86_400, Source::YouTube, "Ben", "boring"),
+        ],
+        &earlier_played,
+        &[],
+        delay,
+        &[],
+    );
+    let earlier = crowd::summary(&earlier_placed, &earlier_played);
+    let compare = dj_app::commands::CrowdCompared {
+        sessions: vec![view.session.clone(), view.sessions[1].clone()],
+        compared: crowd::compare(&[
+            (&view.summary, &view.played[..]),
+            (&earlier, &earlier_played[..]),
+        ]),
+        measures: view.measures.clone(),
+    };
+    let fixture = serde_json::json!({ "view": view, "marks": marks, "compare": compare });
     let text = serde_json::to_string_pretty(&fixture).expect("the crowd serialises");
 
     if std::env::var_os("DJMANZO_BLESS").is_some() {

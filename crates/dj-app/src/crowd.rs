@@ -240,6 +240,8 @@ pub struct Played {
     pub breakdowns: Vec<(f64, f64)>,
     /// Where the voice arrives, in seconds.
     pub vocal: Option<f64>,
+    /// How long the record is, in seconds, when the collection knows.
+    pub length: Option<f64>,
 }
 
 /// The part of a record a reaction was about.
@@ -521,6 +523,172 @@ pub fn playing(played: &Played, into: f64) -> String {
     format!("{name}, {}:{:02} in{part}", seconds / 60, seconds % 60)
 }
 
+/// How long a record is taken to have played when the collection does not
+/// know its length and nothing after it says when it stopped.
+pub const UNKNOWN_LENGTH: i64 = 180;
+
+/// A stretch of the night in which the room heard one record.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Span {
+    /// Which of the records, by its place in the list.
+    pub record: usize,
+    /// When the room began and stopped hearing it, unix seconds.
+    pub from: i64,
+    pub to: i64,
+    /// How far into the record the room was at `from`, in seconds: a record
+    /// brought up over another is heard from partway in.
+    pub into: f64,
+}
+
+/// A part of a record, at the moment the room heard it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Landmark {
+    /// Unix seconds.
+    pub at: i64,
+    pub record: usize,
+    pub part: Part,
+}
+
+/// A night on one line: what the room heard and when, the parts of it, and
+/// when the reactions were about.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Timeline {
+    /// Where the line begins and ends, unix seconds.
+    pub from: i64,
+    pub to: i64,
+    pub spans: Vec<Span>,
+    /// Drops, breakdowns and the voice arriving, inside the spans they were
+    /// heard in — a drop the room never heard is not one of the night's.
+    pub landmarks: Vec<Landmark>,
+    /// When the room heard what each reaction was about — said less the
+    /// stream's delay — in the order of the reactions given.
+    pub heard: Vec<i64>,
+    /// Reactions per minute from `from`, by when the room heard it.
+    pub per_minute: Vec<usize>,
+}
+
+/// The night on one line.
+///
+/// What the room heard is `room`'s, where the night measured it: each change
+/// begins a stretch of the record it names (the latest of that record to come
+/// in by then), and silence ends one. A night kept before it was measured is
+/// drawn by arrival: each record from when it came in to when the next did.
+/// Either way a stretch ends no later than the record's own end, when its
+/// length is known, and the last one, when nothing says otherwise, after
+/// [`UNKNOWN_LENGTH`]. `None` for a night with nothing in it.
+#[must_use]
+pub fn timeline(
+    played: &[Played],
+    room: &[Heard],
+    placed: &[Placed],
+    delay: i64,
+) -> Option<Timeline> {
+    #[allow(clippy::cast_possible_truncation)]
+    let ends = |record: &Played| record.length.map(|l| record.at + l.round() as i64);
+    let stop = |record: &Played, from: i64, next: Option<i64>| -> i64 {
+        match (next, ends(record)) {
+            (Some(next), Some(end)) => next.min(end),
+            (Some(next), None) => next,
+            (None, Some(end)) => end,
+            (None, None) => from + UNKNOWN_LENGTH,
+        }
+    };
+    let mut spans: Vec<Span> = Vec::new();
+    if room.is_empty() {
+        for (i, record) in played.iter().enumerate() {
+            let to = stop(record, record.at, played.get(i + 1).map(|n| n.at));
+            if to > record.at {
+                spans.push(Span {
+                    record: i,
+                    from: record.at,
+                    to,
+                    into: 0.0,
+                });
+            }
+        }
+    } else {
+        for (k, change) in room.iter().enumerate() {
+            let Some(id) = &change.track_id else {
+                continue;
+            };
+            let Some(i) = played
+                .iter()
+                .rposition(|p| &p.track_id == id && p.at <= change.at)
+            else {
+                continue;
+            };
+            let record = &played[i];
+            let to = stop(record, change.at, room.get(k + 1).map(|n| n.at));
+            if to > change.at {
+                #[allow(clippy::cast_precision_loss)]
+                spans.push(Span {
+                    record: i,
+                    from: change.at,
+                    to,
+                    into: (change.at - record.at) as f64,
+                });
+            }
+        }
+    }
+
+    let mut landmarks: Vec<Landmark> = Vec::new();
+    for span in &spans {
+        let record = &played[span.record];
+        #[allow(clippy::cast_possible_truncation)]
+        let at = |seconds: f64| record.at + seconds.round() as i64;
+        let parts = record
+            .drops
+            .iter()
+            .map(|&d| (at(d), Part::Drop))
+            .chain(
+                record
+                    .breakdowns
+                    .iter()
+                    .map(|&(b, _)| (at(b), Part::Breakdown)),
+            )
+            .chain(record.vocal.map(|v| (at(v), Part::Voice)));
+        for (when, part) in parts {
+            if span.from <= when && when < span.to {
+                landmarks.push(Landmark {
+                    at: when,
+                    record: span.record,
+                    part,
+                });
+            }
+        }
+    }
+    landmarks.sort_by_key(|l| l.at);
+
+    let heard: Vec<i64> = placed.iter().map(|p| p.reaction.at - delay).collect();
+    let from = spans
+        .iter()
+        .map(|s| s.from)
+        .chain(heard.iter().copied())
+        .min()?;
+    let to = spans
+        .iter()
+        .map(|s| s.to)
+        .chain(heard.iter().map(|h| h + 1))
+        .max()?;
+    let minutes = usize::try_from((to - from + 59) / 60).unwrap_or(0).max(1);
+    let mut per_minute = vec![0; minutes];
+    for h in &heard {
+        if let Ok(m) = usize::try_from((h - from) / 60)
+            && let Some(slot) = per_minute.get_mut(m)
+        {
+            *slot += 1;
+        }
+    }
+    Some(Timeline {
+        from,
+        to,
+        spans,
+        landmarks,
+        heard,
+        per_minute,
+    })
+}
+
 /// A record, as the night received it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Reception {
@@ -798,6 +966,91 @@ impl Measure {
             Measure::Requests => Some(summary.requests as f64),
             Measure::Down => Some(summary.down as f64),
         }
+    }
+}
+
+/// How one night met a record it shares with another.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Met {
+    /// Whether this night played it at all.
+    pub played: bool,
+    pub reactions: usize,
+    pub up: usize,
+    pub down: usize,
+    /// Reactions to a moment in it.
+    pub moments: usize,
+}
+
+/// A record two or more of the nights played.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Shared {
+    pub track_id: String,
+    pub title: String,
+    pub artist: String,
+    /// Each night's, in the order the nights were given.
+    pub nights: Vec<Met>,
+}
+
+/// Nights side by side.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Compared {
+    /// How many reactions each night drew.
+    pub reactions: Vec<usize>,
+    /// Each of the goals' measures, with each night's value; `None` where a
+    /// night cannot say.
+    pub measures: Vec<(Measure, Vec<Option<f64>>)>,
+    /// The records two or more nights played, the most played first, then
+    /// the most reacted to — and a night that played one to silence says so.
+    pub shared: Vec<Shared>,
+}
+
+/// Nights side by side, on the measures the goals use, and the records they
+/// share with how each night met them.
+#[must_use]
+pub fn compare(nights: &[(&Summary, &[Played])]) -> Compared {
+    let mut shared: Vec<Shared> = Vec::new();
+    for (_, played) in nights {
+        for record in *played {
+            if shared.iter().any(|s| s.track_id == record.track_id) {
+                continue;
+            }
+            let met: Vec<Met> = nights
+                .iter()
+                .map(|(other, other_played)| {
+                    let played = other_played.iter().any(|p| p.track_id == record.track_id);
+                    let reception = other.records.iter().find(|r| r.track_id == record.track_id);
+                    Met {
+                        played,
+                        reactions: reception.map_or(0, |r| r.reactions),
+                        up: reception.map_or(0, |r| r.up),
+                        down: reception.map_or(0, |r| r.down),
+                        moments: reception.map_or(0, |r| r.moments.iter().map(|m| m.count).sum()),
+                    }
+                })
+                .collect();
+            if met.iter().filter(|m| m.played).count() >= 2 {
+                shared.push(Shared {
+                    track_id: record.track_id.clone(),
+                    title: record.title.clone(),
+                    artist: record.artist.clone(),
+                    nights: met,
+                });
+            }
+        }
+    }
+    shared.sort_by_key(|s| {
+        (
+            std::cmp::Reverse(s.nights.iter().filter(|m| m.played).count()),
+            std::cmp::Reverse(s.nights.iter().map(|m| m.reactions).sum::<usize>()),
+        )
+    });
+    Compared {
+        reactions: nights.iter().map(|(s, _)| s.reactions).collect(),
+        measures: Measure::ALL
+            .into_iter()
+            .map(|m| (m, nights.iter().map(|(s, _)| m.of(s)).collect()))
+            .collect(),
+        shared,
     }
 }
 
@@ -1215,6 +1468,7 @@ mod tests {
                 drops: vec![60.0],
                 breakdowns: vec![(40.0, 60.0)],
                 vocal: Some(20.0),
+                length: None,
             },
             Played {
                 at: 1_200,
@@ -1224,6 +1478,7 @@ mod tests {
                 drops: Vec::new(),
                 breakdowns: Vec::new(),
                 vocal: None,
+                length: None,
             },
         ]
     }
@@ -1305,6 +1560,7 @@ mod tests {
                 drops: vec![118.0],
                 breakdowns: Vec::new(),
                 vocal: None,
+                length: None,
             },
             Played {
                 at: 1_100,
@@ -1314,6 +1570,7 @@ mod tests {
                 drops: Vec::new(),
                 breakdowns: Vec::new(),
                 vocal: None,
+                length: None,
             },
         ];
         let reactions = [said(1_120, "this drop 🔥"), said(1_170, "love this")];
@@ -1662,6 +1919,187 @@ mod tests {
         assert!(
             !place(&[bassline], &played, &[], 8, &[])[0].by_model,
             "read by the provider with nothing from it"
+        );
+    }
+
+    /// **A night on one line, by what the room heard.** A record brought up
+    /// over another begins its stretch when the room heard it, partway in;
+    /// silence ends a stretch; a stretch ends at the record's own end when
+    /// its length is known; a drop the room never heard — before it was
+    /// brought up — is not on the line, and one it heard is, at the clock
+    /// time it was heard; reactions are on the line when what they were
+    /// about was heard, less the delay, and counted by that minute.
+    #[test]
+    fn a_night_on_one_line_is_what_the_room_heard() {
+        let mut played = night();
+        // The first record's drop at 0:10 is before the room heard it.
+        played[0].drops = vec![10.0, 60.0];
+        played[1].length = Some(100.0);
+        let room = vec![
+            Heard {
+                at: 1_015,
+                track_id: Some("a".to_owned()),
+            },
+            Heard {
+                at: 1_210,
+                track_id: Some("b".to_owned()),
+            },
+            Heard {
+                at: 1_400,
+                track_id: None,
+            },
+        ];
+        let reactions = [said(1_068, "this drop 🔥"), said(1_250, "🔥")];
+        let placed = place(&reactions, &played, &room, 8, &[]);
+        let line = timeline(&played, &room, &placed, 8).expect("a night");
+        assert_eq!(
+            line.spans,
+            vec![
+                Span {
+                    record: 0,
+                    from: 1_015,
+                    to: 1_210,
+                    into: 15.0
+                },
+                Span {
+                    record: 1,
+                    from: 1_210,
+                    // Its own end, 100 s after it came in at 1200, before
+                    // the silence at 1400.
+                    to: 1_300,
+                    into: 10.0
+                },
+            ]
+        );
+        assert_eq!(
+            line.landmarks,
+            vec![
+                Landmark {
+                    at: 1_020,
+                    record: 0,
+                    part: Part::Voice
+                },
+                Landmark {
+                    at: 1_040,
+                    record: 0,
+                    part: Part::Breakdown
+                },
+                Landmark {
+                    at: 1_060,
+                    record: 0,
+                    part: Part::Drop
+                },
+            ]
+        );
+        assert_eq!(line.heard, vec![1_060, 1_242]);
+        assert_eq!((line.from, line.to), (1_015, 1_300));
+        assert_eq!(line.per_minute, vec![1, 0, 0, 1, 0]);
+    }
+
+    /// **A night kept before the room was measured is drawn by arrival**,
+    /// each record until the next came in, the last for
+    /// [`UNKNOWN_LENGTH`] when nothing says how long; and a night with
+    /// nothing in it has no line.
+    #[test]
+    fn a_night_without_the_room_is_drawn_by_arrival() {
+        let played = night();
+        let line = timeline(&played, &[], &[], 0).expect("a night");
+        assert_eq!(
+            line.spans
+                .iter()
+                .map(|s| (s.record, s.from, s.to))
+                .collect::<Vec<_>>(),
+            [(0, 1_000, 1_200), (1, 1_200, 1_200 + UNKNOWN_LENGTH)]
+        );
+        assert_eq!(line.landmarks.len(), 3, "the first record's parts");
+        assert!(timeline(&[], &[], &[], 0).is_none());
+    }
+
+    /// **Nights side by side.** Each measure with each night's value, a
+    /// night that cannot say saying so; the records two nights share, with
+    /// how each met them — a night that played one to silence as played
+    /// with nothing, one that did not play it as not played — the record
+    /// more nights played first; a record only one night played is not
+    /// shared.
+    #[test]
+    fn nights_are_compared_on_the_goals_measures_and_their_shared_records() {
+        let played = night();
+        let one_night = [
+            said(1_068, "this drop 🔥"),
+            said(1_069, "🔥"),
+            said(1_250, "boring"),
+        ];
+        let one = place(&one_night, &played, &[], 8, &[]);
+        let first = summary(&one, &played);
+        // A second night: the first record again, to silence, and another.
+        let mut other = night();
+        other[1].track_id = "c".to_owned();
+        other[1].title = "Third".to_owned();
+        let second = summary(&place(&[said(1_300, "hello")], &other, &[], 8, &[]), &other);
+        // A third that did not play the first record at all, but the second.
+        let third_played = vec![played[1].clone()];
+        let third = summary(&[], &third_played);
+
+        let side = compare(&[
+            (&first, &played[..]),
+            (&second, &other[..]),
+            (&third, &third_played[..]),
+        ]);
+        assert_eq!(side.reactions, vec![3, 1, 0]);
+        let warmth = &side
+            .measures
+            .iter()
+            .find(|(m, _)| *m == Measure::Warmth)
+            .expect("warmth")
+            .1;
+        assert_eq!(warmth[0], Some(2.0 / 3.0));
+        assert_eq!(warmth[2], None, "a night with no reactions cannot say");
+        assert_eq!(side.measures.len(), Measure::ALL.len());
+
+        assert_eq!(
+            side.shared
+                .iter()
+                .map(|s| s.track_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"],
+            "c was played on one night only"
+        );
+        let a = &side.shared[0];
+        assert_eq!(
+            a.nights,
+            vec![
+                Met {
+                    played: true,
+                    reactions: 2,
+                    up: 2,
+                    down: 0,
+                    moments: 2
+                },
+                Met {
+                    played: true,
+                    reactions: 0,
+                    up: 0,
+                    down: 0,
+                    moments: 0
+                },
+                Met {
+                    played: false,
+                    reactions: 0,
+                    up: 0,
+                    down: 0,
+                    moments: 0
+                },
+            ]
+        );
+        assert_eq!(
+            side.shared[1].nights[0],
+            Met {
+                played: true,
+                reactions: 1,
+                up: 0,
+                down: 1,
+                moments: 0
+            }
         );
     }
 

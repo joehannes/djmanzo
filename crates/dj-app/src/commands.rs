@@ -2523,6 +2523,7 @@ fn crowd_marks_of(state: &AppState, deck: u8) -> Vec<CrowdMarkInfo> {
                             })
                             .unwrap_or_default(),
                         vocal: parts.and_then(|f| f.trajectory.voice_enters).map(seconds),
+                        length: None,
                     }
                 })
                 .collect();
@@ -19090,6 +19091,8 @@ pub struct CrowdView {
     pub measures: Vec<CrowdMeasure>,
     /// Asking the DJ's provider about what the rules could not place.
     pub ai: CrowdAi,
+    /// The night on one line; `None` for a night with nothing in it.
+    pub timeline: Option<crate::crowd::Timeline>,
 }
 
 /// §119: what the rules could not place, and the DJ's provider.
@@ -19179,6 +19182,10 @@ fn crowd_played(state: &AppState, session: &str) -> Vec<crate::crowd::Played> {
                 .and_then(|id| db.track(id).ok().flatten())
                 .map(|track| track.sample_rate.as_f64())
                 .filter(|rate| *rate > 0.0);
+            let length = id
+                .and_then(|id| db.track(id).ok().flatten())
+                .map(|track| track.duration_seconds())
+                .filter(|seconds| seconds.is_finite() && *seconds > 0.0);
             let found = id.and_then(|id| state.analysis().cached(&id));
             let seconds = |frames: f64| rate.map(|rate| frames / rate);
             let (drops, breakdowns, vocal) = match (&found, rate) {
@@ -19207,23 +19214,30 @@ fn crowd_played(state: &AppState, session: &str) -> Vec<crate::crowd::Played> {
                 drops,
                 breakdowns,
                 vocal,
+                length,
             }
         })
         .collect()
 }
 
-fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView, String> {
-    let config = state
-        .config_dir()
-        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
-    let now = state.session_id();
-    let session = session
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| now.clone());
-    let current = session == now;
-    let settings = crowd_settings(state, &config);
+/// One night's reactions, read and placed on what it played.
+struct CrowdNight {
+    reactions: Vec<crate::crowd::Reaction>,
+    played: Vec<crate::crowd::Played>,
+    room: Vec<crate::crowd::Heard>,
+    readings: Vec<crate::crowd::Reading>,
+    placed: Vec<crate::crowd::Placed>,
+    summary: crate::crowd::Summary,
+}
 
-    let mut reactions = crate::crowd::load(&config, &session);
+fn crowd_night(
+    state: &AppState,
+    config: &std::path::Path,
+    session: &str,
+    current: bool,
+    delay: i64,
+) -> CrowdNight {
+    let mut reactions = crate::crowd::load(config, session);
     // The room's own requests, while the night they were asked in is on.
     if current {
         reactions.extend(state.audience().everything().into_iter().map(|ask| {
@@ -19237,12 +19251,101 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
         }));
         reactions.sort_by_key(|r| r.at);
     }
-    let played = crowd_played(state, &session);
-    let room = crate::crowd::load_room(&config, &session);
-    let readings = crate::crowd::load_readings(&config, &session);
-    let waiting = crate::crowd::unread(&reactions, &readings).len();
-    let placed = crate::crowd::place(&reactions, &played, &room, settings.delay, &readings);
+    let played = crowd_played(state, session);
+    let room = crate::crowd::load_room(config, session);
+    let readings = crate::crowd::load_readings(config, session);
+    let placed = crate::crowd::place(&reactions, &played, &room, delay, &readings);
     let summary = crate::crowd::summary(&placed, &played);
+    CrowdNight {
+        reactions,
+        played,
+        room,
+        readings,
+        placed,
+        summary,
+    }
+}
+
+/// §119: nights side by side.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrowdCompared {
+    /// The nights, in the order asked.
+    pub sessions: Vec<String>,
+    pub compared: crate::crowd::Compared,
+    /// What each measure is called.
+    pub measures: Vec<CrowdMeasure>,
+}
+
+/// §119: two or more nights side by side — the goals' measures, and the
+/// records they share with how each night met them.
+///
+/// # Errors
+/// Fewer than two nights, one that is not a session, or no settings folder.
+#[tauri::command]
+pub fn crowd_compare(
+    state: State<'_, AppState>,
+    sessions: Vec<String>,
+) -> Result<CrowdCompared, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let mut sessions = sessions;
+    let mut seen = std::collections::HashSet::new();
+    sessions.retain(|s| seen.insert(s.clone()));
+    if sessions.len() < 2 {
+        return Err("comparing needs two nights or more".to_owned());
+    }
+    if let Some(bad) = sessions
+        .iter()
+        .find(|s| crate::crowd::file(&config, s).is_err())
+    {
+        return Err(format!("{bad:?} is not a night"));
+    }
+    let now = state.session_id();
+    let delay = crowd_settings(&state, &config).delay;
+    let nights: Vec<CrowdNight> = sessions
+        .iter()
+        .map(|session| crowd_night(&state, &config, session, *session == now, delay))
+        .collect();
+    let side: Vec<(&crate::crowd::Summary, &[crate::crowd::Played])> = nights
+        .iter()
+        .map(|night| (&night.summary, night.played.as_slice()))
+        .collect();
+    Ok(CrowdCompared {
+        compared: crate::crowd::compare(&side),
+        sessions,
+        measures: crate::crowd::Measure::ALL
+            .into_iter()
+            .map(|measure| CrowdMeasure {
+                measure,
+                title: measure.title(),
+            })
+            .collect(),
+    })
+}
+
+fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let now = state.session_id();
+    let session = session
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| now.clone());
+    let current = session == now;
+    let settings = crowd_settings(state, &config);
+
+    let night = crowd_night(state, &config, &session, current, settings.delay);
+    let CrowdNight {
+        reactions,
+        played,
+        room,
+        readings,
+        placed,
+        summary,
+    } = night;
+    let waiting = crate::crowd::unread(&reactions, &readings).len();
+    let timeline = crate::crowd::timeline(&played, &room, &placed, settings.delay);
     let ai = {
         let asking = state.crowd_asking().lock();
         let (busy, error) = asking
@@ -19297,6 +19400,7 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
             })
             .collect(),
         ai,
+        timeline,
     })
 }
 

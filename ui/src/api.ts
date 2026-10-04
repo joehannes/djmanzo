@@ -5879,6 +5879,34 @@ export interface CrowdAnswered {
   met: boolean | null;
 }
 
+/** `crowd::Span`: a stretch of the night in which the room heard one record. */
+export interface CrowdSpan {
+  record: number;
+  /** Unix seconds. */
+  from: number;
+  to: number;
+  /** Seconds into the record at `from`. */
+  into: number;
+}
+
+/** `crowd::Landmark`: a part of a record, when the room heard it. */
+export interface CrowdLandmark {
+  at: number;
+  record: number;
+  part: CrowdPart;
+}
+
+/** `crowd::Timeline`: the night on one line. */
+export interface CrowdTimeline {
+  from: number;
+  to: number;
+  spans: CrowdSpan[];
+  landmarks: CrowdLandmark[];
+  /** When the room heard what each reaction was about, in `placed`'s order. */
+  heard: number[];
+  per_minute: number[];
+}
+
 /** `commands::CrowdView`. */
 export interface CrowdView {
   session: string;
@@ -5891,9 +5919,40 @@ export interface CrowdView {
   goals: CrowdAnswered[];
   measures: { measure: CrowdMeasure; title: string }[];
   ai: CrowdAi;
+  timeline: CrowdTimeline | null;
+}
+
+/** `crowd::Met`: how one night met a record it shares with another. */
+export interface CrowdMet {
+  played: boolean;
+  reactions: number;
+  up: number;
+  down: number;
+  moments: number;
+}
+
+/** `crowd::Shared`: a record two or more of the nights played. */
+export interface CrowdShared {
+  track_id: string;
+  title: string;
+  artist: string;
+  nights: CrowdMet[];
+}
+
+/** `commands::CrowdCompared`: nights side by side. */
+export interface CrowdCompared {
+  sessions: string[];
+  compared: {
+    reactions: number[];
+    measures: [CrowdMeasure, (number | null)[]][];
+    shared: CrowdShared[];
+  };
+  measures: { measure: CrowdMeasure; title: string }[];
 }
 
 export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_view", { session });
+/** §119: two or more nights side by side. */
+export const crowdCompare = (sessions: string[]) => invoke<CrowdCompared>("crowd_compare", { sessions });
 export const crowdAdd = (text: string, who: string | null, source: CrowdSource) =>
   invoke<CrowdView>("crowd_add", { text, who, source });
 export const crowdImport = (session: string | null, path: string, start: number, source: CrowdSource) =>

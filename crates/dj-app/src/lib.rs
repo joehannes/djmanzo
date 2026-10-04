@@ -605,6 +605,7 @@ pub fn run() {
             commands::obs_settings_set,
             commands::obs_moments_set,
             commands::crowd_read_now,
+            commands::crowd_compare,
             commands::obs_stream,
             commands::obs_scene,
             commands::attach_panel,

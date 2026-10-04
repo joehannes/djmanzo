@@ -147,6 +147,106 @@ test.describe("§119: the crowd", () => {
   });
 
   /**
+   * **The night on one line, as Rust drew it** (`crowd::timeline`): every
+   * stretch the room heard, every part where it was heard, every reaction
+   * when what it was about was heard and leaning as Rust read it -- and a
+   * cursor, moved by the keys or the pointer, that names the moment under
+   * it: the record, how far in, the part just heard, how busy that minute was.
+   */
+  test("the night on one line names the moment under the cursor", async ({ page }) => {
+    const line = view.timeline!;
+    const panel = await withCrowd(page);
+    const night = panel.locator("[data-night-line]");
+    await expect(night.locator("[data-span]")).toHaveCount(line.spans.length);
+    await expect(night.locator("[data-landmark]")).toHaveCount(line.landmarks.length);
+    expect(await night.locator("[data-landmark]").evaluateAll((all) => all.map((l) => l.getAttribute("data-landmark")))).toEqual(
+      line.landmarks.map((l) => l.part),
+    );
+    const dots = night.locator(".dot");
+    await expect(dots).toHaveCount(line.heard.length);
+    expect(await dots.evaluateAll((all) => all.map((d) => d.getAttribute("data-lean")))).toEqual(view.placed.map((p) => p.lean));
+    // Placed in proportion: the second record's stretch begins where Rust says.
+    const second = line.spans[1];
+    const left = await night.locator(`[data-span="${second.record}"]`).evaluate((el) => (el as HTMLElement).style.left);
+    expect(parseFloat(left)).toBeCloseTo(((second.from - line.from) / (line.to - line.from)) * 100, 3);
+
+    const first = view.played[line.spans[0].record].title;
+    const slider = night.getByRole("slider", { name: "The night, on one line" });
+    const moment = night.locator("[data-moment]");
+    await slider.focus();
+    await slider.press("Home");
+    await expect(moment).toContainText(`${first} · 0:00 in`);
+    // Six steps of ten seconds: the drop, a minute in.
+    for (let i = 0; i < 6; i++) await slider.press("ArrowRight");
+    await expect(moment).toContainText(`${first} · 1:00 in · the drop · ${line.per_minute[1]} reactions that minute`);
+    await expect(slider).toHaveAttribute("aria-valuetext", (await moment.textContent())!.trim());
+    // Four minutes: into the second record, forty seconds in.
+    await slider.press("Home");
+    for (let i = 0; i < 4; i++) await slider.press("PageUp");
+    await expect(moment).toContainText(`${view.played[second.record].title} · 0:40 in`);
+
+    // The pointer: half way along is half way through the night.
+    const box = (await night.locator(".lanes").boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const half = Math.round(line.from + (line.to - line.from) / 2);
+    const into = half - second.from + second.into;
+    await expect(moment).toContainText(`${view.played[second.record].title} · ${Math.floor(into / 60)}:${String(into % 60).padStart(2, "0")} in`);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Nights side by side, as Rust set them** (`crowd::compare`): the night
+   * shown and the one before it picked to begin with, asked for in the
+   * list's order; each of the goals' measures for each night, a share as a
+   * share; and the records both played, with how each night met them.
+   */
+  test("nights are set side by side on the goals' measures and the records they share", async ({ page }) => {
+    const side = crowd.compare;
+    const panel = await withCrowd(page);
+    const pick = panel.getByRole("group", { name: "Nights to compare" });
+    await expect(pick.getByRole("checkbox")).toHaveCount(view.sessions.length);
+    const tonight = pick.getByRole("checkbox", { name: "This night" });
+    await expect(tonight).toBeChecked();
+    // Picked again, last: the nights are still asked for newest first.
+    await tonight.uncheck();
+    await tonight.check();
+    const compare = pick.getByRole("button", { name: "Compare" });
+    await compare.click();
+    await expect
+      .poll(async () => (await calls(page)).find((c) => c.cmd === "crowd_compare"))
+      .toMatchObject({ sessions: view.sessions.slice(0, 2) });
+
+    const table = panel.locator("[data-compare]");
+    await expect(table.locator("thead th")).toHaveText(["", "This night", /./]);
+    await expect(table.locator('[data-measure="reactions"] td')).toHaveText(side.compared.reactions.map(String));
+    const warmth = side.compared.measures.find(([m]) => m === "warmth")![1];
+    await expect(table.locator('[data-measure="warmth"] td')).toHaveText(warmth.map((w) => `${Math.round(w! * 100)}%`));
+    await expect(table.locator('[data-measure="warmth"] th')).toHaveText(
+      side.measures.find((m) => m.measure === "warmth")!.title,
+    );
+    await expect(table.locator("tbody tr")).toHaveCount(side.compared.measures.length + 1);
+
+    const shared = panel.locator("[data-shared] tbody tr");
+    await expect(shared).toHaveCount(side.compared.shared.length);
+    const both = side.compared.shared[0];
+    await expect(shared.first().locator("td")).toHaveText(
+      both.nights.map((m) =>
+        [`${m.reactions}`, `${m.up} warm`, ...(m.down ? [`${m.down} cold`] : []), ...(m.moments ? [`${m.moments} moments`] : [])].join(" · "),
+      ),
+    );
+    // Played to silence on the earlier night, and said so.
+    const silent = side.compared.shared.findIndex((r) => r.nights.some((m) => m.played && m.reactions === 0));
+    expect(silent).toBeGreaterThan(-1);
+    await expect(shared.nth(silent).locator("td").nth(1)).toHaveText("played, nothing said");
+
+    // One night is not a comparison.
+    await pick.getByRole("checkbox", { name: "This night" }).uncheck();
+    await expect(compare).toBeDisabled();
+    await expect(table).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **What the rules cannot place, and the DJ's provider.** Said plainly:
    * where it goes, how many it placed, how many wait. A reaction it placed
    * is marked as its reading and no other is; *Read them now* asks for this

@@ -307,6 +307,7 @@ export const ANSWERS: Record<string, unknown> = {
   kit_compose: kit.wedding,
   kit_refused: kit.refused,
   crowd_view: crowd.view,
+  crowd_compare: crowd.compare,
   // §107: break music off, as a fresh install has it.
   karaoke_breaks: breaks.off,
   learned_taste: { favourites: [], plays: 0, confident: false },
@@ -1955,7 +1956,8 @@ export async function openShell(
             cmd === "crowd_add" ||
             cmd === "crowd_import" ||
             cmd === "crowd_settings_save" ||
-            cmd === "crowd_read_now"
+            cmd === "crowd_read_now" ||
+            cmd === "crowd_compare"
           ) {
             ((win.__crowdCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
             const view = answers.crowd_view as Record<string, unknown>;
@@ -1968,6 +1970,7 @@ export async function openShell(
                 ai: { ...(view.ai as Record<string, unknown>), on: settings.ai },
               });
             }
+            if (cmd === "crowd_compare") return Promise.resolve(answers.crowd_compare);
             // §119: a provider that failed, when a test says so.
             if (cmd === "crowd_read_now" && typeof win.__crowdReadFails === "string") {
               return Promise.reject(win.__crowdReadFails);
