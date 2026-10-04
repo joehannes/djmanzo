@@ -749,7 +749,13 @@ export const ANSWERS: Record<string, unknown> = {
   keyboard_keys: [],
   session_log: [],
   interface_density: "Standard",
-  obs_settings: { on: false, host: "localhost", port: 4455, has_password: false },
+  obs_settings: {
+    on: false,
+    host: "localhost",
+    port: 4455,
+    has_password: false,
+    moments: { base: "", drop: "", singer: "", end: "", hold: 8 },
+  },
   obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
   leader_tree: leaderTree,
   boards: boardList,
@@ -2345,6 +2351,12 @@ export async function openShell(
               Object.assign(kept, { on: args.on, host: args.host, port: args.port });
               if (typeof args.password === "string") kept.has_password = args.password !== "";
             }
+            return Promise.resolve(structuredClone(kept));
+          }
+          if (cmd === "obs_moments_set") {
+            const kept = (win.__obs ??= structuredClone(answers.obs_settings)) as Record<string, unknown>;
+            ((win.__obsMoments ??= []) as unknown[]).push(structuredClone(args.moments));
+            kept.moments = structuredClone(args.moments);
             return Promise.resolve(structuredClone(kept));
           }
           if (cmd === "obs_status") return Promise.resolve(structuredClone(win.__obsStatus ?? answers.obs_status));

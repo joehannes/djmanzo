@@ -41,14 +41,16 @@ moments, and a scene to come back to:
 | moment | known from |
 |---|---|
 | the drop of the record the room is hearing | the analysis's parts (§75), on the record `crowd::Hearing` says the room hears |
-| a new singer at the microphone | the karaoke rotation (§107) |
+| a new singer at the microphone | the karaoke rotation (§107): *Sang* pressed with somebody called up after |
 | the night ends | the event being played is ended (§118) |
 
 Each switch holds for a number of seconds the DJ sets and then returns to
-the base scene, and nothing switches while the DJ has switched by hand in
-the last few seconds — djmanzo does not argue with a hand on OBS. A moment
-with no scene named does nothing. The rules are a table in Rust, tested
-without OBS.
+the base scene, and nothing switches for half a minute after the DJ has
+switched by hand — in djmanzo or in OBS itself — so djmanzo does not argue
+with a hand on OBS. The night's end is not undone: it stays on its scene. A
+moment with no scene named does nothing, and the drop is not watched at all
+until one is. The rules are `obs::Director` and `obs::DropWatch` in Rust,
+tested against a clock without OBS. *(Built 4 October.)*
 
 **What can be shown here.** The protocol, the authentication and every
 request against a fake obs-websocket server in the tests, byte for byte; the

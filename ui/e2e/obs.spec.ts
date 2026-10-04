@@ -11,10 +11,14 @@ import { expect, test, type Page } from "@playwright/test";
 import { errorsThrown, openShell } from "./shell";
 
 type ObsWindow = {
+  __obsMoments?: Record<string, unknown>[];
   __obsSet?: Record<string, unknown>[];
   __obsAsked?: Record<string, unknown>[];
   __obsStatus?: unknown;
 };
+
+/** Rust's answer for a link with no moments named yet. */
+const NO_MOMENTS = { base: "", drop: "", singer: "", end: "", hold: 8 };
 
 const CONNECTED = {
   on: true,
@@ -46,7 +50,7 @@ test.describe("§119: djmanzo drives OBS", () => {
    */
   test("switching the link on sends the address, and keeps the password unless one is typed", async ({ page }) => {
     const obs = await openObs(page, {
-      obs_settings: { on: false, host: "localhost", port: 4455, has_password: true },
+      obs_settings: { on: false, host: "localhost", port: 4455, has_password: true, moments: NO_MOMENTS },
     });
     const password = obs.getByLabel("OBS WebSocket password");
     await expect(password).toHaveValue("");
@@ -74,7 +78,7 @@ test.describe("§119: djmanzo drives OBS", () => {
    */
   test("connected, the stream and the scenes are the DJ's to press", async ({ page }) => {
     const obs = await openObs(page, {
-      obs_settings: { on: true, host: "localhost", port: 4455, has_password: true },
+      obs_settings: { on: true, host: "localhost", port: 4455, has_password: true, moments: NO_MOMENTS },
       obs_status: CONNECTED,
     });
     await expect(obs.locator('[data-obs-state="connected"]')).toContainText("Not streaming");
@@ -103,10 +107,40 @@ test.describe("§119: djmanzo drives OBS", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **Scenes on moments**: each moment offered OBS's own scenes, and each
+   * choice kept whole — the drop's scene, the one to come back to, how long
+   * it holds — so no choice undoes another.
+   */
+  test("a scene for each moment is chosen from OBS's own", async ({ page }) => {
+    const obs = await openObs(page, {
+      obs_settings: { on: true, host: "localhost", port: 4455, has_password: true, moments: NO_MOMENTS },
+      obs_status: CONNECTED,
+    });
+    const drop = obs.getByRole("combobox", { name: "OBS scene: On the drop" });
+    await expect(drop.locator("option")).toHaveText(["no change", "Decks", "Crowd", "Singer"]);
+    await drop.selectOption("Crowd");
+    await obs.getByRole("combobox", { name: "OBS scene: back to" }).selectOption("Decks");
+    const hold = obs.getByRole("spinbutton", { name: "OBS scene: hold for seconds" });
+    await hold.fill("12");
+    await hold.press("Tab");
+    const kept = () =>
+      page.evaluate(() => (window as unknown as ObsWindow).__obsMoments ?? []);
+    await expect.poll(async () => (await kept()).at(-1)).toEqual({
+      base: "Decks",
+      drop: "Crowd",
+      singer: "",
+      end: "",
+      hold: 12,
+    });
+    await expect(drop).toHaveValue("Crowd");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** **Not reached, it says why, and that it is trying again.** */
   test("an OBS not answering is said in Rust's words", async ({ page }) => {
     const obs = await openObs(page, {
-      obs_settings: { on: true, host: "localhost", port: 4455, has_password: false },
+      obs_settings: { on: true, host: "localhost", port: 4455, has_password: false, moments: NO_MOMENTS },
       obs_status: {
         ...CONNECTED,
         connected: false,

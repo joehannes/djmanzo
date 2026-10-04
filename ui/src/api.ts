@@ -1493,6 +1493,19 @@ export interface ObsSettings {
   host: string;
   port: number;
   has_password: boolean;
+  moments: ObsMoments;
+}
+
+/** §119: which of OBS's scenes go on air on which moment; empty is none. */
+export interface ObsMoments {
+  /** Come back to this once a moment's scene has held; empty stays. */
+  base: string;
+  drop: string;
+  singer: string;
+  /** The night's end: not followed by the base. */
+  end: string;
+  /** Seconds a moment's scene holds. */
+  hold: number;
 }
 
 export const obsStatus = () => invoke<ObsStatus>("obs_status");
@@ -1500,6 +1513,7 @@ export const obsSettings = () => invoke<ObsSettings>("obs_settings");
 /** `password` left out keeps the one there is; an empty one clears it. */
 export const obsSettingsSet = (on: boolean, host: string, port: number, password?: string) =>
   invoke<ObsSettings>("obs_settings_set", { on, host, port, password: password ?? null });
+export const obsMomentsSet = (moments: ObsMoments) => invoke<ObsSettings>("obs_moments_set", { moments });
 export const obsStream = (on: boolean) => invoke<void>("obs_stream", { on });
 export const obsScene = (scene: string) => invoke<void>("obs_scene", { scene });
 

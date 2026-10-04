@@ -242,6 +242,7 @@ pub struct ObsSettingsDto {
     pub host: String,
     pub port: u16,
     pub has_password: bool,
+    pub moments: crate::obs::MomentScenes,
 }
 
 fn obs_settings_dto(settings: &crate::obs::Settings) -> ObsSettingsDto {
@@ -250,7 +251,24 @@ fn obs_settings_dto(settings: &crate::obs::Settings) -> ObsSettingsDto {
         host: settings.host.clone(),
         port: settings.port,
         has_password: !settings.password.is_empty(),
+        moments: settings.moments.clone(),
     }
+}
+
+/// §119: which of OBS's scenes go on air on which moment.
+#[tauri::command]
+#[must_use]
+pub fn obs_moments_set(
+    state: State<'_, AppState>,
+    moments: crate::obs::MomentScenes,
+) -> ObsSettingsDto {
+    let mut next = state.obs().settings();
+    next.moments = crate::obs::MomentScenes {
+        hold: moments.hold.clamp(1, 600),
+        ..moments
+    };
+    state.obs().set(next.clone());
+    obs_settings_dto(&next)
 }
 
 /// §119: what the link to OBS is doing.
@@ -14465,10 +14483,17 @@ pub fn karaoke_ask(
 #[must_use]
 pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
     let mut sung = None;
+    let mut called = false;
     let dto = with_rotation(&state, |rotation| {
         sung = rotation.sang();
+        called = sung.is_some() && rotation.up_next().is_some();
         sung.is_some()
     });
+    if called {
+        // §119: the next singer is called up — OBS's singer scene, if named.
+        // The last song of the night calls nobody, and is no new singer.
+        state.obs().moment(crate::obs::Moment::Singer);
+    }
     if let Some(sung) = sung {
         let (event, place) = events_dir(&state)
             .ok()
@@ -16009,6 +16034,10 @@ pub fn set_live_event(
 ) -> Result<Option<String>, String> {
     let dir = events_dir(&state)?;
     crate::gig::set_live(&dir, id.as_deref())?;
+    if id.is_none() {
+        // §119: the night is over — OBS's closing scene, if named.
+        state.obs().moment(crate::obs::Moment::End);
+    }
     Ok(tell_live_event(&app, &dir))
 }
 

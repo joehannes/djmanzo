@@ -302,6 +302,12 @@ impl Hearing {
         Self::default()
     }
 
+    /// The record the room is hearing now, as last said; `None` in silence.
+    #[must_use]
+    pub fn heard(&self) -> Option<dj_core::TrackId> {
+        self.said
+    }
+
     /// Read the decks at `now` (unix seconds), and say so when the room has
     /// moved to a different record.
     pub fn observe(&mut self, now: f64, decks: &[Meter]) -> Option<Heard> {

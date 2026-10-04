@@ -45,6 +45,11 @@ Versioning follows semver, with one project-specific convention:
   OBS's WebSocket address and password, and start or stop the stream and put
   a scene on air from djmanzo. It reconnects by itself when OBS is restarted;
   the password is kept in the system keychain.
+- **OBS changes scene on the night's moments (§119).** Name a scene for the
+  drop of the record the room is hearing, for a new singer called up, and
+  for the night's end, and a scene to come back to after a few seconds. A
+  scene you choose by hand, in djmanzo or in OBS, is left alone for half a
+  minute.
 
 ## v0.36.0 — The singers' microphones, finished
 

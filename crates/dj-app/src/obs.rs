@@ -29,6 +29,174 @@ pub struct Settings {
     pub port: u16,
     #[serde(skip)]
     pub password: String,
+    /// Which scene goes on air on which moment.
+    pub moments: MomentScenes,
+}
+
+/// A moment in the night that can put a scene on air.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Moment {
+    /// The drop of the record the room is hearing.
+    Drop,
+    /// The next singer called up in the karaoke rotation.
+    Singer,
+    /// The night ended — the event being played put away.
+    End,
+}
+
+/// The scenes the DJ named for the moments, by OBS's names; an empty one is
+/// a moment that changes nothing.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct MomentScenes {
+    /// The scene to come back to once a moment's has held, or empty to stay.
+    pub base: String,
+    pub drop: String,
+    pub singer: String,
+    /// Not followed by the base: the night is over.
+    pub end: String,
+    /// How long a moment's scene holds before the base comes back, seconds.
+    pub hold: u32,
+}
+
+impl Default for MomentScenes {
+    fn default() -> Self {
+        Self {
+            base: String::new(),
+            drop: String::new(),
+            singer: String::new(),
+            end: String::new(),
+            hold: 8,
+        }
+    }
+}
+
+impl MomentScenes {
+    fn scene(&self, moment: Moment) -> &str {
+        match moment {
+            Moment::Drop => &self.drop,
+            Moment::Singer => &self.singer,
+            Moment::End => &self.end,
+        }
+    }
+
+    /// Whether `moment` has a scene to put on air.
+    #[must_use]
+    pub fn wants(&self, moment: Moment) -> bool {
+        !self.scene(moment).trim().is_empty()
+    }
+}
+
+/// How long djmanzo leaves the scenes alone after one was put on air by a
+/// hand — in OBS, or with djmanzo's own scene buttons. A DJ who chose a
+/// scene meant it; a drop a moment later does not argue.
+pub const HANDS_OFF: Duration = Duration::from_secs(30);
+
+/// Which scene the moments put on air, and when the base comes back.
+///
+/// Pure: told the moments, the time, and every scene OBS says went on air,
+/// it answers with the scene to put on air, if any.
+#[derive(Debug, Default)]
+pub struct Director {
+    /// When the base comes back.
+    returning_at: Option<Instant>,
+    /// Until when a hand's choice is left alone.
+    hands_off_until: Option<Instant>,
+    /// Scenes djmanzo put on air whose news has not come back from OBS yet,
+    /// so its own switch is not taken for a hand's.
+    expecting: Vec<String>,
+}
+
+impl Director {
+    /// `moment` happened at `now`: the scene to put on air.
+    pub fn moment(
+        &mut self,
+        moment: Moment,
+        now: Instant,
+        scenes: &MomentScenes,
+    ) -> Option<String> {
+        if self.hands_off_until.is_some_and(|until| now < until) {
+            return None;
+        }
+        let scene = scenes.scene(moment).trim();
+        if scene.is_empty() {
+            return None;
+        }
+        self.returning_at = (moment != Moment::End && !scenes.base.trim().is_empty())
+            .then(|| now + Duration::from_secs(u64::from(scenes.hold)));
+        self.expect(scene);
+        Some(scene.to_owned())
+    }
+
+    /// The base scene, once a moment's has held long enough.
+    pub fn tick(&mut self, now: Instant, scenes: &MomentScenes) -> Option<String> {
+        let due = self.returning_at.is_some_and(|at| now >= at);
+        if !due {
+            return None;
+        }
+        self.returning_at = None;
+        let base = scenes.base.trim();
+        if base.is_empty() {
+            return None;
+        }
+        self.expect(base);
+        Some(base.to_owned())
+    }
+
+    /// OBS says `scene` went on air: djmanzo's own doing, or a hand's.
+    pub fn on_air(&mut self, scene: &str, now: Instant) {
+        if let Some(ours) = self.expecting.iter().position(|s| s == scene) {
+            self.expecting.remove(ours);
+        } else {
+            self.hand(now);
+        }
+    }
+
+    /// A hand chose a scene: leave the scenes alone for a while.
+    pub fn hand(&mut self, now: Instant) {
+        self.hands_off_until = Some(now + HANDS_OFF);
+        self.returning_at = None;
+    }
+
+    fn expect(&mut self, scene: &str) {
+        self.expecting.push(scene.to_owned());
+        // A switch whose news never came back is not waited for forever.
+        if self.expecting.len() > 4 {
+            self.expecting.remove(0);
+        }
+    }
+}
+
+/// Whether the record the room hears just reached one of its drops.
+///
+/// Told the deck the room hears, where it is and whether it plays, at every
+/// look; a drop counts when the position moves forward across it in one
+/// step of the music — not when a DJ jumps over it, nor on a deck that just
+/// came to be the one heard.
+#[derive(Debug, Default)]
+pub struct DropWatch {
+    last: Option<(u8, f64)>,
+}
+
+impl DropWatch {
+    /// `deck` heard at `position` (the analysis's frames, `rate` a second),
+    /// with its `drops`: true when one was just crossed.
+    pub fn crossed(&mut self, heard: Option<(u8, f64, bool)>, drops: &[f64], rate: f64) -> bool {
+        let Some((deck, position, playing)) = heard else {
+            self.last = None;
+            return false;
+        };
+        let before = self.last.replace((deck, position));
+        let Some((was_deck, was)) = before else {
+            return false;
+        };
+        playing
+            && was_deck == deck
+            && position > was
+            && position - was <= rate
+            && drops.iter().any(|&drop| was < drop && drop <= position)
+    }
 }
 
 impl Default for Settings {
@@ -38,6 +206,7 @@ impl Default for Settings {
             host: "localhost".to_owned(),
             port: dj_net::obs::DEFAULT_PORT,
             password: String::new(),
+            moments: MomentScenes::default(),
         }
     }
 }
@@ -66,6 +235,7 @@ pub enum Ask {
 /// again at the settings.
 enum Order {
     Ask(Ask, SyncSender<Result<(), String>>),
+    Moment(Moment),
     Reconnect,
 }
 
@@ -154,6 +324,7 @@ pub struct Link {
     path: Mutex<Option<PathBuf>>,
     secrets: Mutex<Option<Arc<dyn SecretStore>>>,
     orders: Mutex<Option<Sender<Order>>>,
+    drops: Mutex<DropWatch>,
 }
 
 impl Default for Link {
@@ -181,6 +352,7 @@ impl Link {
             path: Mutex::new(None),
             secrets: Mutex::new(None),
             orders: Mutex::new(None),
+            drops: Mutex::new(DropWatch::default()),
         }
     }
 
@@ -297,6 +469,36 @@ impl Link {
             .unwrap_or_else(|_| Err(ObsError::Timeout.to_string()))
     }
 
+    /// A moment happened: the thread puts its scene on air, if the DJ named
+    /// one and no hand chose a scene a moment ago. Not waited for.
+    pub fn moment(&self, moment: Moment) {
+        let settings = self.settings();
+        if settings.on && settings.moments.wants(moment) {
+            self.order(Order::Moment(moment));
+        }
+    }
+
+    /// Whether the link would do anything with `moment` — so the pump does
+    /// not read the analysis sixty times a second for nobody.
+    #[must_use]
+    pub fn wants(&self, moment: Moment) -> bool {
+        let settings = self.settings();
+        settings.on && settings.moments.wants(moment)
+    }
+
+    /// The pump's look at the record the room hears; puts the drop scene on
+    /// air when it just crossed a drop.
+    pub fn watch_drops(&self, heard: Option<(u8, f64, bool)>, drops: &[f64], rate: f64) {
+        let crossed = self
+            .drops
+            .lock()
+            .map(|mut watch| watch.crossed(heard, drops, rate))
+            .unwrap_or(false);
+        if crossed {
+            self.moment(Moment::Drop);
+        }
+    }
+
     fn order(&self, order: Order) -> bool {
         self.orders
             .lock()
@@ -318,6 +520,7 @@ fn run(shared: &Shared, orders: &Receiver<Order>, connector: &Connector, timing:
     let mut studio: Option<Box<dyn Studio>> = None;
     let mut tried: Option<Instant> = None;
     let mut looked: Option<Instant> = None;
+    let mut director = Director::default();
     loop {
         let settings = shared
             .settings
@@ -363,6 +566,17 @@ fn run(shared: &Shared, orders: &Receiver<Order>, connector: &Connector, timing:
                 studio = None;
                 tried = None;
             }
+            Ok(Order::Moment(moment)) => {
+                if let Some(obs) = studio.as_mut()
+                    && let Some(scene) = director.moment(moment, Instant::now(), &settings.moments)
+                    && let Err(error) = obs.put_on_air(&scene)
+                {
+                    if gone(&error) {
+                        studio = None;
+                    }
+                    update(shared, |s| s.error = Some(error.to_string()));
+                }
+            }
             Ok(Order::Ask(ask, reply)) => {
                 let answer = match studio.as_mut() {
                     None if !settings.on => Err("the link to OBS is off".to_owned()),
@@ -375,7 +589,12 @@ fn run(shared: &Shared, orders: &Receiver<Order>, connector: &Connector, timing:
                     Some(obs) => {
                         let done = match &ask {
                             Ask::Stream(on) => obs.stream(*on),
-                            Ask::Scene(scene) => obs.put_on_air(scene),
+                            Ask::Scene(scene) => {
+                                // The DJ's own choice, from djmanzo's buttons:
+                                // a hand, as one in OBS is.
+                                director.hand(Instant::now());
+                                obs.put_on_air(scene)
+                            }
                         };
                         match done {
                             Ok(()) => {
@@ -398,6 +617,11 @@ fn run(shared: &Shared, orders: &Receiver<Order>, connector: &Connector, timing:
         }
 
         let Some(obs) = studio.as_mut() else { continue };
+        if let Some(base) = director.tick(Instant::now(), &settings.moments)
+            && let Err(error) = obs.put_on_air(&base)
+        {
+            update(shared, |s| s.error = Some(error.to_string()));
+        }
         let heard = if looked.is_none_or(|at| at.elapsed() >= timing.look) {
             looked = Some(Instant::now());
             obs.streaming().and_then(|streaming| {
@@ -413,7 +637,10 @@ fn run(shared: &Shared, orders: &Receiver<Order>, connector: &Connector, timing:
                 update(shared, |s| {
                     for event in events {
                         match event {
-                            Event::Scene(scene) => s.scenes.current = scene,
+                            Event::Scene(scene) => {
+                                director.on_air(&scene, Instant::now());
+                                s.scenes.current = scene;
+                            }
                             Event::Streaming(on) => s.streaming = on,
                         }
                     }
@@ -650,6 +877,201 @@ mod tests {
         assert_eq!(link.status().error, None, "the old complaint taken down");
     }
 
+    fn named() -> MomentScenes {
+        MomentScenes {
+            base: "Decks".into(),
+            drop: "Crowd".into(),
+            singer: "Singer".into(),
+            end: "Outro".into(),
+            hold: 8,
+        }
+    }
+
+    /// **A moment puts its scene on air, and the base comes back once it
+    /// has held** — except at the night's end, which is not followed by
+    /// anything; a moment with no scene named changes nothing.
+    #[test]
+    fn a_moment_puts_its_scene_on_air_and_the_base_comes_back() {
+        let scenes = named();
+        let start = Instant::now();
+        let mut director = Director::default();
+        assert_eq!(
+            director.moment(Moment::Drop, start, &scenes).as_deref(),
+            Some("Crowd")
+        );
+        director.on_air("Crowd", start);
+        assert_eq!(
+            director.tick(start + Duration::from_secs(7), &scenes),
+            None,
+            "still holding"
+        );
+        assert_eq!(
+            director
+                .tick(start + Duration::from_secs(8), &scenes)
+                .as_deref(),
+            Some("Decks")
+        );
+        director.on_air("Decks", start + Duration::from_secs(8));
+        assert_eq!(
+            director.tick(start + Duration::from_secs(20), &scenes),
+            None,
+            "once"
+        );
+
+        let later = start + Duration::from_secs(30);
+        assert_eq!(
+            director.moment(Moment::Singer, later, &scenes).as_deref(),
+            Some("Singer")
+        );
+        director.on_air("Singer", later);
+        assert_eq!(
+            director.moment(Moment::End, later, &scenes).as_deref(),
+            Some("Outro")
+        );
+        director.on_air("Outro", later);
+        assert_eq!(
+            director.tick(later + Duration::from_secs(60), &scenes),
+            None,
+            "the night is over"
+        );
+
+        let nothing = MomentScenes {
+            drop: String::new(),
+            ..named()
+        };
+        assert_eq!(
+            Director::default().moment(Moment::Drop, later, &nothing),
+            None
+        );
+        assert!(!nothing.wants(Moment::Drop));
+        assert!(nothing.wants(Moment::Singer));
+    }
+
+    /// **A hand's scene is left alone.** One put on air in OBS — djmanzo's
+    /// own switches told apart by the news coming back — or with djmanzo's
+    /// own buttons stops the moments for a while, and cancels a base that
+    /// was about to come back over it.
+    #[test]
+    fn a_hands_scene_is_left_alone() {
+        let scenes = named();
+        let start = Instant::now();
+        let mut director = Director::default();
+        assert!(director.moment(Moment::Drop, start, &scenes).is_some());
+        director.on_air("Crowd", start);
+        // The DJ puts the singer's camera up by hand in OBS.
+        let hand = start + Duration::from_secs(2);
+        director.on_air("Singer", hand);
+        assert_eq!(
+            director.tick(start + Duration::from_secs(9), &scenes),
+            None,
+            "not over the hand"
+        );
+        assert_eq!(
+            director.moment(Moment::Drop, hand + Duration::from_secs(29), &scenes),
+            None
+        );
+        assert_eq!(
+            director
+                .moment(Moment::Drop, hand + HANDS_OFF, &scenes)
+                .as_deref(),
+            Some("Crowd"),
+            "and back to work after a while"
+        );
+    }
+
+    /// **A drop counts when the music crosses it** — once, forward, on the
+    /// deck the room hears, playing — not when the DJ jumps over it, not
+    /// paused, not on the step where the room moved to another deck.
+    #[test]
+    fn a_drop_counts_when_the_music_crosses_it() {
+        let rate = 44_100.0;
+        let drops = [441_000.0]; // ten seconds in
+        let mut watch = DropWatch::default();
+        assert!(
+            !watch.crossed(Some((1, 440_000.0, true)), &drops, rate),
+            "a first look"
+        );
+        assert!(watch.crossed(Some((1, 441_500.0, true)), &drops, rate));
+        assert!(
+            !watch.crossed(Some((1, 442_000.0, true)), &drops, rate),
+            "once"
+        );
+
+        let mut jumped = DropWatch::default();
+        jumped.crossed(Some((1, 300_000.0, true)), &drops, rate);
+        assert!(
+            !jumped.crossed(Some((1, 600_000.0, true)), &drops, rate),
+            "jumped over"
+        );
+
+        let mut paused = DropWatch::default();
+        paused.crossed(Some((1, 440_000.0, false)), &drops, rate);
+        assert!(!paused.crossed(Some((1, 441_500.0, false)), &drops, rate));
+
+        let mut moved = DropWatch::default();
+        moved.crossed(Some((2, 440_000.0, true)), &drops, rate);
+        assert!(
+            !moved.crossed(Some((1, 441_500.0, true)), &drops, rate),
+            "another deck"
+        );
+
+        let mut silence = DropWatch::default();
+        silence.crossed(Some((1, 440_000.0, true)), &drops, rate);
+        silence.crossed(None, &drops, rate);
+        assert!(
+            !silence.crossed(Some((1, 441_500.0, true)), &drops, rate),
+            "after silence"
+        );
+    }
+
+    /// **Through the link: a moment reaches OBS, and the base follows** —
+    /// and nothing at all while the link is off or the moment has no scene.
+    #[test]
+    fn the_link_puts_a_moments_scene_on_air() {
+        let obs = Fake::new();
+        let link = Link::new();
+        let made = obs.clone();
+        link.start(
+            None,
+            None,
+            Box::new(move |_| Ok(Box::new(made.clone()) as Box<dyn Studio>)),
+            QUICK,
+        );
+        let scenes = MomentScenes {
+            base: "Decks".into(),
+            drop: "Crowd".into(),
+            singer: String::new(),
+            end: String::new(),
+            hold: 1,
+        };
+        link.moment(Moment::Drop);
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(obs.state.lock().unwrap().on_air, "Decks", "off: nothing");
+
+        link.set(Settings {
+            on: true,
+            moments: scenes,
+            ..Settings::default()
+        });
+        until("connected", || link.status().connected);
+        assert!(link.wants(Moment::Drop));
+        assert!(!link.wants(Moment::Singer));
+        link.moment(Moment::Singer);
+        link.moment(Moment::Drop);
+        until("the drop's scene", || {
+            obs.state.lock().unwrap().on_air == "Crowd"
+        });
+        // OBS's news of djmanzo's own switch is not a hand.
+        obs.state
+            .lock()
+            .unwrap()
+            .events
+            .push(Event::Scene("Crowd".into()));
+        until("the base back", || {
+            obs.state.lock().unwrap().on_air == "Decks"
+        });
+    }
+
     /// **The settings survive a restart — the password in the keychain, as
     /// every other key djmanzo holds, and never in the file.**
     #[test]
@@ -668,6 +1090,10 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 4456,
             password: "hunter2".into(),
+            moments: MomentScenes {
+                drop: "Crowd".into(),
+                ..MomentScenes::default()
+            },
         };
         link.set(mine.clone());
         let file = std::fs::read_to_string(dir.join("obs.json")).unwrap();

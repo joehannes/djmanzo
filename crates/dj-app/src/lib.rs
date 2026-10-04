@@ -504,6 +504,7 @@ pub fn run() {
                     {
                         let state: tauri::State<'_, AppState> = handle.state();
                         record_room(&state, &snapshot, &watched_tracks, &session_id);
+                        watch_drops(&state, &snapshot, &watched_tracks);
                     }
                     // §115: the quiet proposer reads the frame the DJ is
                     // about to see, on the pump that draws it — so what it
@@ -585,6 +586,7 @@ pub fn run() {
             commands::obs_status,
             commands::obs_settings,
             commands::obs_settings_set,
+            commands::obs_moments_set,
             commands::obs_stream,
             commands::obs_scene,
             commands::attach_panel,
@@ -1089,6 +1091,49 @@ fn record_room(
     {
         tracing::warn!(%error, "could not note which record the room heard");
     }
+}
+
+/// §119: the drop of the record the room hears, for OBS's drop scene. Read
+/// only while the DJ named one: the analysis is not looked at sixty times a
+/// second for nobody.
+fn watch_drops(state: &AppState, snapshot: &Snapshot, tracks: &snapshot::DeckTracks) {
+    if !state.obs().wants(obs::Moment::Drop) {
+        return;
+    }
+    let heard = state
+        .hearing()
+        .lock()
+        .ok()
+        .and_then(|hearing| hearing.heard());
+    let deck = heard.and_then(|id| {
+        tracks
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(_, loaded)| loaded.id == id)
+            .map(|(&deck, _)| deck)
+    });
+    let playing = deck.and_then(|number| snapshot.decks.iter().find(|d| d.number == number));
+    let Some(deck) = playing else {
+        state.obs().watch_drops(None, &[], 0.0);
+        return;
+    };
+    let drops = state
+        .analysis()
+        .for_deck(deck.number)
+        .map(|found| found.trajectory.drops.clone())
+        .unwrap_or_default();
+    // The analysis counts in the deck's own frames; this many to a second.
+    let rate = if deck.length_seconds > 0.0 {
+        f64::from(deck.length_frames) / f64::from(deck.length_seconds)
+    } else {
+        0.0
+    };
+    state.obs().watch_drops(
+        Some((deck.number, f64::from(deck.position_frames), deck.playing)),
+        &drops,
+        rate,
+    );
 }
 
 fn record_plays(
