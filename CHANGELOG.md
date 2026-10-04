@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Video files on a deck (§122).** Load an MP4, MOV, MKV or WebM onto a
+  deck: its sound plays like any record — waveform, grid, key, stems — and
+  its picture shows in the new *Video* panel, which pops out as its own
+  window for a projector. The pictures crossfade as the sound does, a deck
+  being cued never shows, and one deck can be pinned. On Linux, H.264 video
+  needs the distribution's `gstreamer1.0-libav`; djmanzo says so when a
+  picture will not play. Not yet: WebM with Opus sound, as YouTube's are.
+
 - **A phone as a camera, from djmanzo's own page (§119).** In the Camera
   panel's *A phone* tab, switch it on and scan the code with the phone: the
   phone's camera goes straight to OBS, as a *Browser* source at the address

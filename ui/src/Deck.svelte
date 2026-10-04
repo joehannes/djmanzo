@@ -532,6 +532,8 @@
           name: "Audio",
           extensions: ["mp3", "flac", "wav", "aiff", "aif", "ogg", "m4a", "aac", "opus"],
         },
+        // §122: a video's sound plays on the deck; its picture in the Video panel.
+        { name: "Video", extensions: ["mp4", "m4v", "mov", "mkv", "webm"] },
       ],
     });
     if (typeof path !== "string") return;

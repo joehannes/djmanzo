@@ -109,6 +109,7 @@
   import PressKit from "./PressKit.svelte";
   import Crowd from "./Crowd.svelte";
   import Camera from "./Camera.svelte";
+  import Video from "./Video.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -294,6 +295,7 @@
     "kit",
     "crowd",
     "camera",
+    "video",
     "night",
     "room",
     "booth",
@@ -3551,6 +3553,10 @@
     <Crowd />
   {/snippet}
 
+  {#snippet surfaceVideo()}
+    <Video decks={snapshot?.decks ?? []} crossfader={snapshot?.master.crossfader ?? 0} />
+  {/snippet}
+
   {#snippet surfaceCamera()}
     <Camera />
   {/snippet}
@@ -3820,6 +3826,7 @@
     {:else if name === "kit"}{@render surfaceKit()}
     {:else if name === "crowd"}{@render surfaceCrowd()}
     {:else if name === "camera"}{@render surfaceCamera()}
+    {:else if name === "video"}{@render surfaceVideo()}
     {:else if name === "night"}{@render surfaceNight()}
     {:else if name === "room"}{@render surfaceRoom()}
     {:else if name === "requests"}{@render surfaceRequests()}

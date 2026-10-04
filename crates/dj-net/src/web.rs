@@ -71,6 +71,9 @@ pub struct Incoming {
     /// makes every request look like a phone that has never been seen before,
     /// which quietly turns any per-phone limit into no limit at all.
     pub from: Option<std::net::IpAddr>,
+    /// The `Range` header, as sent: what to read of something served in
+    /// parts (§122's pictures, which a `<video>` seeks in).
+    pub range: Option<String>,
 }
 
 impl Incoming {
@@ -325,12 +328,18 @@ fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
         }
     }
 
+    let range = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Range"))
+        .map(|h| h.value.as_str().to_owned());
     Some(Incoming {
         method,
         path,
         query,
         body,
         from: request.remote_addr().map(SocketAddr::ip),
+        range,
     })
 }
 

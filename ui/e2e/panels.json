@@ -90,6 +90,12 @@
     "surface": "camera"
   },
   {
+    "id": "video",
+    "title": "djmanzo - Video",
+    "detached": false,
+    "surface": "video"
+  },
+  {
     "id": "karaoke",
     "title": "djmanzo - Karaoke",
     "detached": false,

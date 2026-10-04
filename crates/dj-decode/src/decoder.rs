@@ -6,7 +6,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{
-    CODEC_TYPE_MP1, CODEC_TYPE_MP2, CODEC_TYPE_MP3, CODEC_TYPE_NULL, DecoderOptions,
+    CODEC_TYPE_MP1, CODEC_TYPE_MP2, CODEC_TYPE_MP3, CODEC_TYPE_NULL, CodecParameters,
+    DecoderOptions,
 };
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader, Track};
@@ -133,6 +134,32 @@ fn mpeg_extent(
     (start, if stale { decoded } else { claimed }, claimed)
 }
 
+/// How many frames a packet of uncompressed sound may hold, when its container
+/// does not say: ten seconds of it.
+const PCM_PACKET_SECONDS: u64 = 10;
+
+/// `params`, with a bound on a PCM packet's length where the container gave
+/// none.
+///
+/// Matroska says nothing of how long its packets are, and Symphonia's PCM
+/// decoder will not start without being told — so a video whose sound is
+/// uncompressed (§122: what a browser's own recorder writes, among others)
+/// was refused outright. The bound is generous on purpose: the decoder fills
+/// a buffer of that size and drops whatever a packet holds past it.
+fn with_packet_bound(params: &CodecParameters) -> CodecParameters {
+    let mut params = params.clone();
+    let pcm = symphonia::default::get_codecs()
+        .get_codec(params.codec)
+        .is_some_and(|codec| codec.short_name.starts_with("pcm"));
+    if pcm
+        && params.max_frames_per_packet.is_none()
+        && let Some(rate) = params.sample_rate
+    {
+        params.max_frames_per_packet = Some(u64::from(rate) * PCM_PACKET_SECONDS);
+    }
+    params
+}
+
 /// Decode an entire file into memory.
 ///
 /// Blocking and potentially slow -- minutes of audio, a full content hash. Never
@@ -164,7 +191,10 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> 
         .ok_or(DecodeError::BadSampleRate)?;
 
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make(
+            &with_packet_bound(&track.codec_params),
+            &DecoderOptions::default(),
+        )
         .map_err(|e| DecodeError::Unsupported(e.to_string()))?;
 
     // Pre-size from the declared duration where the container gives one. Saves a

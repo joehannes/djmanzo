@@ -74,6 +74,8 @@ pub enum Panel {
     Crowd,
     /// §119: the computer's webcam, in a window OBS can capture by its title.
     Camera,
+    /// §122: the picture of a video on a deck, for a projector.
+    Video,
     /// §107's karaoke host: the rotation, the guest book, the words' timing.
     Karaoke,
     /// The room's senses.
@@ -109,7 +111,7 @@ pub enum Panel {
 }
 
 impl Panel {
-    pub const ALL: [Panel; 28] = [
+    pub const ALL: [Panel; 29] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -125,6 +127,7 @@ impl Panel {
         Panel::Kit,
         Panel::Crowd,
         Panel::Camera,
+        Panel::Video,
         Panel::Karaoke,
         Panel::Room,
         Panel::Mixes,
@@ -177,6 +180,7 @@ impl Panel {
             Panel::Kit => "kit",
             Panel::Crowd => "crowd",
             Panel::Camera => "camera",
+            Panel::Video => "video",
             Panel::Karaoke => "karaoke",
             Panel::Room => "room",
             Panel::Mixes => "mixes",
@@ -220,6 +224,7 @@ impl Panel {
             Panel::Kit => "djmanzo - Press kit",
             Panel::Crowd => "djmanzo - Crowd",
             Panel::Camera => "djmanzo - Camera",
+            Panel::Video => "djmanzo - Video",
             Panel::Karaoke => "djmanzo - Karaoke",
             Panel::Room => "djmanzo - Room",
             Panel::Mixes => "djmanzo - Tonight's mixes",
@@ -263,6 +268,8 @@ impl Panel {
             Panel::Settings => (760.0, 860.0),
             // 16:9 with room for the controls under it.
             Panel::Camera => (960.0, 600.0),
+            // A projector's shape.
+            Panel::Video => (1280.0, 720.0),
         }
     }
 

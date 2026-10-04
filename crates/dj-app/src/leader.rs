@@ -131,7 +131,7 @@ impl Node {
 
 /// The panels the tree opens, most reached-for first so they keep their
 /// first letters. Every name is a cockpit surface the interface draws.
-pub const PANELS: [&str; 24] = [
+pub const PANELS: [&str; 25] = [
     "library",
     "next",
     "prepare",
@@ -162,6 +162,8 @@ pub const PANELS: [&str; 24] = [
     "crowd",
     // §119's camera, last again.
     "camera",
+    // §122's video, and again.
+    "video",
 ];
 
 /// The letter for one name, given the letters already taken: the first

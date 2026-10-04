@@ -1060,6 +1060,27 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            name: "video",
+            title: "Video",
+            // §122: the picture of a video file on a deck, for a projector.
+            // Its sound is the deck's like any record's; this is only the
+            // picture, crossfading as the sound does. See docs/VIDEO.md.
+            about: "The picture of a video on a deck, crossfading as its sound does: \
+                    pop it out onto the projector. Not open, it is hidden.",
+            category: Category::Utility,
+            least: (240, 180),
+            prefer: (480, 320),
+            priority: 40,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            // Opened by the DJ: a projector is not something a phase decides.
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
             name: "kit",
             title: "Press kit",
             // §118d: the DJ's own details in one place, and what to send

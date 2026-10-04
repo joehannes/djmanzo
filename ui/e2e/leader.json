@@ -596,6 +596,13 @@
           "run": "surface camera",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "y",
+          "label": "Video",
+          "run": "surface video",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false
@@ -770,6 +777,13 @@
           "key": "x",
           "label": "Camera",
           "run": "lift camera",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "y",
+          "label": "Video",
+          "run": "lift video",
           "children": [],
           "mine": false
         }

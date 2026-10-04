@@ -308,6 +308,8 @@ pub struct AppState {
     youtube: crate::youtube::Link,
     /// §119: a phone as a camera, from djmanzo's own page.
     phone_camera: crate::phone_camera::PhoneCamera,
+    /// §122: the pictures of the video files on the decks.
+    pictures: std::sync::Arc<crate::video::Pictures>,
     /// §119: the DJ asked for the camera in this run. Kept here, not on disk,
     /// so a panel popped out shows it without asking again and a workspace
     /// restored at launch never turns a camera on by itself.
@@ -606,6 +608,7 @@ impl AppState {
             obs: crate::obs::Link::new(),
             youtube: crate::youtube::Link::new(),
             phone_camera: crate::phone_camera::PhoneCamera::new(),
+            pictures: std::sync::Arc::new(crate::video::Pictures::new()),
             camera_wanted: std::sync::atomic::AtomicBool::new(false),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
@@ -1612,6 +1615,12 @@ impl AppState {
         &self.phone_camera
     }
 
+    /// §122: the pictures of the video files on the decks.
+    #[must_use]
+    pub fn pictures(&self) -> &std::sync::Arc<crate::video::Pictures> {
+        &self.pictures
+    }
+
     /// §119: whether the DJ asked for the camera in this run.
     #[must_use]
     pub fn camera_wanted(&self) -> bool {
@@ -2463,6 +2472,7 @@ impl AppState {
         if let Ok(mut map) = self.deck_tracks.lock() {
             map.remove(&deck.human_number());
         }
+        self.pictures.ejected(deck.human_number());
         if let Ok(mut map) = self.deck_stems.lock() {
             map.remove(&deck.human_number());
         }

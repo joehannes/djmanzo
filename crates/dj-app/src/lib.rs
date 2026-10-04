@@ -103,6 +103,7 @@ pub mod tiers;
 pub mod timecode;
 pub mod transition;
 pub mod uiop;
+pub mod video;
 pub mod wav;
 pub mod waveform;
 pub mod welcome;
@@ -636,6 +637,7 @@ pub fn run() {
             commands::phone_camera_status,
             commands::phone_camera_set,
             commands::phone_camera_new_link,
+            commands::deck_pictures,
             commands::youtube_settings,
             commands::youtube_settings_set,
             commands::youtube_sign_in,

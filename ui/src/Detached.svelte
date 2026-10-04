@@ -18,6 +18,7 @@
   import Controllers from "./Controllers.svelte";
   import Crowd from "./Crowd.svelte";
   import Camera from "./Camera.svelte";
+  import Video from "./Video.svelte";
   import EventPanel from "./Event.svelte";
   import Fx from "./Fx.svelte";
   import MappingEditor from "./MappingEditor.svelte";
@@ -375,6 +376,8 @@
       </div>
     {:else if panel === "singers"}
       <SingerScreen decks={snapshot.decks} />
+    {:else if panel === "video"}
+      <Video decks={snapshot.decks} crossfader={snapshot.master.crossfader} />
     {:else if panel === "karaoke"}
       <Singers enabled={ready} {deckCount} decks={snapshot.decks} vocals={snapshot.master.vocals} />
     {:else if panel === "prepare"}

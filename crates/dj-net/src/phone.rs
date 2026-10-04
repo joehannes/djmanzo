@@ -608,6 +608,7 @@ mod tests {
             query,
             body: body.as_bytes().to_vec(),
             from: Some(from.parse().unwrap()),
+            range: None,
         }
     }
 

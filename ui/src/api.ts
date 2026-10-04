@@ -5955,6 +5955,21 @@ export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_vi
 export const cameraWanted = () => invoke<boolean>("camera_wanted");
 export const setCameraWanted = (on: boolean) => invoke<void>("set_camera_wanted", { on });
 
+// -- §122: video on a deck --------------------------------------------------------
+
+/** `commands::DeckPicture`: a deck whose record has a picture. */
+export interface DeckPicture {
+  deck: number;
+  /** The record's id: the picture is served only while it is on the deck. */
+  record: string;
+  /** `video/mp4`, `video/webm`, … */
+  kind: string;
+  /** Where the `<video>` reads it from: `dj_app::video`'s server on this computer. */
+  url: string;
+}
+
+export const deckPictures = () => invoke<DeckPicture[]>("deck_pictures");
+
 // -- §119: a phone as a camera ----------------------------------------------------
 
 /** `phone_camera::Status`: the addresses, the code, and what each side is doing. */

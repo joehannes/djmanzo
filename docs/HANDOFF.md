@@ -1214,6 +1214,26 @@ distinction was not only a reporting gap; something was already acting on the
 distinction it could not make.** Worth asking, whenever a directive line wants
 two things told apart: is anything already behaving as though they are?
 
+**WebKitGTK plays media only from `http`, `https` and `blob`.** A `<video>`
+given one of djmanzo's own URI schemes — which serve cover art and waveform
+tiles perfectly well — passes the type check and then fails at once, before
+a byte is fetched: GStreamer has no source for the scheme. Chromium plays the
+same address, so no browser test can see it. §122's pictures come from a
+server on `127.0.0.1` for that reason (`dj_app::video`), and the CSP's
+`media-src` names it. Found only by driving it, with
+`GST_DEBUG="webkit*:6"` showing *MayBeSupported* and then *FormatError* with
+nothing in between.
+
+**A browser's own recorder writes WebM with no duration.** A test video made
+with `MediaRecorder` cannot be seeked — the element treats it as a live
+stream — so a test of seeking passes or fails on the fixture, not the code.
+`ui/e2e/video.spec.ts` writes the length into the file's Info element.
+
+**A mutation script that changes directory restores nothing.** `cp orig file`
+with a relative `file` after a `cd` fails, and the mutant stays in the source
+— in a new, untracked file there is no `git checkout` to fall back on. Use
+absolute paths for both the backup and the restore.
+
 **Take the mutation backup immediately before the mutation.** A `cp` taken
 earlier in the session, then a test added, then a mutation and a restore — and
 the restore silently removed the test. It was caught because the test was fresh

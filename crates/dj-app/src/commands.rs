@@ -292,6 +292,40 @@ pub fn youtube_status(state: State<'_, AppState>) -> crate::youtube::Status {
     state.youtube().status()
 }
 
+/// §122: a deck whose record has a picture, and which record it is — what
+/// the Video panel builds `video://localhost/<deck>/<record>` from.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DeckPicture {
+    pub deck: u8,
+    pub record: String,
+    /// What kind of file: `video/mp4`, `video/webm`, …
+    pub kind: &'static str,
+    /// Where the `<video>` reads it from: `crate::video`'s server.
+    pub url: String,
+}
+
+/// §122: the decks whose records have pictures, and where each is read from.
+///
+/// # Errors
+/// When the pictures' server cannot start.
+#[tauri::command]
+pub fn deck_pictures(state: State<'_, AppState>) -> Result<Vec<DeckPicture>, String> {
+    let all = state.pictures().all();
+    if all.is_empty() {
+        return Ok(Vec::new());
+    }
+    let address = state.pictures().address()?;
+    Ok(all
+        .into_iter()
+        .map(|(deck, record, kind)| DeckPicture {
+            url: format!("{address}/{deck}/{record}"),
+            deck,
+            record,
+            kind,
+        })
+        .collect())
+}
+
 /// §119: the phone camera — its addresses, its QR code, and what the phone
 /// and OBS are doing.
 #[tauri::command]
@@ -1589,6 +1623,8 @@ pub fn put_on_deck(
         },
     );
     state.set_deck_stems(deck_id, decoded.id, decoded.buffer.stems_lock());
+    // §122: a video's picture, served while the record is on the deck.
+    state.pictures().loaded(deck, decoded.id, &decoded.path);
 
     let track_id = decoded.id;
     let sample_rate = decoded.buffer.sample_rate();

@@ -759,6 +759,8 @@ export const ANSWERS: Record<string, unknown> = {
   },
   obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
   camera_wanted: false,
+  // §122: no deck has a video on it unless a test says so.
+  deck_pictures: [],
   phone_camera_status: {
     on: false,
     phone_url: null,

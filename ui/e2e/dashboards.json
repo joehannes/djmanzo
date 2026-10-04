@@ -245,6 +245,13 @@
             "key": null,
             "label": "Camera",
             "run": "surface camera"
+          },
+          {
+            "about": "The picture of a video on a deck, crossfading as its sound does: pop it out onto the projector. Not open, it is hidden.",
+            "id": "surface:video",
+            "key": null,
+            "label": "Video",
+            "run": "surface video"
           }
         ],
         "title": "Panels"
@@ -888,6 +895,13 @@
             "key": null,
             "label": "Camera",
             "run": "surface camera"
+          },
+          {
+            "about": "The picture of a video on a deck, crossfading as its sound does: pop it out onto the projector. Not open, it is hidden.",
+            "id": "surface:video",
+            "key": null,
+            "label": "Video",
+            "run": "surface video"
           }
         ],
         "title": "Panels"
@@ -1531,6 +1545,13 @@
             "key": null,
             "label": "Camera",
             "run": "surface camera"
+          },
+          {
+            "about": "The picture of a video on a deck, crossfading as its sound does: pop it out onto the projector. Not open, it is hidden.",
+            "id": "surface:video",
+            "key": null,
+            "label": "Video",
+            "run": "surface video"
           }
         ],
         "title": "Panels"
