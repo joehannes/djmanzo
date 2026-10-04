@@ -758,6 +758,7 @@ export const ANSWERS: Record<string, unknown> = {
     moments: { base: "", drop: "", singer: "", end: "", hold: 8 },
   },
   obs_status: { on: false, connected: false, error: null, streaming: false, scenes: { current: "", all: [] } },
+  camera_wanted: false,
   youtube_settings: { on: false, client_id: "", client_secret: "" },
   youtube_status: { on: false, client: false, signed_in: false, reading: null, read: 0, note: null },
   leader_tree: leaderTree,
@@ -1926,6 +1927,13 @@ export async function openShell(
           // §121: the windows a panel was popped out into, by the name
           // `monitors::Panel` gives them.
           if (cmd === "detach_panel") {
+            // What this window still drew when the new one was asked for:
+            // a panel is never in both at once (a camera held in two froze
+            // WebKitGTK).
+            ((win.__drawnWhenDetached ??= []) as string[][]).push(
+              [...document.querySelectorAll<HTMLElement>(".surface[data-surface]")].map((s) => s.dataset.surface ?? ""),
+            );
+            if (typeof win.__detachFails === "string") return Promise.reject(win.__detachFails);
             ((win.__detached ??= []) as string[]).push(String(args.panel));
             return Promise.resolve(null);
           }
@@ -2378,6 +2386,13 @@ export async function openShell(
           if (cmd === "obs_status") return Promise.resolve(structuredClone(win.__obsStatus ?? answers.obs_status));
           if (cmd === "obs_stream" || cmd === "obs_scene") {
             ((win.__obsAsked ??= []) as unknown[]).push({ cmd, ...args });
+            return Promise.resolve(null);
+          }
+          // §119: the camera wanted in this run, as Rust keeps it.
+          if (cmd === "camera_wanted") return Promise.resolve(Boolean(win.__cameraWanted ?? answers.camera_wanted));
+          if (cmd === "set_camera_wanted") {
+            win.__cameraWanted = args.on;
+            ((win.__cameraSet ??= []) as unknown[]).push(args.on);
             return Promise.resolve(null);
           }
           // §119: YouTube's live chat, held the way Rust holds it -- what

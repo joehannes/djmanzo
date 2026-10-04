@@ -108,6 +108,7 @@
   import Guides from "./Guides.svelte";
   import PressKit from "./PressKit.svelte";
   import Crowd from "./Crowd.svelte";
+  import Camera from "./Camera.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -292,6 +293,7 @@
     "event",
     "kit",
     "crowd",
+    "camera",
     "night",
     "room",
     "booth",
@@ -971,18 +973,25 @@
     };
   });
 
-  /** Into its own window, and out of this one: one panel, one place. */
+  /**
+   * Into its own window, and out of this one: one panel, one place.
+   *
+   * Out of this one first, so the two are never both open -- a camera held
+   * here while its new window opens the same device froze this window's
+   * webview (WebKitGTK, driving §119's camera). Put back if the window will
+   * not open, so a refusal loses nothing.
+   */
   async function popOut(placement: SurfacePlacement) {
     const own = POP_OUT[placement.surface];
     if (!own) return;
+    if (lifted === placement.surface) lifted = null;
+    await toggleSurface(placement.surface as Drawn);
     try {
       await detachPanel(own);
     } catch (why) {
       console.warn("pop out:", why);
-      return;
+      if (!isOpen(placement.surface as Drawn)) await toggleSurface(placement.surface as Drawn);
     }
-    if (lifted === placement.surface) lifted = null;
-    await toggleSurface(placement.surface as Drawn);
   }
 
   /** Where a panel carried by its handle would land. */
@@ -3542,6 +3551,10 @@
     <Crowd />
   {/snippet}
 
+  {#snippet surfaceCamera()}
+    <Camera />
+  {/snippet}
+
   {#snippet surfaceNight()}
     <Night enabled={ready} density={densityName} onDensity={applyDensity} />
   {/snippet}
@@ -3806,6 +3819,7 @@
     {:else if name === "event"}{@render surfaceEvent()}
     {:else if name === "kit"}{@render surfaceKit()}
     {:else if name === "crowd"}{@render surfaceCrowd()}
+    {:else if name === "camera"}{@render surfaceCamera()}
     {:else if name === "night"}{@render surfaceNight()}
     {:else if name === "room"}{@render surfaceRoom()}
     {:else if name === "requests"}{@render surfaceRequests()}

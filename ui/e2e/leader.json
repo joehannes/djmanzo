@@ -589,6 +589,13 @@
           "run": "surface crowd",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "x",
+          "label": "Camera",
+          "run": "surface camera",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false
@@ -756,6 +763,13 @@
           "key": "w",
           "label": "Crowd",
           "run": "lift crowd",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "x",
+          "label": "Camera",
+          "run": "lift camera",
           "children": [],
           "mine": false
         }

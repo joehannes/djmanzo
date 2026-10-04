@@ -216,6 +216,35 @@ test.describe("§121: the controls on a panel's border", () => {
   });
 
   /**
+   * **Out of this window before into its own**: the library is no longer
+   * drawn here when its window is asked for, so a panel holding a camera
+   * never holds it twice; and a window that will not open leaves the panel
+   * where it was.
+   */
+  test("a panel leaves this window before its own opens, and stays if it cannot", async ({ page }) => {
+    await withLibrary(page);
+    await page.getByRole("button", { name: "Pop Library out" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __drawnWhenDetached?: string[][] }).__drawnWhenDetached ?? []))
+      .toHaveLength(1);
+    const drawn = await page.evaluate(() => (window as unknown as { __drawnWhenDetached: string[][] }).__drawnWhenDetached[0]);
+    expect(drawn).not.toContain("library");
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __emitEvent: (name: string, payload: unknown) => boolean; __detachFails?: string };
+      w.__emitEvent("panel-closed", "browser");
+      w.__detachFails = "no display to open it on";
+    });
+    await expect(page.locator(LIBRARY)).toBeVisible();
+    await page.getByRole("button", { name: "Pop Library out" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __drawnWhenDetached?: string[][] }).__drawnWhenDetached ?? []))
+      .toHaveLength(2);
+    await expect(page.locator(LIBRARY)).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A window closed with its own close button is the panel going home.**
    * Rust tells the main window, and the panel is back where it was — not
    * gone until somebody finds it in a menu.

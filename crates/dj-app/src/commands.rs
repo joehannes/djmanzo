@@ -271,6 +271,20 @@ pub fn obs_moments_set(
     obs_settings_dto(&next)
 }
 
+/// §119: whether the DJ asked for the camera in this run — so a panel popped
+/// out shows it without asking again, and nothing turns it on at launch.
+#[tauri::command]
+#[must_use]
+pub fn camera_wanted(state: State<'_, AppState>) -> bool {
+    state.camera_wanted()
+}
+
+/// §119: the DJ turned the camera on, or off.
+#[tauri::command]
+pub fn set_camera_wanted(state: State<'_, AppState>, on: bool) {
+    state.set_camera_wanted(on);
+}
+
 /// §119: what reading YouTube's live chat is doing.
 #[tauri::command]
 #[must_use]

@@ -628,6 +628,8 @@ pub fn run() {
             commands::crowd_read_now,
             commands::crowd_compare,
             commands::youtube_status,
+            commands::camera_wanted,
+            commands::set_camera_wanted,
             commands::youtube_settings,
             commands::youtube_settings_set,
             commands::youtube_sign_in,

@@ -429,6 +429,33 @@
     ]
   },
   {
+    "name": "camera",
+    "title": "Camera",
+    "about": "The computer's webcam, for the stream: pop it out and OBS captures its window. On only when you ask.",
+    "category": "utility",
+    "least": [
+      240,
+      180
+    ],
+    "prefer": [
+      480,
+      320
+    ],
+    "priority": 40,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
     "name": "kit",
     "title": "Press kit",
     "about": "Your details in one place -- bio, fees, links, photos -- and the card, the booking answer, the post or the whole kit, ready to send.",

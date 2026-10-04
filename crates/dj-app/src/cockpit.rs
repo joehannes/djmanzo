@@ -1038,6 +1038,28 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            name: "camera",
+            title: "Camera",
+            // §119: the computer's own webcam, for a stream. Shown here so OBS
+            // can capture the window it is popped out into, and so a DJ can see
+            // what the stream sees without leaving djmanzo.
+            about: "The computer's webcam, for the stream: pop it out and OBS captures \
+                    its window. On only when you ask.",
+            category: Category::Utility,
+            least: (240, 180),
+            prefer: (480, 320),
+            priority: 40,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            // Opened by the DJ, never by a phase: a camera is not a panel that
+            // appears by itself.
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
             name: "kit",
             title: "Press kit",
             // §118d: the DJ's own details in one place, and what to send

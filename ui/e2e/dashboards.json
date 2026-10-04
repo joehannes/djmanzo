@@ -238,6 +238,13 @@
             "key": null,
             "label": "Crowd",
             "run": "surface crowd"
+          },
+          {
+            "about": "The computer's webcam, for the stream: pop it out and OBS captures its window. On only when you ask.",
+            "id": "surface:camera",
+            "key": null,
+            "label": "Camera",
+            "run": "surface camera"
           }
         ],
         "title": "Panels"
@@ -874,6 +881,13 @@
             "key": null,
             "label": "Crowd",
             "run": "surface crowd"
+          },
+          {
+            "about": "The computer's webcam, for the stream: pop it out and OBS captures its window. On only when you ask.",
+            "id": "surface:camera",
+            "key": null,
+            "label": "Camera",
+            "run": "surface camera"
           }
         ],
         "title": "Panels"
@@ -1510,6 +1524,13 @@
             "key": null,
             "label": "Crowd",
             "run": "surface crowd"
+          },
+          {
+            "about": "The computer's webcam, for the stream: pop it out and OBS captures its window. On only when you ask.",
+            "id": "surface:camera",
+            "key": null,
+            "label": "Camera",
+            "run": "surface camera"
           }
         ],
         "title": "Panels"

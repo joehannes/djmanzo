@@ -17,6 +17,7 @@
   import Browse from "./Browse.svelte";
   import Controllers from "./Controllers.svelte";
   import Crowd from "./Crowd.svelte";
+  import Camera from "./Camera.svelte";
   import EventPanel from "./Event.svelte";
   import Fx from "./Fx.svelte";
   import MappingEditor from "./MappingEditor.svelte";
@@ -283,6 +284,8 @@
     <PressKit />
   {:else if panel === "crowd"}
     <Crowd />
+  {:else if panel === "camera"}
+    <Camera />
   {:else if panel === "room"}
     <RoomSense enabled={ready} />
   {:else if panel === "mixes"}

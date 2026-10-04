@@ -174,6 +174,15 @@ could be built and checked here without a Google account, and the polled
 A panel showing the camera, which OBS can capture as a window; the webview's
 own camera access, asked for when the DJ opens the panel and never before.
 
+*Built 4 October* (the *Camera* panel, `Camera.svelte`; `monitors::Panel::Camera`).
+Asked for with a press rather than on opening — a workspace that restores the
+panel at launch must not turn a camera on by itself — and remembered for the
+run by Rust (`camera_wanted`), so the panel popped out shows the camera in its
+own window, *djmanzo - Camera*, without asking again; that title is what OBS's
+*Window Capture* is pointed at. A camera picker once there are two, a mirror,
+and *Hide the controls* for a picture with nothing of djmanzo's on it; a click
+on the picture brings them back.
+
 ## 6. A phone as a camera, from djmanzo's own page
 
 A page on the local network, opened on a phone by its QR code, that sends

@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The computer's webcam, inside djmanzo (§119).** A *Camera* panel shows it
+  when you ask, never before; pop it out and OBS can capture its window,
+  *djmanzo - Camera*, with *Hide the controls* leaving only the picture.
+- **A panel leaves the main window before its own window opens** — and stays
+  where it was if the window will not open. With the camera, having it in
+  both at once for a moment froze the main window.
+
 - **YouTube's live chat, as it arrives (§119).** Settings → *YouTube live
   chat*: give djmanzo a Google client id, sign in with Google in your own
   browser, and while your broadcast is live its chat comes into the Crowd

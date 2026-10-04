@@ -306,6 +306,10 @@ pub struct AppState {
     obs: crate::obs::Link,
     /// §119: YouTube's live chat, read into the crowd.
     youtube: crate::youtube::Link,
+    /// §119: the DJ asked for the camera in this run. Kept here, not on disk,
+    /// so a panel popped out shows it without asking again and a workspace
+    /// restored at launch never turns a camera on by itself.
+    camera_wanted: std::sync::atomic::AtomicBool,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -599,6 +603,7 @@ impl AppState {
             interface_density: Mutex::new("Standard".to_owned()),
             obs: crate::obs::Link::new(),
             youtube: crate::youtube::Link::new(),
+            camera_wanted: std::sync::atomic::AtomicBool::new(false),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1596,6 +1601,18 @@ impl AppState {
     #[must_use]
     pub fn youtube(&self) -> &crate::youtube::Link {
         &self.youtube
+    }
+
+    /// §119: whether the DJ asked for the camera in this run.
+    #[must_use]
+    pub fn camera_wanted(&self) -> bool {
+        self.camera_wanted
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_camera_wanted(&self, on: bool) {
+        self.camera_wanted
+            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// K3: who is on each singers' microphone, strip by strip — `None` for

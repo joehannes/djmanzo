@@ -5951,6 +5951,10 @@ export interface CrowdCompared {
 }
 
 export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_view", { session });
+/** §119: whether the DJ asked for the camera in this run. */
+export const cameraWanted = () => invoke<boolean>("camera_wanted");
+export const setCameraWanted = (on: boolean) => invoke<void>("set_camera_wanted", { on });
+
 // -- §119: YouTube's live chat ----------------------------------------------------
 
 /** `youtube::Settings`: the switch and the Google client djmanzo signs in as. */

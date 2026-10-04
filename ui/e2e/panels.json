@@ -84,6 +84,12 @@
     "surface": "crowd"
   },
   {
+    "id": "camera",
+    "title": "djmanzo - Camera",
+    "detached": false,
+    "surface": "camera"
+  },
+  {
     "id": "karaoke",
     "title": "djmanzo - Karaoke",
     "detached": false,
