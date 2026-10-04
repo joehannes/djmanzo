@@ -1950,16 +1950,27 @@ export async function openShell(
           // Rust's (the fixture), because the rules are Rust's and are
           // tested there. Goals saved come back unanswered, as a night that
           // cannot yet say.
-          if (cmd === "crowd_view" || cmd === "crowd_add" || cmd === "crowd_import" || cmd === "crowd_settings_save") {
+          if (
+            cmd === "crowd_view" ||
+            cmd === "crowd_add" ||
+            cmd === "crowd_import" ||
+            cmd === "crowd_settings_save" ||
+            cmd === "crowd_read_now"
+          ) {
             ((win.__crowdCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
             const view = answers.crowd_view as Record<string, unknown>;
             if (cmd === "crowd_settings_save") {
-              const settings = args.settings as { delay: number; goals: unknown[] };
+              const settings = args.settings as { delay: number; goals: unknown[]; ai: boolean };
               return Promise.resolve({
                 ...view,
                 delay: settings.delay,
                 goals: settings.goals.map((goal) => ({ goal, value: null, met: null })),
+                ai: { ...(view.ai as Record<string, unknown>), on: settings.ai },
               });
+            }
+            // §119: a provider that failed, when a test says so.
+            if (cmd === "crowd_read_now" && typeof win.__crowdReadFails === "string") {
+              return Promise.reject(win.__crowdReadFails);
             }
             return Promise.resolve(view);
           }

@@ -434,6 +434,23 @@ pub fn run() {
                     crate::obs::connect(),
                     crate::obs::Timing::default(),
                 );
+                // §119: what the crowd said that the rules could not place,
+                // read by the DJ's provider a batch at a time. A thread of
+                // its own, never near the audio; the asking is async and
+                // waited for here.
+                let reader = handle.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("dj-crowd-read".into())
+                    .spawn(move || {
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(15));
+                            let state: tauri::State<'_, AppState> = reader.state();
+                            tauri::async_runtime::block_on(commands::crowd_read_due(&state));
+                        }
+                    });
+                if let Err(error) = spawned {
+                    tracing::warn!(%error, "the crowd's reactions will not be read by a model");
+                }
             }
 
             // §77. Read once here so the pump has the handle; the state seeds
@@ -587,6 +604,7 @@ pub fn run() {
             commands::obs_settings,
             commands::obs_settings_set,
             commands::obs_moments_set,
+            commands::crowd_read_now,
             commands::obs_stream,
             commands::obs_scene,
             commands::attach_panel,

@@ -17,8 +17,17 @@
 //! this?"), a request, a hello, or nothing djmanzo can place — and which
 //! way it leans ([`Lean`]). Rules rather than a model, as the whisper's
 //! are: they run on every message of a busy chat with no network, and each
-//! is a sentence a test can hold. A model can be asked later about what the
-//! rules leave as [`About::Other`]; nothing here waits for one.
+//! is a sentence a test can hold.
+//!
+//! What the rules leave as [`About::Other`] — and only that — can be put to
+//! the DJ's own AI provider, a batch at a time (`dj_assistant::crowd`): the
+//! words and what was playing, never who said them. Its answer is kept as a
+//! [`Reading`] beside the night (`crowd/read/<session>.jsonl`), and [`place`]
+//! takes it where the rules had nothing; a reaction it could not place
+//! either stays *something else*, and is not asked about again. [`unread`]
+//! is what is still waiting, and [`due`] says when a night's next batch is:
+//! every [`BATCH`] waiting or [`BATCH_WAIT`] seconds after the oldest,
+//! whichever comes first. Nothing waits for it.
 //!
 //! # Placed on the music
 //!
@@ -386,6 +395,9 @@ pub struct Placed {
     pub part: Part,
     /// Where the part was, in seconds into the record, when there is one.
     pub part_at: Option<f64>,
+    /// Read by the DJ's AI provider rather than the rules: the rules left it
+    /// as something else, and the provider placed it.
+    pub by_model: bool,
 }
 
 /// Put every reaction on the record the room was hearing, `delay` seconds
@@ -395,12 +407,32 @@ pub struct Placed {
 /// Which record that was is `room`'s answer where it has one — the louder
 /// of two playing together, and not the one waiting in the headphones —
 /// and otherwise the record that came in last.
+///
+/// What a reaction is about is the rules' reading ([`read`]), and where the
+/// rules found nothing, the provider's, from `readings`, when it found
+/// something.
 #[must_use]
-pub fn place(reactions: &[Reaction], played: &[Played], room: &[Heard], delay: i64) -> Vec<Placed> {
+pub fn place(
+    reactions: &[Reaction],
+    played: &[Played],
+    room: &[Heard],
+    delay: i64,
+    readings: &[Reading],
+) -> Vec<Placed> {
     reactions
         .iter()
         .map(|reaction| {
-            let (about, lean) = read(&reaction.text);
+            let (mut about, mut lean) = read(&reaction.text);
+            let mut by_model = false;
+            if about == About::Other
+                && let Some(reading) = readings
+                    .iter()
+                    .find(|r| r.of(reaction) && r.about != About::Other)
+            {
+                about = reading.about;
+                lean = reading.lean;
+                by_model = true;
+            }
             let heard = reaction.at - delay;
             let record = hearing(played, room, heard);
             let (into, part, part_at) = match record {
@@ -425,6 +457,7 @@ pub fn place(reactions: &[Reaction], played: &[Played], room: &[Heard], delay: i
                 into,
                 part,
                 part_at,
+                by_model,
             }
         })
         .collect()
@@ -465,6 +498,27 @@ fn part_of(played: &Played, into: f64) -> (Part, Option<f64>) {
         return (Part::Voice, Some(voice));
     }
     (Part::Record, None)
+}
+
+/// What was playing `into` a record, in words, for the DJ's provider to read
+/// a reaction against: `"Artist – Title, 1:23 in, just after the drop"` —
+/// the part as [`place`] would find it for a reaction about the moment.
+#[must_use]
+pub fn playing(played: &Played, into: f64) -> String {
+    let name = if played.artist.is_empty() {
+        played.title.clone()
+    } else {
+        format!("{} – {}", played.artist, played.title)
+    };
+    #[allow(clippy::cast_possible_truncation)]
+    let seconds = into.max(0.0) as i64;
+    let part = match part_of(played, into).0 {
+        Part::Drop => ", just after the drop",
+        Part::Breakdown => ", in the breakdown",
+        Part::Voice => ", as the voice comes in",
+        Part::Record => "",
+    };
+    format!("{name}, {}:{:02} in{part}", seconds / 60, seconds % 60)
 }
 
 /// A record, as the night received it.
@@ -944,6 +998,129 @@ pub fn load_room(config: &Path, session: &str) -> Vec<Heard> {
     out
 }
 
+/// What the DJ's AI provider read in a reaction the rules could not place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reading {
+    /// The reaction it is about, as kept: when, who, and what.
+    pub at: i64,
+    #[serde(default)]
+    pub who: String,
+    pub text: String,
+    /// [`About::Other`] when the provider could not place it either.
+    pub about: About,
+    pub lean: Lean,
+}
+
+impl Reading {
+    /// Whether this is the reading of `reaction`.
+    #[must_use]
+    pub fn of(&self, reaction: &Reaction) -> bool {
+        self.at == reaction.at && self.who == reaction.who && self.text == reaction.text
+    }
+}
+
+/// A batch is due when this many reactions are waiting to be read…
+pub const BATCH: usize = 20;
+
+/// …or the oldest has waited this many seconds, whichever comes first.
+pub const BATCH_WAIT: i64 = 120;
+
+/// After the provider failed, the batches wait this many seconds before
+/// asking again: a local model that is not running is not asked every few
+/// seconds all night.
+pub const RETRY_AFTER: i64 = 300;
+
+/// The reactions the rules leave as something else and the provider has not
+/// been asked about, in the order given.
+#[must_use]
+pub fn unread<'a>(reactions: &'a [Reaction], readings: &[Reading]) -> Vec<&'a Reaction> {
+    let asked: std::collections::HashSet<(i64, &str, &str)> = readings
+        .iter()
+        .map(|r| (r.at, r.who.as_str(), r.text.as_str()))
+        .collect();
+    reactions
+        .iter()
+        .filter(|r| {
+            read(&r.text).0 == About::Other
+                && !asked.contains(&(r.at, r.who.as_str(), r.text.as_str()))
+        })
+        .collect()
+}
+
+/// Whether a night's next batch is due at `now` (unix seconds): [`BATCH`]
+/// waiting, or the oldest waiting [`BATCH_WAIT`] seconds.
+#[must_use]
+pub fn due(unread: &[&Reaction], now: i64) -> bool {
+    unread.len() >= BATCH
+        || unread
+            .iter()
+            .map(|r| r.at)
+            .min()
+            .is_some_and(|oldest| now - oldest >= BATCH_WAIT)
+}
+
+/// How asking the provider is going, for the panel and the batches.
+#[derive(Debug, Default)]
+pub struct Asking {
+    /// A batch is out; another is not sent beside it.
+    pub busy: bool,
+    /// What went wrong last, in the provider's words; cleared by a batch
+    /// that came back.
+    pub error: Option<String>,
+    /// Not before this, in unix seconds: set [`RETRY_AFTER`] ahead by a
+    /// failure.
+    pub retry_at: i64,
+}
+
+/// The file a session's [`Reading`]s are kept in: a folder of its own, so it
+/// is never listed as a night of reactions.
+///
+/// # Errors
+/// A session id that would not be a plain file name.
+pub fn readings_file(config: &Path, session: &str) -> Result<PathBuf, String> {
+    if !is_session(session) {
+        return Err(format!("{session:?} is not a session"));
+    }
+    Ok(folder(config).join("read").join(format!("{session}.jsonl")))
+}
+
+/// Keep what the provider read.
+///
+/// # Errors
+/// The file system's own sentence.
+pub fn note_readings(config: &Path, session: &str, readings: &[Reading]) -> Result<(), String> {
+    use std::io::Write as _;
+    let path = readings_file(config, session)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let mut out = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    for reading in readings {
+        let line = serde_json::to_string(reading).map_err(|e| e.to_string())?;
+        writeln!(out, "{line}").map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// What the provider read through a session; a bad line is skipped, as in
+/// [`load`].
+#[must_use]
+pub fn load_readings(config: &Path, session: &str) -> Vec<Reading> {
+    let Ok(path) = readings_file(config, session) else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
 /// Read a chat log brought in afterwards: one message a line, as
 /// `H:MM:SS name: message` (or `MM:SS`), timed from `start` — the moment
 /// the stream or the recording began. A line without a time is skipped.
@@ -1140,7 +1317,7 @@ mod tests {
             },
         ];
         let reactions = [said(1_120, "this drop 🔥"), said(1_170, "love this")];
-        let placed = place(&reactions, &played, &room, 0);
+        let placed = place(&reactions, &played, &room, 0, &[]);
         assert_eq!(placed[0].record, Some(0), "waiting in the headphones");
         assert!((placed[0].into - 120.0).abs() < 1e-9);
         assert_eq!(
@@ -1150,7 +1327,7 @@ mod tests {
         );
         assert_eq!(placed[1].record, Some(1), "brought up over it");
 
-        let by_arrival = place(&reactions, &played, &[], 0);
+        let by_arrival = place(&reactions, &played, &[], 0, &[]);
         assert_eq!(by_arrival[0].record, Some(1));
 
         // A record the room heard that the history does not hold -- cut in
@@ -1159,7 +1336,10 @@ mod tests {
             at: 1_110,
             track_id: Some("c".to_owned()),
         }];
-        assert_eq!(place(&reactions, &played, &unknown, 0)[0].record, Some(1));
+        assert_eq!(
+            place(&reactions, &played, &unknown, 0, &[])[0].record,
+            Some(1)
+        );
     }
 
     /// Kept beside the night, in a folder of its own so it is never listed
@@ -1223,6 +1403,7 @@ mod tests {
             &played,
             &[],
             8,
+            &[],
         );
         assert_eq!((placed[0].record, placed[0].part), (None, Part::Record));
         assert_eq!(
@@ -1250,12 +1431,12 @@ mod tests {
         // Without the delay, the drop comment is heard at 70 s: ten after
         // the drop, still within the window.
         assert_eq!(
-            place(&[said(1_070, "this drop")], &played, &[], 0)[0].part,
+            place(&[said(1_070, "this drop")], &played, &[], 0, &[])[0].part,
             Part::Drop
         );
         // Far past the window, it is not the drop any more.
         assert_eq!(
-            place(&[said(1_095, "this drop")], &played, &[], 0)[0].part,
+            place(&[said(1_095, "this drop")], &played, &[], 0, &[])[0].part,
             Part::Record
         );
     }
@@ -1277,7 +1458,7 @@ mod tests {
         .into_iter()
         .map(|(at, text)| said(at, text))
         .collect();
-        let placed = place(&reactions, &played, &[], 0);
+        let placed = place(&reactions, &played, &[], 0, &[]);
         let night = summary(&placed, &played);
         assert_eq!(night.reactions, 6);
         assert_eq!((night.moments, night.asked, night.requests), (3, 1, 1));
@@ -1314,6 +1495,7 @@ mod tests {
             &played,
             &[],
             0,
+            &[],
         );
         let night = summary(&placed, &played);
         let answered = answer(&goals_for(Some(Setting::Wedding)), &night);
@@ -1344,6 +1526,7 @@ mod tests {
             &played,
             &[],
             0,
+            &[],
         );
         let two = place(
             &[
@@ -1353,6 +1536,7 @@ mod tests {
             &played,
             &[],
             0,
+            &[],
         );
         let nights = vec![(one, played.clone()), (two, played.clone())];
         let first = marks(&nights, "a");
@@ -1408,5 +1592,154 @@ mod tests {
             (1_005, "Ana", "hello from Porto")
         );
         assert_eq!(read[1].at, 1_000 + 3_730);
+    }
+
+    fn reading(of: &Reaction, about: About, lean: Lean) -> Reading {
+        Reading {
+            at: of.at,
+            who: of.who.clone(),
+            text: of.text.clone(),
+            about,
+            lean,
+        }
+    }
+
+    /// **The provider fills what the rules left, and only that.** A
+    /// reaction the rules could not place takes the provider's reading — and
+    /// with it a part, when the provider says it was about the moment — and
+    /// says it was the provider's; a reaction the rules read keeps the
+    /// rules' reading whatever the provider said; a reading the provider
+    /// could not place either leaves it as something else; and a reading is
+    /// only ever of the reaction it was given — the same words from somebody
+    /// else, or at another time, are not it.
+    #[test]
+    fn the_provider_fills_what_the_rules_left() {
+        let played = night();
+        // Heard at 1062, two seconds after the drop at 60.
+        let bassline = said(1_070, "that bassline though");
+        let question = said(1_071, "what song is this");
+        let shrug = said(1_072, "hmm");
+        let other_one = Reaction {
+            who: "somebody else".to_owned(),
+            ..bassline.clone()
+        };
+        let readings = [
+            reading(&bassline, About::Moment, Lean::Up),
+            reading(&question, About::Greeting, Lean::Down),
+            reading(&shrug, About::Other, Lean::Down),
+        ];
+        let placed = place(
+            &[bassline.clone(), question, shrug, other_one],
+            &played,
+            &[],
+            8,
+            &readings,
+        );
+        assert_eq!(
+            (
+                placed[0].about,
+                placed[0].lean,
+                placed[0].part,
+                placed[0].by_model
+            ),
+            (About::Moment, Lean::Up, Part::Drop, true)
+        );
+        assert_eq!(
+            (placed[1].about, placed[1].by_model),
+            (About::Track, false),
+            "the rules' reading stands"
+        );
+        assert_eq!(
+            (placed[2].about, placed[2].lean, placed[2].by_model),
+            (About::Other, Lean::Neither, false)
+        );
+        assert_eq!(
+            (placed[3].about, placed[3].by_model),
+            (About::Other, false),
+            "somebody else's words are not the reading's"
+        );
+        // Unread before, the same night without the readings.
+        assert!(
+            !place(&[bassline], &played, &[], 8, &[])[0].by_model,
+            "read by the provider with nothing from it"
+        );
+    }
+
+    /// **What was playing, in words**: the record, how far in, and the
+    /// part the room was in — as the provider is told it.
+    #[test]
+    fn what_was_playing_is_said_with_its_part() {
+        let played = night();
+        assert_eq!(
+            playing(&played[0], 62.0),
+            "One – First, 1:02 in, just after the drop"
+        );
+        assert_eq!(
+            playing(&played[0], 45.0),
+            "One – First, 0:45 in, in the breakdown"
+        );
+        assert_eq!(
+            playing(&played[0], 25.0),
+            "One – First, 0:25 in, as the voice comes in"
+        );
+        assert_eq!(playing(&played[1], 130.0), "Two – Second, 2:10 in");
+        let untitled = Played {
+            artist: String::new(),
+            ..played[1].clone()
+        };
+        assert_eq!(playing(&untitled, -3.0), "Second, 0:00 in");
+    }
+
+    /// **What waits, and when a batch is due.** Only what the rules could
+    /// not place and the provider has not been asked about waits; a batch is
+    /// due at [`BATCH`] waiting, or once the oldest has waited
+    /// [`BATCH_WAIT`] seconds — and never with nothing waiting.
+    #[test]
+    fn what_waits_and_when_a_batch_is_due() {
+        let asked = said(100, "hmm");
+        let night = vec![
+            asked.clone(),
+            said(101, "this drop 🔥"),
+            said(102, "play despacito"),
+            said(103, "the bassline though"),
+            said(104, "ok"),
+        ];
+        let readings = [reading(&asked, About::Other, Lean::Neither)];
+        let waiting = unread(&night, &readings);
+        assert_eq!(
+            waiting.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            ["the bassline though", "ok"]
+        );
+        assert!(!due(&waiting, 103 + BATCH_WAIT - 1), "too soon, too few");
+        assert!(due(&waiting, 103 + BATCH_WAIT), "the oldest has waited");
+        assert!(!due(&[], i64::MAX), "nothing waiting is never due");
+
+        let busy: Vec<Reaction> = (0..BATCH)
+            .map(|i| said(500 + i64::try_from(i).expect("small"), "hmm"))
+            .collect();
+        let waiting = unread(&busy, &[]);
+        assert!(due(&waiting, 500), "a full batch goes at once");
+        assert!(!due(&waiting[1..], 500));
+    }
+
+    /// **Kept beside the night, in a folder of its own**, so it is never
+    /// listed as a night; read back past a bad line; a session that is not a
+    /// file name refused.
+    #[test]
+    fn readings_are_kept_beside_the_night() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let one = reading(&said(1, "the bassline though"), About::Moment, Lean::Up);
+        let two = reading(&said(2, "hmm"), About::Other, Lean::Neither);
+        note_readings(config, "session-1", std::slice::from_ref(&one)).expect("kept");
+        let path = readings_file(config, "session-1").expect("a file");
+        let mut text = std::fs::read_to_string(&path).expect("read");
+        text.push_str("not a reading\n");
+        std::fs::write(&path, text).expect("written");
+        note_readings(config, "session-1", std::slice::from_ref(&two)).expect("kept");
+        assert_eq!(load_readings(config, "session-1"), vec![one, two]);
+        assert_ne!(path.parent(), Some(folder(config).as_path()));
+        assert!(load_readings(config, "session-2").is_empty());
+        assert!(note_readings(config, "../x", &[]).is_err());
     }
 }

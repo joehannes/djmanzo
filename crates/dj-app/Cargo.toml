@@ -87,5 +87,7 @@ workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# A scripted provider for the crowd's batches (dj_assistant's trait is async).
+async-trait = { workspace = true }
 # Writes the tags the lyrics tests read back (dj_library::own_words).
 lofty = { workspace = true }

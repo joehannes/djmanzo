@@ -5816,6 +5816,22 @@ export interface CrowdPlaced {
   into: number;
   part: CrowdPart;
   part_at: number | null;
+  /** Read by the DJ's AI provider: the rules left it as something else. */
+  by_model: boolean;
+}
+
+/** `commands::CrowdAi`: what the rules could not place, and the provider. */
+export interface CrowdAi {
+  /** The DJ's switch. */
+  on: boolean;
+  /** Where the batches go, in words. */
+  provider: string;
+  /** Placed by the provider in this night. */
+  read: number;
+  /** Waiting to be asked about. */
+  waiting: number;
+  busy: boolean;
+  error: string | null;
 }
 
 export interface CrowdMoment {
@@ -5874,6 +5890,7 @@ export interface CrowdView {
   summary: CrowdSummary;
   goals: CrowdAnswered[];
   measures: { measure: CrowdMeasure; title: string }[];
+  ai: CrowdAi;
 }
 
 export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_view", { session });
@@ -5881,5 +5898,9 @@ export const crowdAdd = (text: string, who: string | null, source: CrowdSource) 
   invoke<CrowdView>("crowd_add", { text, who, source });
 export const crowdImport = (session: string | null, path: string, start: number, source: CrowdSource) =>
   invoke<CrowdView>("crowd_import", { session, path, start, source });
-export const crowdSettingsSave = (session: string | null, settings: { delay: number; goals: CrowdGoal[] }) =>
-  invoke<CrowdView>("crowd_settings_save", { session, settings });
+export const crowdSettingsSave = (
+  session: string | null,
+  settings: { delay: number; goals: CrowdGoal[]; ai: boolean },
+) => invoke<CrowdView>("crowd_settings_save", { session, settings });
+/** §119: ask the DJ's provider now about everything still waiting. */
+export const crowdReadNow = (session: string | null) => invoke<CrowdView>("crowd_read_now", { session });

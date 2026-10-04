@@ -1775,11 +1775,20 @@ fn the_browser_fixture_has_a_nights_crowd() {
         said(71, Source::YouTube, "Cleo", "🔥🔥🔥"),
         said(73, Source::TikTok, "Dan", "insane"),
         said(80, Source::YouTube, "Eve", "what song is this??"),
+        // The rules cannot place it; the DJ's provider read it as the drop.
+        said(74, Source::YouTube, "Gus", "that bassline though"),
         said(150, Source::YouTube, "Finn", "boring, skip"),
         said(260, Source::Room, "", "play Bachata Rosa"),
     ];
+    let readings = [crowd::Reading {
+        at: start + 74,
+        who: "Gus".to_owned(),
+        text: "that bassline though".to_owned(),
+        about: crowd::About::Moment,
+        lean: crowd::Lean::Up,
+    }];
     let delay = 8;
-    let placed = crowd::place(&reactions, &played, &[], delay);
+    let placed = crowd::place(&reactions, &played, &[], delay, &readings);
     // §25's crowd response for the first record, in frames at 48 kHz: what
     // the overview draws over it.
     let marks: Vec<dj_app::commands::CrowdMarkInfo> =
@@ -1795,6 +1804,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
             .collect();
     let summary = crowd::summary(&placed, &played);
     let goals = crowd::answer(&crowd::goals_for(Some(Setting::Wedding)), &summary);
+    let placed_by_model = placed.iter().filter(|p| p.by_model).count();
     let view = CrowdView {
         // In the form `AppState` names a run's session: when it began.
         session: format!("session-{start}"),
@@ -1815,6 +1825,14 @@ fn the_browser_fixture_has_a_nights_crowd() {
                 title: measure.title(),
             })
             .collect(),
+        ai: dj_app::commands::CrowdAi {
+            on: true,
+            provider: "Local model · llama3.2".to_owned(),
+            read: placed_by_model,
+            waiting: crowd::unread(&reactions, &readings).len(),
+            busy: false,
+            error: None,
+        },
     };
     let fixture = serde_json::json!({ "view": view, "marks": marks });
     let text = serde_json::to_string_pretty(&fixture).expect("the crowd serialises");

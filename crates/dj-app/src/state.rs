@@ -260,6 +260,8 @@ pub struct AppState {
     /// §119: which record the room is hearing, off the meters. Also on the
     /// snapshot pump -- see `crate::crowd::Hearing`.
     hearing: Mutex<crate::crowd::Hearing>,
+    /// §119: how asking the DJ's provider about the crowd is going.
+    crowd_asking: Mutex<crate::crowd::Asking>,
     /// Groups tonight's plays. One per run of the application, which is close
     /// enough to one per gig that it is worth having before there is a real
     /// session concept.
@@ -579,6 +581,7 @@ impl AppState {
             cue_watcher: Arc::new(Mutex::new(crate::persist::CueWatcher::new())),
             play_watcher: Arc::new(Mutex::new(crate::persist::PlayWatcher::new())),
             hearing: Mutex::new(crate::crowd::Hearing::new()),
+            crowd_asking: Mutex::new(crate::crowd::Asking::default()),
             session_id: format!("session-{}", crate::library::now_seconds()),
             library,
             identifier: Mutex::new(None),
@@ -820,6 +823,12 @@ impl AppState {
     #[must_use]
     pub fn hearing(&self) -> &Mutex<crate::crowd::Hearing> {
         &self.hearing
+    }
+
+    /// §119: how asking the DJ's provider about the crowd is going.
+    #[must_use]
+    pub fn crowd_asking(&self) -> &Mutex<crate::crowd::Asking> {
+        &self.crowd_asking
     }
 
     /// Groups this run's plays in the history.
@@ -1986,6 +1995,14 @@ impl AppState {
     #[must_use]
     pub fn budget(&self) -> &Arc<Budget> {
         &self.budget
+    }
+
+    /// Tests: the providers to ask, in place of the real ones.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_llm_providers(mut self, providers: Vec<Arc<dyn LlmProvider>>) -> Self {
+        self.llm_providers = providers;
+        self
     }
 
     /// Point the assistant at a provider and model.

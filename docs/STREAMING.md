@@ -68,6 +68,18 @@ the same two fields the rules fill (what it is about, which way it leans). A
 reaction the provider cannot place stays *something else*. Off when no
 provider is set, and the batch is the only thing that leaves the computer.
 
+*Built 4 October* (`dj_assistant::crowd`, `crowd::Reading`): a batch at
+twenty waiting or two minutes after the oldest, by a thread of its own, and
+*Read them now* in the Crowd panel for any night. Each message goes with the
+record, how far into it the room was and the part it was in (*1:02 in, just
+after the drop*), and never with who said it. The model is asked for a row for every message, *other* where it
+cannot read one, so an answer with no rows is a model not answering in rows:
+said in the panel, rested five minutes, and asked again. There is always a
+provider — djmanzo's own default is the local one — so it is a switch in the
+Crowd panel instead, on unless the DJ turns it off, with the provider named
+beside it. What came back is kept beside the night
+(`crowd/read/<session>.jsonl`) and marked *AI* where it is drawn.
+
 ## 3. A saved night, replayed on one timeline and compared
 
 *Both.*

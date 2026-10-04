@@ -1,14 +1,22 @@
 {
   "marks": [
     {
-      "count": 3,
+      "count": 4,
       "frame": 2880000.0,
       "nights": 1,
       "part": "drop",
-      "says": "3 reactions to the drop, on one night"
+      "says": "4 reactions to the drop, on one night"
     }
   ],
   "view": {
+    "ai": {
+      "busy": false,
+      "error": null,
+      "on": true,
+      "provider": "Local model · llama3.2",
+      "read": 1,
+      "waiting": 1
+    },
     "current": true,
     "delay": 8,
     "goals": [
@@ -20,7 +28,7 @@
           "target": 0.85
         },
         "met": false,
-        "value": 0.75
+        "value": 0.8
       },
       {
         "goal": {
@@ -72,6 +80,7 @@
     "placed": [
       {
         "about": "greeting",
+        "by_model": false,
         "into": 2.0,
         "lean": "neither",
         "part": "record",
@@ -86,6 +95,7 @@
       },
       {
         "about": "moment",
+        "by_model": false,
         "into": 62.0,
         "lean": "up",
         "part": "drop",
@@ -100,6 +110,7 @@
       },
       {
         "about": "moment",
+        "by_model": false,
         "into": 63.0,
         "lean": "up",
         "part": "drop",
@@ -114,6 +125,7 @@
       },
       {
         "about": "moment",
+        "by_model": false,
         "into": 65.0,
         "lean": "up",
         "part": "drop",
@@ -128,6 +140,7 @@
       },
       {
         "about": "track",
+        "by_model": false,
         "into": 72.0,
         "lean": "neither",
         "part": "record",
@@ -141,7 +154,23 @@
         "record": 0
       },
       {
+        "about": "moment",
+        "by_model": true,
+        "into": 66.0,
+        "lean": "up",
+        "part": "drop",
+        "part_at": 60.0,
+        "reaction": {
+          "at": 1790000074,
+          "source": "youtube",
+          "text": "that bassline though",
+          "who": "Gus"
+        },
+        "record": 0
+      },
+      {
         "about": "other",
+        "by_model": false,
         "into": 142.0,
         "lean": "down",
         "part": "record",
@@ -156,6 +185,7 @@
       },
       {
         "about": "request",
+        "by_model": false,
         "into": 52.0,
         "lean": "neither",
         "part": "record",
@@ -203,11 +233,11 @@
     ],
     "summary": {
       "asked": 1,
-      "busiest_minute": 4,
+      "busiest_minute": 5,
       "by_source": [
         [
           "youtube",
-          5
+          6
         ],
         [
           "tiktok",
@@ -220,15 +250,15 @@
       ],
       "down": 1,
       "greetings": 1,
-      "moments": 3,
+      "moments": 4,
       "pace": [
         1,
-        4,
+        5,
         1,
         0,
         1
       ],
-      "reactions": 7,
+      "reactions": 8,
       "records": [
         {
           "artist": "Juan Luis Guerra",
@@ -237,14 +267,14 @@
           "moments": [
             {
               "at": 60.0,
-              "count": 3,
+              "count": 4,
               "part": "drop"
             }
           ],
-          "reactions": 6,
+          "reactions": 7,
           "title": "Ojalá Que Llueva Café",
           "track_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "up": 3
+          "up": 4
         },
         {
           "artist": "Juan Luis Guerra",
@@ -258,8 +288,8 @@
         }
       ],
       "requests": 1,
-      "up": 3,
-      "warmth": 0.75
+      "up": 4,
+      "warmth": 0.8
     }
   }
 }

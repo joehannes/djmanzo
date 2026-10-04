@@ -19,6 +19,7 @@
   import {
     crowdAdd,
     crowdImport,
+    crowdReadNow,
     crowdSettingsSave,
     crowdView,
     formatTime,
@@ -116,12 +117,31 @@
     }
   }
 
-  async function saveSettings(goals: CrowdGoal[], delay: number) {
+  async function saveSettings(goals: CrowdGoal[], delay: number, ai: boolean = view?.ai.on ?? true) {
     try {
-      view = await crowdSettingsSave(view?.session ?? null, { delay, goals });
+      view = await crowdSettingsSave(view?.session ?? null, { delay, goals, ai });
       error = null;
     } catch (e) {
       error = String(e);
+    }
+  }
+
+  let reading = $state(false);
+
+  /** Everything still waiting, to the DJ's provider now. */
+  async function readNow() {
+    reading = true;
+    try {
+      view = await crowdReadNow(view?.session ?? null);
+      error = null;
+    } catch (e) {
+      // Rust keeps a provider's failure for the row below; anything else is
+      // said here. Read the night again first, or its success would clear it.
+      const said = String(e);
+      await refresh();
+      if (view?.ai.error !== said) error = said;
+    } finally {
+      reading = false;
     }
   }
 
@@ -259,6 +279,35 @@
       {/if}
     </div>
 
+    <!--
+      What the rules leave as something else goes to the DJ's own provider —
+      only that, and never who said it. Said plainly, with the switch, so
+      nobody's words leave the computer without the DJ knowing where.
+    -->
+    <div class="ai" data-crowd-ai>
+      <label>
+        <input
+          type="checkbox"
+          checked={view.ai.on}
+          onchange={(e) => view && void saveSettings(view.goals.map((a) => a.goal), view.delay, e.currentTarget.checked)}
+        />
+        Ask {view.ai.provider || "the AI provider"} about what the rules cannot place
+      </label>
+      {#if view.ai.on}
+        <span class="dim" data-crowd-ai-count>
+          {view.ai.read} placed by it{view.ai.waiting > 0 ? ` · ${view.ai.waiting} waiting` : ""}
+        </span>
+        {#if view.ai.waiting > 0}
+          <button type="button" disabled={reading || view.ai.busy} onclick={() => void readNow()}>
+            {reading || view.ai.busy ? "Reading…" : view.current ? "Read them now" : "Read them"}
+          </button>
+        {/if}
+        {#if view.ai.error}
+          <span class="warn" data-crowd-ai-error>{view.ai.error} — the rules' reading stands, and it is tried again in a few minutes.</span>
+        {/if}
+      {/if}
+    </div>
+
     {#if error}<p class="error" role="alert">{error}</p>{/if}
 
     <div class="tiles" data-summary>
@@ -336,10 +385,10 @@
     {:else}
       <ul class="feed">
         {#each feed as p, i (i)}
-          <li data-about={p.about} data-lean={p.lean} data-source={p.reaction.source}>
+          <li data-about={p.about} data-lean={p.lean} data-source={p.reaction.source} data-by-model={p.by_model}>
             <svg viewBox="0 0 24 24" aria-label={ABOUT[p.about]} role="img"><path d={ICON[p.about]} /></svg>
             <div class="said">
-              <span class="text">{p.reaction.text}</span>
+              <span class="text">{p.reaction.text}{#if p.by_model}<span class="by-model" title="Read by {view?.ai.provider || 'the AI provider'}; the rules could not place it">AI</span>{/if}</span>
               <span class="where">{p.reaction.who ? `${p.reaction.who} · ` : ""}{where(p)}</span>
             </div>
           </li>
@@ -360,6 +409,38 @@
     overflow: auto;
     min-height: 0;
     height: 100%;
+  }
+
+  .ai {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85em;
+  }
+
+  .ai label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .ai .dim {
+    color: var(--text-dim);
+  }
+
+  .ai .warn {
+    color: var(--warn);
+  }
+
+  .by-model {
+    margin-left: 0.35em;
+    padding: 0 0.3em;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s, 4px);
+    color: var(--text-dim);
+    font-size: 0.75em;
+    vertical-align: middle;
   }
 
   .controls,

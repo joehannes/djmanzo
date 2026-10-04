@@ -300,6 +300,38 @@ impl Assistant {
         Ok(draft)
     }
 
+    /// §119: read a batch of what a crowd wrote that djmanzo's rules could
+    /// not place (`crate::crowd`). An empty batch asks nothing.
+    ///
+    /// # Errors
+    /// When no budget is left, or the provider fails.
+    pub async fn read_crowd(
+        &self,
+        batch: &[crate::crowd::Said],
+    ) -> Result<Vec<crate::crowd::Reading>, AssistantError> {
+        if batch.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !self.budget.allows_another() {
+            return Err(AssistantError::BudgetExhausted {
+                cap: self.budget.cap_usd(),
+                spent: self.budget.spent_usd(),
+            });
+        }
+        let turns = [
+            Turn::system(crate::crowd::crowd_prompt()),
+            Turn::user(crate::crowd::crowd_request(batch)),
+        ];
+        let completion = self.provider.complete(&self.model, &turns).await?;
+        let cost = self.pricing.map(|(input, output)| {
+            (f64::from(completion.usage.prompt_tokens) * input
+                + f64::from(completion.usage.completion_tokens) * output)
+                / 1_000_000.0
+        });
+        self.budget.record(cost);
+        Ok(crate::crowd::parse_readings(&completion.text, batch.len()))
+    }
+
     /// Understand `text`, and return what should happen.
     ///
     /// Tries the local matcher first. Only reaches the model when that fails,
@@ -654,6 +686,38 @@ mod tests {
         assert_eq!(provider.calls(), 1);
         assert_eq!(guesses.len(), 1);
         assert_eq!(guesses[0].title, "Obsesión");
+    }
+
+    /// **§119: a crowd's batch is one call, capped, and an empty batch is
+    /// none.**
+    #[tokio::test]
+    async fn a_crowds_batch_is_one_call_and_capped() {
+        let said = |text: &str| crate::crowd::Said {
+            text: text.to_owned(),
+            playing: String::new(),
+        };
+        let (assistant, provider) = assistant("1 | greeting | up\n2 | moment | down");
+        assert!(assistant.read_crowd(&[]).await.expect("nothing").is_empty());
+        assert_eq!(provider.calls(), 0, "an empty batch asked the model");
+        let read = assistant
+            .read_crowd(&[said("hola desde Quito"), said("meh")])
+            .await
+            .expect("read");
+        assert_eq!(provider.calls(), 1);
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[1].topic, crate::crowd::Topic::Moment);
+
+        let provider = Arc::new(Scripted::new("1 | greeting | up"));
+        let capped = Assistant::new(
+            Arc::clone(&provider) as Arc<dyn LlmProvider>,
+            "scripted",
+            Arc::new(Budget::new(0.0)),
+        );
+        assert!(matches!(
+            capped.read_crowd(&[said("hola")]).await,
+            Err(AssistantError::BudgetExhausted { .. })
+        ));
+        assert_eq!(provider.calls(), 0, "it called the model anyway");
     }
 
     /// **§123: a song is a model call, capped, and comes back checked.**

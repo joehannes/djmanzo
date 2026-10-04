@@ -75,7 +75,8 @@ test.describe("§119: the crowd", () => {
     const records = panel.locator(".records li");
     await expect(records).toHaveCount(view.summary.records.length);
     await expect(records.first().locator("strong")).toHaveText(view.summary.records[0].title);
-    await expect(records.first().locator(".moment")).toHaveText(["the drop 1:00 ×3"]);
+    // Four: three the rules read, and the bassline the DJ's provider placed.
+    await expect(records.first().locator(".moment")).toHaveText(["the drop 1:00 ×4"]);
     expect(errorsThrown(page)).toEqual([]);
   });
 
@@ -107,6 +108,8 @@ test.describe("§119: the crowd", () => {
       .toEqual({
         delay: view.delay,
         goals: [...view.goals.map((g) => g.goal), { name: "Warm all night", measure: "warmth", target: 0.8, at_most: false }],
+        // The switch for the provider, kept as it was.
+        ai: true,
       });
     await expect(goals).toHaveCount(view.goals.length + 1);
     expect(errorsThrown(page)).toEqual([]);
@@ -140,6 +143,57 @@ test.describe("§119: the crowd", () => {
     await expect
       .poll(async () => (await calls(page)).find((c) => c.cmd === "crowd_import"))
       .toMatchObject({ path: "/home/dj/stream-chat.txt", start: Math.round(expected.getTime() / 1000), source: "youtube" });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **What the rules cannot place, and the DJ's provider.** Said plainly:
+   * where it goes, how many it placed, how many wait. A reaction it placed
+   * is marked as its reading and no other is; *Read them now* asks for this
+   * night; the switch turned off is kept with the goals and the delay as
+   * they were, and the count and the button go with it; a provider that
+   * fails is said in its words.
+   */
+  test("what the rules cannot place goes to the DJ's provider, said plainly", async ({ page }) => {
+    const panel = await withCrowd(page);
+    const ai = panel.locator("[data-crowd-ai]");
+    const ask = ai.getByRole("checkbox", { name: `Ask ${view.ai.provider} about what the rules cannot place` });
+    await expect(ask).toBeChecked();
+    await expect(ai.locator("[data-crowd-ai-count]")).toHaveText(
+      `${view.ai.read} placed by it · ${view.ai.waiting} waiting`,
+    );
+
+    const byModel = view.placed.filter((p) => p.by_model);
+    expect(byModel.length).toBeGreaterThan(0);
+    const items = panel.locator(".feed li");
+    await expect(items.locator(".by-model")).toHaveCount(byModel.length);
+    for (const p of byModel) {
+      await expect(items.filter({ hasText: p.reaction.text }).locator(".by-model")).toHaveText("AI");
+    }
+
+    await ai.getByRole("button", { name: "Read them now" }).click();
+    await expect
+      .poll(async () => (await calls(page)).find((c) => c.cmd === "crowd_read_now"))
+      .toMatchObject({ session: view.session });
+
+    await ask.uncheck();
+    await expect
+      .poll(async () => (await calls(page)).find((c) => c.cmd === "crowd_settings_save"))
+      .toMatchObject({
+        settings: { ai: false, delay: view.delay, goals: view.goals.map((a) => a.goal) },
+      });
+    await expect(ask).not.toBeChecked();
+    await expect(ai.locator("[data-crowd-ai-count]")).toHaveCount(0);
+    await expect(ai.getByRole("button", { name: /Read them/ })).toHaveCount(0);
+
+    await ask.check();
+    await page.evaluate(() => {
+      (window as unknown as { __crowdReadFails?: string }).__crowdReadFails =
+        "could not reach Local model: connection refused";
+    });
+    await ai.getByRole("button", { name: "Read them now" }).click();
+    await expect(panel.getByRole("alert")).toContainText("connection refused");
+    await expect(ai.getByRole("button", { name: "Read them now" })).toBeEnabled();
     expect(errorsThrown(page)).toEqual([]);
   });
 });

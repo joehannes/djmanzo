@@ -33,6 +33,7 @@ pub mod authority;
 pub mod budget;
 pub mod catalog;
 pub mod coach;
+pub mod crowd;
 pub mod fatigue;
 pub mod http;
 pub mod intent;

@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **What the crowd said that djmanzo's rules cannot place goes to your AI
+  provider (§119)**, a batch at a time while you play, or at once with *Read
+  them now* for any night: only those reactions, only their words and what
+  was playing, never who said them. What it places is marked *AI* in the
+  Crowd panel and counts with the rest; a switch in the panel turns it off.
+
 ## v0.37.0 — Every panel in a window of its own; djmanzo drives OBS
 
 - **The session log pops out (§121)**, into a window of its own like the

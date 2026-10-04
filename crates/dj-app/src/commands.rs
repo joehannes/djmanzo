@@ -2528,8 +2528,9 @@ fn crowd_marks_of(state: &AppState, deck: u8) -> Vec<CrowdMarkInfo> {
                 .collect();
             let reactions = crate::crowd::load(&config, session);
             let room = crate::crowd::load_room(&config, session);
+            let readings = crate::crowd::load_readings(&config, session);
             Some((
-                crate::crowd::place(&reactions, &played, &room, delay),
+                crate::crowd::place(&reactions, &played, &room, delay, &readings),
                 played,
             ))
         })
@@ -19087,6 +19088,25 @@ pub struct CrowdView {
     pub goals: Vec<crate::crowd::Answered>,
     /// What a goal can measure, with what each is called.
     pub measures: Vec<CrowdMeasure>,
+    /// Asking the DJ's provider about what the rules could not place.
+    pub ai: CrowdAi,
+}
+
+/// §119: what the rules could not place, and the DJ's provider.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrowdAi {
+    /// The DJ's switch.
+    pub on: bool,
+    /// Where the batches go, in words: the provider and the model.
+    pub provider: String,
+    /// Placed by the provider in this night.
+    pub read: usize,
+    /// Waiting to be asked about.
+    pub waiting: usize,
+    /// A batch is out.
+    pub busy: bool,
+    /// What went wrong last, in the provider's words.
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -19101,6 +19121,15 @@ pub struct CrowdMeasure {
 pub struct CrowdSettings {
     pub delay: i64,
     pub goals: Vec<crate::crowd::Goal>,
+    /// Ask the DJ's provider about what the rules cannot place. On unless
+    /// the DJ turned it off: the provider is the one they chose, and only
+    /// those reactions go, without names.
+    #[serde(default = "crowd_ai_on")]
+    pub ai: bool,
+}
+
+const fn crowd_ai_on() -> bool {
+    true
 }
 
 /// A stream is commonly several seconds behind the room; eight is where
@@ -19124,6 +19153,7 @@ fn crowd_settings(state: &AppState, config: &std::path::Path) -> CrowdSettings {
             CrowdSettings {
                 delay: CROWD_DELAY,
                 goals: crate::crowd::goals_for(night),
+                ai: true,
             }
         })
 }
@@ -19209,8 +19239,27 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
     }
     let played = crowd_played(state, &session);
     let room = crate::crowd::load_room(&config, &session);
-    let placed = crate::crowd::place(&reactions, &played, &room, settings.delay);
+    let readings = crate::crowd::load_readings(&config, &session);
+    let waiting = crate::crowd::unread(&reactions, &readings).len();
+    let placed = crate::crowd::place(&reactions, &played, &room, settings.delay, &readings);
     let summary = crate::crowd::summary(&placed, &played);
+    let ai = {
+        let asking = state.crowd_asking().lock();
+        let (busy, error) = asking
+            .map(|a| (a.busy, a.error.clone()))
+            .unwrap_or_default();
+        CrowdAi {
+            on: settings.ai,
+            provider: state
+                .assistant_selection()
+                .map(|s| format!("{} · {}", s.provider.id().label(), s.model))
+                .unwrap_or_default(),
+            read: placed.iter().filter(|p| p.by_model).count(),
+            waiting,
+            busy,
+            error,
+        }
+    };
     let goals = crate::crowd::answer(&settings.goals, &summary);
 
     let mut sessions: Vec<(std::time::SystemTime, String)> =
@@ -19247,7 +19296,375 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
                 title: measure.title(),
             })
             .collect(),
+        ai,
     })
+}
+
+/// §119: put one batch of what the rules could not place in `session` to
+/// the DJ's provider, and keep what comes back — a reaction it could not
+/// place kept as such, so it is not asked about again. Only the words and
+/// what was playing go; never who said them. Returns how many were asked
+/// about: none when nothing is waiting, the DJ switched it off, or a batch
+/// is already out.
+///
+/// # Errors
+/// No settings folder, no provider, or the provider's own refusal — which
+/// also holds the next batch back [`crate::crowd::RETRY_AFTER`] seconds.
+pub(crate) async fn crowd_read_batch(state: &AppState, session: &str) -> Result<usize, String> {
+    use dj_assistant::crowd::{Leaning, Said, Topic};
+
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let settings = crowd_settings(state, &config);
+    if !settings.ai {
+        return Ok(0);
+    }
+    let reactions = crate::crowd::load(&config, session);
+    let readings = crate::crowd::load_readings(&config, session);
+    let batch: Vec<crate::crowd::Reaction> = crate::crowd::unread(&reactions, &readings)
+        .into_iter()
+        .take(dj_assistant::crowd::BATCH_MOST)
+        .cloned()
+        .collect();
+    if batch.is_empty() {
+        return Ok(0);
+    }
+    {
+        let Ok(mut asking) = state.crowd_asking().lock() else {
+            return Ok(0);
+        };
+        if asking.busy {
+            return Ok(0);
+        }
+        asking.busy = true;
+    }
+    let done = async {
+        let played = crowd_played(state, session);
+        let room = crate::crowd::load_room(&config, session);
+        let placed = crate::crowd::place(&batch, &played, &room, settings.delay, &[]);
+        let said: Vec<Said> = placed
+            .iter()
+            .map(|p| Said {
+                text: p.reaction.text.clone(),
+                playing: p
+                    .record
+                    .and_then(|i| played.get(i))
+                    .map(|record| crate::crowd::playing(record, p.into))
+                    .unwrap_or_default(),
+            })
+            .collect();
+        let selection = state
+            .assistant_selection()
+            .ok_or_else(|| "no assistant provider is available".to_owned())?;
+        let assistant = dj_assistant::Assistant::new(
+            selection.provider,
+            selection.model,
+            Arc::clone(state.budget()),
+        )
+        .with_pricing(selection.input_price, selection.output_price);
+        let read = assistant
+            .read_crowd(&said)
+            .await
+            .map_err(|e| e.to_string())?;
+        if read.is_empty() {
+            // Not one row: a model that answered in prose, or not at all.
+            // The batch is asked again later rather than written off.
+            return Err(format!(
+                "{} answered without reading any of them",
+                selection_label(state)
+            ));
+        }
+        let kept: Vec<crate::crowd::Reading> = batch
+            .iter()
+            .enumerate()
+            .map(|(i, reaction)| {
+                let (about, lean) = read.iter().find(|r| r.index == i).map_or_else(
+                    || crate::crowd::read(&reaction.text),
+                    |r| {
+                        (
+                            match r.topic {
+                                Topic::Moment => crate::crowd::About::Moment,
+                                Topic::Track => crate::crowd::About::Track,
+                                Topic::Request => crate::crowd::About::Request,
+                                Topic::Greeting => crate::crowd::About::Greeting,
+                                Topic::Other => crate::crowd::About::Other,
+                            },
+                            match r.leaning {
+                                Leaning::Up => crate::crowd::Lean::Up,
+                                Leaning::Down => crate::crowd::Lean::Down,
+                                Leaning::Neither => crate::crowd::Lean::Neither,
+                            },
+                        )
+                    },
+                );
+                crate::crowd::Reading {
+                    at: reaction.at,
+                    who: reaction.who.clone(),
+                    text: reaction.text.clone(),
+                    about,
+                    lean,
+                }
+            })
+            .collect();
+        crate::crowd::note_readings(&config, session, &kept)?;
+        Ok::<usize, String>(kept.len())
+    }
+    .await;
+    if let Ok(mut asking) = state.crowd_asking().lock() {
+        asking.busy = false;
+        match &done {
+            Ok(_) => asking.error = None,
+            Err(error) => {
+                asking.error = Some(error.clone());
+                asking.retry_at = now_seconds() + crate::crowd::RETRY_AFTER;
+            }
+        }
+    }
+    done
+}
+
+fn selection_label(state: &AppState) -> String {
+    state.assistant_selection().map_or_else(
+        || "the provider".to_owned(),
+        |s| s.provider.id().label().to_owned(),
+    )
+}
+
+/// §119: this run's next batch, when one is due and the provider is not
+/// being given a rest after failing. Run every few seconds by a thread of
+/// its own (`lib.rs`); what goes wrong is said in the Crowd panel.
+pub(crate) async fn crowd_read_due(state: &AppState) {
+    let Some(config) = state.config_dir() else {
+        return;
+    };
+    let now = now_seconds();
+    if state
+        .crowd_asking()
+        .lock()
+        .map_or(true, |asking| asking.busy || now < asking.retry_at)
+    {
+        return;
+    }
+    let session = state.session_id();
+    let reactions = crate::crowd::load(&config, &session);
+    let readings = crate::crowd::load_readings(&config, &session);
+    if !crate::crowd::due(&crate::crowd::unread(&reactions, &readings), now) {
+        return;
+    }
+    if let Err(error) = crowd_read_batch(state, &session).await {
+        tracing::warn!(%error, "the crowd's batch was not read");
+    }
+}
+
+/// §119: ask the DJ's provider now about everything still waiting in
+/// `session` (this run's when none is named), a batch at a time.
+///
+/// # Errors
+/// No settings folder, no provider, or the provider's own refusal: the first
+/// batch that fails stops the rest.
+#[tauri::command]
+pub async fn crowd_read_now(
+    state: State<'_, AppState>,
+    session: Option<String>,
+) -> Result<CrowdView, String> {
+    let session = session
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| state.session_id());
+    // A night of thousands is read in a few dozen calls; past that, the
+    // rest waits for the next press rather than one press spending the
+    // evening's budget unseen.
+    for _ in 0..25 {
+        if crowd_read_batch(&state, &session).await? == 0 {
+            break;
+        }
+    }
+    crowd_view_of(&state, Some(session))
+}
+
+#[cfg(test)]
+mod crowd_read_tests {
+    use super::*;
+    use dj_assistant::provider::{
+        AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Turn, Usage,
+    };
+    use std::sync::Mutex as StdMutex;
+
+    /// A provider that answers what it is told to, and keeps what it was
+    /// sent.
+    #[derive(Debug)]
+    struct Scripted {
+        answer: Result<String, String>,
+        sent: StdMutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for Scripted {
+        fn id(&self) -> ProviderId {
+            ProviderId::Local
+        }
+        fn status(&self) -> ProviderStatus {
+            ProviderStatus::Ready
+        }
+        async fn models(&self) -> Result<Vec<Model>, AssistantError> {
+            Ok(Vec::new())
+        }
+        async fn complete(&self, _: &str, turns: &[Turn]) -> Result<Completion, AssistantError> {
+            self.sent
+                .lock()
+                .expect("not poisoned")
+                .extend(turns.iter().map(|t| t.content.clone()));
+            match &self.answer {
+                Ok(text) => Ok(Completion {
+                    text: text.clone(),
+                    usage: Usage::default(),
+                    model: "scripted".to_owned(),
+                }),
+                Err(message) => Err(AssistantError::Network {
+                    provider: "Local model",
+                    message: message.clone(),
+                }),
+            }
+        }
+    }
+
+    fn night(answer: Result<&str, &str>) -> (AppState, Arc<Scripted>, tempfile::TempDir) {
+        let provider = Arc::new(Scripted {
+            answer: answer.map(str::to_owned).map_err(str::to_owned),
+            sent: StdMutex::new(Vec::new()),
+        });
+        let state = AppState::new(true)
+            .with_llm_providers(vec![Arc::clone(&provider) as Arc<dyn LlmProvider>]);
+        let dir = tempfile::tempdir().expect("a folder");
+        state.set_config_dir(dir.path().to_path_buf());
+        state.set_assistant(ProviderId::Local, "scripted".to_owned());
+        let said = |at: i64, who: &str, text: &str| crate::crowd::Reaction {
+            at,
+            source: crate::crowd::Source::YouTube,
+            who: who.to_owned(),
+            text: text.to_owned(),
+        };
+        crate::crowd::append(
+            dir.path(),
+            &state.session_id(),
+            &[
+                said(1_000, "Ana", "that bassline though"),
+                said(1_001, "Ben", "this drop 🔥"),
+                said(1_002, "Cleo", "hola desde Quito amigos"),
+                said(1_003, "Dan", "hmm"),
+            ],
+        )
+        .expect("kept");
+        (state, provider, dir)
+    }
+
+    /// **One batch: only what the rules could not place, without names, and
+    /// what comes back kept and drawn.** The reaction the rules read is not
+    /// sent; nobody's name is; the provider's readings place the bassline on
+    /// the moment and the hello as a greeting, the one it did not answer for
+    /// stays something else; and none of the three is sent again.
+    #[test]
+    fn a_batch_sends_what_the_rules_left_and_keeps_the_answer() {
+        let (state, provider, _dir) = night(Ok("1 | moment | up\n2 | greeting | up"));
+        let session = state.session_id();
+        let asked = tauri::async_runtime::block_on(crowd_read_batch(&state, &session));
+        assert_eq!(asked, Ok(3));
+        let sent = provider.sent.lock().expect("not poisoned").join("\n");
+        assert!(
+            sent.contains("1 | that bassline though | nothing yet"),
+            "{sent}"
+        );
+        assert!(sent.contains("3 | hmm"), "{sent}");
+        assert!(
+            !sent.contains("this drop"),
+            "the rules' own reading was sent"
+        );
+        for name in ["Ana", "Ben", "Cleo", "Dan"] {
+            assert!(!sent.contains(name), "{name}'s name left the computer");
+        }
+
+        let view = crowd_view_of(&state, None).expect("a view");
+        let about = |text: &str| {
+            let placed = view
+                .placed
+                .iter()
+                .find(|p| p.reaction.text == text)
+                .expect("placed");
+            (placed.about, placed.by_model)
+        };
+        assert_eq!(
+            about("that bassline though"),
+            (crate::crowd::About::Moment, true)
+        );
+        assert_eq!(
+            about("hola desde Quito amigos"),
+            (crate::crowd::About::Greeting, true)
+        );
+        assert_eq!(about("hmm"), (crate::crowd::About::Other, false));
+        assert!(
+            !about("this drop 🔥").1,
+            "the rules' own reading marked as the provider's"
+        );
+        assert_eq!((view.ai.read, view.ai.waiting), (2, 0));
+
+        let again = tauri::async_runtime::block_on(crowd_read_batch(&state, &session));
+        assert_eq!(again, Ok(0), "asked about the same reactions twice");
+    }
+
+    /// **A provider that fails is said, and rested.** Nothing is kept, so
+    /// the batch is asked again later; the panel says why; and the batches
+    /// wait out [`crate::crowd::RETRY_AFTER`] rather than asking again at
+    /// once. An answer with no rows at all is a failure, not a night of
+    /// "something else".
+    #[test]
+    fn a_failing_provider_is_said_and_rested() {
+        let (state, provider, _dir) = night(Err("connection refused"));
+        let session = state.session_id();
+        let failed = tauri::async_runtime::block_on(crowd_read_batch(&state, &session));
+        assert!(failed.is_err());
+        let view = crowd_view_of(&state, None).expect("a view");
+        assert_eq!(view.ai.waiting, 3, "a failed batch was written off");
+        assert!(
+            view.ai
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("connection refused")),
+            "{:?}",
+            view.ai.error
+        );
+        let calls = provider.sent.lock().expect("not poisoned").len();
+        tauri::async_runtime::block_on(crowd_read_due(&state));
+        assert_eq!(
+            provider.sent.lock().expect("not poisoned").len(),
+            calls,
+            "asked again without resting"
+        );
+
+        let (state, _, _dir) = night(Ok("I am not sure what these mean."));
+        let session = state.session_id();
+        assert!(tauri::async_runtime::block_on(crowd_read_batch(&state, &session)).is_err());
+        assert_eq!(crowd_view_of(&state, None).expect("a view").ai.waiting, 3);
+    }
+
+    /// **Switched off, nothing is sent.**
+    #[test]
+    fn switched_off_nothing_is_sent() {
+        let (state, provider, dir) = night(Ok("1 | moment | up"));
+        let folder = crate::crowd::folder(dir.path());
+        std::fs::create_dir_all(&folder).expect("a folder");
+        std::fs::write(
+            folder.join("goals.json"),
+            r#"{"delay": 8, "goals": [], "ai": false}"#,
+        )
+        .expect("written");
+        let session = state.session_id();
+        assert_eq!(
+            tauri::async_runtime::block_on(crowd_read_batch(&state, &session)),
+            Ok(0)
+        );
+        assert!(provider.sent.lock().expect("not poisoned").is_empty());
+        assert!(!crowd_view_of(&state, None).expect("a view").ai.on);
+    }
 }
 
 /// §119: a session's reactions -- this run's when none is named -- placed on
