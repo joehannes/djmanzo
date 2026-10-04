@@ -16,11 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.38.0 — Video on a deck, cameras for the stream, and YouTube's chat
+
 - **Each stem's level, published (§122).** Every deck now reports how loud
-  each of its four stems is as it plays — after the stem's own volume,
-  mute and tone, the deck's EQ included — as `deck.N.stem_vocal_level`, `stem_drums_level`, `stem_bass_level`
-  and `stem_other_level`, for scripts and the network API, and for the
-  layered visuals that answer to them (`docs/VISUALS.md`).
+  each of its four stems is as it plays — after the stem's own volume, mute
+  and tone, the deck's EQ included — as `deck.N.stem_vocal_level`,
+  `stem_drums_level`, `stem_bass_level` and `stem_other_level`, for scripts
+  and the network API, and for the layered visuals that answer to them
+  (`docs/VISUALS.md`).
 
 - **Video files on a deck (§122).** Load an MP4, MOV, MKV or WebM onto a
   deck: its sound plays like any record — waveform, grid, key, stems — and
