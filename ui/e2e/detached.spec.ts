@@ -49,6 +49,8 @@ test("the session log in its own window keeps up with the set", async ({ page })
 
 type Asking = {
   __windowAsked?: string[];
+  __keyboardSet?: boolean[];
+  __asked?: string[];
   __eventCalls?: Record<string, unknown>[];
   __night?: { density?: string };
   __interfaceDensity?: string;
@@ -223,6 +225,92 @@ test.describe("§121: the event in a window of its own", () => {
     await expect(line).toBeVisible();
     await page.evaluate(() => (window as unknown as Asking).__emitEvent("live-event", null));
     await expect(line).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
+/**
+ * §121: the key map and the controllers, in windows of their own. The key
+ * map's switch is the main window's keyboard, kept by Rust, which tells every
+ * window when it flips; a key of the DJ's own changed in the key map's window
+ * has the main window read its keys again.
+ */
+test.describe("§121: the key map and the controllers in windows of their own", () => {
+  const win = (page: import("@playwright/test").Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as Asking;
+      return { keyboardSet: w.__keyboardSet ?? [], windowAsked: w.__windowAsked ?? [], asked: w.__asked ?? [] };
+    });
+
+  /**
+   * **The switch, in the key map's own window, is the main window's**: it
+   * reads as Rust has it, sets it there, and follows it when it flips
+   * elsewhere — a controller, or the main window.
+   */
+  test("the key map's switch in its own window is the main window's keyboard", async ({ page }) => {
+    await openShell(page, "/?panel=keys", {}, {
+      control_status: {
+        inputs: [],
+        open_port: null,
+        open_mapping: null,
+        unavailable: null,
+        keyboard: false,
+        keyboard_name: "",
+        audio: null,
+        hid_inputs: [],
+        hid_unavailable: null,
+        open_hid: null,
+        open_hid_mapping: null,
+      },
+    });
+    const window = page.locator('main.detached[data-panel="keys"]');
+    await expect(window.getByRole("button", { name: "Off" })).toBeVisible();
+    await window.getByRole("button", { name: "Off" }).click();
+    await expect.poll(async () => (await win(page)).keyboardSet).toEqual([true]);
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("keyboard-enabled", false));
+    await expect(window.getByRole("button", { name: "Off" })).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** **A key of the DJ's own, forgotten in its own window, asks the main window to read its keys again.** */
+  test("a key of the DJ's own changed in its own window asks the main window", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __myKeys: unknown[] }).__myKeys = [{ keys: ["x"], label: "Mine", run: "action deck 1 play" }];
+    });
+    await openShell(page, "/?panel=keys");
+    await page.getByRole("button", { name: "Forget Mine" }).click();
+    await expect.poll(async () => (await win(page)).windowAsked).toEqual(["keys changed"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The main window follows**: the keyboard switched off elsewhere stops
+   * acting on keys here, and a key changed elsewhere is read again.
+   */
+  test("the main window follows the switch and reads its keys again when asked", async ({ page }) => {
+    await openShell(page, "/");
+    const keysButton = page.getByRole("button", { name: "Keys", exact: true });
+    await expect(keysButton).toHaveAttribute("title", "Keyboard shortcuts — enabled");
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("keyboard-enabled", false));
+    await expect(keysButton).toHaveAttribute("title", "Keyboard shortcuts — disabled");
+
+    const trees = async () => (await win(page)).asked.filter((cmd) => cmd === "leader_tree").length;
+    await expect.poll(trees).toBeGreaterThan(0);
+    const before = await trees();
+    await page.evaluate(() => (window as unknown as Asking).__emitEvent("leaf", "keys changed"));
+    await expect.poll(trees).toBeGreaterThan(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** **The controllers, in their own window, offer the mappings there are.** */
+  test("the controllers in their own window offer the mappings", async ({ page }) => {
+    await openShell(page, "/?panel=controllers", {}, {
+      control_mappings: [{ name: "Pioneer DDJ-SR", device: "DDJ-SR", bindings: 113, bundled: true, hands: null }],
+    });
+    // The mapping editor's starting points are the mappings there are.
+    await expect(
+      page.getByRole("combobox", { name: "Start from" }).locator("option", { hasText: "Pioneer DDJ-SR" }),
+    ).toHaveCount(1);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

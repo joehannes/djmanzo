@@ -31,6 +31,10 @@ Versioning follows semver, with one project-specific convention:
   ends it in every window. Forgetting the event being played now ends the
   night too — the main window used to keep its line up for an event that
   was gone.
+- **The key map and the controllers pop out (§121).** The keyboard switch
+  in either window switches the main window's keys.
+- **The keyboard switch in the Controllers panel works.** *Turn it off while
+  typing* changed a setting nothing read: the keys went on playing decks.
 
 ## v0.36.0 — The singers' microphones, finished
 

@@ -17114,10 +17114,14 @@ pub fn keyboard_keys(state: State<'_, AppState>) -> Vec<crate::control::KeyDto> 
     state.control().keys()
 }
 
-/// Turn the keyboard on or off.
+/// Turn the keyboard on or off; every window is told (`keyboard-enabled`) —
+/// the main window, which acts on keys, and the key map in a window of its
+/// own, whose switch this is (§121).
 #[tauri::command]
-pub fn set_keyboard_enabled(state: State<'_, AppState>, on: bool) {
+pub fn set_keyboard_enabled(app: tauri::AppHandle, state: State<'_, AppState>, on: bool) {
+    use tauri::Emitter;
     state.control().set_keyboard(on);
+    let _ = app.emit("keyboard-enabled", on);
 }
 
 /// Open a MIDI input with a mapping. `mapping` unset means "whichever fits".

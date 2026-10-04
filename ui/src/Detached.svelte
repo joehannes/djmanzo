@@ -15,9 +15,11 @@
   import AtHand from "./AtHand.svelte";
   import Automix from "./Automix.svelte";
   import Browse from "./Browse.svelte";
+  import Controllers from "./Controllers.svelte";
   import Crowd from "./Crowd.svelte";
   import EventPanel from "./Event.svelte";
   import Fx from "./Fx.svelte";
+  import MappingEditor from "./MappingEditor.svelte";
   import Mic from "./Mic.svelte";
   import Mixes from "./Mixes.svelte";
   import Next from "./Next.svelte";
@@ -32,23 +34,30 @@
   import RoomSense from "./RoomSense.svelte";
   import Sampler from "./Sampler.svelte";
   import SessionLog from "./SessionLog.svelte";
+  import Shortcuts from "./Shortcuts.svelte";
   import SideView from "./SideView.svelte";
   import SingerScreen from "./SingerScreen.svelte";
   import Singers from "./Singers.svelte";
   import Watershed from "./Watershed.svelte";
   import Waveform from "./Waveform.svelte";
   import {
+    attachPanel,
+    controlMappings,
+    controlStatus,
     dispatch,
     getSnapshot,
     interfaceDensity,
     liveEvent,
     onInterfaceDensity,
+    onKeyboardEnabled,
     onLiveEvent,
     onSnapshot,
     setLiveEvent,
     windowAsk,
+    type MappingInfo,
     type Snapshot,
   } from "./api";
+  import { Keyboard } from "./keyboard.svelte";
   import { emptyWorld, getWorld, type World } from "./world";
 
   let { panel }: { panel: string } = $props();
@@ -163,6 +172,34 @@
     ask("switch activity mix");
   }
 
+  /*
+    The key map: the keys are read here to be shown, not acted on — this
+    window listens to none of them. The switch is the main window's, kept by
+    Rust, which tells every window when it flips; a key of the DJ's own,
+    changed here, has the main window read its keys again.
+  */
+  const keys = new Keyboard();
+  $effect(() => {
+    if (panel !== "keys") return;
+    void keys.load().catch((e) => (error = String(e)));
+    void controlStatus()
+      .then((status) => (keys.enabled = status.keyboard))
+      .catch(() => {});
+    const unlisten = onKeyboardEnabled((on) => (keys.enabled = on));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  });
+
+  /** The controller mappings, for the controllers and the mapping editor. */
+  let mappings = $state<MappingInfo[]>([]);
+  $effect(() => {
+    if (panel !== "controllers") return;
+    void controlMappings()
+      .then((got) => (mappings = got))
+      .catch((e) => (error = String(e)));
+  });
+
   /** The decks with a river in the world, in order — as `App` picks them. */
   const rivers = $derived(
     world.entities
@@ -208,6 +245,19 @@
     {/if}
   {:else if panel === "event"}
     <EventPanel {liveId} onGoLive={(id) => void goLive(id)} />
+  {:else if panel === "keys"}
+    <!-- Its own close is the window's: the panel goes home, as it does there. -->
+    <Shortcuts
+      keyboard={keys}
+      onclose={() => void attachPanel("keys")}
+      decks={deckCount}
+      onKeysChanged={() => ask("keys changed")}
+    />
+  {:else if panel === "controllers"}
+    <div class="stack">
+      <Controllers {mappings} />
+      <MappingEditor {mappings} />
+    </div>
   {:else if panel === "requests"}
     <!-- What a guest typed can run long; the collection's search needs the start of it. -->
     <Requests enabled={ready} onFind={(text) => ask(`find ${text.trim().slice(0, 200)}`)} />
@@ -285,6 +335,14 @@
 </main>
 
 <style>
+  /* The controllers and the mapping editor, one under the other; the window
+     scrolls them together. */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
   .detached {
     display: flex;
     flex-direction: column;

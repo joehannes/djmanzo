@@ -674,6 +674,8 @@ export const ANSWERS: Record<string, unknown> = {
     external_bpm: null,
   },
   midi_outputs: { ports: [], unavailable: null },
+  // `control::ControlStatus` whole: a field left out here is one the panel
+  // reads and Rust always sends.
   control_status: {
     inputs: [],
     open_port: null,
@@ -681,6 +683,11 @@ export const ANSWERS: Record<string, unknown> = {
     unavailable: null,
     keyboard: true,
     keyboard_name: "",
+    audio: null,
+    hid_inputs: [],
+    hid_unavailable: null,
+    open_hid: null,
+    open_hid_mapping: null,
   },
   /**
    * §53: nothing plugged in, which is the ordinary case and the one the
@@ -2325,6 +2332,11 @@ export async function openShell(
           // and the density band the main window says it wears, kept.
           if (cmd === "window_ask") {
             ((win.__windowAsked ??= []) as unknown[]).push(args.run);
+            return Promise.resolve(null);
+          }
+          // The keyboard's switch, recorded with what it was set to.
+          if (cmd === "set_keyboard_enabled") {
+            ((win.__keyboardSet ??= []) as unknown[]).push(args.on);
             return Promise.resolve(null);
           }
           if (cmd === "interface_density") {

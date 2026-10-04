@@ -54,11 +54,10 @@ pub enum Panel {
     /// §107: the words, for the singers — a screen facing the microphone.
     Singers,
     // §121: "pop out" on every panel. Most are drawn from the snapshot and
-    // their own commands alone; the night, requests and the event need
-    // something of the main window's — its density, its collection to
-    // search, its activity — and ask it through Rust
-    // (`commands::window_ask`). The key map, the controller mappings and the
-    // settings stay in it, for now.
+    // their own commands alone; the night, requests, the event and the key
+    // map need something of the main window's — its density, its collection
+    // to search, its activity, its keys — and ask it through Rust
+    // (`commands::window_ask`). The settings stay in it, for now.
     /// §61's preparation view.
     Prepare,
     /// What to play next.
@@ -97,10 +96,15 @@ pub enum Panel {
     /// §118: preparing a night and playing it — whose *Play it live* takes
     /// the main window to the Mix activity.
     Event,
+    /// The key map: the keyboard's switch, the DJ's own keys under Space,
+    /// and every key — read again by the main window when one changes.
+    Keys,
+    /// The controllers: what is connected, and the mapping editor.
+    Controllers,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 24] = [
+    pub const ALL: [Panel; 26] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -125,6 +129,8 @@ impl Panel {
         Panel::Night,
         Panel::Requests,
         Panel::Event,
+        Panel::Keys,
+        Panel::Controllers,
     ];
 
     /// The main window's surface this panel is (`cockpit`'s name for it),
@@ -173,6 +179,8 @@ impl Panel {
             Panel::Night => "night",
             Panel::Requests => "requests",
             Panel::Event => "event",
+            Panel::Keys => "keys",
+            Panel::Controllers => "controllers",
         }
     }
 
@@ -212,6 +220,8 @@ impl Panel {
             Panel::Night => "djmanzo - The night",
             Panel::Requests => "djmanzo - Requests",
             Panel::Event => "djmanzo - The event",
+            Panel::Keys => "djmanzo - Keys",
+            Panel::Controllers => "djmanzo - Controllers",
         }
     }
 
@@ -237,6 +247,8 @@ impl Panel {
             Panel::Log => (760.0, 720.0),
             Panel::Night | Panel::Requests => (560.0, 760.0),
             Panel::Event => (720.0, 820.0),
+            Panel::Keys => (640.0, 780.0),
+            Panel::Controllers => (760.0, 820.0),
         }
     }
 

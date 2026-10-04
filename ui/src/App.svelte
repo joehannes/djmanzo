@@ -85,6 +85,7 @@
     liveEvent,
     setLiveEvent,
     onLiveEvent,
+    onKeyboardEnabled,
     welcomeState,
     type WelcomeAnswers,
     type WelcomeApplied,
@@ -2039,11 +2040,18 @@
       // works, which is worth one line rather than a dialog on launch.
       console.warn("keyboard mapping:", why);
     });
+    // §121: switched on or off in the key map's own window, which is not
+    // the window that acts on keys.
+    const unlistenSwitch = onKeyboardEnabled((on) => {
+      keyboard.enabled = on;
+      if (!on) keyboard.releaseAll();
+    });
     return () => {
       // Let go of anything held before detaching, or a censor held while the
       // window closes stays on in the engine with nothing left to switch it off.
       keyboard.releaseAll();
       detach();
+      void unlistenSwitch.then((fn) => fn());
     };
   });
 

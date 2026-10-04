@@ -142,5 +142,17 @@
     "title": "djmanzo - The event",
     "detached": false,
     "surface": "event"
+  },
+  {
+    "id": "keys",
+    "title": "djmanzo - Keys",
+    "detached": false,
+    "surface": "keys"
+  },
+  {
+    "id": "controllers",
+    "title": "djmanzo - Controllers",
+    "detached": false,
+    "surface": "controllers"
   }
 ]

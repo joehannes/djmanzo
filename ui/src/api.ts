@@ -4370,6 +4370,9 @@ export const phraseGrid = (deck: number) =>
 export const keyboardKeys = () => invoke<KeyBinding[]>("keyboard_keys");
 export const setKeyboardEnabled = (on: boolean) =>
   invoke<void>("set_keyboard_enabled", { on });
+/** §121: the keyboard was switched on or off, in whichever window. */
+export const onKeyboardEnabled = (handler: (on: boolean) => void): Promise<UnlistenFn> =>
+  listen<boolean>("keyboard-enabled", (event) => handler(event.payload));
 export const openController = (port: string, mapping?: string) =>
   invoke<void>("open_controller", { port, mapping: mapping ?? null });
 export const closeController = () => invoke<void>("close_controller");
