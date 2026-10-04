@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A look instead of black on the projector (§122).** The Video panel's
+  *With no picture* picks one of djmanzo's looks to show whenever no deck
+  with a video is heard. It gives way to the pictures as they come in, and
+  comes back as a record without one takes over.
+
 - **Layers behind the words on the singers' screen (§122).** In the Singers
   panel, *Behind the words* picks one of djmanzo's own looks — *Glow*,
   *Pulse*, *Waves*, *Sparkle* or *Everything* — or *Off*. Each is a stack of

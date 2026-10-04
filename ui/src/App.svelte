@@ -3554,7 +3554,12 @@
   {/snippet}
 
   {#snippet surfaceVideo()}
-    <Video decks={snapshot?.decks ?? []} crossfader={snapshot?.master.crossfader ?? 0} />
+    <Video
+      decks={snapshot?.decks ?? []}
+      crossfader={snapshot?.master.crossfader ?? 0}
+      audio={snapshot?.context.audio}
+      vocals={snapshot?.master.vocals}
+    />
   {/snippet}
 
   {#snippet surfaceCamera()}

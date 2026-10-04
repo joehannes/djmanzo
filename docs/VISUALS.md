@@ -180,6 +180,30 @@ djmanzo ships, or *Off*. Then the **Video** window (`docs/VIDEO.md`): when no
 deck with a picture is heard, it shows the look instead of black, so the
 projector is never dark.
 
+**Step 3 — built.** The Video panel has *With no picture*: *Black*, or one of
+the looks, kept in `looks.json` as the singers' screen's choice is. The look
+is drawn beneath the pictures, at the opacity the pictures leave:
+`1 − whole`, where *whole* is how much of what is heard has a picture
+(`videoMix.ts`). A record with a picture heard alone covers it, and a record
+without one lets it through. Its colours are those of the record most of the
+room is hearing.
+
+- **Held by:**
+  - two browser tests: the look whole, gone, then half, as decks start and
+    the crossfader moves; and picked and set back to *Black* in the panel
+  - Rust's test of each screen keeping its own choice
+- **Mutation-tested:** three mutants fail them:
+  - the look always whole
+  - the panel picking for the singers' screen
+  - the video choice kept as the singers'
+- **Driven in WebKitGTK:** docked, the beat's rings moving between captures,
+  with no deck carrying a picture.
+
+**Not tuned.** The looks' brightness follows the master's RMS loudness and
+the bands as `dj_dsp::Spectrum` measures them. On this container's synthetic
+demo records they are dim, and nothing here can say how bright they read on
+real music in a real room.
+
 ## 4. MilkDrop: Butterchurn as the main layer
 
 Butterchurn (MIT) renders MilkDrop presets in WebGL. It is fed the time-domain

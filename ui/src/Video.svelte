@@ -14,11 +14,33 @@
    *
    * The 60-a-second work — following, crossfading — writes to the elements
    * directly from a frame loop; nothing reactive moves at that rate.
+   *
+   * Beneath the pictures, when the DJ picks one, a look (§122,
+   * `docs/VISUALS.md`): djmanzo's own layers, seen as much as the pictures
+   * are not — whole when no deck with a picture is heard, gone when one is
+   * heard alone — so the projector is never left black.
    */
-  import { deckPictures, type DeckPicture, type DeckState } from "./api";
-  import { follow, stack, type DeckForPicture } from "./videoMix";
+  import {
+    deckPictures,
+    lookChoose,
+    lookChosen,
+    looksCatalogue,
+    singerBackdrop,
+    type AudioMetrics,
+    type DeckPicture,
+    type DeckState,
+    type Look,
+    type VocalsState,
+  } from "./api";
+  import { follow, share, stack, type DeckForPicture } from "./videoMix";
+  import Visuals from "./Visuals.svelte";
 
-  let { decks, crossfader }: { decks: DeckState[]; crossfader: number } = $props();
+  let {
+    decks,
+    crossfader,
+    audio = { loudness: 0, bands: [0, 0, 0, 0] },
+    vocals,
+  }: { decks: DeckState[]; crossfader: number; audio?: AudioMetrics; vocals?: VocalsState } = $props();
 
   const PIN_KEY = "djmanzo.video.pinned";
   const FILL_KEY = "djmanzo.video.fill";
@@ -114,6 +136,53 @@
     return () => cancelAnimationFrame(frame);
   });
 
+  /** §122: the look beneath the pictures, kept in Rust as the singers' screen's is. */
+  let looks = $state<Look[]>([]);
+  let lookName = $state<string | null>(null);
+  $effect(() => {
+    void Promise.all([looksCatalogue(), lookChosen()])
+      .then(([all, chosen]) => {
+        looks = all;
+        lookName = chosen.video;
+      })
+      .catch(() => {});
+  });
+  const look = $derived(looks.find((l) => l.name === lookName) ?? null);
+
+  async function pickLook(name: string | null) {
+    try {
+      lookName = (await lookChoose("video", name)).video;
+    } catch {
+      // Refused: the list was out of date. What was shown stays.
+    }
+  }
+
+  /**
+   * The look's colours are those of the record most of the room is hearing,
+   * as the singers' screen's are of the singer's: asked again only when that
+   * record changes.
+   */
+  const heard = $derived(
+    decks
+      .filter((d) => d.playing)
+      .map((d) => ({ d, share: share(d as DeckForPicture, crossfader) }))
+      .sort((a, b) => b.share - a.share)[0]?.d ?? null,
+  );
+  let shades = $state<{ colour: string }[]>([]);
+  let shadesFor = "";
+  $effect(() => {
+    if (!look) return;
+    const key = heard ? `${heard.number}/${heard.title}/${heard.length_frames}` : "";
+    if (key === shadesFor) return;
+    shadesFor = key;
+    if (!heard) return;
+    void singerBackdrop(heard.number)
+      .then((found) => {
+        if (shadesFor === key) shades = found.shades;
+      })
+      .catch(() => {});
+  });
+
   $effect(() => remember(PIN_KEY, pinned === null ? "" : String(pinned)));
   $effect(() => remember(FILL_KEY, fill ? "1" : "0"));
 
@@ -145,6 +214,18 @@
 <div class="video" class:clean data-video>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="stage" class:fill bind:this={stage} onclick={() => (clean = false)} data-stage>
+    {#if look}
+      <div class="look" data-video-look>
+        <Visuals
+          {look}
+          {decks}
+          {crossfader}
+          {audio}
+          voices={(vocals?.strips ?? []).map((s) => s.level)}
+          {shades}
+        />
+      </div>
+    {/if}
     <div class="layers">
       {#each pictures as picture (`${picture.deck}/${picture.record}`)}
         <video
@@ -176,6 +257,21 @@
         </select>
       </label>
       <label><input type="checkbox" bind:checked={fill} /> Fill, cropping the edges</label>
+      {#if looks.length > 0}
+        <label>
+          With no picture
+          <select
+            aria-label="The look when no picture plays"
+            value={lookName ?? ""}
+            onchange={(e) => void pickLook(e.currentTarget.value === "" ? null : e.currentTarget.value)}
+          >
+            <option value="">Black</option>
+            {#each looks as option (option.name)}
+              <option value={option.name} title={option.description}>{option.name}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <button onclick={() => (clean = true)} title="Click the picture to bring them back">Hide the controls</button>
       <button onclick={() => void fullScreen()}>Full screen</button>
     </div>
@@ -234,6 +330,16 @@
   .clean .stage {
     border-radius: 0;
     cursor: pointer;
+  }
+
+  /*
+   * The look, as much as the pictures are not: whole when no picture is heard,
+   * gone when one is heard alone. Beneath them, so a picture fading in covers it.
+   */
+  .look {
+    position: absolute;
+    inset: 0;
+    opacity: calc(1 - var(--whole));
   }
 
   /* The whole stack at its share of what is heard, over the black. */

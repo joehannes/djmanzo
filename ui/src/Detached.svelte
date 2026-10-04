@@ -382,7 +382,12 @@
         vocals={snapshot.master.vocals}
       />
     {:else if panel === "video"}
-      <Video decks={snapshot.decks} crossfader={snapshot.master.crossfader} />
+      <Video
+        decks={snapshot.decks}
+        crossfader={snapshot.master.crossfader}
+        audio={snapshot.context.audio}
+        vocals={snapshot.master.vocals}
+      />
     {:else if panel === "karaoke"}
       <Singers enabled={ready} {deckCount} decks={snapshot.decks} vocals={snapshot.master.vocals} />
     {:else if panel === "prepare"}

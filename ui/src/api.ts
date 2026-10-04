@@ -6022,9 +6022,11 @@ export interface Look {
 /** §122: which look each screen shows; null is off. */
 export interface LookChosen {
   singers: string | null;
+  /** The Video window's, shown when no deck with a picture is heard. */
+  video: string | null;
 }
 
-export type LookScreen = "singers";
+export type LookScreen = "singers" | "video";
 
 export const looksCatalogue = () => invoke<Look[]>("looks_catalogue");
 export const lookChosen = () => invoke<LookChosen>("look_chosen");

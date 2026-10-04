@@ -10,9 +10,10 @@
 //! `docs/VISUALS.md`) and grow with installed packs (step 7) without the
 //! interface changing.
 //!
-//! The choice is kept in `looks.json` beside the other settings, because the
-//! screen that draws it is a window of its own: the DJ picks in the Singers
-//! panel, and the singers' screen, in another window, reads it.
+//! The choice is kept in `looks.json` beside the other settings, one per
+//! screen, because a screen that draws it is usually a window of its own: the
+//! DJ picks in the Singers panel or the Video panel, and the singers' screen
+//! or the projector's window reads it.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -131,6 +132,9 @@ pub fn built_in() -> Vec<Look> {
 pub enum Screen {
     /// Behind the words on the singers' screen.
     Singers,
+    /// In the Video window when no deck with a picture is heard, so the
+    /// projector is not left black.
+    Video,
 }
 
 /// Which look each screen shows; `None` is off.
@@ -138,6 +142,7 @@ pub enum Screen {
 #[serde(default)]
 pub struct Chosen {
     pub singers: Option<String>,
+    pub video: Option<String>,
 }
 
 #[derive(Default)]
@@ -180,10 +185,12 @@ impl Looks {
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
         let catalogue = self.catalogue();
-        if let Some(name) = &chosen.singers
-            && !catalogue.iter().any(|look| &look.name == name)
-        {
-            chosen.singers = None;
+        for kept in [&mut chosen.singers, &mut chosen.video] {
+            if let Some(name) = kept
+                && !catalogue.iter().any(|look| &look.name == name)
+            {
+                *kept = None;
+            }
         }
         inner.chosen = chosen;
     }
@@ -212,6 +219,7 @@ impl Looks {
         let mut inner = self.inner();
         match screen {
             Screen::Singers => inner.chosen.singers = name,
+            Screen::Video => inner.chosen.video = name,
         }
         if let Some(dir) = &inner.dir {
             let written = serde_json::to_string_pretty(&inner.chosen)
@@ -310,15 +318,21 @@ mod tests {
             .choose(Screen::Singers, Some("Pulse".to_owned()))
             .unwrap();
         assert_eq!(chosen.singers.as_deref(), Some("Pulse"));
+        assert_eq!(chosen.video, None, "one screen's choice is not another's");
+        looks
+            .choose(Screen::Video, Some("Waves".to_owned()))
+            .unwrap();
 
         let again = Looks::new();
         again.start(dir.path());
         assert_eq!(again.chosen().singers.as_deref(), Some("Pulse"));
+        assert_eq!(again.chosen().video.as_deref(), Some("Waves"));
 
         again.choose(Screen::Singers, None).unwrap();
         let off = Looks::new();
         off.start(dir.path());
         assert_eq!(off.chosen().singers, None);
+        assert_eq!(off.chosen().video.as_deref(), Some("Waves"));
     }
 
     #[test]
@@ -338,9 +352,14 @@ mod tests {
         );
 
         // A look kept from a pack since removed is forgotten, not shown blank.
-        std::fs::write(dir.path().join(SETTINGS), r#"{"singers":"Gone"}"#).unwrap();
+        std::fs::write(
+            dir.path().join(SETTINGS),
+            r#"{"singers":"Gone","video":"Also gone"}"#,
+        )
+        .unwrap();
         let later = Looks::new();
         later.start(dir.path());
         assert_eq!(later.chosen().singers, None);
+        assert_eq!(later.chosen().video, None);
     }
 }

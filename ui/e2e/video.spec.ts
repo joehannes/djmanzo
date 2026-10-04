@@ -147,6 +147,7 @@ async function openVideo(
   browser: Browser,
   pictures: { deck: number; record: string; kind: string }[],
   body: Buffer | null = null,
+  answers: Record<string, unknown> = {},
 ): Promise<Page> {
   const context = await browser.newContext({ baseURL: test.info().project.use.baseURL });
   await context.route(`${PICTURES}/**`, (route) =>
@@ -157,6 +158,7 @@ async function openVideo(
   const page = await context.newPage();
   await openShell(page, "/?panel=video", {}, {
     deck_pictures: pictures.map((p) => ({ ...p, url: `${PICTURES}/${p.deck}/${p.record}` })),
+    ...answers,
   });
   await expect(page.locator("[data-video]")).toBeVisible();
   return page;
@@ -326,6 +328,64 @@ test.describe("§122: the Video panel", () => {
       await expect(page.locator("[data-video]")).toHaveClass(/clean/);
       await page.locator("[data-stage]").click();
       await expect(page.getByRole("button", { name: "Hide the controls" })).toBeVisible();
+    } finally {
+      await browser.close();
+    }
+  });
+});
+
+test.describe("§122: a look when no picture is heard", () => {
+  /**
+   * **The projector is never left black.** The look the DJ chose for the
+   * Video window is seen as much as the pictures are not: whole when no deck
+   * with a picture is heard, gone when one is heard alone, half and half when
+   * a record without a picture shares the mix.
+   */
+  test("the look fills what the pictures leave", async () => {
+    const browser = await launch();
+    try {
+      const page = await openVideo(browser, [{ deck: 1, record: RECORD_ONE, kind: "video/webm" }], null, {
+        look_chosen: { singers: null, video: "Glow" },
+      });
+      const look = page.locator("[data-video-look]");
+      await expect(look.locator("canvas")).toHaveAttribute("data-visuals", "drawing");
+      await expect(look.locator("canvas")).toHaveAttribute("data-look", "Glow");
+      const seen = () => look.evaluate((e) => Number(getComputedStyle(e).opacity));
+
+      // Deck 1, the one with a picture, paused: nothing with a picture heard.
+      await emit(page, { decks: { 0: { playing: false } } });
+      await expect.poll(seen).toBe(1);
+
+      // Deck 1 heard alone: its picture whole, the look gone.
+      await emit(page, { decks: { 0: { playing: true, position_seconds: 1 } } });
+      await expect.poll(seen).toBe(0);
+
+      // Deck 2, with no picture, playing too, the crossfader in the middle.
+      await emit(page, { decks: { 1: { playing: true } }, master: { crossfader: 0 } });
+      await expect.poll(seen).toBeCloseTo(0.5, 1);
+      expect(errorsThrown(page)).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test("the look is picked in the panel, and black is a choice", async () => {
+    const browser = await launch();
+    try {
+      const page = await openVideo(browser, []);
+      const picker = page.getByRole("combobox", { name: "The look when no picture plays" });
+      await expect(picker).toHaveValue("");
+      await expect(page.locator("[data-video-look]")).toHaveCount(0);
+
+      await picker.selectOption("Pulse");
+      await expect(page.locator("[data-video-look] canvas")).toHaveAttribute("data-look", "Pulse");
+      await picker.selectOption("");
+      await expect(page.locator("[data-video-look]")).toHaveCount(0);
+      const asked = await page.evaluate(() => (window as unknown as { __lookChoices: unknown[] }).__lookChoices);
+      expect(asked).toEqual([
+        { screen: "video", name: "Pulse" },
+        { screen: "video", name: null },
+      ]);
     } finally {
       await browser.close();
     }

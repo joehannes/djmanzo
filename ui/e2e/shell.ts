@@ -765,7 +765,7 @@ export const ANSWERS: Record<string, unknown> = {
   // §122: djmanzo's own looks, generated from `dj_app::looks::built_in`;
   // the singers' screen shows none until one is chosen.
   looks_catalogue: looks,
-  look_chosen: { singers: null },
+  look_chosen: { singers: null, video: null },
   phone_camera_status: {
     on: false,
     phone_url: null,

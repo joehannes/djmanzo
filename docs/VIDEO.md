@@ -68,6 +68,16 @@ say, still at the deck's frame when it is paused.
 As with the camera: *Hide the controls* leaves only the picture, on black,
 for a projector or OBS's *Window Capture*.
 
+**Instead of black, a look** (§122, [VISUALS.md](VISUALS.md)). The DJ can pick
+one of djmanzo's layered looks for *With no picture*. It is drawn beneath the
+pictures and seen as much as they are not:
+- whole when no deck with a picture is heard
+- gone when one is heard alone
+- half and half when a record without a picture shares the mix
+
+So the projector follows the music either way. The choice is kept with the
+singers' screen's, in `looks.json`.
+
 ## Built (4 October)
 
 `dj_app::video` (the pictures on the decks, and their server),
