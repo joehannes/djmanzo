@@ -157,6 +157,33 @@
     ]
   },
   {
+    "name": "Artist",
+    "description": "Photographs of the artist playing, from Wikimedia Commons — freely licensed, each credited in the corner — drifting slowly and pressing in on the beat, over the record's colours: for a singer's favourite, or anyone the room came for.",
+    "layers": [
+      {
+        "kind": "wash",
+        "signal": "loudness",
+        "colour": "record",
+        "amount": 0.6,
+        "blend": "over"
+      },
+      {
+        "kind": "artist",
+        "signal": "beat",
+        "colour": "record",
+        "amount": 0.85,
+        "blend": "over"
+      },
+      {
+        "kind": "halo",
+        "signal": "voice",
+        "colour": "record",
+        "amount": 0.5,
+        "blend": "screen"
+      }
+    ]
+  },
+  {
     "name": "Everything",
     "description": "Every layer at once — colours, beat, waves, sparks and the singer's glow: for a big chorus, and for seeing what the layers do.",
     "layers": [

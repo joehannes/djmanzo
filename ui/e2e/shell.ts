@@ -772,6 +772,8 @@ export const ANSWERS: Record<string, unknown> = {
   milkdrop_shipped: { Drift: presetDrift, Bloom: presetBloom },
   // §122 step 4b: the DJ's own presets, none until a test adds some.
   milkdrop_yours: [],
+  // §122 step 5: no artist's photographs unless a test says so.
+  artist_pictures: { artist: null, key: null, state: "unknown", pictures: [], why: null },
   phone_camera_status: {
     on: false,
     phone_url: null,
@@ -2481,6 +2483,33 @@ export async function openShell(
             const name = String(args.name);
             const preset = name.startsWith("yours/") && yours().some((y) => `yours/${y.name}` === name) ? shipped.Drift : shipped[name];
             return preset ? Promise.resolve(structuredClone(preset)) : Promise.reject(`there is no MilkDrop preset called "${args.name}"`);
+          }
+          // §122 step 5: asked first, then found — the second answer, if a
+          // test gives one, from the second asking on.
+          if (cmd === "artist_pictures") {
+            const asks = ((win.__artistAsks as number | undefined) ?? 0) + 1;
+            win.__artistAsks = asks;
+            const answer = (
+              asks === 1 || answers.artist_pictures_then === undefined ? answers.artist_pictures : answers.artist_pictures_then
+            ) as Record<string, unknown>;
+            // A refusal, as Rust gives one for a deck it has no record on.
+            if (typeof answer.refused === "string") return Promise.reject(answer.refused);
+            return Promise.resolve(structuredClone(answer));
+          }
+          if (cmd === "artist_picture") {
+            // A photograph as Rust hands it over: a JPEG `data:` URL. Red
+            // above and blue below, so a test can tell it is drawn the right
+            // way up.
+            const canvas = document.createElement("canvas");
+            canvas.width = 160;
+            canvas.height = 90;
+            const g = canvas.getContext("2d")!;
+            g.fillStyle = "#e01010";
+            g.fillRect(0, 0, 160, 45);
+            g.fillStyle = "#1010e0";
+            g.fillRect(0, 45, 160, 45);
+            ((win.__artistPictures ??= []) as unknown[]).push({ ...args });
+            return Promise.resolve(canvas.toDataURL("image/jpeg", 0.9));
           }
           if (cmd === "look_chosen" || cmd === "look_choose") {
             const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;

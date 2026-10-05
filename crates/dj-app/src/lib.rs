@@ -22,6 +22,7 @@
 pub mod activity;
 pub mod analysis;
 pub mod art;
+pub mod artists;
 pub mod asks;
 pub mod assistant;
 pub mod at_hand;
@@ -942,6 +943,8 @@ pub fn run() {
             commands::guests_message,
             commands::open_suno,
             commands::singer_backdrop,
+            commands::artist_pictures,
+            commands::artist_picture,
             commands::word_timing,
             commands::word_timing_speed,
             commands::word_timing_download,

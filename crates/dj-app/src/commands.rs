@@ -16054,6 +16054,110 @@ pub async fn singer_backdrop(
     })
 }
 
+/// §122 step 5: the pictures of the artist on `deck` — kept, or asked of
+/// Wikimedia Commons once and kept. See `crate::artists`.
+///
+/// Answers at once: an artist not yet asked for is asked for in the
+/// background and told as `asking`, and the screen asks again in a moment.
+/// The network is reached only from here, and only when a look with an
+/// artist layer is drawn.
+///
+/// # Errors
+/// No record on the deck, or no library.
+#[tauri::command]
+pub async fn artist_pictures(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    deck: u8,
+) -> Result<crate::artists::Shown, String> {
+    use crate::artists::{Artist, Shown, fetch, find, kept};
+    use tauri::Manager;
+    let id = DeckId::from_human(deck)
+        .and_then(|deck| state.deck_track_id(deck))
+        .ok_or_else(|| format!("deck {deck} has no record on it"))?;
+    let track = library(&state)?
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "that record is not in the collection".to_owned())?;
+    let Some(name) = track
+        .tags
+        .artist
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+    else {
+        return Ok(Shown::of(None, "unknown"));
+    };
+    let path = track.path;
+    let artist = Artist {
+        name,
+        id: tauri::async_runtime::spawn_blocking(move || dj_library::tags::artist_id(&path))
+            .await
+            .map_err(|e| e.to_string())?,
+    };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("artists");
+    if let Some(found) = kept(&dir, &artist.key()) {
+        return Ok(Shown::kept(&artist, found));
+    }
+    let asking = Arc::clone(state.artists());
+    if let Err(shown) = asking.begin(&artist, std::time::Instant::now()) {
+        return Ok(shown);
+    }
+    let asked = artist.clone();
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let outcome = find(&dir, &asked, |url| fetch(&client, url)).await;
+        match &outcome {
+            Ok(found) => tracing::info!(
+                artist = %asked.name,
+                pictures = found.pictures.len(),
+                "the artist's pictures were asked of Wikimedia Commons and kept"
+            ),
+            Err(why) => {
+                tracing::info!(%why, artist = %asked.name, "no pictures from Wikimedia this time")
+            }
+        }
+        asking.end(&asked, outcome.map(|_| ()), std::time::Instant::now());
+    });
+    Ok(Shown::of(Some(&artist), "asking"))
+}
+
+/// One kept picture of an artist, as a `data:` URL.
+///
+/// Not an application scheme: a picture from one is another origin's, and
+/// WebGL refuses to draw from it. Not raw bytes either, though Tauri can send
+/// them: they reach Chromium's page as an `ArrayBuffer` and WebKitGTK's as an
+/// array of numbers, and the photograph drawn in every browser test was a
+/// "Loading error." in djmanzo's Linux webview. A `data:` URL is the page's
+/// own, the same on every webview, already allowed by the content rules, and
+/// a third larger than the bytes — for at most six pictures an artist, once.
+///
+/// # Errors
+/// No such picture kept.
+#[tauri::command]
+pub fn artist_picture(app: tauri::AppHandle, key: String, n: usize) -> Result<String, String> {
+    use base64::Engine as _;
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("artists");
+    crate::artists::picture(&dir, &key, n)
+        .map(|jpeg| {
+            format!(
+                "data:image/jpeg;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(jpeg)
+            )
+        })
+        .ok_or_else(|| format!("no picture {n} is kept for {key}"))
+}
+
 /// §109: one activity as the strip draws it.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityDto {

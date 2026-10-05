@@ -1299,6 +1299,15 @@ component: `svelte-check` reports *'$state' used before its declaration* and
 *untyped function calls may not accept type arguments*, because `$state` is
 read as the store `state` auto-subscribed. Name it anything else.
 
+**Raw bytes from a command reach WebKitGTK's page as an array of numbers.**
+A Tauri command returning `tauri::ipc::Response` hands Chromium an
+`ArrayBuffer`, and djmanzo's Linux webview a plain `Array` of 172,199
+numbers for a 172 KB JPEG. Made into a `Blob`, that is text, and the photograph
+every browser test drew was *Loading error.* in djmanzo. `dj_app::artists`'
+pictures go over as `data:` URLs, which are the same on every webview. A mock
+in `ui/e2e/shell.ts` that answers in Chromium's shape proves nothing about
+WebKitGTK's: answer in the shape Rust sends.
+
 **The decoder reads fewer tags than the scan, and loading used to overwrite
 the scan's.** Symphonia read no tags at all from a `lofty`-written ID3v2.4
 MP3, and `load_track` upserted what it read: artist, genre, label, year and
@@ -1307,6 +1316,20 @@ deck showed the file's name. Loading now fills only blanks
 (`dj_library::Library::remember_loaded`) and the deck shows the collection's
 names. Test tags written by hand are not proof of anything: write them with
 `lofty`, as a tagger would, and check the library row (`tracks.artist`).
+
+**A plain `cargo build -p dj-app` serves the interface from `devUrl`.** The
+window says *Could not connect to localhost: Connection refused*. Drive a build
+made with `--features custom-protocol`, which embeds `ui/dist` — after
+`npm run build` has said `✓ built`.
+
+**Wikimedia refuses this container's shared address most of the time.**
+Wikidata's search and `upload.wikimedia.org` answer 429 within a request or
+two, minutes on end, to every session behind the same proxy. It is the
+address, not the client: the first requests of a run succeed and the same URL
+a second later does not. A live check of `dj_app::artists` needs patient
+retries and may still not finish; the flow is proven against recorded answers
+in its tests, and a drive can seed `artists/<key>/` with a real photograph
+and its real credit.
 
 ## What this container cannot prove
 

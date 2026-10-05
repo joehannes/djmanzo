@@ -15,9 +15,11 @@ import { share, type DeckForPicture } from "./videoMix";
  * What a layer can draw. `dj_app::looks`' test holds the same list.
  *
  * `milkdrop` is the look's *main* layer: Butterchurn drawing a MilkDrop
- * preset (`./milkdrop.ts`), taken into the stack as a picture.
+ * preset (`./milkdrop.ts`), taken into the stack as a picture. `artist` is
+ * the heard deck's artist, photographed (`./artistShow.ts`), with the
+ * photograph's credit shown while it is.
  */
-export const KINDS = ["wash", "pulse", "ripple", "sparks", "halo", "milkdrop"] as const;
+export const KINDS = ["wash", "pulse", "ripple", "sparks", "halo", "milkdrop", "artist"] as const;
 /** What a layer can answer to. */
 export const SIGNALS = [
   "loudness",
@@ -140,6 +142,28 @@ function heardDecks(hearing: Hearing) {
     deck,
     share: deck.playing ? share(deck, hearing.crossfader) : 0,
   }));
+}
+
+/**
+ * The deck heard most and its artist — whose photographs an `artist` layer
+ * shows — or null while nothing is heard, when the last artist stays. A
+ * record that names no artist is `""`: no one's photographs, rather than the
+ * last record's.
+ */
+export function heardArtist(
+  decks: (DeckForPicture & { artist: string | null })[],
+  crossfader: number,
+): { deck: number; artist: string } | null {
+  let heard: { deck: number; artist: string } | null = null;
+  let most = 0;
+  for (const deck of decks) {
+    const amount = deck.playing ? share(deck, crossfader) : 0;
+    if (amount > most) {
+      most = amount;
+      heard = { deck: deck.number, artist: deck.artist?.trim() ?? "" };
+    }
+  }
+  return heard;
 }
 
 /** The most-heard deck with a grid: the one the room is in time with. */

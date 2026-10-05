@@ -90,10 +90,30 @@ pub fn artwork(path: &Path) -> Option<Artwork> {
 /// it ends up in a URL: anything else is no release.
 #[must_use]
 pub fn release_id(path: &Path) -> Option<String> {
+    musicbrainz(path, &ItemKey::MusicBrainzReleaseId)
+}
+
+/// The MusicBrainz artist a file was tagged with, if it was — the key
+/// Wikidata files the artist under, which finds their pictures by identity
+/// rather than by a name two artists may share (`dj_app::artists`).
+///
+/// Written by the same taggers as [`release_id`]. A record by several artists
+/// carries several ids, joined by `/` or `;`; the first is the record's
+/// artist.
+#[must_use]
+pub fn artist_id(path: &Path) -> Option<String> {
+    musicbrainz(path, &ItemKey::MusicBrainzArtistId)
+}
+
+/// The first UUID under `key`, lower-cased: anything else is none, since it
+/// ends up in a URL.
+fn musicbrainz(path: &Path, key: &ItemKey) -> Option<String> {
     let tagged = Probe::open(path).ok()?.read().ok()?;
     let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
     let id = tag
-        .get_string(&ItemKey::MusicBrainzReleaseId)?
+        .get_string(key)?
+        .split(['/', ';'])
+        .next()?
         .trim()
         .to_lowercase();
     is_uuid(&id).then_some(id)
@@ -160,7 +180,7 @@ mod tests {
     /// The release a tagger wrote is read back, and a file without one — or
     /// with something that is not a release — has none.
     #[test]
-    fn the_release_a_file_was_tagged_from_is_read() {
+    fn the_release_and_artist_a_file_was_tagged_with_are_read() {
         use lofty::config::WriteOptions;
         use lofty::prelude::TagExt;
         use lofty::tag::{Tag, TagType};
@@ -195,6 +215,24 @@ mod tests {
         tag.save_to_path(&wrong, WriteOptions::default()).unwrap();
         assert_eq!(release_id(&wrong), None);
         assert_eq!(release_id(&silent("bare.mp3")), None);
+
+        // An artist's id, the first of a record by two.
+        let duet = silent("duet.mp3");
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(
+            ItemKey::MusicBrainzArtistId,
+            "056E4F3E-D505-4DAD-8EC1-D04F521CBB56/cc197bad-dc9c-440d-a5b5-d52ba2e14234".to_owned(),
+        );
+        tag.save_to_path(&duet, WriteOptions::default()).unwrap();
+        assert_eq!(
+            artist_id(&duet).as_deref(),
+            Some("056e4f3e-d505-4dad-8ec1-d04f521cbb56")
+        );
+        assert_eq!(
+            artist_id(&tagged),
+            None,
+            "a release's id is not an artist's"
+        );
     }
 
     #[test]

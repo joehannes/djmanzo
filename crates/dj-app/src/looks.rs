@@ -24,7 +24,9 @@ const SETTINGS: &str = "looks.json";
 /// One layer of a look.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
-    /// What it draws: `wash`, `pulse`, `ripple`, `sparks`, `halo`.
+    /// What it draws: `wash`, `pulse`, `ripple`, `sparks`, `halo`;
+    /// `milkdrop`, a MilkDrop preset; `artist`, photographs of the heard
+    /// deck's artist (`crate::artists`), each credited while it shows.
     pub kind: String,
     /// What it answers to: `loudness`, `band.bass` … `band.treble`, `beat`,
     /// `stem.vocal` … `stem.other`, or `voice` (the singers' microphones).
@@ -169,6 +171,19 @@ pub fn built_in() -> Vec<Look> {
             layers: vec![
                 milkdrop("Bloom", 0.9),
                 layer("pulse", "beat", 0.3, "add"),
+                layer("halo", "voice", 0.5, "screen"),
+            ],
+        },
+        Look {
+            name: "Artist".to_owned(),
+            description: "Photographs of the artist playing, from Wikimedia Commons — freely \
+                          licensed, each credited in the corner — drifting slowly and pressing in \
+                          on the beat, over the record's colours: for a singer's favourite, or \
+                          anyone the room came for."
+                .to_owned(),
+            layers: vec![
+                layer("wash", "loudness", 0.6, "over"),
+                layer("artist", "beat", 0.85, "over"),
                 layer("halo", "voice", 0.5, "screen"),
             ],
         },
@@ -515,7 +530,9 @@ mod tests {
     /// list so a typo in a built-in look fails a test rather than leaving a
     /// layer out on someone's projector; `ui/src/looks.ts` has the same lists
     /// and its own test that they are these.
-    const KINDS: [&str; 6] = ["wash", "pulse", "ripple", "sparks", "halo", "milkdrop"];
+    const KINDS: [&str; 7] = [
+        "wash", "pulse", "ripple", "sparks", "halo", "milkdrop", "artist",
+    ];
     const SIGNALS: [&str; 11] = [
         "loudness",
         "band.bass",

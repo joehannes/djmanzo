@@ -7,6 +7,7 @@ import {
   FALL,
   FALLBACK,
   follow,
+  heardArtist,
   KINDS,
   palette,
   parseColour,
@@ -184,6 +185,29 @@ describe("§122: what the layers answer to", () => {
   it("the voice is the loudest singer's microphone", () => {
     expect(signals(hearing({ voices: [0.2, 0.7, 0.1] })).voice).toBe(0.7);
     expect(signals(hearing({ voices: [] })).voice).toBe(0);
+  });
+});
+
+describe("§122: whose photographs an artist layer shows", () => {
+  const playing = (number: number, artist: string | null, over: Partial<DeckForSignals> = {}) => ({
+    ...deck(number, over),
+    artist,
+  });
+
+  it("the heard deck's artist, by its fader and its side of the crossfader", () => {
+    const decks = [playing(1, "Daft Punk"), playing(2, " Adele ")];
+    expect(heardArtist(decks, -0.6)).toEqual({ deck: 1, artist: "Daft Punk" });
+    expect(heardArtist(decks, 0.6)).toEqual({ deck: 2, artist: "Adele" });
+    // The crossfader over to deck 2, but its fader down.
+    expect(heardArtist([playing(1, "Daft Punk"), playing(2, "Adele", { volume: 0.1 })], 0.2)).toEqual({
+      deck: 1,
+      artist: "Daft Punk",
+    });
+  });
+
+  it("no one while nothing is heard, and no one's for a record that names no artist", () => {
+    expect(heardArtist([playing(1, "Daft Punk", { playing: false })], 0)).toBeNull();
+    expect(heardArtist([playing(1, null)], 0)).toEqual({ deck: 1, artist: "" });
   });
 });
 

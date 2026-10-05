@@ -103,7 +103,7 @@ async function open(page: Page, look: string | null) {
 /** Deck 2 playing to the singer, with the master and the stems as given. */
 async function hear(
   page: Page,
-  sound: { loudness?: number; bands?: number[]; stems?: number[]; voice?: number; volume?: number },
+  sound: { loudness?: number; bands?: number[]; stems?: number[]; voice?: number; volume?: number; artist?: string },
 ) {
   await page.evaluate((sound) => {
     const win = window as unknown as {
@@ -129,6 +129,7 @@ async function hear(
             volume: sound.volume ?? 1,
             crossfader_assign: "thru",
             stem_levels: sound.stems ?? [0, 0, 0, 0],
+            ...(sound.artist !== undefined ? { artist: sound.artist } : {}),
           }
         : { ...deck, playing: false },
     );
@@ -408,6 +409,149 @@ test.describe("§122: layers behind the words", () => {
   });
 });
 
+/** The canvas's mean red and blue in its top and bottom thirds, read back off the GPU. */
+async function halves(page: Page) {
+  return page.locator(CANVAS).evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const gl = canvas.getContext("webgl") as WebGLRenderingContext;
+    const { width, height } = canvas;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    // WebGL's first row is the bottom.
+    const third = (from: number, to: number) => {
+      let red = 0;
+      let blue = 0;
+      let n = 0;
+      for (let y = Math.floor(from * height); y < Math.floor(to * height); y++) {
+        for (let x = Math.floor(width / 4); x < Math.floor((3 * width) / 4); x++) {
+          const i = (y * width + x) * 4;
+          red += pixels[i];
+          blue += pixels[i + 2];
+          n++;
+        }
+      }
+      return { red: red / n / 255, blue: blue / n / 255 };
+    };
+    return { bottom: third(0.05, 0.35), top: third(0.65, 0.95) };
+  });
+}
+
+test.describe("§122 step 5: the artist's photographs", () => {
+  const CREDIT = "Photo: Sony Music Entertainment · CC BY 4.0 · Wikimedia Commons";
+  const FOUND = {
+    artist: "Daft Punk",
+    key: "056e4f3e-d505-4dad-8ec1-d04f521cbb56",
+    state: "found",
+    pictures: [
+      {
+        width: 1280,
+        height: 720,
+        author: "Sony Music Entertainment",
+        licence: "CC BY 4.0",
+        page: "https://commons.wikimedia.org/wiki/File:Daft_Punk_in_2013.jpg",
+        credit: CREDIT,
+      },
+    ],
+    why: null,
+  };
+
+  /**
+   * **The load-bearing one.** The heard deck's artist is asked for, told
+   * it is being asked for, and asked again; the photograph Rust hands over
+   * as bytes is drawn behind the words the right way up — under djmanzo's
+   * real content rules — and its credit is in the corner while it shows.
+   */
+  test("drawn behind the words, the right way up, credited while it shows", async ({ page }) => {
+    await rig(page);
+    await underRules(page, CONTENT_RULES);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: "Artist" },
+      artist_pictures: { ...FOUND, state: "asking", pictures: [] },
+      artist_pictures_then: FOUND,
+    });
+    await expect(page.locator(SCREEN)).toBeVisible();
+    await hear(page, { loudness: 0.5, artist: "Daft Punk" });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-layers", "wash artist halo");
+    await expect(canvas).toHaveAttribute("data-artist", "asking");
+    await expect(canvas).toHaveAttribute("data-artist", "showing", { timeout: 10_000 });
+    expect(await page.evaluate(() => (window as unknown as { __artistAsks: number }).__artistAsks)).toBe(2);
+    expect(await page.evaluate(() => (window as unknown as { __artistPictures: unknown[] }).__artistPictures)).toEqual([
+      { key: FOUND.key, n: 0 },
+    ]);
+    // Faded in.
+    await page.waitForTimeout(2_000);
+    const { top, bottom } = await halves(page);
+    expect(top.red).toBeGreaterThan(0.25);
+    expect(top.red).toBeGreaterThan(top.blue * 2);
+    expect(bottom.blue).toBeGreaterThan(0.25);
+    expect(bottom.blue).toBeGreaterThan(bottom.red * 2);
+    const credit = page.locator(`${SCREEN} [data-credit]`);
+    await expect(credit).toHaveText(CREDIT);
+    expect(Number(await credit.evaluate((c) => getComputedStyle(c).opacity))).toBeGreaterThan(0.9);
+    // A photograph is drawn whole, up to half a 1080p projector, not at half size.
+    const size = await canvas.evaluate((c) => {
+      const element = c as HTMLCanvasElement;
+      return { width: element.width, shown: element.clientWidth };
+    });
+    expect(size.width).toBe(Math.min(960, Math.round(size.shown)));
+    await expect(canvas).toHaveAttribute("data-failures", "");
+    await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText("First line");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * A refused asking is asked again: a record restored onto a deck as the
+   * application starts can be asked about before the collection has it, and
+   * driving djmanzo found the layer left empty for good once that happened.
+   */
+  test("asked again after a refusal, and shown once it is answered", async ({ page }) => {
+    await rig(page);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: "Artist" },
+      artist_pictures: { refused: "that record is not in the collection" },
+      artist_pictures_then: FOUND,
+    });
+    await hear(page, { loudness: 0.5, artist: "Daft Punk" });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-artist", "failed");
+    await expect(canvas).toHaveAttribute("data-artist", "showing", { timeout: 15_000 });
+    await expect(page.locator(`${SCREEN} [data-credit]`)).toHaveText(CREDIT);
+  });
+
+  /** An artist with nothing that may be shown: the rest of the look, and no credit. */
+  test("with no photograph that may be shown, the rest of the look and no credit", async ({ page }) => {
+    await rig(page);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: "Artist" },
+      artist_pictures: { ...FOUND, state: "none", pictures: [] },
+    });
+    await hear(page, { loudness: 0.8, artist: "Daft Punk" });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-artist", "none");
+    expect(await settled(page)).toBeGreaterThan(0.05);
+    const credit = page.locator(`${SCREEN} [data-credit]`);
+    await expect(credit).toHaveText("");
+    await expect(credit).toBeHidden();
+    expect(await page.evaluate(() => (window as unknown as { __artistPictures?: unknown[] }).__artistPictures)).toBeUndefined();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A look without an artist layer asks for no one's photographs. */
+  test("a look without the layer asks for no one", async ({ page }) => {
+    await rig(page);
+    await open(page, "Glow");
+    await hear(page, { loudness: 0.8, artist: "Daft Punk" });
+    await expect(page.locator(CANVAS)).toHaveAttribute("data-visuals", "drawing");
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (window as unknown as { __artistAsks?: number }).__artistAsks)).toBeUndefined();
+    await expect(page.locator(`${SCREEN} [data-credit]`)).toHaveCount(0);
+  });
+});
+
 test.describe("§122: picking the look", () => {
   test("the Singers panel offers djmanzo's looks, says what each is for, and off", async ({ page }) => {
     await openShell(page, "/?panel=karaoke");
@@ -415,7 +559,7 @@ test.describe("§122: picking the look", () => {
     await expect(picker).toHaveValue("");
     const names = await picker.locator("option").allTextContents();
     expect(names[0]).toMatch(/^Off/);
-    expect(names.slice(1)).toEqual(["Glow", "Pulse", "Waves", "Sparkle", "Drift", "Bloom", "Everything"]);
+    expect(names.slice(1)).toEqual(["Glow", "Pulse", "Waves", "Sparkle", "Drift", "Bloom", "Artist", "Everything"]);
 
     await picker.selectOption("Pulse");
     await expect(page.locator("[data-look-description]")).toContainText("every beat");

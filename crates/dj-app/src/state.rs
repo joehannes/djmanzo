@@ -191,6 +191,8 @@ pub struct AppState {
     waveforms: Arc<WaveformStore>,
     /// Cover art, read once per track and kept. See `crate::art`.
     covers: Arc<crate::art::Covers>,
+    /// §122: which artists' pictures are being asked for. See `crate::artists`.
+    artists: Arc<crate::artists::Asking>,
     /// API keys, in the OS keychain. Values go in and never come back out --
     /// see `dj_secrets`.
     secrets: Arc<dyn SecretStore>,
@@ -574,6 +576,7 @@ impl AppState {
             host,
             waveforms: Arc::new(WaveformStore::new()),
             covers: Arc::new(crate::art::Covers::new()),
+            artists: Arc::new(crate::artists::Asking::new()),
             secrets,
             secrets_persist,
             sources,
@@ -2144,6 +2147,11 @@ impl AppState {
     #[must_use]
     pub fn covers(&self) -> &Arc<crate::art::Covers> {
         &self.covers
+    }
+
+    #[must_use]
+    pub fn artists(&self) -> &Arc<crate::artists::Asking> {
+        &self.artists
     }
 
     /// The network control server, running or not.

@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The artist, photographed (§122).** A new look, *Artist*, shows
+  photographs of the artist of the record being heard, behind the words or
+  on the projector. They come from Wikimedia Commons, only under CC BY,
+  CC BY-SA or CC0, each credited in the corner while it shows. Each artist is
+  asked for once, and their photographs are kept for nights without a network.
+
 - **Playing a record no longer erases its tags.** Loading a record onto a
   deck wrote the decoder's tags over the ones the scan had read. The
   decoder reads fewer, and none from some MP3s, so a played record could

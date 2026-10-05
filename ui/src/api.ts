@@ -6051,6 +6051,31 @@ export interface MilkdropAdded {
   refused: string[];
 }
 
+/** §122 step 5: one photograph of an artist, as kept. See `dj_app::artists::Picture`. */
+export interface ArtistPicture {
+  width: number;
+  height: number;
+  author: string;
+  licence: string;
+  /** Its page on Wikimedia Commons, where its whole credit is. */
+  page: string;
+  /** The line shown in a corner of the screen while it is. */
+  credit: string;
+}
+
+/** §122 step 5: what is known of a deck's artist's photographs. See `dj_app::artists::Shown`. */
+export interface ArtistPictures {
+  artist: string | null;
+  key: string | null;
+  state: "found" | "none" | "asking" | "waiting" | "unknown";
+  pictures: ArtistPicture[];
+  why: string | null;
+}
+
+export const artistPictures = (deck: number) => invoke<ArtistPictures>("artist_pictures", { deck });
+/** One kept photograph, as a `data:` URL. */
+export const artistPicture = (key: string, n: number) => invoke<string>("artist_picture", { key, n });
+
 export const milkdropPresets = () => invoke<MilkdropYours[]>("milkdrop_presets");
 export const milkdropAdd = (paths: string[]) => invoke<MilkdropAdded>("milkdrop_add", { paths });
 export const milkdropRemove = (name: string) => invoke<MilkdropYours[]>("milkdrop_remove", { name });

@@ -5,8 +5,9 @@ one of them* — a WebGL layer stack fed by bands and separated stems, plus
 Butterchurn (MIT) as a "main" layer choice, shipping only clearly licensed
 presets. With it, from the same decisions: karaoke looks chosen per song by
 the DJ's AI provider (one call a song), artist images from Wikimedia Commons
-and TheAudioDB (Creative Commons only, credited), and a free community index
-of packs, with the pack format it installs.
+and TheAudioDB (Creative Commons only, credited — TheAudioDB's records turned
+out to carry no such mark, see step 5), and a free community index of packs,
+with the pack format it installs.
 
 This is the plan for all of it, in the order it is built. Each step is a
 commit of its own, gated, mutation-tested and driven.
@@ -344,6 +345,140 @@ A layer kind showing images of the artist playing, from Wikimedia Commons and
 TheAudioDB, each only where its licence is Creative Commons, the credit drawn
 in a corner of the screen while it shows. Asked for once per artist and kept,
 as K1 keeps covers.
+
+**Built (5 October), from Wikimedia Commons.** An `artist` layer shows
+photographs of the heard deck's artist. A new look, *Artist*, has it over the
+record's colours, pressing in on the beat, with the singer's glow on top.
+
+- **Whose:** the deck heard most — its fader and its side of the crossfader,
+  by the rule the Video panel uses. While nothing is heard the last artist
+  stays. A record naming no artist shows no one's.
+- **Found through Wikidata** (`dj_app::artists`):
+  - by the MusicBrainz artist id the record was tagged with, when it was
+    (`dj_library::tags::artist_id`);
+  - else by name, among items that are MusicBrainz artists at all, taking the
+    first whose own name — a label or an alias, in any language — is that
+    name. A search for *Adele* also finds singers merely called Adele
+    somewhere in their item.
+  - When a credit with guests ("A feat. B") finds no one, its lead artist is
+    searched for.
+- **The pictures:** the item's main picture first, then the photographs in
+  its Commons category whose file names name the artist — how a concert
+  photograph is told from the album covers, logos, icons and strays filed
+  there. JPEG only, at least 800 pixels wide, at most six, asked for 1280
+  wide.
+- **The licence:** CC BY, CC BY-SA or CC0, any version or port, with an
+  author to credit.
+  - Not Commons' *public domain*, which there is often the United States'
+    alone, while the screen may be anywhere.
+  - Not anything non-commercial or without derivatives (Commons hosts none,
+    but the check does not rely on that), the GFDL or the Free Art License.
+- **The credit**, drawn in the corner while its photograph shows and faded
+  with it: *Photo: author · licence · Wikimedia Commons*. Each file's page,
+  where its whole credit is, is kept beside it.
+- **Asked once per artist and kept** in `artists/<key>/`: the photographs
+  and their credits, or that there are none. The key is the MusicBrainz id,
+  or a hash of the name — never the name, which could name a path.
+  - An answer that did not come is not kept: no network, or Wikimedia asking
+    to wait. It is waited on for ten minutes, said why, then asked again.
+  - Two screens following one deck ask once between them.
+  - Requests go one at a time, with a User-Agent naming djmanzo and where to
+    reach its makers, and `Retry-After` honoured up to half a minute, as
+    Wikimedia's 2026 rules ask.
+  - The network is reached only while a look with an artist layer is drawn.
+- **On screen:**
+  - Each photograph fills the screen as a cover does: cropped, never
+    stretched.
+  - It drifts slowly and presses in a little with its signal, darker towards
+    the edges so the words and the credit stay readable.
+  - Each is held twelve seconds, then fades into the next.
+  - A new artist's photographs fade in once the last artist's have faded out.
+  - A stack with a photograph in it is drawn at full size, within the same
+    960×540 cap: a soft field stretched looks as it would drawn whole, and a
+    face does not.
+- **Handed to the page as `data:` URLs.**
+  - Not by the `art:` scheme, because WebGL will not draw another origin's
+    picture.
+  - Not as raw bytes: see below.
+
+**TheAudioDB is not asked.** Its terms say to check each artist's
+`strCreativeCommons` tag, and no artist record carries one. That was looked
+for on 4 October across four artists, by search and by id, through the v1
+API; the v2 API needs a paid key to look. The decision is "each TheAudioDB
+image used only when its record says Creative Commons", and so none can be.
+Its free key is for development projects only, besides: a published djmanzo
+would need the DJ's own paid key. If its records ever carry the tag, it would
+come in behind the DJ's own key, off by default, as Musixmatch will.
+`docs/RESEARCH.md` has the row, corrected.
+
+**Driving it found three things, none visible to a browser test:**
+1. **Raw bytes reach WebKitGTK's page as an array of numbers.** The first
+   version returned the JPEG as a binary IPC response, which Chromium's page
+   receives as an `ArrayBuffer`. djmanzo's Linux webview received a plain
+   array of 172,199 numbers, and the photograph every browser test drew was
+   *Loading error.* there. Pictures go as `data:` URLs now, the same
+   everywhere, and the browser tests' stand-in for Rust answers in that shape.
+2. **Loading a record erased its tags.** The decoder read no tags from a
+   `lofty`-written ID3v2.4 MP3, and loading upserted what it read over what
+   the scan had read: the artist, genre, label, year and comment were gone
+   from the collection each time a record was played. The deck said
+   *daft-demo*, and the artist layer had no one to show. Loading now fills
+   only what the collection lacks, and the deck shows the collection's
+   names. This is its own commit, with a test for each.
+3. **A failed asking left the layer empty for good.** A record restored onto
+   a deck as the application starts can be asked about before the collection
+   has it. The layer now asks again five seconds later.
+
+After those, in WebKitGTK:
+- A record tagged as Daft Punk, with their MusicBrainz id, chose *Artist* in
+  the Video panel.
+- djmanzo asked Wikimedia. On this container's shared address Wikimedia
+  refused (429), as it does most of the time here: nothing was kept, and the
+  panel showed the record's colours.
+- With the real Commons photograph and its real credit kept where djmanzo
+  keeps them (the answer Wikimedia gave the live check), the waiting panel
+  asked again and drew the photograph:
+  - the right way up and cropped to fill
+  - drifting between captures
+  - *Photo: Sony Music Entertainment · CC BY 4.0 · Wikimedia Commons* in its
+    corner, sized to the picture rather than the window
+
+**Live, outside the app:** the whole asking ran against Wikimedia with real
+answers — the search by id, the item's statements, the picture's and the
+category's licences, and two photographs. The third was refused (429) for ten
+minutes running, so as designed nothing was kept.
+
+**Tested:**
+- 13 Rust tests:
+  - only CC BY, BY-SA and CC0 taken, every other licence refused
+  - a credit as plain words a corner holds
+  - photographs told from covers, logos and strays in a real category's mix
+  - a file names them or it is not theirs
+  - the one called by the name picked, not those merely called it somewhere
+  - the lead artist of a credit with guests
+  - asked once per artist and kept, a deprecated picture never asked for
+  - a refusal asked again, and no one found kept
+  - by name, the lead artist found when the whole credit is not
+  - a download must be a JPEG, and a refusal stops the asking
+  - no name from the interface reaching outside the folder
+  - two screens asking once between them, and a failure waited on
+  - the artist id read from a file's tags
+- 5 vitest:
+  - three of the slideshow: held, faded, and the next; a single photograph
+    held; one artist fading out before the next fades in
+  - two of whose: the heard deck's artist by fader and crossfader; no one
+    while nothing is heard
+- 4 browser tests:
+  - **drawn behind the words**, under djmanzo's real content rules, read back
+    off the GPU:
+    - the right way up
+    - asked, told it is being asked for, asked again
+    - credited in the corner while it shows
+    - drawn at full size
+  - asked again after a refusal
+  - with nothing that may be shown, the rest of the look and no credit
+  - a look without the layer asks for no one
+- **Mutation-tested:** 14 Rust and 9 interface mutants fail them.
 
 ## 6. Looks chosen by the AI, per song
 

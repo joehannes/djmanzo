@@ -124,10 +124,44 @@ void main() {
   vec3 colour = texture2D(u_picture, v_uv).rgb;
   gl_FragColor = paint(colour, u_amount * (0.35 + 0.65 * u_value));
 }`,
+  // A photograph of the artist (./artistShow.ts), filling the screen as a
+  // cover does — cropped, never stretched — drifting slowly, pressing in a
+  // little with the signal, and darker towards the edges so the words and
+  // the credit stay readable.
+  artist: `// djmanzo: artist
+uniform sampler2D u_picture;
+uniform vec2 u_size;
+void main() {
+  float screen = u_res.x / u_res.y;
+  float picture = u_size.x / max(u_size.y, 1.0);
+  vec2 shown = screen > picture ? vec2(1.0, picture / screen) : vec2(screen / picture, 1.0);
+  float zoom = 1.06 + 0.03 * sin(u_time * 0.05) + 0.03 * u_value;
+  // Never further than the zoom leaves room for: no edge is smeared in.
+  vec2 room = 0.5 - 0.5 * shown / zoom;
+  vec2 drift = room * 0.8 * vec2(sin(u_time * 0.031), cos(u_time * 0.023));
+  vec2 uv = (v_uv - 0.5) * shown / zoom + 0.5 + drift;
+  vec3 colour = texture2D(u_picture, uv).rgb;
+  float edge = smoothstep(1.3, 0.35, length((v_uv - 0.5) * vec2(1.6, 2.0)));
+  gl_FragColor = paint(colour * (0.55 + 0.45 * edge), u_amount * (0.8 + 0.2 * u_value));
+}`,
 };
 
 /** Kinds drawn from a picture made elsewhere, rather than by their shader alone. */
-const PICTURED: ReadonlySet<Kind> = new Set<Kind>(["milkdrop"]);
+const PICTURED: ReadonlySet<Kind> = new Set<Kind>(["milkdrop", "artist"]);
+/**
+ * Pictures that change every frame, so are taken in every frame. Any other
+ * is taken in once, when it changes: a photograph held for seconds is not
+ * sent to the graphics card thirty times a second.
+ */
+const MOVING: ReadonlySet<Kind> = new Set<Kind>(["milkdrop"]);
+
+/** A picture's own size, however it came. */
+function sizeOf(picture: TexImageSource): [number, number] {
+  if ("naturalWidth" in picture) return [picture.naturalWidth, picture.naturalHeight];
+  if ("videoWidth" in picture) return [picture.videoWidth, picture.videoHeight];
+  if ("displayWidth" in picture) return [picture.displayWidth, picture.displayHeight];
+  return [picture.width, picture.height];
+}
 
 /** What one frame draws. */
 export interface Frame {
@@ -140,9 +174,9 @@ export interface Frame {
   /** Seconds, for the pictures that drift. */
   time: number;
   /**
-   * The pictures layers are made from: Butterchurn's canvas for `milkdrop`.
-   * A layer whose picture is not here — not loaded yet, or failed — is not
-   * drawn this frame.
+   * The pictures layers are made from: Butterchurn's canvas for `milkdrop`,
+   * the artist's photograph for `artist`. A layer whose picture is not here
+   * — not loaded yet, or failed — is not drawn this frame.
    */
   pictures?: Partial<Record<Kind, TexImageSource>>;
 }
@@ -163,7 +197,7 @@ interface Program {
   uniforms: Record<string, WebGLUniformLocation | null>;
 }
 
-const UNIFORMS = ["u_time", "u_value", "u_phase", "u_amount", "u_res", "u_c0", "u_c1", "u_c2", "u_c3", "u_picture"];
+const UNIFORMS = ["u_time", "u_value", "u_phase", "u_amount", "u_res", "u_c0", "u_c1", "u_c2", "u_c3", "u_picture", "u_size"];
 
 /**
  * A stack drawing into `canvas`, or null when this webview has no WebGL —
@@ -194,15 +228,24 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
   const programs = new Map<Kind, Program | null>();
   const failed: string[] = [];
 
-  /** One texture, refilled from whichever picture a layer is drawn from. */
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  // A picture of any size, stretched: WebGL 1 allows that only clamped and
-  // without mipmaps.
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+  /** A texture per pictured kind, and the picture last taken into it. */
+  const textures = new Map<Kind, { texture: WebGLTexture | null; holds: TexImageSource | null }>();
+  function textureFor(kind: Kind) {
+    let made = textures.get(kind);
+    if (!made) {
+      const texture = context.createTexture();
+      context.bindTexture(context.TEXTURE_2D, texture);
+      // A picture of any size: WebGL 1 allows that only clamped and without
+      // mipmaps.
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+      made = { texture, holds: null };
+      textures.set(kind, made);
+    }
+    return made;
+  }
 
   function compile(type: number, source: string): WebGLShader | string {
     const shader = context.createShader(type);
@@ -283,11 +326,15 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
         const made = program(layer.kind);
         if (!made) continue;
         if (picture) {
+          const held = textureFor(layer.kind);
           context.activeTexture(context.TEXTURE0);
-          context.bindTexture(context.TEXTURE_2D, texture);
-          // A canvas's first row is its top; a texture's is its bottom.
-          context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, true);
-          context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, context.RGBA, context.UNSIGNED_BYTE, picture);
+          context.bindTexture(context.TEXTURE_2D, held.texture);
+          if (MOVING.has(layer.kind) || held.holds !== picture) {
+            // A picture's first row is its top; a texture's is its bottom.
+            context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, true);
+            context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, context.RGBA, context.UNSIGNED_BYTE, picture);
+            held.holds = picture;
+          }
         }
         const colours = layer.colour === "record" ? frame.colours : [layer.colour, layer.colour, layer.colour, layer.colour];
         context.useProgram(made.program);
@@ -304,6 +351,7 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
         context.uniform3fv(u.u_c2, colours[2]);
         context.uniform3fv(u.u_c3, colours[3]);
         context.uniform1i(u.u_picture, 0);
+        if (picture) context.uniform2f(u.u_size, ...sizeOf(picture));
         blend(layer.blend);
         context.drawArrays(context.TRIANGLES, 0, 3);
       }
@@ -315,7 +363,8 @@ export function createStack(canvas: HTMLCanvasElement): Stack | null {
       for (const made of programs.values()) if (made) context.deleteProgram(made.program);
       programs.clear();
       context.deleteBuffer(quad);
-      context.deleteTexture(texture);
+      for (const held of textures.values()) context.deleteTexture(held.texture);
+      textures.clear();
     },
   };
 }
