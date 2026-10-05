@@ -74,6 +74,29 @@ fn milkdrop(preset: &str, amount: f32) -> Layer {
     }
 }
 
+/// The kinds, signals and blends the interface draws. Kept here as a
+/// list so a typo in a built-in look fails a test, and a pack's look is
+/// checked before it is installed, rather than leaving a layer out on
+/// someone's projector; `ui/src/looks.ts` has the same lists and its own
+/// test that they are these.
+pub const KINDS: [&str; 7] = [
+    "wash", "pulse", "ripple", "sparks", "halo", "milkdrop", "artist",
+];
+pub const SIGNALS: [&str; 11] = [
+    "loudness",
+    "band.bass",
+    "band.low_mid",
+    "band.high_mid",
+    "band.treble",
+    "beat",
+    "stem.vocal",
+    "stem.drums",
+    "stem.bass",
+    "stem.other",
+    "voice",
+];
+pub const BLENDS: [&str; 3] = ["over", "add", "screen"];
+
 /// The MilkDrop presets djmanzo ships, by name: written for djmanzo, under
 /// its own licence (`docs/VISUALS.md` step 4).
 ///
@@ -313,7 +336,13 @@ struct Inner {
     /// The AI's pick for each record, by its id.
     picks: BTreeMap<String, String>,
     asks: HashMap<String, Ask>,
+    /// Step 7: the packs installed, each checked when it was read, with its
+    /// manifest when it passed.
+    packs: Vec<(crate::packs::Installed, Option<crate::packs::Manifest>)>,
 }
+
+/// Where installed packs are kept, beside the other settings.
+const PACKS: &str = "packs";
 
 /// The catalogue, and the choice, kept between runs.
 #[derive(Default)]
@@ -343,6 +372,7 @@ impl Looks {
     /// forgotten rather than shown as a name that draws nothing.
     pub fn start(&self, dir: &Path) {
         self.inner().dir = Some(dir.to_path_buf());
+        self.read_packs();
         let mut chosen: Chosen = std::fs::read_to_string(dir.join(SETTINGS))
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
@@ -440,7 +470,251 @@ impl Looks {
                 .filter(|y| y.problem.is_none())
                 .map(look_for),
         );
+        let packs = self.inner().packs.clone();
+        for (installed, manifest) in packs {
+            if let Some(manifest) = manifest {
+                looks.extend(
+                    manifest
+                        .looks
+                        .iter()
+                        .map(|look| crate::packs::offered(&installed.id, &manifest.name, look)),
+                );
+            }
+        }
         looks
+    }
+
+    fn packs_folder(&self) -> Option<PathBuf> {
+        self.inner().dir.as_ref().map(|dir| dir.join(PACKS))
+    }
+
+    /// Read every installed pack again, each checked whole: one changed on
+    /// disk since it was installed is listed with why, and offers no look.
+    fn read_packs(&self) {
+        use crate::packs::{Installed, check, is_id, read_folder};
+        let mut packs = Vec::new();
+        if let Some(folder) = self.packs_folder() {
+            let mut ids: Vec<String> = std::fs::read_dir(&folder)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .filter(|id| is_id(id))
+                .collect();
+            ids.sort();
+            for id in ids {
+                let checked = read_folder(&folder.join(&id))
+                    .and_then(check)
+                    .and_then(|pack| {
+                        if pack.id() == id {
+                            Ok(pack)
+                        } else {
+                            Err("its folder is not its own".to_owned())
+                        }
+                    });
+                packs.push(match checked {
+                    Ok(pack) => (
+                        Installed {
+                            id: id.clone(),
+                            name: pack.manifest.name.clone(),
+                            author: pack.manifest.author.clone(),
+                            licence: pack.manifest.licence.clone(),
+                            version: pack.manifest.version.clone(),
+                            description: pack.manifest.description.clone(),
+                            looks: pack.manifest.looks.len(),
+                            key: pack.fingerprint(),
+                            problem: None,
+                        },
+                        Some(pack.manifest),
+                    ),
+                    Err(why) => (
+                        Installed {
+                            id: id.clone(),
+                            name: id.clone(),
+                            author: String::new(),
+                            licence: String::new(),
+                            version: String::new(),
+                            description: String::new(),
+                            looks: 0,
+                            key: String::new(),
+                            problem: Some(format!("changed since it was installed: {why}")),
+                        },
+                        None,
+                    ),
+                });
+            }
+        }
+        self.inner().packs = packs;
+    }
+
+    /// Step 7: the packs installed.
+    #[must_use]
+    pub fn packs(&self) -> Vec<crate::packs::Installed> {
+        self.inner()
+            .packs
+            .iter()
+            .map(|(installed, _)| installed.clone())
+            .collect()
+    }
+
+    /// What installing the pack at `path` would install, for the DJ to read
+    /// first — its licence above all — or why it cannot be.
+    #[must_use]
+    pub fn inspect_pack(&self, path: &Path) -> crate::packs::Inspected {
+        match crate::packs::read_archive(path).and_then(crate::packs::check) {
+            Ok(pack) => {
+                let installed = self
+                    .inner()
+                    .packs
+                    .iter()
+                    .find(|(_, manifest)| {
+                        manifest
+                            .as_ref()
+                            .is_some_and(|m| m.name == pack.manifest.name)
+                    })
+                    .map(|(installed, _)| installed.version.clone());
+                let mut seen = crate::packs::inspected(&pack, installed);
+                seen.problem = self.clash(&pack).err();
+                seen
+            }
+            Err(why) => crate::packs::Inspected {
+                name: path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                author: String::new(),
+                licence: String::new(),
+                version: String::new(),
+                description: String::new(),
+                looks: Vec::new(),
+                presets: 0,
+                key: String::new(),
+                installed: None,
+                problem: Some(why),
+            },
+        }
+    }
+
+    /// A pack's name keeps its key: one of the same name signed by another
+    /// key is not this pack's update.
+    fn clash(&self, pack: &crate::packs::Checked) -> Result<(), String> {
+        let inner = self.inner();
+        for (installed, manifest) in &inner.packs {
+            if let Some(manifest) = manifest
+                && manifest.name == pack.manifest.name
+                && installed.key != pack.fingerprint()
+            {
+                return Err(format!(
+                    "a pack called {:?} is installed, signed by another key ({}); this one is signed by {}. Remove it first if this is the one you want",
+                    manifest.name,
+                    installed.key,
+                    pack.fingerprint()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Install the pack at `path`, checked again, in place of an earlier
+    /// version of it.
+    ///
+    /// # Errors
+    /// It does not pass [`crate::packs::check`], another key's pack has its
+    /// name, there is no settings folder, or it could not be written.
+    pub fn install_pack(&self, path: &Path) -> Result<Vec<crate::packs::Installed>, String> {
+        let pack = crate::packs::read_archive(path).and_then(crate::packs::check)?;
+        self.clash(&pack)?;
+        let folder = self
+            .packs_folder()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?;
+        let id = pack.id();
+        let incoming = folder.join(format!(".incoming-{id}"));
+        let _ = std::fs::remove_dir_all(&incoming);
+        crate::packs::write_folder(&incoming, &pack)?;
+        let target = folder.join(&id);
+        if target.exists() {
+            std::fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&incoming, &target).map_err(|e| e.to_string())?;
+        self.read_packs();
+        Ok(self.packs())
+    }
+
+    /// Remove the installed pack `id`, and any screen's choice of its looks.
+    ///
+    /// # Errors
+    /// No pack is installed by that id.
+    pub fn remove_pack(&self, id: &str) -> Result<Vec<crate::packs::Installed>, String> {
+        let name = self
+            .inner()
+            .packs
+            .iter()
+            .find(|(installed, _)| installed.id == id)
+            .map(|(installed, manifest)| {
+                manifest
+                    .as_ref()
+                    .map_or_else(|| installed.name.clone(), |m| m.name.clone())
+            })
+            .ok_or_else(|| format!("there is no pack {id:?}"))?;
+        let folder = self
+            .packs_folder()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?;
+        // Found among the folders listed, never a name joined to a path the
+        // listing did not give.
+        std::fs::remove_dir_all(folder.join(id)).map_err(|e| e.to_string())?;
+        self.read_packs();
+        let prefix = format!("{name}: ");
+        let mut inner = self.inner();
+        let chosen = &mut inner.chosen;
+        for kept in [&mut chosen.singers, &mut chosen.video] {
+            if kept
+                .as_deref()
+                .is_some_and(|look| look.starts_with(&prefix))
+            {
+                *kept = None;
+            }
+        }
+        Self::save(inner.dir.as_deref(), SETTINGS, &inner.chosen);
+        drop(inner);
+        Ok(self.packs())
+    }
+
+    /// A pack's preset, `<id>/<name>`, found among the pack's own listed
+    /// files and checked against its hash again.
+    fn pack_preset(&self, named: &str) -> Result<serde_json::Value, String> {
+        let (id, stem) = named
+            .split_once('/')
+            .ok_or_else(|| format!("there is no pack preset called {named:?}"))?;
+        let (installed, manifest) = self
+            .inner()
+            .packs
+            .iter()
+            .find(|(installed, manifest)| installed.id == id && manifest.is_some())
+            .cloned()
+            .ok_or_else(|| format!("there is no pack {id:?}"))?;
+        let manifest = manifest.unwrap_or_else(|| unreachable!("found with a manifest"));
+        let (path, hash) = manifest
+            .files
+            .iter()
+            .find(|(path, _)| {
+                path.strip_prefix(crate::packs::PRESETS)
+                    .and_then(|file| file.rsplit_once('.'))
+                    .is_some_and(|(name, _)| name == stem)
+            })
+            .ok_or_else(|| format!("{} has no preset called {stem:?}", installed.name))?;
+        let folder = self
+            .packs_folder()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?;
+        let bytes = std::fs::read(folder.join(id).join(path)).map_err(|e| e.to_string())?;
+        if !crate::packs::sha256(&bytes).eq_ignore_ascii_case(hash) {
+            return Err(format!(
+                "{path} in {} has changed since it was installed",
+                installed.name
+            ));
+        }
+        let file = path.strip_prefix(crate::packs::PRESETS).unwrap_or(path);
+        crate::milk::read(file, &text_of(&bytes)).map(|read| read.preset)
     }
 
     fn folder(&self) -> Option<PathBuf> {
@@ -509,6 +783,9 @@ impl Looks {
     /// # Errors
     /// No such preset, or the DJ's file cannot be read.
     pub fn preset(&self, name: &str) -> Result<serde_json::Value, String> {
+        if let Some(packed) = name.strip_prefix("pack/") {
+            return self.pack_preset(packed);
+        }
         let Some(theirs) = name.strip_prefix(YOURS) else {
             return preset(name);
         };
@@ -617,28 +894,6 @@ impl Looks {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The kinds, signals and blends the interface draws. Kept here as a
-    /// list so a typo in a built-in look fails a test rather than leaving a
-    /// layer out on someone's projector; `ui/src/looks.ts` has the same lists
-    /// and its own test that they are these.
-    const KINDS: [&str; 7] = [
-        "wash", "pulse", "ripple", "sparks", "halo", "milkdrop", "artist",
-    ];
-    const SIGNALS: [&str; 11] = [
-        "loudness",
-        "band.bass",
-        "band.low_mid",
-        "band.high_mid",
-        "band.treble",
-        "beat",
-        "stem.vocal",
-        "stem.drums",
-        "stem.bass",
-        "stem.other",
-        "voice",
-    ];
-    const BLENDS: [&str; 3] = ["over", "add", "screen"];
 
     #[test]
     fn every_built_in_look_is_drawable_and_named_once() {

@@ -1329,6 +1329,17 @@ main tree failed with *cannot find function `artist_id`*, a function that was
 plainly in its source. Cargo had kept the worktree's build of `dj-library`.
 `touch` the crates' sources and it rebuilds; or give a worktree its own target.
 
+**GTK's file dialog can be driven, slowly.** With no window manager, keys
+sent to it by window id go nowhere ("XGetInputFocus returned the focused
+window of 1"). Click inside it first, then type the path: a leading `/` opens
+its location bar. Type with `--delay 120` or slower, because its completion
+eats characters at full speed (`/tmp/claude-0` arrived as `/aude-0`). Check
+the bar in a screenshot before `Return`.
+
+**Xvfb does not survive the session being restarted.** A launch then fails at
+once with no window, and an `until xdotool search` loop waits forever: bound
+the loop, and start Xvfb again.
+
 **Wikimedia refuses this container's shared address most of the time.**
 Wikidata's search and `upload.wikimedia.org` answer 429 within a request or
 two, minutes on end, to every session behind the same proxy. It is the

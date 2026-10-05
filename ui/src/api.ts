@@ -6089,6 +6089,42 @@ export const milkdropPresets = () => invoke<MilkdropYours[]>("milkdrop_presets")
 export const milkdropAdd = (paths: string[]) => invoke<MilkdropAdded>("milkdrop_add", { paths });
 export const milkdropRemove = (name: string) => invoke<MilkdropYours[]>("milkdrop_remove", { name });
 export const lookChosen = () => invoke<LookChosen>("look_chosen");
+/** §122 step 7: a pack, as the DJ reads it before installing. See `dj_app::packs::Inspected`. */
+export interface PackInspected {
+  name: string;
+  author: string;
+  licence: string;
+  version: string;
+  description: string;
+  looks: string[];
+  presets: number;
+  /** The fingerprint of the key it is signed with. */
+  key: string;
+  /** The version installed now, if one of its name is. */
+  installed: string | null;
+  /** Why it cannot be installed. */
+  problem: string | null;
+}
+
+/** §122 step 7: an installed pack. See `dj_app::packs::Installed`. */
+export interface PackInstalled {
+  id: string;
+  name: string;
+  author: string;
+  licence: string;
+  version: string;
+  description: string;
+  looks: number;
+  key: string;
+  /** Why it is not offered: changed since it was installed. */
+  problem: string | null;
+}
+
+export const packInspect = (path: string) => invoke<PackInspected>("pack_inspect", { path });
+export const packInstall = (path: string) => invoke<PackInstalled[]>("pack_install", { path });
+export const packsInstalled = () => invoke<PackInstalled[]>("packs_installed");
+export const packRemove = (id: string) => invoke<PackInstalled[]>("pack_remove", { id });
+
 /** Step 6: let the DJ's AI pick each record's look; refused with no provider set up. */
 export const lookAi = (on: boolean) => invoke<LookChosen>("look_ai", { on });
 export const lookPicked = (deck: number) => invoke<LookPicked>("look_picked", { deck });

@@ -71,6 +71,7 @@ pub mod mood;
 pub mod night;
 pub mod obs;
 pub mod outline;
+pub mod packs;
 pub mod parts;
 pub mod peersync;
 pub mod persist;
@@ -945,6 +946,10 @@ pub fn run() {
             commands::singer_backdrop,
             commands::artist_pictures,
             commands::look_ai,
+            commands::pack_inspect,
+            commands::pack_install,
+            commands::packs_installed,
+            commands::pack_remove,
             commands::look_picked,
             commands::artist_picture,
             commands::word_timing,

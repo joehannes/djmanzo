@@ -639,6 +639,72 @@ test.describe("§122 step 6: the look the AI picks for each record", () => {
   });
 });
 
+test.describe("§122 step 7: packs", () => {
+  const NEON = {
+    name: "Neon Nights",
+    author: "A Maker",
+    licence: "CC BY 4.0",
+    version: "1.0.0",
+    description: "Neon colours for late nights.",
+    looks: ["Neon", "Dim"],
+    presets: 1,
+    key: "0a1b 2c3d 4e5f 6a7b",
+    installed: null,
+    problem: null,
+  };
+
+  /**
+   * **The licence before anything is installed.** A pack chosen in the
+   * dialog is read and shown — its licence, maker, looks and key — and
+   * installed only when the DJ says so; then its looks are offered, and
+   * removing it takes them away.
+   */
+  test("a pack's licence is shown before it is installed, then its looks offered and removed", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, { pack_inspected: NEON });
+    await page.evaluate(() => {
+      (window as unknown as { __dialogAnswer: unknown }).__dialogAnswer = "/home/dj/Neon Nights.djpack";
+    });
+    await page.getByRole("button", { name: "Add a pack…" }).click();
+    const pending = page.locator("[data-pack-pending]");
+    await expect(pending.locator("[data-pack-licence]")).toHaveText("Licence: CC BY 4.0");
+    await expect(pending).toContainText("Neon Nights");
+    await expect(pending).toContainText("by A Maker");
+    await expect(pending).toContainText("Neon, Dim");
+    await expect(pending.locator("[data-pack-key]")).toContainText("0a1b 2c3d 4e5f 6a7b");
+    const asked = () => page.evaluate(() => (window as unknown as { __packAsked: unknown[] }).__packAsked);
+    expect(await asked()).toEqual([{ cmd: "pack_inspect", path: "/home/dj/Neon Nights.djpack" }]);
+
+    await pending.getByRole("button", { name: "Install" }).click();
+    await expect(page.locator("[data-pack]")).toContainText("CC BY 4.0");
+    await expect(pending).toHaveCount(0);
+    expect((await asked()).at(-1)).toEqual({ cmd: "pack_install", path: "/home/dj/Neon Nights.djpack" });
+    const picker = page.getByRole("combobox", { name: "The look behind the words" });
+    await expect.poll(() => picker.locator("option").allTextContents()).toContain("Neon Nights: Neon");
+
+    await page.getByRole("button", { name: "Remove Neon Nights" }).click();
+    await expect(page.locator("[data-pack]")).toHaveCount(0);
+    await expect.poll(() => picker.locator("option").allTextContents()).not.toContain("Neon Nights: Neon");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("a pack that cannot be installed says why and offers no install", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, {
+      pack_inspected: {
+        ...NEON,
+        problem: "its signature does not match: it was changed after it was signed, or signed with another key",
+      },
+    });
+    await page.evaluate(() => {
+      (window as unknown as { __dialogAnswer: unknown }).__dialogAnswer = "/home/dj/Neon Nights.djpack";
+    });
+    await page.getByRole("button", { name: "Add a pack…" }).click();
+    await expect(page.getByRole("alert")).toContainText("signature does not match");
+    await expect(page.locator("[data-pack-pending]").getByRole("button", { name: "Install" })).toHaveCount(0);
+    const asked = await page.evaluate(() => (window as unknown as { __packAsked: { cmd: string }[] }).__packAsked);
+    expect(asked.map((a) => a.cmd)).toEqual(["pack_inspect"]);
+  });
+});
+
 test.describe("§122: picking the look", () => {
   test("the Singers panel offers djmanzo's looks, says what each is for, and off", async ({ page }) => {
     await openShell(page, "/?panel=karaoke");

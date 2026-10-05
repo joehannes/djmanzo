@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Packs (§122).** *Add a pack…* in the Singers panel takes a `.djpack`:
+  someone's looks and MilkDrop presets, signed by them. djmanzo checks every
+  file against the maker's signature before installing it. It shows you the
+  licence, the maker and the key's fingerprint first, and refuses anything
+  changed, unsigned or unlisted, with the reason. A pack's looks are offered
+  wherever looks are picked. A pack changed on disk after it was installed
+  is not offered. A pack can be updated only by its own maker's key.
+
 ## v0.39.0 — Layers behind the words, MilkDrop, the artist, and looks your AI picks
 
 - **Your AI picks the look for each record (§122).** One switch, in the

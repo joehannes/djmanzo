@@ -775,6 +775,9 @@ export const ANSWERS: Record<string, unknown> = {
   milkdrop_shipped: { Drift: presetDrift, Bloom: presetBloom },
   // §122 step 4b: the DJ's own presets, none until a test adds some.
   milkdrop_yours: [],
+  // §122 step 7: no packs until a test adds one; what a pack file reads as is
+  // the test's to say, the checking being Rust's and tested there.
+  packs_installed: [],
   // §122 step 5: no artist's photographs unless a test says so.
   artist_pictures: { artist: null, key: null, state: "unknown", pictures: [], why: null },
   phone_camera_status: {
@@ -2435,6 +2438,14 @@ export async function openShell(
           const yours = () => (win.__milkdropYours ??= structuredClone(answers.milkdrop_yours)) as Yours[];
           const catalogue = () => [
             ...(answers.looks_catalogue as { name: string }[]),
+            // An installed pack's looks, after it, as Rust offers them.
+            ...((win.__packs ?? []) as { name: string }[]).flatMap((pack) =>
+              ((answers.pack_inspected as { looks?: string[] } | undefined)?.looks ?? []).map((look) => ({
+                name: `${pack.name}: ${look}`,
+                description: `${look}, from ${pack.name}.`,
+                layers: [{ kind: "wash", signal: "loudness", colour: "record", amount: 0.8, blend: "over" }],
+              })),
+            ),
             ...yours()
               .filter((y) => !y.problem)
               .map((y) => ({
@@ -2513,6 +2524,38 @@ export async function openShell(
             g.fillRect(0, 45, 160, 45);
             ((win.__artistPictures ??= []) as unknown[]).push({ ...args });
             return Promise.resolve(canvas.toDataURL("image/jpeg", 0.9));
+          }
+          // §122 step 7: packs. A pack file is read as the test says it
+          // reads; installing one offers its looks after it, as Rust does.
+          if (cmd === "packs_installed") return Promise.resolve(structuredClone(win.__packs ?? answers.packs_installed));
+          if (cmd === "pack_inspect") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
+            return Promise.resolve(structuredClone(answers.pack_inspected));
+          }
+          if (cmd === "pack_install") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
+            const seen = answers.pack_inspected as Record<string, unknown>;
+            if (seen.problem) return Promise.reject(seen.problem);
+            const id = `${String(seen.name).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-0a1b2c3d`;
+            win.__packs = [
+              {
+                id,
+                name: seen.name,
+                author: seen.author,
+                licence: seen.licence,
+                version: seen.version,
+                description: seen.description,
+                looks: (seen.looks as string[]).length,
+                key: seen.key,
+                problem: null,
+              },
+            ];
+            return Promise.resolve(structuredClone(win.__packs));
+          }
+          if (cmd === "pack_remove") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
+            win.__packs = ((win.__packs ?? []) as { id: string }[]).filter((p) => p.id !== args.id);
+            return Promise.resolve(structuredClone(win.__packs));
           }
           // §122 step 6: the switch, refused as Rust refuses it with no
           // provider set up when a test says there is none.

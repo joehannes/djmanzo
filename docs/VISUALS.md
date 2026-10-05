@@ -561,3 +561,96 @@ before it does. The **index** is a public list of packs hosted wherever their
 makers choose — a JSON file of names, descriptions, licences, addresses and
 the key each is signed with — which djmanzo reads and installs from. Free; no
 accounts, no payment, no hosting by djmanzo.
+
+### The design (5 October)
+
+In three commits: **7a** the format, its checking and installing from a
+file; **7b** making a signed pack of the DJ's own presets; **7c** the index.
+
+**A pack is one file, `<name>.djpack`: a zip** — the `zip` and `ring` crates
+already in djmanzo, nothing new. Inside:
+
+- `pack.json`, the manifest:
+  - `format` (1), `name`, `author`, `licence`, `version`, `description`
+  - `key`: the author's Ed25519 public key, base64
+  - `files`: every other file, by its path in the pack, with its SHA-256
+  - `looks`: djmanzo's own look format. A MilkDrop layer names its preset by
+    file name: `"preset": "neon"` is `milkdrop/neon.json` or `.milk`.
+- `pack.sig`: the Ed25519 signature, base64, over the exact bytes of
+  `pack.json`.
+- `milkdrop/…`: the presets. Images will come with a layer that shows them.
+
+**Installed only if all of it holds**, each failure refused with its reason:
+- the signature verifies with the manifest's key;
+- every listed file is there with its hash, and no file is there unlisted;
+- every path is a plain relative one under `milkdrop/`;
+- every preset is one djmanzo can draw (`dj_app::milk`: MilkDrop's language
+  only, no JavaScript);
+- every look's layers are kinds, signals and blends djmanzo draws, and its
+  presets are the pack's own;
+- the whole within 20 MB, a file within 2 MB, 200 files at most.
+
+**The licence is shown before installing.** So are the author, the version,
+the looks, and the key's fingerprint. The DJ installs, or does not.
+
+**A name keeps its key.** An installed pack can be replaced only by one of the
+same name signed by the same key: an update from its author, never from
+someone else using its name. A pack is kept as it came, in
+`packs/<name>-<fingerprint>/`, and checked again each time djmanzo starts. A
+pack changed on disk since is listed with why, and its looks are not offered.
+
+**Its looks** are offered as *<pack>: <look>*, wherever looks are picked,
+and can be picked by the AI as any look can. Removing a pack clears any screen
+showing one of its looks.
+
+**What the signature does and does not say.** It says the pack is the one its
+key's holder made, unchanged. It does not say who that is: the fingerprint
+does, to a DJ who knows the maker's. The index (7c) is where a key is
+published beside a name. Neither says a pack's licence is true: like the DJ's
+own presets, a pack's works are its author's to answer for, and djmanzo never
+sends them anywhere.
+
+**Step 7a — built (5 October).** As designed above (`dj_app::packs`):
+- In the Singers panel, *Packs — Add a pack…* takes a `.djpack`. It is read
+  and checked whole, and shown: name, version, author, the licence in bold,
+  the description, its looks, and its key's fingerprint, with "compare it
+  with the one its maker publishes". *Install* or *Cancel*.
+- A pack that cannot be installed says why, and offers no *Install*.
+- Installed packs are listed (version · author · licence · looks), each with
+  *Remove*.
+- Commands: `pack_inspect`, `pack_install`, `packs_installed`, `pack_remove`.
+  Making packs is 7b; until then the tests and the drive make theirs with
+  `ring`.
+
+**Driven in WebKitGTK** with a real pack: *Neon Nights*, signed with a fresh
+Ed25519 key, holding Bloom's preset as `milkdrop/neon.json` and two looks.
+- Chosen in GTK's own file dialog, it was shown with its licence and key
+  before anything was written.
+- Installed into `packs/neon-nights-83b11433/`; its look *Neon Nights: Neon*,
+  chosen in the Video panel, drew the pack's preset through Butterchurn.
+- One byte was added to the installed preset, and djmanzo restarted. The pack
+  was listed as "Not offered: changed since it was installed:
+  milkdrop/neon.json is not the file that was signed". The Video panel had
+  forgotten its look, and showed black.
+
+**Tested:**
+- 6 Rust tests:
+  - shown, installed, offered and drawn, and the same after a restart
+  - every way a pack can differ from what was signed, refused with why:
+    - the manifest edited, another key's signature, unsigned
+    - a preset swapped, a file slipped in, a file missing
+    - JavaScript, a kind djmanzo does not draw, a preset not in the pack
+    - a path that is not a preset's, a newer format
+  - an archive read within its limits, and never outside itself
+  - a name keeps its key: its maker's update replaces it, another key's
+    pack of that name is refused
+  - a pack changed on disk not offered, an install cut off part-way not
+    listed, removing one clearing its screen
+  - no name from the interface reaching outside the folder
+- 2 browser tests:
+  - the licence shown before installing, then its looks offered, then
+    removed
+  - a pack that cannot be installed says why, with no *Install*
+- **Mutation-tested:** 20 mutants fail them (17 Rust, 3 interface). One
+  survived at first: with folder names unfiltered, an install's leftover
+  `.incoming-…` folder was listed as a pack. The test leaves one behind now.

@@ -13,6 +13,7 @@
   import Microphones from "./Microphones.svelte";
   import LookByAi from "./LookByAi.svelte";
   import MilkdropPresets from "./MilkdropPresets.svelte";
+  import Packs from "./Packs.svelte";
   import WordTiming from "./WordTiming.svelte";
   import { validate } from "./looks";
   import {
@@ -574,6 +575,7 @@
         </p>
       {/if}
       <MilkdropPresets onchange={readLooks} />
+      <Packs onchange={readLooks} />
     </section>
   {/if}
 

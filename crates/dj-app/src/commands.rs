@@ -418,6 +418,45 @@ pub fn look_choose(
     state.looks().choose(screen, name)
 }
 
+/// §122 step 7: what installing the pack at `path` would install — name,
+/// author, licence, version, looks, the key's fingerprint — or why it cannot
+/// be, for the DJ to read first. Installs nothing.
+#[tauri::command]
+pub fn pack_inspect(state: State<'_, AppState>, path: String) -> crate::packs::Inspected {
+    state.looks().inspect_pack(std::path::Path::new(&path))
+}
+
+/// §122 step 7: install the pack at `path`, checked whole again.
+///
+/// # Errors
+/// It does not pass its checks, or another key's pack has its name.
+#[tauri::command]
+pub fn pack_install(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<crate::packs::Installed>, String> {
+    state.looks().install_pack(std::path::Path::new(&path))
+}
+
+/// §122 step 7: the packs installed.
+#[tauri::command]
+#[must_use]
+pub fn packs_installed(state: State<'_, AppState>) -> Vec<crate::packs::Installed> {
+    state.looks().packs()
+}
+
+/// §122 step 7: remove an installed pack.
+///
+/// # Errors
+/// No pack is installed by that id.
+#[tauri::command]
+pub fn pack_remove(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<crate::packs::Installed>, String> {
+    state.looks().remove_pack(&id)
+}
+
 /// §122 step 6: let the DJ's AI provider pick each record's look, or not.
 ///
 /// # Errors
