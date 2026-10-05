@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.39.0 — Layers behind the words, MilkDrop, the artist, and looks your AI picks
+
 - **Your AI picks the look for each record (§122).** One switch, in the
   Singers and Video panels, off until turned on. When on, each record heard
   is put to your AI provider once: its title, artist, genre, tempo, key and
