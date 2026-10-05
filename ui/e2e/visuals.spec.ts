@@ -552,6 +552,93 @@ test.describe("§122 step 5: the artist's photographs", () => {
   });
 });
 
+test.describe("§122 step 6: the look the AI picks for each record", () => {
+  const catalogue = JSON.parse(readFileSync(new URL("./looks.json", import.meta.url), "utf8")) as {
+    name: string;
+  }[];
+  const PULSE = catalogue.find((look) => look.name === "Pulse")!;
+
+  /**
+   * **The load-bearing one.** With the switch on, the heard record's look
+   * is asked for, the DJ's own look drawn while it is, and the AI's pick
+   * drawn in its place once it has picked — every layer of it.
+   */
+  test("the AI's pick is drawn in place of the DJ's look once it has picked", async ({ page }) => {
+    await rig(page);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: "Glow", video: null, ai: true },
+      look_picked: { look: null, state: "asking", why: null },
+      look_picked_then: { look: PULSE, state: "picked", why: null },
+      look_picked_from: 4,
+    });
+    await hear(page, { loudness: 0.6, stems: [0, 0.8, 0, 0] });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-look", "Glow");
+    await expect(canvas).toHaveAttribute("data-picked", "asking");
+    await expect(canvas).toHaveAttribute("data-look", "Pulse", { timeout: 15_000 });
+    await expect(canvas).toHaveAttribute("data-picked", "picked");
+    await expect(canvas).toHaveAttribute("data-layers", "wash pulse halo");
+    const asked = await page.evaluate(() => (window as unknown as { __lookPickedAsked: number[] }).__lookPickedAsked);
+    // Asked again while it was being asked, and about the deck the room hears.
+    expect(asked.length).toBeGreaterThanOrEqual(4);
+    expect(asked.at(-1)).toBe(2);
+    expect(await settled(page)).toBeGreaterThan(0.05);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("with the switch off, nothing is asked and the DJ's look is drawn", async ({ page }) => {
+    await rig(page);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: "Glow", video: null, ai: false },
+      look_picked: { look: PULSE, state: "picked", why: null },
+    });
+    await hear(page, { loudness: 0.6 });
+    const canvas = page.locator(CANVAS);
+    await expect(canvas).toHaveAttribute("data-visuals", "drawing");
+    await page.waitForTimeout(1_000);
+    await expect(canvas).toHaveAttribute("data-look", "Glow");
+    expect(await page.evaluate(() => (window as unknown as { __lookPickedAsked?: unknown }).__lookPickedAsked)).toBeUndefined();
+  });
+
+  test("a screen chosen off stays off, whatever the AI would pick", async ({ page }) => {
+    await rig(page);
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      look_chosen: { singers: null, video: null, ai: true },
+      look_picked: { look: PULSE, state: "picked", why: null },
+    });
+    await hear(page, { loudness: 0.6 });
+    await page.waitForTimeout(1_500);
+    await expect(page.locator(CANVAS)).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __lookPickedAsked?: unknown }).__lookPickedAsked)).toBeUndefined();
+  });
+
+  /**
+   * The switch, in the Singers panel: refused with no provider set up,
+   * and said why; on, it says what goes to the provider.
+   */
+  test("the switch is refused without a provider, and says what it sends when on", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, {
+      look_chosen: { singers: "Glow", video: null, ai: false },
+      look_ai_refused: "no AI provider is set up: add one under AI providers first",
+    });
+    const box = page.locator("[data-look-picker] [data-look-ai]");
+    await box.check({ force: true }).catch(() => {});
+    await expect(page.getByRole("alert")).toContainText("no AI provider is set up");
+    await expect(box).not.toBeChecked();
+
+    await openShell(page, "/?panel=karaoke", {}, { look_chosen: { singers: "Glow", video: null, ai: false } });
+    const on = page.locator("[data-look-picker] [data-look-ai]");
+    await on.check();
+    await expect(on).toBeChecked();
+    await expect(page.locator("[data-look-ai-note]")).toContainText("title, artist, genre, tempo, key and energy");
+    expect(await page.evaluate(() => (window as unknown as { __lookAi: unknown[] }).__lookAi)).toEqual([{ on: true }]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
 test.describe("§122: picking the look", () => {
   test("the Singers panel offers djmanzo's looks, says what each is for, and off", async ({ page }) => {
     await openShell(page, "/?panel=karaoke");

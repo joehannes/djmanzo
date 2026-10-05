@@ -768,7 +768,10 @@ export const ANSWERS: Record<string, unknown> = {
   // §122: djmanzo's own looks, generated from `dj_app::looks::built_in`;
   // the singers' screen shows none until one is chosen.
   looks_catalogue: looks,
-  look_chosen: { singers: null, video: null },
+  look_chosen: { singers: null, video: null, ai: false },
+  // §122 step 6: what the DJ's AI picked for the heard record — nothing
+  // unless a test says so.
+  look_picked: { look: null, state: "asking", why: null },
   milkdrop_shipped: { Drift: presetDrift, Bloom: presetBloom },
   // §122 step 4b: the DJ's own presets, none until a test adds some.
   milkdrop_yours: [],
@@ -2510,6 +2513,26 @@ export async function openShell(
             g.fillRect(0, 45, 160, 45);
             ((win.__artistPictures ??= []) as unknown[]).push({ ...args });
             return Promise.resolve(canvas.toDataURL("image/jpeg", 0.9));
+          }
+          // §122 step 6: the switch, refused as Rust refuses it with no
+          // provider set up when a test says there is none.
+          if (cmd === "look_ai") {
+            ((win.__lookAi ??= []) as unknown[]).push({ ...args });
+            if (args.on && typeof answers.look_ai_refused === "string") return Promise.reject(answers.look_ai_refused);
+            const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, unknown>;
+            chosen.ai = Boolean(args.on);
+            return Promise.resolve(structuredClone(chosen));
+          }
+          // Off reads as off, as in Rust; otherwise asked, then the second
+          // answer, if a test gives one, from the asking it names on.
+          if (cmd === "look_picked") {
+            ((win.__lookPickedAsked ??= []) as unknown[]).push(args.deck);
+            const chosen = (win.__lookChosen ?? answers.look_chosen) as Record<string, unknown>;
+            if (!chosen.ai) return Promise.resolve({ look: null, state: "off", why: null });
+            const asks = (win.__lookPickedAsked as unknown[]).length;
+            const from = typeof answers.look_picked_from === "number" ? answers.look_picked_from : 2;
+            const answer = asks < from || answers.look_picked_then === undefined ? answers.look_picked : answers.look_picked_then;
+            return Promise.resolve(structuredClone(answer));
           }
           if (cmd === "look_chosen" || cmd === "look_choose") {
             const chosen = (win.__lookChosen ??= structuredClone(answers.look_chosen)) as Record<string, string | null>;

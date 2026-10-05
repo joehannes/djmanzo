@@ -407,7 +407,7 @@ piece of this document lands among them.
 | Stem-based removal and a guide vocal | M6 | **K2** | shipped |
 | Transcription and word times (whisper.cpp, in djmanzo) | M6 | **K2** | shipped; `small` measured at 73 s for a 4½-minute record, and the English aligner beside it |
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
-| Beat- and microphone-reactive visuals | M2, §122 | **K2** | shipped behind the words: djmanzo's own layers on the beat, the stems and the singers' microphones, picked in the Singers panel ([VISUALS.md](VISUALS.md)), MilkDrop among them, the DJ's own MilkDrop presets, and the artist's photographs from Wikimedia Commons, credited; AI-picked looks next |
+| Beat- and microphone-reactive visuals | M2, §122 | **K2** | shipped behind the words: djmanzo's own layers on the beat, the stems and the singers' microphones, picked in the Singers panel ([VISUALS.md](VISUALS.md)), MilkDrop among them, the DJ's own MilkDrop presets, the artist's photographs from Wikimedia Commons, credited, and a look picked per record by the DJ's AI when turned on; packs and their community index next |
 | Voice control | A2 | **K2** | waits on A2 |
 | N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |

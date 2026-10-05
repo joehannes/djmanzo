@@ -25,6 +25,7 @@
   import {
     artistPicture,
     artistPictures,
+    lookPicked,
     milkdropPreset,
     type AudioMetrics,
     type DeckState,
@@ -43,7 +44,9 @@
     audio,
     voices = [],
     shades = [],
+    perSong = false,
   }: {
+    /** The DJ's look, or null for none. */
     look: Look | null;
     decks: DeckState[];
     crossfader: number;
@@ -51,6 +54,12 @@
     voices?: number[];
     /** The record's colours, `singer_backdrop`'s. */
     shades?: { colour: string }[];
+    /**
+     * Step 6: the DJ's AI picks each heard record's look, drawn in place of
+     * `look` once it has — `look` until then, and whenever it cannot. With
+     * no `look` the screen is off, and stays off.
+     */
+    perSong?: boolean;
   } = $props();
 
   let canvas = $state<HTMLCanvasElement | undefined>();
@@ -64,7 +73,57 @@
   /** Frames a second at most. */
   const FPS = 30;
 
-  const checked = $derived(look ? validate(look) : { layers: [], dropped: [] });
+  /** The heard deck and its record: whose look the AI picks, and whose photographs are shown. */
+  let record = $state<{ deck: number; artist: string; title: string } | null>(null);
+  $effect(() => {
+    const heard = heardArtist(decks as Parameters<typeof heardArtist>[0], crossfader);
+    const was = untrack(() => record);
+    if (heard && (heard.deck !== was?.deck || heard.artist !== was?.artist || heard.title !== was?.title)) {
+      record = heard;
+    }
+  });
+
+  /** The AI's pick for the heard record, and where the asking is, for whoever looks. */
+  let picked = $state<Look | null>(null);
+  let pickState = $state("");
+  $effect(() => {
+    const heard = record;
+    if (!perSong || look === null || !heard) {
+      picked = null;
+      pickState = "";
+      return;
+    }
+    let alive = true;
+    let again = 0;
+    const ask = async () => {
+      try {
+        const answer = await lookPicked(heard.deck);
+        if (!alive) return;
+        pickState = answer.state;
+        picked = answer.look;
+        // Asked in the background; a failure is waited on by Rust before it
+        // is asked again, so asking about it often costs nothing.
+        if (answer.state === "asking") again = window.setTimeout(ask, 3000);
+        else if (answer.state === "waiting") again = window.setTimeout(ask, 60000);
+      } catch {
+        if (!alive) return;
+        // A record restored as the application starts can be asked about
+        // before the collection has it: the DJ's look, and again shortly.
+        pickState = "failed";
+        picked = null;
+        again = window.setTimeout(ask, 5000);
+      }
+    };
+    void ask();
+    return () => {
+      alive = false;
+      window.clearTimeout(again);
+    };
+  });
+  /** What is drawn: the AI's pick for this record, else the DJ's look. */
+  const drawn = $derived(look !== null && picked ? picked : look);
+
+  const checked = $derived(drawn ? validate(drawn) : { layers: [], dropped: [] });
   const colours = $derived(palette(shades));
 
   /** The latest of everything, for the frame loop: plain, read without subscribing. */
@@ -91,12 +150,17 @@
    */
   const show: Show<{ image: HTMLImageElement; credit: string }> = start();
   const wantsArtist = $derived(checked.layers.some((l) => l.kind === "artist"));
-  /** Whose photographs: the heard deck and its artist, kept while nothing is heard. */
+  /**
+   * Whose photographs: the heard deck and its artist, kept while nothing is
+   * heard — and not asked again when only the title changes.
+   */
   let followed = $state<{ deck: number; artist: string } | null>(null);
   $effect(() => {
-    const heard = heardArtist(decks as Parameters<typeof heardArtist>[0], crossfader);
+    const heard = record;
     const was = untrack(() => followed);
-    if (heard && (heard.deck !== was?.deck || heard.artist !== was?.artist)) followed = heard;
+    if (heard && (heard.deck !== was?.deck || heard.artist !== was?.artist)) {
+      followed = { deck: heard.deck, artist: heard.artist };
+    }
   });
   /** Where the photographs are, for whoever looks: as Rust says, then loading, showing, or failed. */
   let artistState = $state("");
@@ -335,7 +399,8 @@
   bind:this={canvas}
   aria-hidden="true"
   data-visuals={status}
-  data-look={look?.name ?? ""}
+  data-look={drawn?.name ?? ""}
+  data-picked={pickState}
   data-layers={checked.layers.map((l) => l.kind).join(" ")}
   data-dropped={checked.dropped.length}
   data-failures={[...failures, ...(milkdropFailed ? [milkdropFailed] : [])].join(" | ")}

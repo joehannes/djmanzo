@@ -11,6 +11,7 @@
   import BuyLinks from "./BuyLinks.svelte";
   import Guests from "./Guests.svelte";
   import Microphones from "./Microphones.svelte";
+  import LookByAi from "./LookByAi.svelte";
   import MilkdropPresets from "./MilkdropPresets.svelte";
   import WordTiming from "./WordTiming.svelte";
   import { validate } from "./looks";
@@ -103,11 +104,14 @@
    */
   let looks = $state<Look[]>([]);
   let lookName = $state<string | null>(null);
+  /** Step 6: the DJ's AI picks each record's look. */
+  let lookByAi = $state(false);
   function readLooks() {
     void Promise.all([looksCatalogue(), lookChosen()])
       .then(([all, chosen]) => {
         looks = all;
         lookName = chosen.singers;
+        lookByAi = chosen.ai;
       })
       .catch(() => {});
   }
@@ -559,6 +563,7 @@
       {#if chosenLook}
         <p class="hint" data-look-description>{chosenLook.description}</p>
       {/if}
+      <LookByAi on={lookByAi} onchange={(chosen) => (lookByAi = chosen.ai)} />
       {#each leftOut as note (note)}
         <p class="hint" role="note">Left out, because this djmanzo cannot draw it: {note}</p>
       {/each}

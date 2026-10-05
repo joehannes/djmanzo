@@ -34,6 +34,7 @@
   } from "./api";
   import { follow, share, stack, type DeckForPicture } from "./videoMix";
   import Visuals from "./Visuals.svelte";
+  import LookByAi from "./LookByAi.svelte";
 
   let {
     decks,
@@ -139,12 +140,15 @@
   /** §122: the look beneath the pictures, kept in Rust as the singers' screen's is. */
   let looks = $state<Look[]>([]);
   let lookName = $state<string | null>(null);
+  /** Step 6: the DJ's AI picks each record's look. */
+  let lookByAi = $state(false);
   /** Asked again when the list is opened: the DJ may have added presets of their own since. */
   function readLooks() {
     void Promise.all([looksCatalogue(), lookChosen()])
       .then(([all, chosen]) => {
         looks = all;
         lookName = chosen.video;
+        lookByAi = chosen.ai;
       })
       .catch(() => {});
   }
@@ -220,6 +224,7 @@
       <div class="look" data-video-look>
         <Visuals
           {look}
+          perSong={lookByAi}
           {decks}
           {crossfader}
           {audio}
@@ -274,6 +279,9 @@
             {/each}
           </select>
         </label>
+        {#if lookName}
+          <LookByAi on={lookByAi} onchange={(chosen) => (lookByAi = chosen.ai)} />
+        {/if}
       {/if}
       <button onclick={() => (clean = true)} title="Click the picture to bring them back">Hide the controls</button>
       <button onclick={() => void fullScreen()}>Full screen</button>

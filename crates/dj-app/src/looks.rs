@@ -16,8 +16,10 @@
 //! or the projector's window reads it.
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const SETTINGS: &str = "looks.json";
 
@@ -274,12 +276,43 @@ pub enum Screen {
 pub struct Chosen {
     pub singers: Option<String>,
     pub video: Option<String>,
+    /// Step 6: the DJ's AI provider picks the look for each record, over
+    /// the look chosen here, which shows until it has and whenever it
+    /// cannot. Off unless the DJ turns it on, as every AI feature is; a
+    /// screen chosen off stays off.
+    pub ai: bool,
+}
+
+/// Where the AI's picks are kept, by record: asked once a record, ever.
+const PICKS: &str = "looks-picked.json";
+
+/// How long after a pick did not come it is asked for again.
+pub const WAIT: Duration = Duration::from_secs(10 * 60);
+
+/// Whether a record's look may be asked for now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Begun {
+    /// Ask.
+    Go,
+    /// Being asked already.
+    Busy,
+    /// It failed lately, for this reason; asked again after [`WAIT`].
+    Waiting(String),
+}
+
+#[derive(Debug)]
+enum Ask {
+    Now,
+    Failed(Instant, String),
 }
 
 #[derive(Default)]
 struct Inner {
     dir: Option<PathBuf>,
     chosen: Chosen,
+    /// The AI's pick for each record, by its id.
+    picks: BTreeMap<String, String>,
+    asks: HashMap<String, Ask>,
 }
 
 /// The catalogue, and the choice, kept between runs.
@@ -323,7 +356,77 @@ impl Looks {
                 *kept = None;
             }
         }
-        self.inner().chosen = chosen;
+        let picks = std::fs::read_to_string(dir.join(PICKS))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+        let mut inner = self.inner();
+        inner.chosen = chosen;
+        inner.picks = picks;
+    }
+
+    /// Write `what` to `file` beside the other settings, if there is a folder.
+    fn save<T: Serialize>(dir: Option<&Path>, file: &str, what: &T) {
+        let Some(dir) = dir else {
+            return;
+        };
+        let written = serde_json::to_string_pretty(what)
+            .map_err(|e| e.to_string())
+            .and_then(|text| {
+                std::fs::create_dir_all(dir)
+                    .and_then(|()| std::fs::write(dir.join(file), text))
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(error) = written {
+            tracing::warn!(%error, file, "a looks file was not written");
+        }
+    }
+
+    /// Step 6: let the DJ's AI pick each record's look, or not.
+    pub fn set_ai(&self, on: bool) -> Chosen {
+        let mut inner = self.inner();
+        inner.chosen.ai = on;
+        Self::save(inner.dir.as_deref(), SETTINGS, &inner.chosen);
+        inner.chosen.clone()
+    }
+
+    /// The look the AI picked for `track`, if it did and the look is still
+    /// one there is: a removed look is no pick, and the record is asked
+    /// about again.
+    #[must_use]
+    pub fn picked(&self, track: &str) -> Option<Look> {
+        let name = self.inner().picks.get(track).cloned()?;
+        self.catalogue().into_iter().find(|look| look.name == name)
+    }
+
+    /// Keep the AI's pick for `track`.
+    pub fn keep_pick(&self, track: &str, name: &str) {
+        let mut inner = self.inner();
+        inner.picks.insert(track.to_owned(), name.to_owned());
+        inner.asks.remove(track);
+        Self::save(inner.dir.as_deref(), PICKS, &inner.picks);
+    }
+
+    /// Begin asking for `track`'s look, unless it is being asked for or
+    /// failed within [`WAIT`] — so two screens hearing one record ask once.
+    pub fn begin(&self, track: &str, now: Instant) -> Begun {
+        let mut inner = self.inner();
+        match inner.asks.get(track) {
+            Some(Ask::Now) => return Begun::Busy,
+            Some(Ask::Failed(when, why)) if now.duration_since(*when) < WAIT => {
+                return Begun::Waiting(why.clone());
+            }
+            _ => {}
+        }
+        inner.asks.insert(track.to_owned(), Ask::Now);
+        Begun::Go
+    }
+
+    /// The asking for `track` failed, for `why`.
+    pub fn failed(&self, track: &str, why: String, now: Instant) {
+        self.inner()
+            .asks
+            .insert(track.to_owned(), Ask::Failed(now, why));
     }
 
     /// Every look there is, as the DJ is offered them: djmanzo's own, then one
@@ -506,18 +609,7 @@ impl Looks {
             Screen::Singers => inner.chosen.singers = name,
             Screen::Video => inner.chosen.video = name,
         }
-        if let Some(dir) = &inner.dir {
-            let written = serde_json::to_string_pretty(&inner.chosen)
-                .map_err(|e| e.to_string())
-                .and_then(|text| {
-                    std::fs::create_dir_all(dir)
-                        .and_then(|()| std::fs::write(dir.join(SETTINGS), text))
-                        .map_err(|e| e.to_string())
-                });
-            if let Err(error) = written {
-                tracing::warn!(%error, "looks.json was not written");
-            }
-        }
+        Self::save(inner.dir.as_deref(), SETTINGS, &inner.chosen);
         Ok(inner.chosen.clone())
     }
 }
@@ -827,5 +919,85 @@ mod tests {
         later.start(dir.path());
         assert_eq!(later.chosen().singers, None);
         assert_eq!(later.chosen().video, None);
+    }
+
+    /// **Step 6 is off until the DJ turns it on**, and kept: a settings file
+    /// from before it existed reads as off.
+    #[test]
+    fn the_ai_picking_is_off_until_turned_on_and_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SETTINGS), r#"{"singers":"Glow"}"#).unwrap();
+        let looks = Looks::new();
+        looks.start(dir.path());
+        assert!(!looks.chosen().ai);
+        assert!(looks.set_ai(true).ai);
+        let again = Looks::new();
+        again.start(dir.path());
+        assert!(again.chosen().ai);
+        assert_eq!(again.chosen().singers.as_deref(), Some("Glow"));
+        again.set_ai(false);
+        let off = Looks::new();
+        off.start(dir.path());
+        assert!(!off.chosen().ai);
+    }
+
+    /// **One call a record, ever**: a pick is kept by the record's id between
+    /// runs; a pick of a look since removed is no pick, so the record is
+    /// asked about again rather than shown a look that draws nothing.
+    #[test]
+    fn a_records_pick_is_kept_and_a_removed_look_is_no_pick() {
+        let dir = tempfile::tempdir().unwrap();
+        let looks = Looks::new();
+        looks.start(dir.path());
+        assert_eq!(looks.picked("aa"), None);
+        looks.keep_pick("aa", "Pulse");
+        assert_eq!(
+            looks.picked("aa").map(|look| look.name).as_deref(),
+            Some("Pulse")
+        );
+        assert_eq!(
+            looks.picked("bb"),
+            None,
+            "one record's pick is not another's"
+        );
+
+        let again = Looks::new();
+        again.start(dir.path());
+        assert_eq!(
+            again.picked("aa").map(|look| look.name).as_deref(),
+            Some("Pulse")
+        );
+
+        std::fs::write(dir.path().join(PICKS), r#"{"aa":"Yours: Gone"}"#).unwrap();
+        let later = Looks::new();
+        later.start(dir.path());
+        assert_eq!(later.picked("aa"), None);
+    }
+
+    /// Two screens hearing one record ask once between them, and a failure
+    /// is waited on — said why — before the record is asked about again.
+    #[test]
+    fn a_record_is_asked_about_once_and_a_failure_waited_on() {
+        let looks = Looks::new();
+        let now = Instant::now();
+        assert_eq!(looks.begin("aa", now), Begun::Go);
+        assert_eq!(looks.begin("aa", now), Begun::Busy);
+        assert_eq!(
+            looks.begin("bb", now),
+            Begun::Go,
+            "another record is asked about"
+        );
+        looks.failed("aa", "the budget is spent".to_owned(), now);
+        assert_eq!(
+            looks.begin("aa", now + WAIT / 2),
+            Begun::Waiting("the budget is spent".to_owned())
+        );
+        assert_eq!(looks.begin("aa", now + WAIT), Begun::Go);
+        looks.keep_pick("aa", "Glow");
+        assert_eq!(
+            looks.begin("aa", now + WAIT),
+            Begun::Go,
+            "a kept pick ends the asking"
+        );
     }
 }

@@ -1322,6 +1322,13 @@ window says *Could not connect to localhost: Connection refused*. Drive a build
 made with `--features custom-protocol`, which embeds `ui/dist` — after
 `npm run build` has said `✓ built`.
 
+**A `git worktree` built into the shared `target/` leaves stale crates
+behind.** Checking one commit of two alone, a worktree of `HEAD` built with
+`CARGO_TARGET_DIR` pointing at the main tree's `target/`. The next build in the
+main tree failed with *cannot find function `artist_id`*, a function that was
+plainly in its source. Cargo had kept the worktree's build of `dj-library`.
+`touch` the crates' sources and it rebuilds; or give a worktree its own target.
+
 **Wikimedia refuses this container's shared address most of the time.**
 Wikidata's search and `upload.wikimedia.org` answer 429 within a request or
 two, minutes on end, to every session behind the same proxy. It is the

@@ -6026,6 +6026,15 @@ export interface LookChosen {
   singers: string | null;
   /** The Video window's, shown when no deck with a picture is heard. */
   video: string | null;
+  /** Step 6: the DJ's AI picks each record's look, over these. */
+  ai: boolean;
+}
+
+/** §122 step 6: the look the DJ's AI picked for a deck's record. See `commands::LookPicked`. */
+export interface LookPicked {
+  look: Look | null;
+  state: "picked" | "asking" | "waiting" | "off";
+  why: string | null;
 }
 
 export type LookScreen = "singers" | "video";
@@ -6080,6 +6089,9 @@ export const milkdropPresets = () => invoke<MilkdropYours[]>("milkdrop_presets")
 export const milkdropAdd = (paths: string[]) => invoke<MilkdropAdded>("milkdrop_add", { paths });
 export const milkdropRemove = (name: string) => invoke<MilkdropYours[]>("milkdrop_remove", { name });
 export const lookChosen = () => invoke<LookChosen>("look_chosen");
+/** Step 6: let the DJ's AI pick each record's look; refused with no provider set up. */
+export const lookAi = (on: boolean) => invoke<LookChosen>("look_ai", { on });
+export const lookPicked = (deck: number) => invoke<LookPicked>("look_picked", { deck });
 export const lookChoose = (screen: LookScreen, name: string | null) =>
   invoke<LookChosen>("look_choose", { screen, name });
 

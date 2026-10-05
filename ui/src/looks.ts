@@ -145,22 +145,22 @@ function heardDecks(hearing: Hearing) {
 }
 
 /**
- * The deck heard most and its artist — whose photographs an `artist` layer
- * shows — or null while nothing is heard, when the last artist stays. A
- * record that names no artist is `""`: no one's photographs, rather than the
- * last record's.
+ * The deck heard most and its record — whose photographs an `artist` layer
+ * shows, and whose look the DJ's AI picks — or null while nothing is heard,
+ * when the last record stays. A record that names no artist is `""`: no
+ * one's photographs, rather than the last record's.
  */
 export function heardArtist(
-  decks: (DeckForPicture & { artist: string | null })[],
+  decks: (DeckForPicture & { artist: string | null; title: string | null })[],
   crossfader: number,
-): { deck: number; artist: string } | null {
-  let heard: { deck: number; artist: string } | null = null;
+): { deck: number; artist: string; title: string } | null {
+  let heard: { deck: number; artist: string; title: string } | null = null;
   let most = 0;
   for (const deck of decks) {
     const amount = deck.playing ? share(deck, crossfader) : 0;
     if (amount > most) {
       most = amount;
-      heard = { deck: deck.number, artist: deck.artist?.trim() ?? "" };
+      heard = { deck: deck.number, artist: deck.artist?.trim() ?? "", title: deck.title?.trim() ?? "" };
     }
   }
   return heard;

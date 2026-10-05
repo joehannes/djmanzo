@@ -37,6 +37,7 @@ pub mod crowd;
 pub mod fatigue;
 pub mod http;
 pub mod intent;
+pub mod looks;
 pub mod native;
 pub mod openai_compat;
 pub mod pack;

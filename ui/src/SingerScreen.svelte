@@ -138,6 +138,8 @@
    */
   let catalogue: Look[] = [];
   let shown = $state<Look | null>(null);
+  /** Step 6: the DJ's AI picks each record's look, over the one chosen. */
+  let perSong = $state(false);
   $effect(() => {
     let alive = true;
     const look = async () => {
@@ -148,7 +150,9 @@
           // A screen for singers says nothing rather than an error.
         }
         try {
-          const name = (await lookChosen()).singers;
+          const chosen = await lookChosen();
+          const name = chosen.singers;
+          if (perSong !== chosen.ai) perSong = chosen.ai;
           if (name && !catalogue.some((l) => l.name === name)) catalogue = await looksCatalogue();
           const found = name ? (catalogue.find((l) => l.name === name) ?? null) : null;
           if (found?.name !== shown?.name) shown = found;
@@ -198,6 +202,7 @@
     {#if shown}
       <Visuals
         look={shown}
+        {perSong}
         {decks}
         {crossfader}
         {audio}

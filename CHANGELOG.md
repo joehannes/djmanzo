@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Your AI picks the look for each record (§122).** One switch, in the
+  Singers and Video panels, off until turned on. When on, each record heard
+  is put to your AI provider once: its title, artist, genre, tempo, key and
+  energy, with the looks there are. The look it picks is drawn for that
+  record, here and on the projector. Until it answers, and whenever it
+  cannot, the look you chose shows.
+
 - **The artist, photographed (§122).** A new look, *Artist*, shows
   photographs of the artist of the record being heard, behind the words or
   on the projector. They come from Wikimedia Commons, only under CC BY,

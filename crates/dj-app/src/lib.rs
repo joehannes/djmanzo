@@ -944,6 +944,8 @@ pub fn run() {
             commands::open_suno,
             commands::singer_backdrop,
             commands::artist_pictures,
+            commands::look_ai,
+            commands::look_picked,
             commands::artist_picture,
             commands::word_timing,
             commands::word_timing_speed,

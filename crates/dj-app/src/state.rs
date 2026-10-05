@@ -310,7 +310,7 @@ pub struct AppState {
     youtube: crate::youtube::Link,
     /// §119: a phone as a camera, from djmanzo's own page.
     phone_camera: crate::phone_camera::PhoneCamera,
-    looks: crate::looks::Looks,
+    looks: Arc<crate::looks::Looks>,
     /// §122: the pictures of the video files on the decks.
     pictures: std::sync::Arc<crate::video::Pictures>,
     /// §119: the DJ asked for the camera in this run. Kept here, not on disk,
@@ -612,7 +612,7 @@ impl AppState {
             obs: crate::obs::Link::new(),
             youtube: crate::youtube::Link::new(),
             phone_camera: crate::phone_camera::PhoneCamera::new(),
-            looks: crate::looks::Looks::new(),
+            looks: Arc::new(crate::looks::Looks::new()),
             pictures: std::sync::Arc::new(crate::video::Pictures::new()),
             camera_wanted: std::sync::atomic::AtomicBool::new(false),
             control_inbox: Mutex::new(Some(control_inbox)),
@@ -1623,6 +1623,12 @@ impl AppState {
     /// §122: the looks there are, and which one each screen shows.
     #[must_use]
     pub fn looks(&self) -> &crate::looks::Looks {
+        &self.looks
+    }
+
+    /// The same, for work that outlives a command: asking the AI for a look.
+    #[must_use]
+    pub fn looks_shared(&self) -> &Arc<crate::looks::Looks> {
         &self.looks
     }
 

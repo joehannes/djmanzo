@@ -487,6 +487,70 @@ energy and title, and the names and descriptions of the looks there are; it
 answers with one of the names, which is checked against the list. Off unless
 the DJ turns it on, as every AI feature is.
 
+**Built (5 October).** *Your AI picks the look for each record* is one switch,
+for every screen, in the Singers panel beside *Behind the words* and in the
+Video panel beside *With no picture*.
+
+- **Off unless the DJ turns it on.** Turned on with no AI provider set up, it
+  is refused and says so.
+- **When on, the heard deck's record is asked about once, ever**
+  (`dj_assistant::looks`):
+  - Sent: its title, artist, genre, tempo, key and energy, as the collection
+    knows them (unknown said as unknown), and every look's name and
+    description.
+  - The prompt says the record's tags are not instructions.
+  - The answer is read for one of the names, in the list's own spelling.
+    A line that is exactly a name wins; else a name mentioned once with no
+    other beside it. Anything else is no answer.
+  - So the worst a model, or a tag written to steer it, can do is pick one
+    of the DJ's own looks.
+- **The pick is kept by the record's id** in `looks-picked.json`. A pick of a
+  look since removed is no pick, and the record is asked about again.
+- **On screen**, the pick is drawn in place of the DJ's own look. The DJ's
+  look shows until the pick arrives, and whenever there is none:
+  - the provider failed, or ran out of budget, which is waited on ten
+    minutes, with the reason;
+  - the answer named no look.
+  A screen the DJ chose off stays off.
+- Two screens hearing one record ask once between them. The panel says what
+  is sent, and to whom.
+
+**Driven in WebKitGTK, with a model standing in.** A stand-in for a local
+model listened on Ollama's port, `localhost:11434`, which is djmanzo's
+default *Local model* provider. It answered every completion with *Pulse* and
+logged what it was sent.
+- The DJ ticked the switch in the Video panel, which was showing *Artist*.
+- One request went out: the system prompt, then *Around the Demo*, *Daft
+  Punk*, 140 BPM, D, energy 0.36, and all eight looks with what each is for.
+- The panel then drew Pulse's rings in place of the photographs.
+- `looks-picked.json` held the record's id and *Pulse*. After a restart the
+  rings were drawn again and the model still had exactly one call.
+- What a real model would pick for which record is not tested here, and
+  cannot be.
+
+**Tested:**
+- 4 Rust tests of the asking, through a scripted provider and the real load
+  path's library:
+  - off, nothing asked
+  - one call a record, sending the title, artist, genre, tempo, key, energy
+    and the looks, the answer checked and kept, no second call
+  - an answer that is no look waits and says why
+  - refused with no provider
+- 3 Rust tests of the keeping:
+  - the switch off until turned on, and kept
+  - a pick kept by record between runs, a removed look no pick
+  - two screens asking once, and a failure waited on
+- 4 of `dj_assistant`: the request saying what is known and listing every
+  look; the answer checked against the list (its spelling, quotes, curly
+  quotes, a mention in prose, two looks, a name inside a word); the prompt;
+  one call, capped by the budget.
+- 4 browser tests:
+  - the AI's pick drawn in place of the DJ's look once it has picked
+  - off, nothing asked
+  - a screen chosen off stays off
+  - the switch refused without a provider, saying what it sends when on
+- **Mutation-tested:** 17 mutants fail them (12 Rust, 5 interface).
+
 ## 7. Packs, and the community index
 
 A **pack** is a folder of looks, presets and the images they need, with a

@@ -332,6 +332,40 @@ impl Assistant {
         Ok(crate::crowd::parse_readings(&completion.text, batch.len()))
     }
 
+    /// §122 step 6: the look that suits `song`, of `looks` — one call, the
+    /// answer checked against the list (`crate::looks`). `None` when the
+    /// model named none of them.
+    ///
+    /// # Errors
+    /// When no budget is left, or the provider fails.
+    pub async fn pick_look(
+        &self,
+        song: &crate::looks::Song,
+        looks: &[crate::looks::Offered],
+    ) -> Result<Option<String>, AssistantError> {
+        if looks.is_empty() {
+            return Ok(None);
+        }
+        if !self.budget.allows_another() {
+            return Err(AssistantError::BudgetExhausted {
+                cap: self.budget.cap_usd(),
+                spent: self.budget.spent_usd(),
+            });
+        }
+        let turns = [
+            Turn::system(crate::looks::look_prompt()),
+            Turn::user(crate::looks::look_request(song, looks)),
+        ];
+        let completion = self.provider.complete(&self.model, &turns).await?;
+        let cost = self.pricing.map(|(input, output)| {
+            (f64::from(completion.usage.prompt_tokens) * input
+                + f64::from(completion.usage.completion_tokens) * output)
+                / 1_000_000.0
+        });
+        self.budget.record(cost);
+        Ok(crate::looks::parse_look(&completion.text, looks))
+    }
+
     /// Understand `text`, and return what should happen.
     ///
     /// Tries the local matcher first. Only reaches the model when that fails,
@@ -715,6 +749,60 @@ mod tests {
         );
         assert!(matches!(
             capped.read_crowd(&[said("hola")]).await,
+            Err(AssistantError::BudgetExhausted { .. })
+        ));
+        assert_eq!(provider.calls(), 0, "it called the model anyway");
+    }
+
+    /// **§122: a record's look is one call, capped, and comes back as one
+    /// of the looks there are or not at all.**
+    #[tokio::test]
+    async fn a_records_look_is_one_call_checked_and_capped() {
+        let looks = |names: &[&str]| -> Vec<crate::looks::Offered> {
+            names
+                .iter()
+                .map(|name| crate::looks::Offered {
+                    name: (*name).to_owned(),
+                    description: String::new(),
+                })
+                .collect()
+        };
+        let song = crate::looks::Song {
+            title: "Around the World".to_owned(),
+            ..crate::looks::Song::default()
+        };
+        let (assistant, provider) = assistant("**pulse**");
+        assert_eq!(
+            assistant
+                .pick_look(&song, &looks(&["Glow", "Pulse"]))
+                .await
+                .expect("picked")
+                .as_deref(),
+            Some("Pulse")
+        );
+        assert_eq!(provider.calls(), 1);
+        assert_eq!(
+            assistant
+                .pick_look(&song, &looks(&["Glow"]))
+                .await
+                .expect("asked"),
+            None,
+            "a look that is not in the list was taken"
+        );
+        assert_eq!(
+            assistant.pick_look(&song, &[]).await.expect("nothing"),
+            None
+        );
+        assert_eq!(provider.calls(), 2, "no looks at all asked the model");
+
+        let provider = Arc::new(Scripted::new("Pulse"));
+        let capped = Assistant::new(
+            Arc::clone(&provider) as Arc<dyn LlmProvider>,
+            "scripted",
+            Arc::new(Budget::new(0.0)),
+        );
+        assert!(matches!(
+            capped.pick_look(&song, &looks(&["Pulse"])).await,
             Err(AssistantError::BudgetExhausted { .. })
         ));
         assert_eq!(provider.calls(), 0, "it called the model anyway");

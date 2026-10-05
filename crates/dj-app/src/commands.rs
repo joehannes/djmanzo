@@ -418,6 +418,126 @@ pub fn look_choose(
     state.looks().choose(screen, name)
 }
 
+/// §122 step 6: let the DJ's AI provider pick each record's look, or not.
+///
+/// # Errors
+/// Turned on with no AI provider set up: there is no one to ask.
+#[tauri::command]
+pub fn look_ai(state: State<'_, AppState>, on: bool) -> Result<crate::looks::Chosen, String> {
+    look_ai_on(&state, on)
+}
+
+fn look_ai_on(state: &AppState, on: bool) -> Result<crate::looks::Chosen, String> {
+    if on && state.assistant_selection().is_none() {
+        return Err("no AI provider is set up: add one under AI providers first".to_owned());
+    }
+    Ok(state.looks().set_ai(on))
+}
+
+/// §122 step 6: the look the DJ's AI picked for the record on `deck`.
+#[derive(Debug, Clone, Serialize)]
+pub struct LookPicked {
+    pub look: Option<crate::looks::Look>,
+    /// `picked`; `asking` (asked in the background — ask again in a
+    /// moment); `waiting` (it failed lately, said why, and is asked again
+    /// after `crate::looks::WAIT`); `off` (the DJ has not turned it on).
+    pub state: &'static str,
+    pub why: Option<String>,
+}
+
+/// §122 step 6: the look the DJ's AI picks for the record on `deck` — kept,
+/// or asked for once, in the background, and kept. One call a record: what
+/// the collection knows of it (title, artist, genre, tempo, key, energy)
+/// and every look's name and description; the answer checked against the
+/// list. See `dj_assistant::looks`.
+///
+/// # Errors
+/// No record on the deck, or no library.
+#[tauri::command]
+pub async fn look_picked(state: State<'_, AppState>, deck: u8) -> Result<LookPicked, String> {
+    let (answer, asking) = look_pick(&state, deck)?;
+    if let Some(asking) = asking {
+        tauri::async_runtime::spawn(asking);
+    }
+    Ok(answer)
+}
+
+/// What [`look_picked`] answers at once, and the asking to run in the
+/// background when there is one — apart, so a test can run it to the end.
+type Asking = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+
+pub(crate) fn look_pick(
+    state: &AppState,
+    deck: u8,
+) -> Result<(LookPicked, Option<Asking>), String> {
+    use crate::looks::Begun;
+    let answer = |look, state, why| LookPicked { look, state, why };
+    if !state.looks().chosen().ai {
+        return Ok((answer(None, "off", None), None));
+    }
+    let id = DeckId::from_human(deck)
+        .and_then(|deck| state.deck_track_id(deck))
+        .ok_or_else(|| format!("deck {deck} has no record on it"))?;
+    let key = id.to_hex();
+    if let Some(look) = state.looks().picked(&key) {
+        return Ok((answer(Some(look), "picked", None), None));
+    }
+    let track = library(state)?
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "that record is not in the collection".to_owned())?;
+    let Some(selection) = state.assistant_selection() else {
+        let why = Some("no AI provider is set up".to_owned());
+        return Ok((answer(None, "waiting", why), None));
+    };
+    match state.looks().begin(&key, std::time::Instant::now()) {
+        Begun::Go => {}
+        Begun::Busy => return Ok((answer(None, "asking", None), None)),
+        Begun::Waiting(why) => return Ok((answer(None, "waiting", Some(why)), None)),
+    }
+    let song = dj_assistant::looks::Song {
+        title: track.display_title(),
+        artist: track.tags.artist.clone(),
+        genre: track.tags.genre.clone(),
+        bpm: track.analysis.bpm,
+        key: track.analysis.key().map(|key| key.standard().to_owned()),
+        energy: track.analysis.energy,
+    };
+    let offered: Vec<dj_assistant::looks::Offered> = state
+        .looks()
+        .catalogue()
+        .into_iter()
+        .map(|look| dj_assistant::looks::Offered {
+            name: look.name,
+            description: look.description,
+        })
+        .collect();
+    let label = selection.provider.id().label().to_owned();
+    let assistant = dj_assistant::Assistant::new(
+        selection.provider,
+        selection.model,
+        Arc::clone(state.budget()),
+    )
+    .with_pricing(selection.input_price, selection.output_price);
+    let looks = Arc::clone(state.looks_shared());
+    let asking: Asking = Box::pin(async move {
+        let now = std::time::Instant::now;
+        match assistant.pick_look(&song, &offered).await {
+            Ok(Some(name)) => {
+                tracing::info!(look = %name, title = %song.title, "the AI picked a look");
+                looks.keep_pick(&key, &name);
+            }
+            Ok(None) => looks.failed(
+                &key,
+                format!("{label} answered with no look of the list"),
+                now(),
+            ),
+            Err(error) => looks.failed(&key, error.to_string(), now()),
+        }
+    });
+    Ok((answer(None, "asking", None), Some(asking)))
+}
+
 /// §119: the switch and the Google client, as kept.
 #[tauri::command]
 #[must_use]
@@ -20000,6 +20120,187 @@ pub async fn crowd_read_now(
         }
     }
     crowd_view_of(&state, Some(session))
+}
+
+#[cfg(test)]
+mod look_pick_tests {
+    use super::*;
+    use dj_assistant::provider::{
+        AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Turn, Usage,
+    };
+    use std::sync::Mutex as StdMutex;
+
+    /// A provider that answers what it is told to, and keeps what it was sent.
+    #[derive(Debug)]
+    struct Scripted {
+        answer: String,
+        sent: StdMutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for Scripted {
+        fn id(&self) -> ProviderId {
+            ProviderId::Local
+        }
+        fn status(&self) -> ProviderStatus {
+            ProviderStatus::Ready
+        }
+        async fn models(&self) -> Result<Vec<Model>, AssistantError> {
+            Ok(Vec::new())
+        }
+        async fn complete(&self, _: &str, turns: &[Turn]) -> Result<Completion, AssistantError> {
+            self.sent.lock().expect("not poisoned").push(
+                turns
+                    .iter()
+                    .map(|t| t.content.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+            Ok(Completion {
+                text: self.answer.clone(),
+                usage: Usage::default(),
+                model: "scripted".to_owned(),
+            })
+        }
+    }
+
+    /// A record tagged as a genre, analysed, on deck 1, and a provider that
+    /// answers `answer`.
+    fn evening(answer: &str) -> (AppState, Arc<Scripted>, tempfile::TempDir) {
+        let provider = Arc::new(Scripted {
+            answer: answer.to_owned(),
+            sent: StdMutex::new(Vec::new()),
+        });
+        let state = AppState::new(true)
+            .with_llm_providers(vec![Arc::clone(&provider) as Arc<dyn LlmProvider>]);
+        state.set_assistant(ProviderId::Local, "scripted".to_owned());
+        let dir = tempfile::tempdir().expect("a folder");
+        state.open_library(&dir.path().join("library.db"));
+        state.looks().start(dir.path());
+        let id = dj_core::TrackId::from_bytes([3; 32]);
+        let analysis = dj_library::StoredAnalysis {
+            bpm: Some(124.0),
+            energy: Some(0.8),
+            ..dj_library::StoredAnalysis::default()
+        }
+        .with_key(
+            dj_core::MusicalKey::new(8, dj_core::Mode::Minor).expect("a key"),
+            0.9,
+        );
+        let db = state.library().get().expect("a library");
+        db.upsert_track(&dj_library::LibraryTrack {
+            id,
+            path: dir.path().join("around.mp3"),
+            tags: dj_library::Tags {
+                title: Some("Around the World".to_owned()),
+                artist: Some("Daft Punk".to_owned()),
+                genre: Some("French house".to_owned()),
+                ..dj_library::Tags::default()
+            },
+            duration_frames: 100,
+            sample_rate: dj_core::SampleRate::DEFAULT,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        })
+        .expect("kept");
+        db.set_analysis(id, &analysis).expect("analysed");
+        state.set_deck_track(
+            DeckId::from_human(1).expect("deck 1"),
+            crate::state::LoadedTrackInfo {
+                title: "Around the World".to_owned(),
+                artist: Some("Daft Punk".to_owned()),
+                id,
+                chosen: dj_library::Chosen::Dj,
+            },
+        );
+        (state, provider, dir)
+    }
+
+    fn calls(provider: &Scripted) -> usize {
+        provider.sent.lock().expect("not poisoned").len()
+    }
+
+    /// Turned on with no provider set up, it is refused and stays off;
+    /// turned off, it always may be.
+    #[test]
+    fn it_is_refused_with_no_provider_to_ask() {
+        let state = AppState::new(true).with_llm_providers(Vec::new());
+        assert!(state.assistant_selection().is_none());
+        let refused = look_ai_on(&state, true).expect_err("refused");
+        assert!(refused.contains("no AI provider"), "{refused}");
+        assert!(!state.looks().chosen().ai);
+        assert!(!look_ai_on(&state, false).expect("off").ai);
+
+        let (with, _provider, _dir) = evening("Glow");
+        assert!(look_ai_on(&with, true).expect("on").ai);
+    }
+
+    /// **Off unless the DJ turns it on: nothing is asked.**
+    #[test]
+    fn off_nothing_is_asked() {
+        let (state, provider, _dir) = evening("Pulse");
+        let (answer, asking) = look_pick(&state, 1).expect("answered");
+        assert_eq!(answer.state, "off");
+        assert!(asking.is_none());
+        assert_eq!(calls(&provider), 0);
+    }
+
+    /// **One call a record, and the answer checked and kept.** Turned on,
+    /// the record is asked about once — its title, artist, genre, tempo,
+    /// key and energy, and every look — the answer is the list's look, and
+    /// asking again is answered from what was kept, with no second call.
+    #[test]
+    fn a_record_is_asked_about_once_and_its_pick_kept() {
+        let (state, provider, _dir) = evening("pulse");
+        state.looks().set_ai(true);
+        let (answer, asking) = look_pick(&state, 1).expect("answered");
+        assert_eq!(answer.state, "asking");
+        let (busy, none) = look_pick(&state, 1).expect("answered");
+        assert_eq!(busy.state, "asking", "asked twice while the first was out");
+        assert!(none.is_none());
+        tauri::async_runtime::block_on(asking.expect("an asking"));
+        assert_eq!(calls(&provider), 1);
+        let sent = provider.sent.lock().expect("not poisoned").join("\n");
+        for said in [
+            "Title: Around the World",
+            "Artist: Daft Punk",
+            "Genre: French house",
+            "Tempo: 124 BPM",
+            "Key: Am",
+            "Energy: 0.80",
+            "Pulse | Rings from the centre",
+            "Artist | Photographs of the artist",
+        ] {
+            assert!(sent.contains(said), "{said:?} not in {sent}");
+        }
+
+        let (picked, again) = look_pick(&state, 1).expect("answered");
+        assert_eq!(picked.state, "picked");
+        assert_eq!(picked.look.map(|look| look.name).as_deref(), Some("Pulse"));
+        assert!(again.is_none());
+        assert_eq!(calls(&provider), 1, "the record was asked about twice");
+    }
+
+    /// An answer that names no look is no pick: the record waits, says why,
+    /// and shows the DJ's own look meanwhile.
+    #[test]
+    fn an_answer_that_is_no_look_is_no_pick() {
+        let (state, provider, _dir) = evening("Strobe lights, obviously");
+        state.looks().set_ai(true);
+        let (_, asking) = look_pick(&state, 1).expect("answered");
+        tauri::async_runtime::block_on(asking.expect("an asking"));
+        let (answer, again) = look_pick(&state, 1).expect("answered");
+        assert_eq!(answer.state, "waiting");
+        assert!(answer.look.is_none());
+        assert!(answer.why.expect("why").contains("no look of the list"));
+        assert!(again.is_none());
+        assert_eq!(calls(&provider), 1);
+    }
 }
 
 #[cfg(test)]
