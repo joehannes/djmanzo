@@ -1299,6 +1299,15 @@ component: `svelte-check` reports *'$state' used before its declaration* and
 *untyped function calls may not accept type arguments*, because `$state` is
 read as the store `state` auto-subscribed. Name it anything else.
 
+**The decoder reads fewer tags than the scan, and loading used to overwrite
+the scan's.** Symphonia read no tags at all from a `lofty`-written ID3v2.4
+MP3, and `load_track` upserted what it read: artist, genre, label, year and
+comment were erased from the collection each time a record was played, and the
+deck showed the file's name. Loading now fills only blanks
+(`dj_library::Library::remember_loaded`) and the deck shows the collection's
+names. Test tags written by hand are not proof of anything: write them with
+`lofty`, as a tagger would, and check the library row (`tracks.artist`).
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

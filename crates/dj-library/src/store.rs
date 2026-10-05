@@ -265,6 +265,62 @@ impl Library {
         self.with(|conn| upsert_track_on(conn, track))
     }
 
+    /// A track a deck has just loaded, into the library: inserted if it is
+    /// new, and if it is known, only its path, its length and whatever tags
+    /// the library has none of.
+    ///
+    /// Not [`Self::upsert_track`]. The decoder reads a title, an artist and
+    /// an album, and often fewer — none at all from an ID3v2.4 tag it does
+    /// not read — while the scan read every tag with `lofty`. Loading a
+    /// scanned record through `upsert_track` wrote the decoder's blanks over
+    /// the scan's tags: artist, genre, label, year and comment gone from the
+    /// collection each time a record was played, until a rescan happened to
+    /// read the file again.
+    pub fn remember_loaded(&self, track: &LibraryTrack) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO tracks (
+                     id, path, title, artist, album, album_artist, genre, label,
+                     comment, year, track_number, duration_frames, sample_rate,
+                     channels, file_size, file_modified, added_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                     ?14, ?15, ?16, ?17
+                 )
+                 ON CONFLICT(id) DO UPDATE SET
+                     path = excluded.path,
+                     title = COALESCE(tracks.title, excluded.title),
+                     artist = COALESCE(tracks.artist, excluded.artist),
+                     album = COALESCE(tracks.album, excluded.album),
+                     duration_frames = excluded.duration_frames,
+                     sample_rate = excluded.sample_rate,
+                     channels = excluded.channels,
+                     file_size = COALESCE(excluded.file_size, tracks.file_size)",
+                params![
+                    track.id.to_hex(),
+                    track.path.to_string_lossy(),
+                    track.tags.title,
+                    track.tags.artist,
+                    track.tags.album,
+                    track.tags.album_artist,
+                    track.tags.genre,
+                    track.tags.label,
+                    track.tags.comment,
+                    track.tags.year,
+                    track.tags.track_number,
+                    track.duration_frames as i64,
+                    track.sample_rate.get(),
+                    track.channels,
+                    track.file_size.map(|s| s as i64),
+                    track.file_modified,
+                    track.added_at,
+                ],
+            )?;
+            remember_path(conn, track)?;
+            Ok(())
+        })
+    }
+
     /// Analysis for a track that has none.
     ///
     /// Conditional, not unconditional: the caller is identification, which is
@@ -2905,6 +2961,50 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    /// **A record played keeps its tags.** The scan read every tag; the
+    /// decoder, loading it onto a deck, read fewer — here none but a title.
+    /// The library keeps what it knew, fills only what it lacked, and moves
+    /// the path to where the record was loaded from.
+    #[test]
+    fn a_loaded_record_keeps_the_tags_the_scan_read() {
+        let lib = library();
+        let mut scanned = track(1, "Around the World", "Daft Punk");
+        scanned.tags.genre = Some("French house".to_owned());
+        scanned.tags.label = Some("Virgin".to_owned());
+        scanned.tags.year = Some(1997);
+        scanned.tags.album = None;
+        lib.upsert_track(&scanned).unwrap();
+
+        let decoded = LibraryTrack {
+            path: PathBuf::from("/usb/around.flac"),
+            tags: Tags {
+                title: Some("around".to_owned()),
+                album: Some("Homework".to_owned()),
+                ..Tags::default()
+            },
+            file_modified: None,
+            ..scanned.clone()
+        };
+        lib.remember_loaded(&decoded).unwrap();
+        let kept = lib.track(id(1)).unwrap().unwrap();
+        assert_eq!(kept.tags.title.as_deref(), Some("Around the World"));
+        assert_eq!(kept.tags.artist.as_deref(), Some("Daft Punk"));
+        assert_eq!(kept.tags.genre.as_deref(), Some("French house"));
+        assert_eq!(kept.tags.label.as_deref(), Some("Virgin"));
+        assert_eq!(kept.tags.year, Some(1997));
+        // What the library lacked, the load fills.
+        assert_eq!(kept.tags.album.as_deref(), Some("Homework"));
+        assert_eq!(kept.path, PathBuf::from("/usb/around.flac"));
+        assert_eq!(kept.file_modified, Some(1_700_000_000));
+
+        // A record never scanned goes in as the decoder read it.
+        let new = track(2, "Opened from disk", "Someone");
+        lib.remember_loaded(&new).unwrap();
+        let added = lib.track(id(2)).unwrap().unwrap();
+        assert_eq!(added.tags.artist.as_deref(), Some("Someone"));
+        assert_eq!(added.path, new.path);
     }
 
     // -- nights and settings (§81) ---------------------------------------------

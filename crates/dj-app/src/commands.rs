@@ -1658,11 +1658,22 @@ pub fn put_on_deck(
 ) -> Result<LoadedTrackDto, String> {
     let deck = deck_id.human_number();
 
+    // The record's names as the collection knows them, where it does: the
+    // scan read every tag with `lofty`, and the decoder reads fewer — none
+    // from an ID3v2.4 tag — which left a scanned record's deck showing its
+    // file's name and no artist, and the §122 artist layer no one to show.
+    let known = state
+        .library()
+        .get()
+        .ok()
+        .and_then(|db| db.track(decoded.id).ok().flatten())
+        .map(|track| track.tags)
+        .unwrap_or_default();
     let dto = LoadedTrackDto {
         deck,
-        title: decoded.display_title(),
-        artist: decoded.artist.clone(),
-        album: decoded.album.clone(),
+        title: known.title.unwrap_or_else(|| decoded.display_title()),
+        artist: known.artist.or_else(|| decoded.artist.clone()),
+        album: known.album.or_else(|| decoded.album.clone()),
         duration_seconds: decoded.buffer.duration_seconds(),
         sample_rate: decoded.buffer.sample_rate().get(),
         id: decoded.id.to_hex(),
@@ -11999,10 +12010,70 @@ fn remember_track(state: &AppState, decoded: &dj_decode::DecodedTrack, rate: dj_
         stats: dj_library::PlayStats::default(),
         colour: None,
     };
-    if let Err(error) = db.upsert_track(&track) {
+    // Only what the library lacks: the decoder reads fewer tags than the
+    // scan did, and a played record keeps the ones it had.
+    if let Err(error) = db.remember_loaded(&track) {
         // Not fatal. The deck still plays; the DJ just will not find this track
         // in the browser, and cues set on it will not be kept.
         tracing::warn!(%error, path = ?decoded.path, "could not add the track to the library");
+    }
+}
+
+#[cfg(test)]
+mod remembering_a_load {
+    use super::*;
+
+    /// **Playing a record does not erase its tags.** A scanned record, then
+    /// loaded as `load_track` loads it — the decoder having read no artist —
+    /// is still the scan's artist's in the collection, and the deck shows it
+    /// by the collection's names.
+    #[test]
+    fn a_loaded_record_is_still_by_its_artist() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(true);
+        state.open_library(&dir.path().join("library.db"));
+        let db = state.library().get().unwrap();
+        let rate = dj_core::SampleRate::DEFAULT;
+        let id = dj_core::TrackId::from_bytes([7; 32]);
+        let path = dir.path().join("around.mp3");
+        db.upsert_track(&dj_library::LibraryTrack {
+            id,
+            path: path.clone(),
+            tags: dj_library::Tags {
+                title: Some("Around the World".to_owned()),
+                artist: Some("Daft Punk".to_owned()),
+                genre: Some("French house".to_owned()),
+                ..dj_library::Tags::default()
+            },
+            duration_frames: 100,
+            sample_rate: rate,
+            channels: 2,
+            file_size: None,
+            file_modified: Some(1),
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        })
+        .unwrap();
+        let decoded = dj_decode::DecodedTrack {
+            id,
+            path,
+            buffer: dj_decode::AudioBuffer::from_interleaved(vec![0.0; 200], rate),
+            title: None,
+            artist: None,
+            album: None,
+        };
+        remember_track(&state, &decoded, rate);
+        let kept = db.track(id).unwrap().unwrap();
+        assert_eq!(kept.tags.artist.as_deref(), Some("Daft Punk"));
+        assert_eq!(kept.tags.genre.as_deref(), Some("French house"));
+
+        // And on the deck, the collection's names, not the file's.
+        state.host().open(None, None, 128).unwrap();
+        let loaded = put_on_deck(&state, DeckId::from_human(1).unwrap(), decoded).unwrap();
+        assert_eq!(loaded.title, "Around the World");
+        assert_eq!(loaded.artist.as_deref(), Some("Daft Punk"));
     }
 }
 

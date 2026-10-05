@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Playing a record no longer erases its tags.** Loading a record onto a
+  deck wrote the decoder's tags over the ones the scan had read. The
+  decoder reads fewer, and none from some MP3s, so a played record could
+  lose its artist, genre, label, year and comment from the collection. A
+  load now only fills what the collection lacks. The deck shows the
+  record's name and artist as the collection knows them.
+
 - **Your own MilkDrop presets (§122).** In the Singers panel, *Add MilkDrop
   presets…* takes MilkDrop's `.milk` files (and Butterchurn's `.json`); each
   becomes a look, *Yours: …*, behind the words or on the projector. A preset
