@@ -103,12 +103,12 @@ async function look(
   return page;
 }
 
-/** Wait for `count` readings and return them all. */
-async function readings(page: Page, count: number): Promise<Reading[]> {
+/** Wait for `count` readings, a look every `every` ms, and return them all. */
+async function readings(page: Page, count: number, every = 500): Promise<Reading[]> {
   await page.waitForFunction(
     (n) => ((window as unknown as { __saw?: unknown[] }).__saw ?? []).length >= n,
     count,
-    { timeout: 90_000 },
+    { timeout: Math.max(90_000, count * every + 30_000) },
   );
   return page.evaluate(() => (window as unknown as { __saw: Reading[] }).__saw);
 }
@@ -123,7 +123,7 @@ function median(values: (number | null)[]): number {
 async function scene(footage: Footage, sound: Sound, every: number, count: number) {
   const browser = await launch(footage, sound);
   try {
-    const seen = await readings(await look(browser, every), count);
+    const seen = await readings(await look(browser, every), count, every);
     return {
       light: median(seen.map((r) => r.light)),
       movement: median(seen.map((r) => r.movement)),
@@ -230,11 +230,18 @@ test.describe("the room, through a camera and a microphone", () => {
    * every eight seconds, what it reads at eight seconds depends on where the
    * loop and the timer happen to meet. The test that does catch the old
    * algorithm every time is the one above.
+   *
+   * Each look reads a sixth of a second at a random point of the dance, and
+   * single readings of this footage run from 0.07 to 1, so the medians need
+   * enough of them: medians of six and four put the ratio outside these
+   * bounds about one run in twenty on noise alone, and CI met one at 1.65.
+   * Sixteen and eight bring that to about one in two hundred.
    */
   test("movement does not depend on how often the room is looked at", async () => {
+    test.setTimeout(180_000);
     const [often, seldom] = await Promise.all([
-      scene("peak", "peak", 2000, 6),
-      scene("peak", "peak", 8000, 4),
+      scene("peak", "peak", 2000, 16),
+      scene("peak", "peak", 8000, 8),
     ]);
     const ratio = seldom.movement / often.movement;
     expect(ratio, `${seldom.movement} every 8 s against ${often.movement} every 2 s`).toBeGreaterThan(0.6);
