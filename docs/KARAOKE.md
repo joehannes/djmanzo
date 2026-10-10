@@ -838,3 +838,112 @@ main bus before the master chain; eight or more outputs give the singers'
 monitor its own pair (`BusLayout::monitor`, after the booth); then the
 Singers surface's rows. `dj-engine` then depends on `dj-vocal` as well as
 `dj-dsp` and `dj-core` — still nothing that does I/O.
+
+## 7. Singers from the room (K4)
+
+*Designed 10 October 2026, before any code, as the roadmap asks of every K
+after K3.* The outline: a guest puts themselves on the rotation from their
+phone, through the page the room already reaches for requests; their key and
+guide vocal arrive as proposals; whoever is called presses *Ready*; the host
+decides who may add, how many songs each, and whether a phone may choose a
+key; the singers' screen gains an up-next ticker, a line of the host's own and
+the logo; guests' photos appear under the words through a queue the host
+approves.
+
+### One page, two books
+
+The same server, port and QR code as requests (`dj_net::front`), so a room
+that already scans one sticker scans nothing new. The page gains a second
+part, *Sing*, shown only while the host has sign-ups open — a switch of its
+own, off by default and separate from requests, because a bar can take
+requests all night and karaoke sign-ups for one hour of it. Behind it, a
+second book beside the request book, under the same rule: **a phone can add
+to a book and reach nothing else.** `Doorman` gains `POST /sing` and `POST
+/ready`, and holds what it held before — an `Arc<Front>`, now carrying both
+books — so there is still no path from the room to a deck, a parameter or
+the rotation itself.
+
+The application moves what the book holds into the rotation, on its own
+thread, as the host would: `Rotation::ask(name, song)` — first come, first
+served, one song a turn, the rules §107 already keeps — with the singer
+marked as having come from a phone. The rotation stays the host's: moving,
+removing and calling are unchanged, and a phone never sees another singer's
+song.
+
+### What a phone may choose
+
+**A song from the songbook.** The songbook is the records in the collection
+that have words — a karaoke song with no words on the screen is a failure on
+stage. The phone types, and `GET /songbook?q=` answers with at most twelve
+matches, title and artist only: no path, no file, no hash, and a token valid
+for this night that names the record to `POST /sing`. Off when the host turns
+it off; a room where the songbook is not offered writes its song as text,
+which arrives like a request — matched to a record by the host before it can
+be called.
+
+**Its own name, once.** One phone puts down one singer: a phone that signed
+up *Ana* cannot also put down *Bob* — friends sign up on their own phones,
+and the host adds anyone by hand. Counted, like requests, by the phone's
+address, with the caveat requests already say: a venue that puts every phone
+behind one address makes that one phone. Names are 40 characters at most.
+
+### What the host decides
+
+In the Singers panel, *From phones*: sign-ups open or closed; songs waiting
+per singer — one, two or three, one by default, so a phone cannot fill the
+night; whether a phone may propose a key; whether it may propose the guide
+vocal. Each says on the page what it allows, so a guest is never shown a
+choice that will be refused.
+
+### Proposals, not settings
+
+A key (seven semitones either way, as `KEY_RANGE` already bounds it) and the
+guide vocal (*As recorded · Guide · Out*) chosen on a phone are **proposals**:
+the host's row shows *asks −2 · guide* with *Take* and *No thanks*, and
+nothing changes until the host takes it. What a phone sends cannot move a
+deck, by construction — it has no path to one — and cannot move a key the
+host set, by this rule.
+
+### Ready
+
+The phone that signed up shows its own place — *3rd* — and nothing about
+anybody else's song; no time is promised, because a host who lets one singer
+do two songs makes every estimate wrong. Up next, the page shows one large
+*I'm ready*; pressing it marks the singer ready on the host's row. The host
+still calls: a singer not ready when called goes to the bottom, as §107's
+rule already says, phone or not.
+
+### The singers' screen
+
+An up-next ticker under the words: the next three names from the rotation's
+order, never their songs. A line of the host's own (80 characters: *Last
+orders at one*). The logo `brand.rs` already keeps, in a corner. All three
+below the words and their veil, and none can cover a lyric.
+
+### Photos
+
+A guest may send one photo from the page, shown on the screen while they sing
+— never before the host approves it. JPEG or PNG, at most 5 MB, decoded and
+drawn again at 1280 pixels on its long side, which drops what the file
+carried besides the picture — where it was taken, and when. Kept in memory
+only, listed in the Singers panel to approve or refuse, and gone at *New
+night*: never written to disk, never in the guest book. The page says what
+happens to it before the button: *shown on the screen in this room tonight,
+if the host approves it.*
+
+### Not here
+
+The guest book. A name typed on a phone is tonight's rotation only. A guest
+is kept, with their own consent, at the host's screen (§123); the page does
+not ask, because a consent ticked on a phone in a loud bar is not one.
+
+### The order
+
+1. **Sign-ups** — the book, the page's *Sing*, the songbook, the host's
+   switches and limits, the rotation fed from it, *I'm ready*.
+2. **Proposals** — key and guide vocal, taken or refused at the host's row.
+3. **The screen** — the ticker, the host's line, the logo.
+4. **Photos** — sent, approved, shown, forgotten.
+
+Each is held by tests over a real socket, as requests are, and driven with a
+browser playing the phone against the running application.
