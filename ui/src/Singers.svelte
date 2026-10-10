@@ -25,6 +25,7 @@
     karaokeClear,
     karaokeKey,
     karaokeLeave,
+    karaokeLine,
     karaokeMove,
     karaokeNotHere,
     karaokeRefuse,
@@ -607,6 +608,20 @@
     <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
   </form>
 
+  <!--
+    K4: a line of the host's own under the words on the singers' screen.
+    Kept on Enter or on leaving the field; empty takes it away.
+  -->
+  <label class="line-field">
+    On the singers' screen
+    <input
+      maxlength="80"
+      value={rotation?.line ?? ""}
+      onchange={(event) => void change(karaokeLine(event.currentTarget.value))}
+      data-host-line
+    />
+  </label>
+
   {#if phones}
     <!--
       K4: singers put their own names down from their phones, through the
@@ -986,5 +1001,10 @@
   .asks span,
   .asked {
     color: var(--warn);
+  }
+  .line-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
   }
 </style>

@@ -66,6 +66,36 @@ async function open(page: Page) {
 
 test.describe("§107: the singers' screen", () => {
   /**
+   * **K4: under the words, who is next and with what, the two after them by
+   * name only, and the host's line.** Ana is singing (deck 2, her vocal
+   * out), so Ben is next; Cleo and Dan follow, their songs not shown.
+   */
+  test("shows who is next, the two after by name, and the host's line", async ({ page }) => {
+    const four = {
+      singers: [
+        ...ROTATION.singers,
+        { name: "Cleo", songs: [{ title: "Secret Song", track: null, path: null, key: 0 }], turns: 0 },
+        { name: "Dan", songs: [{ title: "Another Secret", track: null, path: null, key: 0 }], turns: 0 },
+        { name: "Eve", songs: [{ title: "Third", track: null, path: null, key: 0 }], turns: 0 },
+      ],
+      up_next: "Ana",
+      lately: [],
+      line: "Last orders at one",
+    };
+    await openShell(page, "/?panel=singers", {}, { singer_lyrics: WORDS, karaoke_rotation: four });
+    await expect(page.locator(SCREEN)).toBeVisible();
+    await singing(page, 14.5);
+    await expect(page.locator(`${SCREEN} [data-up-next]`)).toHaveText("Next: Ben — Hey Jude");
+    await expect(page.locator(`${SCREEN} [data-then]`)).toHaveText("then Cleo · Dan");
+    await expect(page.locator(SCREEN)).not.toContainText("Secret");
+    await expect(page.locator(SCREEN)).not.toContainText("Eve");
+    await expect(page.locator(`${SCREEN} [data-host-line]`)).toHaveText("Last orders at one");
+    // No logo set, none drawn.
+    await expect(page.locator(`${SCREEN} [data-logo]`)).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The load-bearing one: the line being sung, wiped as it is sung, the
    * next under it, from the deck the singer is on.** Deck 1 is playing too,
    * with its vocal in: the screen must follow deck 2, where the vocal is out.

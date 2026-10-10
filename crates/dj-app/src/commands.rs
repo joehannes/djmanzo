@@ -15098,6 +15098,8 @@ pub struct RotationDto {
     /// The last few songs sung, newest first: what the host glances at to
     /// answer "did I already sing tonight?".
     pub lately: Vec<crate::karaoke::Sung>,
+    /// K4: the host's line on the singers' screen.
+    pub line: String,
 }
 
 fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
@@ -15105,6 +15107,7 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         singers: rotation.singers.clone(),
         up_next: rotation.up_next().map(|(singer, _)| singer.name.clone()),
         lately: rotation.history.iter().rev().take(12).cloned().collect(),
+        line: rotation.line.clone(),
     }
 }
 
@@ -15265,6 +15268,13 @@ pub fn karaoke_ask(
     } else {
         Err("a request needs a singer's name and a song".to_owned())
     }
+}
+
+/// K4: the host's line on the singers' screen; empty takes it away.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_line(state: State<'_, AppState>, text: String) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.set_line(&text))
 }
 
 /// K4: take what a singer asked for from their phone, on their next song.

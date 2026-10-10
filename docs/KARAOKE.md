@@ -915,8 +915,9 @@ rule already says, phone or not.
 
 ### The singers' screen
 
-An up-next ticker under the words: the next three names from the rotation's
-order, never their songs. A line of the host's own (80 characters: *Last
+An up-next ticker under the words: the next singer with their song, as the
+screen already showed (§107), and the two after them by name only — their
+songs are theirs to announce. A line of the host's own (80 characters: *Last
 orders at one*). The logo `brand.rs` already keeps, in a corner. All three
 below the words and their veil, and none can cover a lyric.
 
@@ -981,3 +982,11 @@ calling order the same with ✓ and ✗. Taken, the key is the song's key and
 the guide its `voice`, which *Load on* sets on the deck with the key;
 refused, the song is as it was. Not yet: a refusal sends the phone back
 with its name but not its choices.
+
+**Step 3, the screen — built (10 October).** Under the words: *Next:* the
+next singer and their song, as before; *then* the two after them, names
+only; and the host's line, written in the Singers panel's *On the singers'
+screen* — one line, eighty characters at most, whitespace folded, kept with
+the rotation (`Rotation::line`) and gone at *New night*. The DJ's logo, from
+`brand.rs`, sits in the top right corner, beside the song's name and away
+from the words, and follows a new logo without a restart.

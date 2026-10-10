@@ -28,6 +28,9 @@ Versioning follows semver, with one project-specific convention:
   it, the phone offers the key and what to do with the record's own singer;
   your row shows *asks key -2 · guide* with *Take* and *No thanks*. Nothing
   changes until you take it, and *Load on* then sets both on the deck.
+- **More on the singers' screen (K4).** Under the next singer, the two after
+  them by name; a line of your own (*On the singers' screen* in the Singers
+  panel — *Last orders at one*); and your logo in the corner.
 
 ## v0.40.0 — Packs to make and share, and records in Opus
 

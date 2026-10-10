@@ -25,10 +25,17 @@
    * (`./Visuals.svelte`). They are a canvas the words do not depend on — no
    * WebGL, a lost context or a picture that will not compile leaves K1's
    * background as it was.
+   *
+   * Under the words (K4): who is next and with what, the two after them by
+   * name only, and a line of the host's own; the DJ's logo in a corner. All
+   * below the words or beside the song's name, so none can cover a lyric.
    */
   import {
     artUrl,
+    hasBrandLogo,
     karaokeRotation,
+    logoUrl,
+    onBrandLogo,
     lookChosen,
     looksCatalogue,
     singerBackdrop,
@@ -178,11 +185,26 @@
    * Who is next. While a song plays its singer is still at the top of the
    * rotation — a host marks it sung when it ends — so next is the one after.
    */
-  const next = $derived.by(() => {
+  const queue = $derived.by(() => {
     const waiting = (rotation?.singers ?? []).filter((s) => s.songs.length > 0);
     const singing = deck?.playing && (deck.voice ?? 1) < 0.99;
-    const person = singing ? waiting[1] : waiting[0];
-    return person ? { name: person.name, song: person.songs[0].title } : null;
+    return singing ? waiting.slice(1) : waiting;
+  });
+  const next = $derived(queue[0] ? { name: queue[0].name, song: queue[0].songs[0].title } : null);
+  /** K4: the two after that, by name only — their songs are theirs to announce. */
+  const then = $derived(queue.slice(1, 3).map((s) => s.name));
+
+  /** K4: the DJ's logo, when there is one; asked again when it changes. */
+  let logo = $state<number | null>(null);
+  $effect(() => {
+    let version = 0;
+    const ask = () =>
+      void hasBrandLogo()
+        .then((has) => (logo = has ? ++version : null))
+        .catch(() => (logo = null));
+    ask();
+    const off = onBrandLogo(ask);
+    return () => void off.then((unlisten) => unlisten()).catch(() => {});
   });
 </script>
 
@@ -260,8 +282,20 @@
     {/if}
   </div>
 
-  {#if next}
-    <p class="up-next" data-up-next>Next: <strong>{next.name}</strong> — {next.song}</p>
+  <div class="foot">
+    {#if next}
+      <p class="up-next" data-up-next>Next: <strong>{next.name}</strong> — {next.song}</p>
+    {/if}
+    {#if then.length > 0}
+      <p class="then" data-then>then {then.join(" · ")}</p>
+    {/if}
+    {#if rotation?.line}
+      <p class="host-line" data-host-line>{rotation.line}</p>
+    {/if}
+  </div>
+
+  {#if logo !== null}
+    <img class="logo" src={logoUrl(logo)} alt="" data-logo onerror={() => (logo = null)} />
   {/if}
 </div>
 
@@ -440,5 +474,34 @@
 
   .up-next strong {
     color: var(--stem-vocal);
+  }
+
+  .foot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6vh;
+  }
+
+  .then {
+    margin: 0;
+    font-size: 2.4vh;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .host-line {
+    margin: 0;
+    font-size: 2.6vh;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* In the corner, above nothing: the words are in the middle. */
+  .screen > .logo {
+    position: absolute;
+    top: 3vh;
+    right: 3vw;
+    max-height: 8vh;
+    max-width: 14vw;
+    object-fit: contain;
+    opacity: 0.9;
   }
 </style>

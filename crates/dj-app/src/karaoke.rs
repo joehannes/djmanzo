@@ -114,7 +114,15 @@ pub struct Rotation {
     /// Oldest first. Kept across nights, because keys are.
     #[serde(default)]
     pub history: Vec<Sung>,
+    /// K4: a line of the host's own under the words on the singers' screen
+    /// — *Last orders at one*. Empty shows nothing.
+    #[serde(default)]
+    pub line: String,
 }
+
+/// K4: the longest line the host may put on the singers' screen, in
+/// characters: one line, read across a room.
+pub const LONGEST_LINE: usize = 80;
 
 /// K3: a singer on one of the singers' microphones (docs/KARAOKE.md §6).
 ///
@@ -383,9 +391,26 @@ impl Rotation {
         true
     }
 
-    /// A new night: everybody off the list, the history kept.
+    /// A new night: everybody off the list and the host's line gone, the
+    /// history kept.
     pub fn clear(&mut self) {
         self.singers.clear();
+        self.line.clear();
+    }
+
+    /// K4: the host's line on the singers' screen: whitespace folded to one
+    /// line, cut at [`LONGEST_LINE`] characters. Answers whether it changed.
+    pub fn set_line(&mut self, text: &str) -> bool {
+        let line: String = text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(LONGEST_LINE)
+            .collect();
+        let changed = line != self.line;
+        self.line = line;
+        changed
     }
 
     /// K4: what phones sent, taken into the rotation as the host's own
@@ -735,6 +760,23 @@ mod tests {
         );
         // Nothing new: nothing to keep.
         assert!(!rotation.from_phones(&mut stage, |_| None));
+    }
+
+    /// **K4: the host's line is one line, at most eighty characters, and a
+    /// new night takes it away.**
+    #[test]
+    fn the_hosts_line_is_one_short_line_for_tonight() {
+        let mut rotation = Rotation::default();
+        assert!(rotation.set_line("  Last orders\n at one  "));
+        assert_eq!(rotation.line, "Last orders at one");
+        assert!(
+            !rotation.set_line("Last orders at one"),
+            "the same again changes nothing"
+        );
+        rotation.set_line(&"x".repeat(200));
+        assert_eq!(rotation.line.chars().count(), LONGEST_LINE);
+        rotation.clear();
+        assert_eq!(rotation.line, "");
     }
 
     /// **K4: what a singer asks for waits for the host**, applied only when

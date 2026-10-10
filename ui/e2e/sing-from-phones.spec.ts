@@ -100,6 +100,22 @@ test.describe("K4: singers from the room", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /** **K4: the host's line goes to the singers' screen**, kept on Enter. */
+  test("the host writes a line for the singers' screen", async ({ page }) => {
+    await singers(page);
+    const field = page.getByRole("textbox", { name: "On the singers' screen" });
+    await field.fill("  Last orders   at one ");
+    await field.press("Enter");
+    await expect(field).toHaveValue("Last orders at one");
+    const karaoke = await page.evaluate(
+      () => (window as unknown as { __karaoke?: { cmd: string; text?: string }[] }).__karaoke ?? [],
+    );
+    expect(karaoke.filter((c) => c.cmd === "karaoke_line")).toEqual([
+      { cmd: "karaoke_line", text: "  Last orders   at one " },
+    ]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /**
    * **What a singer asks for waits for the host.** Shown as asked; taken,
    * it becomes the song's key, and loading the song sets the deck's vocal

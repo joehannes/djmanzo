@@ -4977,9 +4977,12 @@ export interface Rotation {
   up_next: string | null;
   /** Newest first. */
   lately: Sung[];
+  /** K4: the host's line on the singers' screen. Empty shows nothing. */
+  line?: string;
 }
 
 export const karaokeRotation = () => invoke<Rotation>("karaoke_rotation");
+export const karaokeLine = (text: string) => invoke<Rotation>("karaoke_line", { text });
 export const karaokeAsk = (
   singer: string,
   title: string,

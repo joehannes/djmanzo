@@ -3006,6 +3006,14 @@ export async function openShell(
               const singer = rotation.singers.find((s) => s.name === args.singer);
               if (singer?.songs[0]) singer.songs[0].key = Math.max(-7, Math.min(7, Number(args.key)));
             }
+            // K4: the host's line, folded and cut as `Rotation::set_line` does.
+            if (cmd === "karaoke_line") {
+              (rotation as { line?: string }).line = String(args.text ?? "")
+                .split(/\s+/)
+                .filter(Boolean)
+                .join(" ")
+                .slice(0, 80);
+            }
             // K4: a phone's proposal taken or refused, as `Rotation::take_asks`.
             if (cmd === "karaoke_take" || cmd === "karaoke_refuse") {
               const song = rotation.singers.find((s) => s.name === args.singer)?.songs[0] as
