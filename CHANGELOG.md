@@ -31,6 +31,12 @@ Versioning follows semver, with one project-specific convention:
   settings; its fingerprint is shown so you can give it out with the pack,
   and every pack you make with it can update the last. What is written is
   checked as an install checks it before it is said to be made.
+- **Browse packs from an index (§122).** *Browse packs…* reads the indexes
+  you keep — the community index in djmanzo's repository to begin with, and
+  any other you add — only when you open it, and lists their packs with
+  what you have of each. *Get…* downloads one and shows it, licence first,
+  before anything is installed; a pack not signed by the key its index
+  names is refused. To list your own pack, see `community/README.md`.
 
 ## v0.39.0 — Layers behind the words, MilkDrop, the artist, and looks your AI picks
 

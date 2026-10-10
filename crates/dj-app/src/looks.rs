@@ -343,7 +343,17 @@ struct Inner {
     /// Step 7: the packs installed, each checked when it was read, with its
     /// manifest when it passed.
     packs: Vec<(crate::packs::Installed, Option<crate::packs::Manifest>)>,
+    /// Step 7c: the packs the last browse listed, so one is fetched by the
+    /// index and name it was listed under, never by an address from the
+    /// interface.
+    browsed: Vec<crate::packindex::Listed>,
 }
+
+/// Where the DJ's list of pack indexes is kept.
+const INDEXES: &str = "pack-indexes.json";
+
+/// The most indexes a DJ keeps.
+const MOST_INDEXES: usize = 20;
 
 /// Where installed packs are kept, beside the other settings.
 const PACKS: &str = "packs";
@@ -682,6 +692,104 @@ impl Looks {
         Self::save(inner.dir.as_deref(), SETTINGS, &inner.chosen);
         drop(inner);
         Ok(self.packs())
+    }
+
+    /// Step 7c: the indexes the DJ reads packs from, in order: the
+    /// community index until the list is changed.
+    #[must_use]
+    pub fn pack_indexes(&self) -> Vec<String> {
+        self.inner()
+            .dir
+            .as_ref()
+            .and_then(|dir| std::fs::read_to_string(dir.join(INDEXES)).ok())
+            .and_then(|text| serde_json::from_str::<Vec<String>>(&text).ok())
+            .unwrap_or_else(|| vec![crate::packindex::COMMUNITY.to_owned()])
+    }
+
+    /// Step 7c: read packs from `url` too.
+    ///
+    /// # Errors
+    /// Not https (or http to this machine), listed already, or too many.
+    pub fn add_pack_index(&self, url: &str) -> Result<Vec<String>, String> {
+        let url = url.trim();
+        if !crate::packindex::allowed(url) {
+            return Err("an index's address must be https".to_owned());
+        }
+        let mut urls = self.pack_indexes();
+        if urls.iter().any(|kept| kept == url) {
+            return Err("that index is in the list already".to_owned());
+        }
+        if urls.len() >= MOST_INDEXES {
+            return Err(format!("the list holds {MOST_INDEXES} indexes at most"));
+        }
+        urls.push(url.to_owned());
+        let inner = self.inner();
+        Self::save(inner.dir.as_deref(), INDEXES, &urls);
+        Ok(urls)
+    }
+
+    /// Step 7c: stop reading packs from `url`; the community index too.
+    ///
+    /// # Errors
+    /// It is not in the list.
+    pub fn remove_pack_index(&self, url: &str) -> Result<Vec<String>, String> {
+        let mut urls = self.pack_indexes();
+        let before = urls.len();
+        urls.retain(|kept| kept != url);
+        if urls.len() == before {
+            return Err("that index is not in the list".to_owned());
+        }
+        let mut inner = self.inner();
+        inner.browsed.retain(|listed| listed.index != url);
+        Self::save(inner.dir.as_deref(), INDEXES, &urls);
+        Ok(urls)
+    }
+
+    /// Step 7c: keep what a browse listed, to fetch from.
+    pub fn remember_browsed(&self, browsed: &crate::packindex::Browsed) {
+        self.inner().browsed.clone_from(&browsed.packs);
+    }
+
+    /// Step 7c: the entry the last browse listed in `index` as `name`.
+    ///
+    /// # Errors
+    /// The last browse listed no such pack.
+    pub fn listed(&self, index: &str, name: &str) -> Result<crate::packindex::Entry, String> {
+        self.inner()
+            .browsed
+            .iter()
+            .find(|listed| listed.index == index && listed.entry.name == name)
+            .map(|listed| listed.entry.clone())
+            .ok_or_else(|| format!("no index lists a pack called {name:?}: browse again"))
+    }
+
+    /// Step 7c: keep a pack downloaded for `entry` where it can be installed
+    /// from, and show it as *Add a pack…* does — refused, with why, when it
+    /// is not the pack the index lists. One download is kept at a time.
+    ///
+    /// # Errors
+    /// There is no settings folder yet, or it could not be written.
+    pub fn downloaded(
+        &self,
+        entry: &crate::packindex::Entry,
+        bytes: &[u8],
+    ) -> Result<(PathBuf, crate::packs::Inspected), String> {
+        let folder = self
+            .packs_folder()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?
+            .join(".downloads");
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+        let path = folder.join("pack.djpack");
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        let mut seen = self.inspect_pack(&path);
+        if seen.problem.is_none() {
+            seen.problem = crate::packs::read_archive(&path)
+                .and_then(crate::packs::check)
+                .and_then(|pack| crate::packindex::matches(&pack, entry))
+                .err();
+        }
+        Ok((path, seen))
     }
 
     /// Step 7b: the DJ's signing key — made the first time it is asked

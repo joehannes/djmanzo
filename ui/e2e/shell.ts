@@ -778,6 +778,8 @@ export const ANSWERS: Record<string, unknown> = {
   // §122 step 7: no packs until a test adds one; what a pack file reads as is
   // the test's to say, the checking being Rust's and tested there.
   packs_installed: [],
+  pack_indexes: ["https://raw.githubusercontent.com/joehannes/djmanzo/main/community/packs.json"],
+  packs_browsed: { indexes: [], packs: [] },
   // §122 step 5: no artist's photographs unless a test says so.
   artist_pictures: { artist: null, key: null, state: "unknown", pictures: [], why: null },
   phone_camera_status: {
@@ -2569,6 +2571,30 @@ export async function openShell(
               looks: making.presets.length,
               key: "9f8e 7d6c 5b4a 3928",
             });
+          }
+          // Step 7c: the DJ's indexes, kept as Rust keeps them (https only),
+          // browsed as a test says they read, and a pack got from one shown
+          // as the test says it is seen.
+          if (cmd === "pack_indexes") return Promise.resolve(structuredClone((win.__packIndexes ??= structuredClone(answers.pack_indexes))));
+          if (cmd === "pack_index_add" || cmd === "pack_index_remove") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
+            const urls = (win.__packIndexes ??= structuredClone(answers.pack_indexes)) as string[];
+            const url = String(args.url);
+            if (cmd === "pack_index_add") {
+              if (!url.startsWith("https://")) return Promise.reject("an index's address must be https");
+              urls.push(url);
+            } else {
+              urls.splice(urls.indexOf(url), 1);
+            }
+            return Promise.resolve(structuredClone(urls));
+          }
+          if (cmd === "packs_browse") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd });
+            return Promise.resolve(structuredClone(answers.packs_browsed));
+          }
+          if (cmd === "pack_get") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
+            return Promise.resolve({ path: "/home/dj/.config/djmanzo/packs/.downloads/pack.djpack", seen: structuredClone(answers.pack_inspected) });
           }
           if (cmd === "pack_remove") {
             ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });

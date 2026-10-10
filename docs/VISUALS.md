@@ -716,3 +716,87 @@ Ed25519 key, holding Bloom's preset as `milkdrop/neon.json` and two looks.
   `.djpack` added to a bare name; a preset chosen twice let through; the form
   not waiting for the DJ's word or for a licence; undrawable presets offered;
   every preset sent rather than those chosen.
+
+**Step 7c — the design (10 October): the community index.**
+- **An index is a JSON file anywhere on the web**, read only when the DJ
+  presses *Browse packs*, never in the background:
+  `{"format": 1, "name": "…", "packs": [{"name", "author", "licence",
+  "version", "description", "url", "key"}]}` — `url` the `.djpack`'s
+  address (https), `key` the fingerprint its pack is signed with. At most
+  1 MB and 500 packs; an entry missing a field or with an address that is
+  not https is left out and counted, never shown half.
+- **Which indexes are read is the DJ's list**, kept in
+  `pack-indexes.json`. It starts with the community index in this
+  repository, `community/packs.json`, read from GitHub's raw address —
+  free, public, and added to by pull request. The DJ adds any other (https,
+  or `http://` on their own machine) and removes any, the community one
+  included.
+- **Getting a pack downloads it and shows it as *Add a pack…* does**,
+  licence first, before anything is installed: at most 25 MB, into
+  `packs/.downloads/`, checked whole by `dj_app::packs::check`. **The
+  index's word is checked too**: a pack whose key is not the fingerprint
+  the index lists, or whose name is not the one it lists, is refused and
+  says so — an index cannot send a DJ someone else's pack under a trusted
+  maker's name, and a maker's pack swapped on its host fails its own
+  signature.
+- **Listed with what the DJ has**: each pack says *Installed*, *Update to
+  1.1.0* (same name, same key, other version) or *Signed by another key
+  than yours* (same name, another key — refused at install, as 7a does).
+- **Publishing** is step 7b's *Make a pack…*, the file put anywhere that
+  serves it (a release on the maker's own repository, say), and a pull
+  request adding its line — name, address and fingerprint — to
+  `community/packs.json`.
+
+**Step 7c — built (10 October), as designed above** (`dj_app::packindex`):
+- *Packs — Browse packs…* reads the DJ's indexes once each time it is opened
+  and lists every pack once, from the first index naming it, with its
+  version, maker, licence and what the DJ has of it. An index that could not
+  be read says why ("Not read: it answered 404"), and one whose entries are
+  not all whole says how many it left out.
+- *Get…* downloads the pack, checks it, and shows it where *Add a pack…*
+  shows a file — refused, with why, when it is not the pack the index lists.
+  *Install* installs the file it got. Commands: `pack_indexes`,
+  `pack_index_add`, `pack_index_remove`, `packs_browse`, `pack_get`.
+- `community/packs.json` and its README are the community index and how to
+  add to it.
+
+**Driven in WebKitGTK**, with a fresh home and an index served on
+`http://127.0.0.1` listing *Booth Lights* (the pack 7b made, under its real
+fingerprint), *Fake Lights* (the same file under another key) and an entry
+with an `ftp:` address:
+- Browsing read the community index through the network — it answered 404,
+  not having reached `main` yet, and said so — and the local one: "2 packs ·
+  1 left out, not whole".
+- *Get…* on *Fake Lights* downloaded it and refused it: "Booth Lights cannot
+  be installed: it is signed by the key 2622 cdeb 7fc8 f353, and the index
+  says ffff ffff ffff ffff signs it".
+- *Get…* on *Booth Lights* showed its licence and key; *Install* put it in
+  `packs/booth-lights-2622cdeb/`, and the list read *Installed* — and still
+  did after a restart, with the added index kept.
+- Driving it found two faults, both fixed: with three buttons the Packs row
+  broke each label over two lines, and the community index's long address
+  pushed the panel into scrolling sideways.
+
+**Tested:**
+- 6 Rust tests:
+  - an index shows only whole entries: a field missing, an address not
+    https (http only to this machine), a key not a fingerprint, a name
+    listed twice, a newer format, not JSON, too large
+  - browsing reads the indexes in order, lists each pack once against what
+    is installed (new, installed, an update, another key's), says why of an
+    index it could not read, and never asks an address not allowed
+  - a pack must be the one its index lists: another key or another name is
+    refused; too large, or refused by its host, is not taken
+  - the DJ's list: the community index first, https only, each once, kept
+    between runs, the community one removable; a pack fetched only by the
+    index and name the last browse listed, shown and not installed,
+    refused when forged, installed from where it was kept
+  - the community index in this repository is one this djmanzo reads
+- 2 browser tests:
+  - nothing read until *Browse packs…*; each pack's state; an unreadable
+    index's reason; *Get…* shows licence and key, *Install* installs the
+    file got, and the pack reads as installed
+  - an index added only by https, removed, each change read again
+- **Mutation-tested:** 11 mutants fail them (8 Rust, 3 interface). One
+  interface mutant did not build at first, and so proved nothing; it was
+  rewritten to build, and fails them.

@@ -781,6 +781,107 @@ test.describe("§122 step 7b: making a pack of the DJ's presets", () => {
   });
 });
 
+test.describe("§122 step 7c: packs from an index", () => {
+  const COMMUNITY = "https://raw.githubusercontent.com/joehannes/djmanzo/main/community/packs.json";
+  const listed = (name: string, state: string) => ({
+    index: COMMUNITY,
+    name,
+    author: "A Maker",
+    licence: "CC BY 4.0",
+    version: "1.0.0",
+    description: `${name}, for late nights.`,
+    url: `https://example.org/${name}.djpack`,
+    key: "0a1b 2c3d 4e5f 6a7b",
+    state,
+  });
+  const BROWSED = {
+    indexes: [
+      { url: COMMUNITY, name: "djmanzo community packs", packs: 3, left_out: 1, problem: null },
+      { url: "https://gone.example/index.json", name: "", packs: 0, left_out: 0, problem: "it answered 404" },
+    ],
+    packs: [listed("Neon Nights", "new"), listed("Old Gold", "installed"), listed("Theirs", "other_key")],
+  };
+
+  /**
+   * **Read only when asked, and shown before installed.** Opening the browser
+   * reads the DJ's indexes once; each pack says what the DJ has of it, an
+   * index that could not be read says why, and *Get…* shows the pack's
+   * licence and key before anything is installed — then installs the file
+   * it got, and the pack reads as installed.
+   */
+  test("a pack from an index is shown with its licence, then installed", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, {
+      pack_indexes: [COMMUNITY, "https://gone.example/index.json"],
+      packs_browsed: BROWSED,
+      pack_inspected: {
+        name: "Neon Nights",
+        author: "A Maker",
+        licence: "CC BY 4.0",
+        version: "1.0.0",
+        description: "Neon colours.",
+        looks: ["Neon"],
+        presets: 1,
+        key: "0a1b 2c3d 4e5f 6a7b",
+        installed: null,
+        problem: null,
+      },
+    });
+    const asked = () => page.evaluate(() => (window as unknown as { __packAsked?: { cmd: string }[] }).__packAsked ?? []);
+    expect(await asked(), "nothing is read before the DJ asks").toEqual([]);
+    await page.getByRole("button", { name: "Browse packs…" }).click();
+    const browser = page.locator("[data-pack-browser]");
+    await expect(browser.locator(`[data-pack-index="${COMMUNITY}"]`)).toContainText("djmanzo community packs");
+    await expect(browser.locator(`[data-pack-index="${COMMUNITY}"]`)).toContainText("1 left out");
+    await expect(browser.locator('[data-pack-index="https://gone.example/index.json"]')).toContainText(
+      "Not read: it answered 404",
+    );
+    await expect(browser.locator('[data-pack-offer="Old Gold"]')).toContainText("Installed");
+    await expect(browser.getByRole("button", { name: "Get Old Gold" })).toHaveCount(0);
+    await expect(browser.locator('[data-pack-offer="Theirs"]')).toContainText("another key");
+    await expect(browser.getByRole("button", { name: "Get Theirs" })).toHaveCount(0);
+    expect((await asked()).map((a) => a.cmd)).toEqual(["packs_browse"]);
+
+    await browser.getByRole("button", { name: "Get Neon Nights" }).click();
+    const pending = page.locator("[data-pack-pending]");
+    await expect(pending.locator("[data-pack-licence]")).toHaveText("Licence: CC BY 4.0");
+    await expect(pending.locator("[data-pack-key]")).toContainText("0a1b 2c3d 4e5f 6a7b");
+    expect((await asked()).at(-1)).toEqual({ cmd: "pack_get", index: COMMUNITY, name: "Neon Nights" });
+    await pending.getByRole("button", { name: "Install" }).click();
+    expect((await asked()).at(-1)).toEqual({
+      cmd: "pack_install",
+      path: "/home/dj/.config/djmanzo/packs/.downloads/pack.djpack",
+    });
+    await expect(browser.locator('[data-pack-offer="Neon Nights"]')).toContainText("Installed");
+    await expect(browser.getByRole("button", { name: "Get Neon Nights" })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("an index is added only by https, and removed, each read again", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, { packs_browsed: { indexes: [], packs: [] } });
+    await page.getByRole("button", { name: "Browse packs…" }).click();
+    const browser = page.locator("[data-pack-browser]");
+    await expect(browser).toContainText("list no packs yet");
+    const address = browser.getByLabel("Another index's address");
+    await address.fill("http://example.org/index.json");
+    await browser.getByRole("button", { name: "Add an index" }).click();
+    await expect(page.getByRole("alert")).toContainText("must be https");
+    await address.fill("https://example.org/index.json");
+    await browser.getByRole("button", { name: "Add an index" }).click();
+    await expect(browser.locator('[data-pack-index="https://example.org/index.json"]')).toBeVisible();
+    await browser.getByRole("button", { name: `Stop reading ${COMMUNITY}` }).click();
+    await expect(browser.locator(`[data-pack-index="${COMMUNITY}"]`)).toHaveCount(0);
+    const asked = await page.evaluate(() => (window as unknown as { __packAsked: { cmd: string }[] }).__packAsked);
+    expect(asked.map((a) => a.cmd)).toEqual([
+      "packs_browse",
+      "pack_index_add",
+      "pack_index_add",
+      "packs_browse",
+      "pack_index_remove",
+      "packs_browse",
+    ]);
+  });
+});
+
 test.describe("§122: picking the look", () => {
   test("the Singers panel offers djmanzo's looks, says what each is for, and off", async ({ page }) => {
     await openShell(page, "/?panel=karaoke");

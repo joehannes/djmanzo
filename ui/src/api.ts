@@ -6154,6 +6154,49 @@ export interface PackMade {
   key: string;
 }
 
+/** §122 step 7c: a pack as an index lists it. See `dj_app::packindex::Listed`. */
+export interface PackListed {
+  /** The index it is listed in. */
+  index: string;
+  name: string;
+  author: string;
+  licence: string;
+  version: string;
+  description: string;
+  url: string;
+  /** The fingerprint the index says it is signed with. */
+  key: string;
+  /** What the DJ has of it. */
+  state: "new" | "installed" | "update" | "other_key";
+}
+
+/** §122 step 7c: one index as read. See `dj_app::packindex::Seen`. */
+export interface PackIndexSeen {
+  url: string;
+  name: string;
+  packs: number;
+  left_out: number;
+  problem: string | null;
+}
+
+export interface PacksBrowsed {
+  indexes: PackIndexSeen[];
+  packs: PackListed[];
+}
+
+/** §122 step 7c: a pack fetched from an index, shown before installing. */
+export interface PackGot {
+  path: string;
+  seen: PackInspected;
+}
+
+export const packIndexes = () => invoke<string[]>("pack_indexes");
+export const packIndexAdd = (url: string) => invoke<string[]>("pack_index_add", { url });
+export const packIndexRemove = (url: string) => invoke<string[]>("pack_index_remove", { url });
+/** Reads the DJ's indexes now; nothing is read until this is asked. */
+export const packsBrowse = () => invoke<PacksBrowsed>("packs_browse");
+export const packGet = (index: string, name: string) => invoke<PackGot>("pack_get", { index, name });
+
 /** The DJ's signing key, made the first time it is asked for. */
 export const packKey = () => invoke<PackKey>("pack_key");
 export const packMake = (making: PackMaking, path: string) => invoke<PackMade>("pack_make", { making, path });

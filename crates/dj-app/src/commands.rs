@@ -483,6 +483,83 @@ pub fn pack_make(
         .make_pack(&making, std::path::Path::new(&path))
 }
 
+/// §122 step 7c: the indexes packs are read from, in order.
+#[tauri::command]
+#[must_use]
+pub fn pack_indexes(state: State<'_, AppState>) -> Vec<String> {
+    state.looks().pack_indexes()
+}
+
+/// §122 step 7c: read packs from another index.
+///
+/// # Errors
+/// Not https, listed already, or too many.
+#[tauri::command]
+pub fn pack_index_add(state: State<'_, AppState>, url: String) -> Result<Vec<String>, String> {
+    state.looks().add_pack_index(&url)
+}
+
+/// §122 step 7c: stop reading packs from an index.
+///
+/// # Errors
+/// It is not in the list.
+#[tauri::command]
+pub fn pack_index_remove(state: State<'_, AppState>, url: String) -> Result<Vec<String>, String> {
+    state.looks().remove_pack_index(&url)
+}
+
+/// §122 step 7c: read the DJ's indexes now — only when asked — and list
+/// their packs against what is installed.
+///
+/// # Errors
+/// Never, as such: an index that cannot be read says why in what is listed.
+#[tauri::command]
+pub async fn packs_browse(state: State<'_, AppState>) -> Result<crate::packindex::Browsed, String> {
+    let urls = state.looks().pack_indexes();
+    let installed = state.looks().packs();
+    let client = reqwest::Client::new();
+    let browsed = crate::packindex::browse(&urls, &installed, |url, most| {
+        let client = client.clone();
+        async move { crate::packindex::fetch(&client, url, most).await }
+    })
+    .await;
+    state.looks().remember_browsed(&browsed);
+    Ok(browsed)
+}
+
+/// A pack fetched from an index, waiting for the DJ's yes or no.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PackGot {
+    /// Where it was kept, to install from.
+    pub path: String,
+    pub seen: crate::packs::Inspected,
+}
+
+/// §122 step 7c: download the pack the last browse listed in `index` as
+/// `name`, check it whole and against what the index says of it, and show it
+/// — nothing is installed.
+///
+/// # Errors
+/// The last browse listed no such pack, or it could not be downloaded.
+#[tauri::command]
+pub async fn pack_get(
+    state: State<'_, AppState>,
+    index: String,
+    name: String,
+) -> Result<PackGot, String> {
+    let entry = state.looks().listed(&index, &name)?;
+    let client = reqwest::Client::new();
+    let bytes = crate::packindex::download(&entry, |url, most| async move {
+        crate::packindex::fetch(&client, url, most).await
+    })
+    .await?;
+    let (path, seen) = state.looks().downloaded(&entry, &bytes)?;
+    Ok(PackGot {
+        path: path.display().to_string(),
+        seen,
+    })
+}
+
 /// §122 step 6: let the DJ's AI provider pick each record's look, or not.
 ///
 /// # Errors

@@ -9,16 +9,27 @@
    * Step 7b: the DJ makes a pack of their own presets, signed with their own
    * key — made the first time and kept beside the settings — once they have
    * said the presets are theirs to share under the licence they name.
+   *
+   * Step 7c: *Browse packs* reads the DJ's indexes — only when pressed — and
+   * lists their packs against what is installed; *Get…* downloads one and
+   * shows it here as *Add a pack…* does, licence first, refused when it is
+   * not the pack the index lists.
    */
   import { open, save } from "@tauri-apps/plugin-dialog";
   import {
     milkdropPresets,
+    packGet,
+    packIndexAdd,
+    packIndexRemove,
+    packIndexes,
     packInspect,
     packInstall,
     packKey,
     packMake,
     packRemove,
+    packsBrowse,
     packsInstalled,
+    type PacksBrowsed,
     type PackInspected,
     type PackInstalled,
     type PackKey,
@@ -54,12 +65,80 @@
     error = "";
     try {
       packs = await packInstall(pending.path);
+      const name = pending.seen.name;
+      browsing?.read?.packs.forEach((pack) => {
+        if (pack.name === name) pack.state = "installed";
+      });
       pending = null;
       onchange?.();
     } catch (e) {
       error = String(e);
     }
   }
+
+  /** The browser, while it is open: the DJ's indexes and what they list. */
+  let browsing = $state<{ urls: string[]; read: PacksBrowsed | null; reading: boolean; adding: string } | null>(null);
+
+  async function startBrowsing() {
+    error = "";
+    try {
+      browsing = { urls: await packIndexes(), read: null, reading: false, adding: "" };
+      await readIndexes();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function readIndexes() {
+    if (!browsing) return;
+    browsing.reading = true;
+    try {
+      browsing.read = await packsBrowse();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      if (browsing) browsing.reading = false;
+    }
+  }
+
+  async function addIndex() {
+    if (!browsing) return;
+    error = "";
+    try {
+      browsing.urls = await packIndexAdd(browsing.adding);
+      browsing.adding = "";
+      await readIndexes();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function removeIndex(url: string) {
+    if (!browsing) return;
+    error = "";
+    try {
+      browsing.urls = await packIndexRemove(url);
+      await readIndexes();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function get(index: string, name: string) {
+    error = "";
+    try {
+      const got = await packGet(index, name);
+      pending = { path: got.path, seen: got.seen };
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  const STATES: Record<string, string> = {
+    installed: "Installed",
+    update: "An update to yours",
+    other_key: "Yours is signed by another key",
+  };
 
   /** Licences a DJ is likely to share presets under; any other can be typed. */
   const LICENCES = ["CC BY 4.0", "CC BY-SA 4.0", "CC BY-NC 4.0", "CC0 1.0", "MIT"];
@@ -156,7 +235,69 @@
     <button class="quiet" onclick={() => void startMaking()} disabled={making !== null}>
       Make a pack of your presets…
     </button>
+    <button class="quiet" onclick={() => (browsing ? (browsing = null) : void startBrowsing())}>
+      {browsing ? "Close the browser" : "Browse packs…"}
+    </button>
   </div>
+  {#if browsing}
+    <section class="pending" aria-label="Packs from your indexes" data-pack-browser>
+      <p class="hint">
+        Read from these indexes when you open this, and not otherwise. Each pack is checked against its maker's
+        signature and against the key its index names before you see its licence.
+      </p>
+      <ul data-pack-indexes>
+        {#each browsing.urls as url (url)}
+          {@const seen = browsing.read?.indexes.find((index) => index.url === url)}
+          <li data-pack-index={url}>
+            <span class="name">{seen?.name || url}</span>
+            {#if seen?.problem}
+              <span class="problem" role="note">Not read: {seen.problem}</span>
+            {:else if seen}
+              <span class="note"
+                >{seen.packs === 1 ? "one pack" : `${seen.packs} packs`}{seen.left_out
+                  ? ` · ${seen.left_out} left out, not whole`
+                  : ""}</span
+              >
+            {/if}
+            <button class="quiet" onclick={() => void removeIndex(url)} aria-label={`Stop reading ${url}`}
+              >Remove</button
+            >
+          </li>
+        {/each}
+      </ul>
+      <div class="buttons">
+        <input
+          bind:value={browsing.adding}
+          aria-label="Another index's address"
+          onkeydown={(event) => event.key === "Enter" && void addIndex()}
+        />
+        <button onclick={() => void addIndex()} disabled={browsing.adding.trim() === ""}>Add an index</button>
+      </div>
+      {#if browsing.reading}
+        <p class="hint" role="status">Reading the indexes…</p>
+      {:else if browsing.read && browsing.read.packs.length === 0}
+        <p class="hint">These indexes list no packs yet.</p>
+      {:else if browsing.read}
+        <ul data-pack-listed>
+          {#each browsing.read.packs as pack (pack.name)}
+            <li data-pack-offer={pack.name}>
+              <span class="name">{pack.name}</span>
+              <span class="note">{pack.version} · {pack.author} · {pack.licence}</span>
+              {#if STATES[pack.state]}<span class="note" data-pack-state>{STATES[pack.state]}</span>{/if}
+              {#if pack.state !== "installed" && pack.state !== "other_key"}
+                <button
+                  class="quiet"
+                  onclick={() => void get(pack.index, pack.name)}
+                  aria-label={`Get ${pack.name}`}>Get…</button
+                >
+              {/if}
+              {#if pack.description}<span class="hint description">{pack.description}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  {/if}
   {#if making}
     <section class="pending" aria-label="Make a pack of your presets" data-pack-maker>
       {#if making.presets.length === 0}
@@ -278,8 +419,13 @@
   .head,
   .buttons {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .head button {
+    white-space: nowrap;
   }
 
   .pending {
@@ -322,6 +468,10 @@
     margin: 0;
   }
 
+  .description {
+    flex-basis: 100%;
+  }
+
   ul {
     list-style: none;
     margin: 0;
@@ -340,6 +490,7 @@
 
   .name {
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
 
   .note,

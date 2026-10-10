@@ -71,6 +71,7 @@ pub mod mood;
 pub mod night;
 pub mod obs;
 pub mod outline;
+pub mod packindex;
 pub mod packs;
 pub mod parts;
 pub mod peersync;
@@ -952,6 +953,11 @@ pub fn run() {
             commands::pack_remove,
             commands::pack_key,
             commands::pack_make,
+            commands::pack_indexes,
+            commands::pack_index_add,
+            commands::pack_index_remove,
+            commands::packs_browse,
+            commands::pack_get,
             commands::look_picked,
             commands::artist_picture,
             commands::word_timing,
