@@ -174,13 +174,10 @@ impl Decoder for OpusDecoder {
         self.buf.render_reserved(Some(frames));
         let gain = self.gain;
         let (left, right) = self.buf.chan_pair_mut(0, 1);
-        for ((l, r), pair) in left
-            .iter_mut()
-            .zip(right.iter_mut())
-            .zip(self.interleaved.chunks_exact(2))
-        {
-            *l = pair[0] * gain;
-            *r = pair[1] * gain;
+        let (pairs, _) = self.interleaved.as_chunks::<2>();
+        for ((l, r), [a, b]) in left.iter_mut().zip(right.iter_mut()).zip(pairs) {
+            *l = a * gain;
+            *r = b * gain;
         }
         let own = self.skip.min(frames);
         self.skip -= own;

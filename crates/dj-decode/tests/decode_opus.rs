@@ -277,7 +277,7 @@ fn a_mono_opus_record_plays_in_both_ears() {
         &webm(&packets, &opus_head(1, 0), 1),
     );
     assert_same(&got, &whole[PRE_SKIP * 2..]);
-    assert!(got.chunks_exact(2).all(|pair| pair[0] == pair[1]));
+    assert!(got.as_chunks::<2>().0.iter().all(|[l, r]| l == r));
     assert!(got.iter().any(|s| s.abs() > 0.3), "a tone, not silence");
 }
 

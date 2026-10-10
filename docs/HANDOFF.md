@@ -1385,7 +1385,10 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   one row when that fits" (`dashboard.spec.ts`), tops `20,19,26,59` — on the
   base commit as well, while CI passed that commit: the newly installed
   system fonts are the likely cause, not confirmed. Check a red layout test
-  against the base commit before chasing it.
+  against the base commit before chasing it. It also came back with an
+  older Rust — 1.97 against CI's 1.99 — and a lint new in 1.99
+  (`chunks_exact_to_as_chunks`) passed locally and failed CI's clippy.
+  `rustup check` first, in a new container as on any day (next item).
 - **CI builds with whatever Rust is stable today; the container keeps what it
   was made with.** CI uses `dtolnay/rust-toolchain@stable` and
   `RUSTFLAGS=-D warnings`, so a new stable's new warnings fail every job the
