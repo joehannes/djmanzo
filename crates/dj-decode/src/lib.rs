@@ -6,6 +6,7 @@
 
 pub mod buffer;
 pub mod decoder;
+pub mod opus;
 pub mod source;
 
 pub use buffer::{AudioBuffer, CHANNELS, STEM_COUNT, StemBuffer, StemChunk, StemFrame, StemTable};

@@ -18,9 +18,8 @@ use std::sync::RwLock;
 
 /// Extensions worth opening: what `dj-decode` reads, and — §122 — the video
 /// files whose sound it reads, so a music video is a record like any other.
-/// (Its picture is the Video panel's; see `docs/VIDEO.md`.) `opus` is listed
-/// though `dj-decode` cannot read Opus yet, so such a file is seen and its
-/// failure to load said, rather than the file missing from the library.
+/// (Its picture is the Video panel's; see `docs/VIDEO.md`.) Opus — an
+/// `.opus` file, a WebM's sound — is read by `dj_decode::opus`.
 const AUDIO_EXTENSIONS: &[&str] = &[
     "mp3", "flac", "wav", "aiff", "aif", "ogg", "oga", "m4a", "aac", "opus", "wv", "alac", "mp4",
     "m4v", "mov", "mkv", "webm",

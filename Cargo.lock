@@ -1529,6 +1529,7 @@ dependencies = [
  "blake3",
  "dj-core",
  "parking_lot",
+ "rusty-opus",
  "symphonia",
  "tempfile",
  "thiserror 2.0.20",
@@ -4823,6 +4824,12 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "rusty-opus"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70e241f0b809c02cf3a868ab7ad0568ac35eadcc6ba3997663eb920d9f425f75"
 
 [[package]]
 name = "ryu"

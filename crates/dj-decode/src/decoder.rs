@@ -4,10 +4,11 @@ use crate::buffer::{AudioBuffer, CHANNELS};
 use dj_core::{SampleRate, TrackId};
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{
     CODEC_TYPE_MP1, CODEC_TYPE_MP2, CODEC_TYPE_MP3, CODEC_TYPE_NULL, CodecParameters,
-    DecoderOptions,
+    CodecRegistry, DecoderOptions,
 };
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader, Track};
@@ -86,6 +87,18 @@ fn open(path: &Path, gapless: bool) -> Result<Box<dyn FormatReader>, DecodeError
     Ok(probed.format)
 }
 
+/// Symphonia's own decoders, and Opus, which it has none of (§122; see
+/// [`crate::opus`]).
+fn codecs() -> &'static CodecRegistry {
+    static CODECS: OnceLock<CodecRegistry> = OnceLock::new();
+    CODECS.get_or_init(|| {
+        let mut registry = CodecRegistry::new();
+        symphonia::default::register_enabled_codecs(&mut registry);
+        registry.register_all::<crate::opus::OpusDecoder>();
+        registry
+    })
+}
+
 fn audio_track(format: &dyn FormatReader) -> Result<&Track, DecodeError> {
     format
         .tracks()
@@ -148,7 +161,7 @@ const PCM_PACKET_SECONDS: u64 = 10;
 /// a buffer of that size and drops whatever a packet holds past it.
 fn with_packet_bound(params: &CodecParameters) -> CodecParameters {
     let mut params = params.clone();
-    let pcm = symphonia::default::get_codecs()
+    let pcm = codecs()
         .get_codec(params.codec)
         .is_some_and(|codec| codec.short_name.starts_with("pcm"));
     if pcm
@@ -190,7 +203,7 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> 
         .and_then(SampleRate::new)
         .ok_or(DecodeError::BadSampleRate)?;
 
-    let mut decoder = symphonia::default::get_codecs()
+    let mut decoder = codecs()
         .make(
             &with_packet_bound(&track.codec_params),
             &DecoderOptions::default(),

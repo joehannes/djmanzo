@@ -37,6 +37,14 @@ Versioning follows semver, with one project-specific convention:
   what you have of each. *Get…* downloads one and shows it, licence first,
   before anything is installed; a pack not signed by the key its index
   names is refused. To list your own pack, see `community/README.md`.
+- **Opus plays (§122).** An `.opus` file, and the sound of a WebM from
+  YouTube, now load onto a deck like any record; before, both were refused.
+  Decoded by `rusty-opus` (BSD-3-Clause, pure Rust), chosen after running
+  it and one other against the twelve official Opus test vectors. The few
+  milliseconds the encoder looked ahead are taken off the start, so a
+  record's first beat and a video's sound are where they belong.
+- **H.264 music videos play on Linux** with the distribution's
+  `gstreamer1.0-libav` installed — checked, picture kept to the deck.
 
 ## v0.39.0 — Layers behind the words, MilkDrop, the artist, and looks your AI picks
 

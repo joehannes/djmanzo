@@ -12,11 +12,33 @@ cues, history. Symphonia reads the containers — MP4, M4V, MOV, MKV, WebM —
 and the sound in them: AAC, ALAC and MP3 in MP4; Vorbis, FLAC, AAC and PCM
 in Matroska.
 
-**Not Opus.** Symphonia 0.5 has no Opus decoder, so a WebM from YouTube,
-whose sound is almost always Opus, cannot be played; djmanzo says why rather
-than failing quietly. (The same is true of an `.opus` file today, though the
-library lists them.) Pure-Rust Opus decoders exist and are candidates; none has
-been checked against the reference vectors yet, so none is used.
+**Opus too, since 10 October.** Symphonia 0.5 reads the containers Opus
+comes in and has no decoder for it, so a WebM from YouTube — whose sound is
+almost always Opus — and every `.opus` file were refused. `dj_decode::opus`
+is that decoder, over `rusty-opus` (BSD-3-Clause, pure Rust), registered
+beside Symphonia's own.
+
+- **Chosen by measurement.** Two pure-Rust decoders were run against the
+  twelve RFC 8251 conformance vectors, scored by Xiph's `opus_compare` as
+  Xiph's `run_vectors.sh` scores them. Decoding to stereo, both passed all
+  twelve; decoding to mono, each failed several — so djmanzo decodes to
+  stereo only, a mono stream coming out in both channels. On the vectors
+  coded with CELT the other, `opus-decoder`, took 4–11 s each and
+  `rusty-opus` 0.03–0.2 s, and a record is decoded whole before it plays.
+- **The encoder's look-ahead comes off the start** — the stream's
+  *pre-skip*, 312 frames from libopus. Symphonia's Ogg reader records it
+  and never trims by it, and Matroska does not say it, so the decoder takes
+  it in both. The header's output gain is applied, as RFC 7845 asks.
+- **Checked against ffmpeg**, decoding files libopus wrote: an Ogg Opus
+  stereo file came out sample for sample the same, 140 dB below the signal;
+  a VP8 + Opus WebM the same at offset zero, 132 dB below. It runs 13.5 ms
+  longer: a WebM marks its last packet's padding with Matroska's
+  `DiscardPadding`, which Symphonia 0.5 does not read, so that much
+  near-silence stays at the record's end.
+- **Driven:** the `.opus` and the WebM, on two decks in WebKitGTK, each
+  with its waveform and key; the WebM's VP8 picture playing with its sound.
+- **Not read:** surround Opus (more than two channels), refused with that
+  reason.
 
 One fix the containers needed: Matroska does not say how long a packet of
 uncompressed sound is, and Symphonia's PCM decoder will not start without

@@ -56,6 +56,12 @@ dj-dvs = { path = "crates/dj-dvs" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
+# Opus, which Symphonia 0.5 cannot decode (§122: a YouTube WebM's sound, an
+# .opus file). BSD-3-Clause, pure Rust, no dependencies; chosen over
+# `opus-decoder` (MIT/Apache) after both were run against the twelve RFC 8251
+# test vectors: both pass decoding to stereo, and this one was 30-60 times
+# faster on CELT. See docs/VIDEO.md and dj_decode::opus.
+rusty-opus = "1.0.1"
 # Keylock. MIT, which is why it is here and Rubber Band is not -- see
 # docs/adr/0002-clean-room-permissive-licensing.md. Builds the upstream C++
 # through `cc` and generates bindings with `bindgen`, so a C++ compiler and
