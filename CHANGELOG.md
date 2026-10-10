@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.40.0 — Packs to make and share, and records in Opus
+
 - **Packs (§122).** *Add a pack…* in the Singers panel takes a `.djpack`:
   someone's looks and MilkDrop presets, signed by them. djmanzo checks every
   file against the maker's signature before installing it. It shows you the
