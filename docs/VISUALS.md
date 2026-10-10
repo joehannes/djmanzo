@@ -408,8 +408,9 @@ API; the v2 API needs a paid key to look. The decision is "each TheAudioDB
 image used only when its record says Creative Commons", and so none can be.
 Its free key is for development projects only, besides: a published djmanzo
 would need the DJ's own paid key. If its records ever carry the tag, it would
-come in behind the DJ's own key, off by default, as Musixmatch will.
-`docs/RESEARCH.md` has the row, corrected.
+come in behind the DJ's own key, off by default. `docs/RESEARCH.md` has the
+row, corrected. (Musixmatch, decided the same way for words, turned out the
+same: its API terms forbid karaoke outright — RESEARCH.md has that row too.)
 
 **Driving it found three things, none visible to a browser test:**
 1. **Raw bytes reach WebKitGTK's page as an array of numbers.** The first
