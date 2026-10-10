@@ -99,9 +99,24 @@ own recorder writes it, with its length written in:
   of layers has no size of its own, so it now has a projector's shape. And
   WebKitGTK would not play from a URI scheme, hence the server.
 
-**Not known:** H.264 (most music videos) could not be tried, because this
-container has no `gstreamer1.0-libav`. Nor could macOS's or Windows'
-webviews.
+**H.264, driven on 10 October** with `gstreamer1.0-libav` 1.24.1 installed:
+a 40-second MP4 of H.264 High (a keyframe every five seconds) and AAC sound,
+its time written into each frame, as most music videos are made.
+
+- The sound went onto the deck like any record's — its waveform, grid, key
+  and stems, Symphonia's MP4 reader warning only that it skips two tables
+  (`stss`, `ctts`) it does not need.
+- The picture played in the Video panel. Five captures about 0.7 s apart
+  read the deck at 0:14, 0:15, 0:15, 0:16, 0:17 and the picture at 14.57,
+  14.87, 15.63, 16.37, 17.13.
+- Jumped back by beats while playing, from 25.8 to 21.0 — across the
+  keyframes at 25 and 20 seconds, so GStreamer had to decode forward from
+  the earlier one — the picture followed within the second, the deck
+  reading 0:21, and carried on: 22.2 a second later.
+
+Nothing in djmanzo changed for it: the webview plays H.264 once the
+distribution's plugin is there, and says which package is missing when it is
+not. **Not known:** macOS's and Windows' webviews.
 
 ## Not now
 
