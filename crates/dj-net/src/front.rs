@@ -17,8 +17,9 @@
 //! from the room cannot reach the audio path because there is no path from
 //! here to it, rather than because something checks.
 
-use crate::page::{self, Line, Said, View, Words};
+use crate::page::{self, Line, Said, Sang, SingView, View, Words};
 use crate::room::{Ask, RequestBook, Standing};
+use crate::stage::{Signed, Stage};
 use crate::web::{Handler, Incoming, Method, Reply};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,6 +34,8 @@ pub struct Front {
     language: Mutex<String>,
     playing: Mutex<Option<String>>,
     show_playing: AtomicBool,
+    /// K4: the second book — singers putting their own names down.
+    stage: Mutex<Stage>,
 }
 
 impl Default for Front {
@@ -44,6 +47,7 @@ impl Default for Front {
             language: Mutex::new(Words::english().tag.to_owned()),
             playing: Mutex::new(None),
             show_playing: AtomicBool::new(true),
+            stage: Mutex::new(Stage::new()),
         }
     }
 }
@@ -159,6 +163,11 @@ impl Front {
             .unwrap_or(false)
     }
 
+    /// K4: read or change the singers' book. `None` when it is poisoned.
+    pub fn stage<T>(&self, change: impl FnOnce(&mut Stage) -> T) -> Option<T> {
+        self.stage.lock().ok().map(|mut stage| change(&mut stage))
+    }
+
     /// Mark the request a track answers, if the room asked for it.
     ///
     /// Called when a track starts, so a DJ who happened to play what the room
@@ -211,7 +220,80 @@ impl Doorman {
             lines,
             said: request.param("said").and_then(Said::by_tag),
             open: self.front.is_open(),
+            sing: self.sing_view(request, &phone),
         }))
+    }
+
+    /// K4: the *Sing* part for this phone — shown while the host takes names,
+    /// and to a phone with a singer down tonight, so it can still see its
+    /// place after the host stops taking more.
+    fn sing_view(&self, request: &Incoming, phone: &str) -> Option<SingView> {
+        self.front
+            .stage(|stage| {
+                let rules = stage.rules();
+                let name = stage.name_of(phone).map(str::to_owned);
+                if !rules.open && name.is_none() {
+                    return None;
+                }
+                let place = stage.place(phone);
+                let query = request
+                    .param("q")
+                    .map(str::trim)
+                    .filter(|q| !q.is_empty())
+                    .map(str::to_owned);
+                Some(SingView {
+                    open: rules.open,
+                    more: stage.may_add(phone),
+                    name,
+                    place,
+                    songbook: rules.songbook,
+                    typed_name: request.param("name").unwrap_or_default().to_owned(),
+                    matches: query
+                        .as_deref()
+                        .map(|q| stage.search(q))
+                        .unwrap_or_default(),
+                    query,
+                    said: request.param("sang").and_then(Sang::by_tag),
+                })
+            })
+            .flatten()
+    }
+
+    /// K4: put a name down to sing.
+    fn sing(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let name = request.field("name").unwrap_or_default();
+        let token = request.field("song");
+        let written = request.field("written");
+        let signed = self
+            .front
+            .stage(|stage| {
+                stage.sign(
+                    &phone,
+                    &name,
+                    token.as_deref(),
+                    written.as_deref(),
+                    SystemTime::now(),
+                )
+            })
+            .unwrap_or(Signed::Closed);
+        // The name goes back with a refusal, so it need not be typed again.
+        let again = if signed == Signed::Added {
+            String::new()
+        } else {
+            format!("&name={}", urlencoding::encode(name.trim()))
+        };
+        Reply::see_other(format!("/?sang={}{again}#sing", Sang::Signed(signed).tag()))
+    }
+
+    /// K4: the singer up next says they are ready.
+    fn ready(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let ready = self
+            .front
+            .stage(|stage| stage.ready(&phone))
+            .unwrap_or(false);
+        Reply::see_other(if ready { "/?sang=ready#sing" } else { "/#sing" })
     }
 
     fn take(&self, request: &Incoming) -> Reply {
@@ -248,6 +330,8 @@ impl Handler for Doorman {
         match (request.method, request.path.as_str()) {
             (Method::Get, "/") => self.show(request),
             (Method::Post, "/request") => self.take(request),
+            (Method::Post, "/sing") => self.sing(request),
+            (Method::Post, "/ready") => self.ready(request),
             _ => Reply::not_found(),
         }
     }
@@ -433,5 +517,185 @@ mod tests {
             front.everything().is_empty(),
             "a path that is not the form put something in the book"
         );
+    }
+
+    fn post_to(address: SocketAddr, path: &str, body: &str) -> String {
+        talk(
+            address,
+            &format!(
+                "POST {path} HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            ),
+        )
+    }
+
+    fn singing(front: &Front) {
+        front.stage(|stage| {
+            stage.set_rules(crate::stage::Rules {
+                open: true,
+                ..crate::stage::Rules::default()
+            });
+            stage.set_songbook(vec![
+                crate::stage::BookSong {
+                    track: "00ff".into(),
+                    title: "Obsesión".into(),
+                    artist: "Aventura".into(),
+                },
+                crate::stage::BookSong {
+                    track: "00aa".into(),
+                    title: "Suavemente".into(),
+                    artist: "Elvis Crespo".into(),
+                },
+            ]);
+        });
+    }
+
+    /// The token a page offers for its first match, read out of the page as
+    /// a phone's browser would submit it.
+    fn first_token(page: &str) -> String {
+        let at = page
+            .find("name=\"song\" value=\"")
+            .expect("a song to choose")
+            + 19;
+        page[at..].split('"').next().unwrap().to_owned()
+    }
+
+    /// **Nothing about singing is on the page until the host opens it.**
+    #[test]
+    fn singing_is_not_offered_until_the_host_opens_it() {
+        let (server, front) = serving();
+        let page = get(server.address(), "/");
+        assert!(!page.contains("id=\"sing\""), "{page}");
+        let sent = post_to(server.address(), "/sing", "name=Ana&written=Suavemente");
+        assert!(
+            sent.to_lowercase().contains("location: /?sang=shut"),
+            "{sent}"
+        );
+        assert!(front.stage(|s| s.take().0).unwrap().is_empty());
+    }
+
+    /// **A guest finds their song, puts their name down, and the host's
+    /// rotation can take it** — over a real socket, as a phone does: the
+    /// search answers with forms, the chosen one posts its token, the answer
+    /// is a redirect, and the page after it says where they stand.
+    #[test]
+    fn a_guest_puts_their_name_down_from_the_page() {
+        let (server, front) = serving();
+        singing(&front);
+        let found = get(server.address(), "/?name=Ana&q=obsesion");
+        assert!(found.contains("Obsesión"), "{found}");
+        assert!(!found.contains("Suavemente"), "only what matched");
+        assert!(
+            !found.contains("00ff"),
+            "the record's own name never reaches a phone"
+        );
+        let token = first_token(&found);
+
+        let sent = post_to(
+            server.address(),
+            "/sing",
+            &format!("name=Ana&song={}", urlencoding::encode(&token)),
+        );
+        assert!(sent.starts_with("HTTP/1.1 303"), "{sent}");
+        assert!(
+            sent.to_lowercase().contains("location: /?sang=on#sing"),
+            "{sent}"
+        );
+
+        let after = get(server.address(), "/?sang=on");
+        assert!(after.contains("You're on the list."), "{after}");
+        assert!(after.contains("You&#39;re down as Ana."), "{after}");
+        assert!(after.contains("The DJ is adding you."), "{after}");
+
+        let (signed, _) = front.stage(|s| s.take()).unwrap();
+        assert_eq!(signed.len(), 1);
+        assert_eq!(signed[0].name, "Ana");
+        assert_eq!(
+            signed[0].song,
+            crate::stage::Chosen::Book(crate::stage::BookSong {
+                track: "00ff".into(),
+                title: "Obsesión".into(),
+                artist: "Aventura".into(),
+            })
+        );
+    }
+
+    /// **A name typed as a script comes back as text**, on the page of the
+    /// phone that typed it and in the search it is carried through.
+    #[test]
+    fn a_singers_name_cannot_become_markup() {
+        let (server, front) = serving();
+        singing(&front);
+        let script = "<script>alert(1)</script>";
+        let found = get(
+            server.address(),
+            &format!("/?name={}&q=suave", urlencoding::encode(script)),
+        );
+        assert!(!found.contains(script), "{found}");
+        let token = first_token(&found);
+        post_to(
+            server.address(),
+            "/sing",
+            &format!(
+                "name={}&song={}",
+                urlencoding::encode(script),
+                urlencoding::encode(&token)
+            ),
+        );
+        let page = get(server.address(), "/");
+        assert!(!page.contains("<script>"), "{page}");
+        assert!(page.contains("&lt;script&gt;"), "{page}");
+    }
+
+    /// **The singer up next says they are ready, from their own phone.**
+    #[test]
+    fn the_singer_called_presses_ready() {
+        let (server, front) = serving();
+        singing(&front);
+        let token = first_token(&get(server.address(), "/?name=Ana&q=suave"));
+        post_to(
+            server.address(),
+            "/sing",
+            &format!("name=Ana&song={}", urlencoding::encode(&token)),
+        );
+        front.stage(|s| {
+            s.take();
+            s.set_order(vec![("Bob".into(), 1), ("Ana".into(), 1)], vec![]);
+        });
+        let waiting = get(server.address(), "/");
+        assert!(waiting.contains("1 singer before you."), "{waiting}");
+        assert!(!waiting.contains("action=\"/ready\""), "not up yet");
+
+        front.stage(|s| s.set_order(vec![("Ana".into(), 1)], vec![]));
+        let up = get(server.address(), "/");
+        assert!(up.contains("You're up next."), "{up}");
+        assert!(up.contains("action=\"/ready\""), "{up}");
+        let pressed = post_to(server.address(), "/ready", "");
+        assert!(
+            pressed.to_lowercase().contains("location: /?sang=ready"),
+            "{pressed}"
+        );
+        assert_eq!(front.stage(|s| s.take().1).unwrap(), vec!["Ana".to_owned()]);
+        let after = get(server.address(), "/?sang=ready");
+        assert!(after.contains("The DJ knows you're ready."), "{after}");
+    }
+
+    /// **A refusal keeps the name**, so it need not be typed again.
+    #[test]
+    fn a_refused_sign_up_says_why_and_keeps_the_name() {
+        let (server, front) = serving();
+        singing(&front);
+        let sent = post_to(server.address(), "/sing", "name=Ana&song=ff-9");
+        let location = sent.to_lowercase();
+        assert!(
+            location.contains("location: /?sang=changed&name=ana#sing"),
+            "{sent}"
+        );
+        let page = get(server.address(), "/?sang=changed&name=Ana");
+        assert!(
+            page.contains("The songbook changed. Search again."),
+            "{page}"
+        );
+        assert!(page.contains("value=\"Ana\""), "{page}");
     }
 }

@@ -299,6 +299,10 @@ pub struct AppState {
     automix: Arc<Mutex<crate::automix::Automix>>,
     /// §107: break music between singers.
     breaks: Mutex<crate::breaks::Held>,
+    /// K4: held across every read-change-write of the rotation's file, so
+    /// names arriving from phones and the host's own changes cannot write
+    /// over each other.
+    karaoke_lock: Mutex<()>,
     /// K3: who is on each singers' microphone, strip by strip.
     on_mics: Mutex<Vec<Option<crate::karaoke::OnMic>>>,
     /// §121: the density band the main window is wearing, by name, as it
@@ -607,6 +611,7 @@ impl AppState {
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
+            karaoke_lock: Mutex::new(()),
             on_mics: Mutex::new(Vec::new()),
             interface_density: Mutex::new("Standard".to_owned()),
             obs: crate::obs::Link::new(),
@@ -1714,6 +1719,43 @@ impl AppState {
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "the singers' microphones' settings will not survive a restart");
         }
+    }
+
+    /// Read the rotation, change it, and keep it when `change` says it
+    /// changed — one at a time, and with whatever phones have sent (K4)
+    /// taken in first, so the host always acts on the rotation as it is.
+    pub fn change_karaoke<T>(
+        &self,
+        change: impl FnOnce(&mut crate::karaoke::Rotation) -> (bool, T),
+    ) -> T {
+        let _one_at_a_time = self
+            .karaoke_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut rotation = self.karaoke();
+        let from_phones = self.take_from_phones(&mut rotation);
+        let (changed, answer) = change(&mut rotation);
+        if changed || from_phones {
+            self.set_karaoke(&rotation);
+        }
+        // The book's view of the order follows the host's change too.
+        self.take_from_phones(&mut rotation);
+        answer
+    }
+
+    /// K4: names and *ready* presses from phones into `rotation`.
+    fn take_from_phones(&self, rotation: &mut crate::karaoke::Rotation) -> bool {
+        let library = self.library().get().ok();
+        self.audience()
+            .front()
+            .stage(|stage| {
+                rotation.from_phones(stage, |hex| {
+                    let id = dj_core::TrackId::from_hex(hex)?;
+                    let track = library.as_ref()?.track(id).ok()??;
+                    Some(track.path.to_string_lossy().into_owned())
+                })
+            })
+            .unwrap_or(false)
     }
 
     /// Keep the rotation, so a restart mid-night does not lose the queue.

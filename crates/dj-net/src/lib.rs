@@ -19,6 +19,7 @@ pub mod phone;
 pub mod room;
 pub mod secure;
 pub mod server;
+pub mod stage;
 pub mod sticker;
 pub mod tempo;
 pub mod web;

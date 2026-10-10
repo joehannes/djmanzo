@@ -947,3 +947,21 @@ not ask, because a consent ticked on a phone in a loud bar is not one.
 
 Each is held by tests over a real socket, as requests are, and driven with a
 browser playing the phone against the running application.
+
+**Step 1, sign-ups — built (10 October).** `dj_net::stage` is the second
+book: the songbook and its search, the host's rules, one name per phone and
+one phone per name (a name the host put in by hand is the host's), the songs
+waiting counted with the rotation's, *ready* only from the phone of the
+singer up next. A token names a record only for the songbook it came from,
+and the same songbook again keeps its tokens, so the host's panel can keep it
+current without breaking a phone's search. `Doorman` serves the *Sing* part
+on `/`, in the page's language, and takes `POST /sing` and `POST /ready`.
+`Rotation::from_phones` takes what the book holds — first come, first
+served, the record's file found by its id — and gives the book back the
+calling order; a thread does it every two seconds, so a name arrives whether
+or not the Singers panel is open, and every change to the rotation's file
+now takes one lock (`AppState::change_karaoke`), because two writers of one
+file each reading before the other writes is a name lost. *New night*
+forgets every phone's name before it clears the rotation, so none is taken
+in on its way out. Where the songbook is not offered, a song is written in
+and arrives without a record, for the host to find.

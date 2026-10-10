@@ -1602,9 +1602,10 @@ pub(crate) fn keep_for_singer(state: &AppState, strip: u8) -> Result<(), String>
         vocal_settings_changed(state);
         return Ok(());
     }
-    let mut rotation = state.karaoke();
-    if rotation.keep_microphone(&singer.singer, singer.chain) {
-        state.set_karaoke(&rotation);
+    if state.change_karaoke(|rotation| {
+        let kept = rotation.keep_microphone(&singer.singer, singer.chain);
+        (kept, kept)
+    }) {
         singer.kept = Some(Kept::Tonight);
         vocal_settings_changed(state);
         return Ok(());
@@ -4372,6 +4373,106 @@ mod tests {
                 dj_core::TrackId::from_bytes([1u8; 32]),
                 "a profile promoted a record three points behind"
             );
+        }
+    }
+
+    /// K4: names put down from phones, through the application.
+    mod singers_from_phones {
+        use super::super::{
+            from_phones_due, new_night, refresh_songbook, sing_rules_dto, with_rotation,
+        };
+        use crate::state::AppState;
+        use dj_core::{SampleRate, TrackId};
+        use dj_library::{LibraryTrack, PlayStats, StoredAnalysis, Tags};
+        use std::time::SystemTime;
+
+        fn record(byte: u8, title: &str) -> LibraryTrack {
+            LibraryTrack {
+                id: TrackId::from_bytes([byte; 32]),
+                path: format!("/music/{title}.flac").into(),
+                tags: Tags {
+                    artist: Some("Aventura".to_owned()),
+                    title: Some(title.to_owned()),
+                    ..Tags::default()
+                },
+                duration_frames: 48_000 * 200,
+                sample_rate: SampleRate::DEFAULT,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: StoredAnalysis::default(),
+                stats: PlayStats::default(),
+                colour: None,
+            }
+        }
+
+        /// **A guest's name reaches the host's rotation with the record and
+        /// its file, and their phone learns its place.** The songbook is the
+        /// collection's records with words — the one without is not offered —
+        /// and the pump takes the sign-up in without the Singers panel asking.
+        /// *New night* forgets the phone's name with the rotation.
+        #[test]
+        fn a_name_from_a_phone_reaches_the_rotation_with_its_file() {
+            let dir = tempfile::tempdir().expect("a folder");
+            let state = AppState::new(true);
+            state.set_config_dir(dir.path().to_path_buf());
+            let library = state.library().get().expect("a library");
+            library.upsert_track(&record(1, "Obsesión")).unwrap();
+            library.upsert_track(&record(2, "Dile al amor")).unwrap();
+            library
+                .remember_words(
+                    TrackId::from_bytes([1; 32]),
+                    "son las doce",
+                    None,
+                    false,
+                    "lrclib",
+                    1,
+                )
+                .unwrap();
+
+            refresh_songbook(&state);
+            assert_eq!(
+                sing_rules_dto(&state).songs,
+                1,
+                "only the record with words"
+            );
+            let front = std::sync::Arc::clone(state.audience().front());
+            front.stage(|stage| {
+                stage.set_rules(dj_net::stage::Rules {
+                    open: true,
+                    ..dj_net::stage::Rules::default()
+                });
+            });
+            assert!(front.stage(|s| s.search("dile")).unwrap().is_empty());
+            let token = front
+                .stage(|s| s.search("obsesion")[0].token.clone())
+                .unwrap();
+            let signed = front
+                .stage(|s| s.sign("phone-a", "Ana", Some(&token), None, SystemTime::now()))
+                .unwrap();
+            assert_eq!(signed, dj_net::stage::Signed::Added);
+
+            from_phones_due(&state);
+            let rotation = with_rotation(&state, |_| false);
+            assert_eq!(rotation.up_next.as_deref(), Some("Ana"));
+            let song = &rotation.singers[0].songs[0];
+            assert_eq!(song.title, "Aventura — Obsesión");
+            assert_eq!(song.path.as_deref(), Some("/music/Obsesión.flac"));
+            assert!(rotation.singers[0].from_phone);
+            assert_eq!(
+                front.stage(|s| s.place("phone-a")).unwrap(),
+                Some(dj_net::stage::Place::Waiting(0))
+            );
+
+            new_night(&state);
+            assert_eq!(
+                front
+                    .stage(|s| s.name_of("phone-a").map(str::to_owned))
+                    .unwrap(),
+                None
+            );
+            assert!(with_rotation(&state, |_| false).singers.is_empty());
         }
     }
 
@@ -15012,18 +15113,122 @@ fn with_rotation(
     state: &AppState,
     change: impl FnOnce(&mut crate::karaoke::Rotation) -> bool,
 ) -> RotationDto {
-    let mut rotation = state.karaoke();
-    if change(&mut rotation) {
-        state.set_karaoke(&rotation);
-    }
-    rotation_dto(&rotation)
+    state.change_karaoke(|rotation| (change(rotation), rotation_dto(rotation)))
 }
 
 /// §107: the singer rotation.
 #[tauri::command]
 #[must_use]
 pub fn karaoke_rotation(state: State<'_, AppState>) -> RotationDto {
-    rotation_dto(&state.karaoke())
+    // Through the lock, so names put down from phones arrive with the read.
+    with_rotation(&state, |_| false)
+}
+
+/// K4: take what phones sent into the rotation, if they sent anything.
+pub(crate) fn from_phones_due(state: &AppState) {
+    let news = state
+        .audience()
+        .front()
+        .stage(|stage| stage.has_news())
+        .unwrap_or(false);
+    if news {
+        state.change_karaoke(|_| (false, ()));
+    }
+}
+
+/// K4: what phones may do on the room's page (docs/KARAOKE.md §7).
+#[derive(Debug, Clone, Serialize)]
+pub struct SingRulesDto {
+    /// Whether phones may put names down now.
+    pub open: bool,
+    /// Songs one singer may have waiting, 1 to 3.
+    pub songs_each: u8,
+    /// Songs come from the songbook; otherwise they are written in.
+    pub songbook: bool,
+    /// Records in the songbook: those with words.
+    pub songs: usize,
+    /// Whether the room's page is being served at all.
+    pub serving: bool,
+}
+
+/// The most records the songbook holds. Far past a karaoke bar's book, and a
+/// bound on what one refresh reads.
+const SONGBOOK: usize = 20_000;
+
+fn sing_rules_dto(state: &AppState) -> SingRulesDto {
+    let audience = state.audience();
+    let (rules, songs) = audience
+        .front()
+        .stage(|stage| (stage.rules(), stage.songbook_len()))
+        .unwrap_or_default();
+    SingRulesDto {
+        open: rules.open,
+        songs_each: rules.songs_each,
+        songbook: rules.songbook,
+        songs,
+        serving: audience.status().running,
+    }
+}
+
+/// The songbook, as the collection has it now: every record with words.
+fn refresh_songbook(state: &AppState) {
+    let Ok(library) = library(state) else {
+        return;
+    };
+    let songs: Vec<dj_net::stage::BookSong> = library
+        .songbook(SONGBOOK)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|track| dj_net::stage::BookSong {
+            track: track.id.to_hex(),
+            title: track
+                .tags
+                .title
+                .clone()
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| {
+                    track
+                        .path
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                }),
+            artist: track.tags.artist.clone().unwrap_or_default(),
+        })
+        .collect();
+    state
+        .audience()
+        .front()
+        .stage(|stage| stage.set_songbook(songs));
+}
+
+/// K4: what phones may do, with the songbook kept current while asked.
+#[tauri::command]
+#[must_use]
+pub fn sing_rules(state: State<'_, AppState>) -> SingRulesDto {
+    refresh_songbook(&state);
+    sing_rules_dto(&state)
+}
+
+/// K4: the host's switches. Each left out is left as it is.
+#[tauri::command]
+#[must_use]
+pub fn sing_rules_set(
+    state: State<'_, AppState>,
+    open: Option<bool>,
+    songs_each: Option<u8>,
+    songbook: Option<bool>,
+) -> SingRulesDto {
+    refresh_songbook(&state);
+    state.audience().front().stage(|stage| {
+        let rules = stage.rules();
+        stage.set_rules(dj_net::stage::Rules {
+            open: open.unwrap_or(rules.open),
+            songs_each: songs_each.unwrap_or(rules.songs_each),
+            songbook: songbook.unwrap_or(rules.songbook),
+        });
+    });
+    sing_rules_dto(&state)
 }
 
 /// §107: somebody asks for a song. With no key, the key they sang it in last
@@ -15145,6 +15350,12 @@ pub(crate) fn new_night(state: &AppState) -> RotationDto {
         tracing::warn!(%error, "tonight's guests are still in the journal");
     }
     everybody_off_the_mics(state);
+    // K4: every name phones put down tonight forgotten too — first, so none
+    // is taken into the rotation on its way to being cleared.
+    state
+        .audience()
+        .front()
+        .stage(dj_net::stage::Stage::new_night);
     with_rotation(state, |rotation| {
         rotation.clear();
         true

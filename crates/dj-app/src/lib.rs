@@ -483,6 +483,22 @@ pub fn run() {
                 if let Err(error) = spawned {
                     tracing::warn!(%error, "the crowd's reactions will not be read by a model");
                 }
+                // K4: names put down from phones, into the rotation within a
+                // couple of seconds whether or not the Singers panel is open
+                // — the singers' screen and every phone's place follow it.
+                let pump = handle.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("dj-sing-pump".into())
+                    .spawn(move || {
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                            let state: tauri::State<'_, AppState> = pump.state();
+                            commands::from_phones_due(&state);
+                        }
+                    });
+                if let Err(error) = spawned {
+                    tracing::warn!(%error, "names put down from phones wait for the Singers panel");
+                }
             }
 
             // §77. Read once here so the pump has the handle; the state seeds
@@ -928,6 +944,8 @@ pub fn run() {
             commands::waveform_colourings,
             commands::activities,
             commands::karaoke_rotation,
+            commands::sing_rules,
+            commands::sing_rules_set,
             commands::karaoke_ask,
             commands::karaoke_sang,
             commands::karaoke_not_here,

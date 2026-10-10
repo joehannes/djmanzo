@@ -67,6 +67,13 @@ pub struct Singer {
     /// the guest book instead ([`crate::guests::Guest::microphone`]).
     #[serde(default)]
     pub microphone: Option<dj_vocal::Chain>,
+    /// K4: put down by the guest from their own phone (docs/KARAOKE.md §7).
+    #[serde(default)]
+    pub from_phone: bool,
+    /// K4: their phone said they are ready while they were up next. Gone
+    /// when they sing or are passed over.
+    #[serde(default)]
+    pub ready: bool,
 }
 
 /// Somebody sang something, in some key. The history keys are read from.
@@ -169,6 +176,8 @@ impl Rotation {
                 songs: vec![request],
                 turns: 0,
                 microphone: None,
+                from_phone: false,
+                ready: false,
             }),
         }
         true
@@ -207,6 +216,7 @@ impl Rotation {
         let mut singer = self.singers.remove(at);
         let song = singer.songs.remove(0);
         singer.turns += 1;
+        singer.ready = false;
         let sung = Sung {
             singer: singer.name.clone(),
             title: song.title,
@@ -228,7 +238,8 @@ impl Rotation {
         else {
             return false;
         };
-        let singer = self.singers.remove(at);
+        let mut singer = self.singers.remove(at);
+        singer.ready = false;
         self.singers.push(singer);
         true
     }
@@ -321,6 +332,59 @@ impl Rotation {
     /// A new night: everybody off the list, the history kept.
     pub fn clear(&mut self) {
         self.singers.clear();
+    }
+
+    /// K4: what phones sent, taken into the rotation as the host's own
+    /// requests are — first come, first served, one song a turn — and the
+    /// book told the calling order it now has, so each phone can say where
+    /// its singer stands. `path_of` finds a record's file from its hex id.
+    ///
+    /// A *ready* counts only for the singer up next: a phone pressed it while
+    /// they were, and the host may have moved somebody since.
+    ///
+    /// Answers whether the rotation changed and needs keeping.
+    pub fn from_phones(
+        &mut self,
+        stage: &mut dj_net::stage::Stage,
+        path_of: impl Fn(&str) -> Option<String>,
+    ) -> bool {
+        let (signed, ready) = stage.take();
+        let mut changed = false;
+        for sign in signed {
+            let title = sign.song.title();
+            let track = match &sign.song {
+                dj_net::stage::Chosen::Book(song) => Some(song.track.clone()),
+                dj_net::stage::Chosen::Written(_) => None,
+            };
+            let path = track.as_deref().and_then(&path_of);
+            if self.ask(&sign.name, &title, track, path, None)
+                && let Some(singer) = self
+                    .singers
+                    .iter_mut()
+                    .find(|singer| same(&singer.name, &sign.name))
+            {
+                singer.from_phone = true;
+                changed = true;
+            }
+        }
+        let up = self.up_next().map(|(singer, _)| singer.name.clone());
+        for name in ready {
+            if up.as_deref().is_some_and(|up| same(up, &name))
+                && let Some(singer) = self.singers.iter_mut().find(|s| same(&s.name, &name))
+                && !singer.ready
+            {
+                singer.ready = true;
+                changed = true;
+            }
+        }
+        stage.set_order(
+            self.order()
+                .iter()
+                .map(|(singer, _)| (singer.name.clone(), singer.songs.len()))
+                .collect(),
+            self.singers.iter().map(|s| s.name.clone()).collect(),
+        );
+        changed
     }
 }
 
@@ -550,6 +614,93 @@ mod tests {
 
     /// **A newcomer joins the end, and nobody waiting is jumped** — including
     /// a singer who has sung and asked again, who is already at the back.
+    fn phones() -> dj_net::stage::Stage {
+        let mut stage = dj_net::stage::Stage::new();
+        stage.set_rules(dj_net::stage::Rules {
+            open: true,
+            ..dj_net::stage::Rules::default()
+        });
+        stage.set_songbook(vec![dj_net::stage::BookSong {
+            track: "00ff".into(),
+            title: "Obsesión".into(),
+            artist: "Aventura".into(),
+        }]);
+        stage
+    }
+
+    fn sign(stage: &mut dj_net::stage::Stage, phone: &str, name: &str) {
+        let token = stage.search("obsesion")[0].token.clone();
+        assert_eq!(
+            stage.sign(
+                phone,
+                name,
+                Some(&token),
+                None,
+                std::time::SystemTime::UNIX_EPOCH
+            ),
+            dj_net::stage::Signed::Added
+        );
+    }
+
+    /// **K4: a guest's own sign-up joins the rotation like anybody's** — at
+    /// the end, behind everybody already waiting, with its record and its
+    /// file found — and their phone is told where they stand.
+    #[test]
+    fn a_name_put_down_from_a_phone_joins_the_end() {
+        let mut rotation = night(&[("Carla", "Suavemente")]);
+        let mut stage = phones();
+        sign(&mut stage, "phone-a", "Ana");
+        let changed = rotation.from_phones(&mut stage, |track| {
+            (track == "00ff").then(|| "/music/obsesion.flac".to_owned())
+        });
+        assert!(changed);
+        assert_eq!(
+            calling(&rotation),
+            ["Carla:Suavemente", "Ana:Aventura — Obsesión"]
+        );
+        let ana = &rotation.singers[1];
+        assert!(ana.from_phone);
+        assert!(
+            !rotation.singers[0].from_phone,
+            "the host's own stays the host's"
+        );
+        assert_eq!(ana.songs[0].title, "Aventura — Obsesión");
+        assert_eq!(ana.songs[0].track.as_deref(), Some("00ff"));
+        assert_eq!(ana.songs[0].path.as_deref(), Some("/music/obsesion.flac"));
+        assert_eq!(
+            stage.place("phone-a"),
+            Some(dj_net::stage::Place::Waiting(1))
+        );
+        // Nothing new: nothing to keep.
+        assert!(!rotation.from_phones(&mut stage, |_| None));
+    }
+
+    /// **K4: ready counts for the singer up next, and only until they sing.**
+    #[test]
+    fn ready_is_for_the_singer_called_and_ends_with_the_song() {
+        let mut rotation = Rotation::default();
+        let mut stage = phones();
+        sign(&mut stage, "a", "Ana");
+        sign(&mut stage, "b", "Bob");
+        rotation.from_phones(&mut stage, |_| None);
+        assert!(stage.ready("a"), "Ana is up next");
+        // The host moves Bob ahead before the press is taken.
+        rotation.move_to("Bob", 0);
+        rotation.from_phones(&mut stage, |_| None);
+        assert!(
+            rotation.singers.iter().all(|s| !s.ready),
+            "Ana is no longer up"
+        );
+        assert!(stage.ready("b"));
+        assert!(rotation.from_phones(&mut stage, |_| None));
+        assert!(rotation.singers[0].ready && rotation.singers[0].name == "Bob");
+        rotation.sang();
+        assert!(
+            rotation.singers.iter().all(|s| !s.ready),
+            "sung, no longer ready"
+        );
+    }
+
     #[test]
     fn a_newcomer_joins_the_end() {
         let mut rotation = night(&[("Ana", "Valerie"), ("Ben", "Mr Brightside")]);

@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Singers put their own names down (K4).** With *From phones* switched on
+  in the Singers panel, the room's request page gains *Sing*: a guest types
+  their name, finds their song in the songbook — your records that have
+  words — and is in the rotation within two seconds, marked *phone*. Their
+  phone shows their place, and when they are up next, *I'm ready*, which
+  marks their row *Ready* for you. One singer per phone; you choose how many
+  songs each may have waiting, and whether songs are chosen from the
+  songbook or written in. Off until you switch it on.
+
 ## v0.40.0 — Packs to make and share, and records in Opus
 
 - **Packs (§122).** *Add a pack…* in the Singers panel takes a `.djpack`:

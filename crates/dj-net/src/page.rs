@@ -18,6 +18,7 @@
 //! request box in a bar in Santo Domingo cannot be.
 
 use crate::room::{Ask, LONGEST_ASK, Outcome};
+use crate::stage::{LONGEST_NAME, LONGEST_SONG, Match, Place, Signed};
 
 /// The visible text of the page, in one language.
 #[derive(Debug, Clone, Copy)]
@@ -238,6 +239,9 @@ pub struct View<'a> {
     pub said: Option<Said>,
     /// When false, the form is gone and only [`Words::closed`] remains.
     pub open: bool,
+    /// K4: the *Sing* part, when the host has sign-ups open or this phone
+    /// has a singer down tonight.
+    pub sing: Option<SingView>,
 }
 
 /// The most rows the page shows.
@@ -326,8 +330,333 @@ pub fn request_page(view: &View) -> String {
         html.push_str("</ul>\n");
     }
 
+    if let Some(sing) = &view.sing {
+        sing_part(&mut html, sing, &SingWords::by_tag(w.tag));
+    }
+
     html.push_str("<p class=\"mark\">djmanzo</p>\n</main>\n</body>\n</html>\n");
     html
+}
+
+/// K4: the words of the *Sing* part, in the page's language.
+#[derive(Debug, Clone, Copy)]
+pub struct SingWords {
+    pub heading: &'static str,
+    pub name: &'static str,
+    pub find_label: &'static str,
+    pub find_placeholder: &'static str,
+    pub find: &'static str,
+    pub sing_this: &'static str,
+    pub none: &'static str,
+    pub written_label: &'static str,
+    pub send: &'static str,
+    /// Formatted with the singer's name, as `{name}`.
+    pub you: &'static str,
+    pub next: &'static str,
+    pub one_before: &'static str,
+    /// Formatted with the count, as `{n}`.
+    pub before: &'static str,
+    pub coming: &'static str,
+    pub sung: &'static str,
+    pub ready: &'static str,
+    pub ready_said: &'static str,
+    pub another: &'static str,
+    pub added: &'static str,
+    pub closed: &'static str,
+    pub no_name: &'static str,
+    pub long_name: &'static str,
+    pub no_song: &'static str,
+    pub long_song: &'static str,
+    pub gone: &'static str,
+    pub other_name: &'static str,
+    pub name_taken: &'static str,
+    pub too_many: &'static str,
+    pub full: &'static str,
+}
+
+impl SingWords {
+    #[must_use]
+    pub const fn english() -> Self {
+        Self {
+            heading: "Sing",
+            name: "Your name",
+            find_label: "Find your song",
+            find_placeholder: "Artist or song",
+            find: "Find it",
+            sing_this: "Sing this",
+            none: "Not in the songbook. Try the artist's name.",
+            written_label: "Which song?",
+            send: "Put me down",
+            you: "You're down as {name}.",
+            next: "You're up next.",
+            one_before: "1 singer before you.",
+            before: "{n} singers before you.",
+            coming: "The DJ is adding you.",
+            sung: "Thanks for singing!",
+            ready: "I'm ready",
+            ready_said: "The DJ knows you're ready.",
+            another: "Another song",
+            added: "You're on the list.",
+            closed: "Sign-ups to sing are closed.",
+            no_name: "Write your name first.",
+            long_name: "That name is too long.",
+            no_song: "Choose a song.",
+            long_song: "That song name is too long.",
+            gone: "The songbook changed. Search again.",
+            other_name: "This phone already has a singer.",
+            name_taken: "Someone is down by that name. Add your surname.",
+            too_many: "You have as many songs waiting as the DJ allows.",
+            full: "The list is full tonight.",
+        }
+    }
+
+    #[must_use]
+    pub const fn spanish() -> Self {
+        Self {
+            heading: "Canta",
+            name: "Tu nombre",
+            find_label: "Busca tu canción",
+            find_placeholder: "Artista o canción",
+            find: "Buscar",
+            sing_this: "Cantar esta",
+            none: "No está en el cancionero. Prueba con el nombre del artista.",
+            written_label: "¿Qué canción?",
+            send: "Apúntame",
+            you: "Te apuntaste como {name}.",
+            next: "Te toca a continuación.",
+            one_before: "1 persona antes que tú.",
+            before: "{n} personas antes que tú.",
+            coming: "El DJ te está añadiendo.",
+            sung: "¡Gracias por cantar!",
+            ready: "Ya voy",
+            ready_said: "El DJ ya sabe que vas.",
+            another: "Otra canción",
+            added: "Ya estás en la lista.",
+            closed: "La lista para cantar está cerrada.",
+            no_name: "Escribe primero tu nombre.",
+            long_name: "Ese nombre es demasiado largo.",
+            no_song: "Elige una canción.",
+            long_song: "El nombre de la canción es demasiado largo.",
+            gone: "El cancionero cambió. Busca de nuevo.",
+            other_name: "Este teléfono ya tiene cantante.",
+            name_taken: "Alguien ya está con ese nombre. Añade tu apellido.",
+            too_many: "Ya tienes todas las canciones que el DJ permite.",
+            full: "La lista está llena esta noche.",
+        }
+    }
+
+    /// By the page's language tag; English for any other.
+    #[must_use]
+    pub fn by_tag(tag: &str) -> Self {
+        match tag {
+            "es" => Self::spanish(),
+            _ => Self::english(),
+        }
+    }
+}
+
+/// What the *Sing* part says happened, across the redirect after a POST.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sang {
+    Signed(Signed),
+    Ready,
+}
+
+impl Sang {
+    const ALL: [Self; 12] = [
+        Self::Signed(Signed::Added),
+        Self::Signed(Signed::Closed),
+        Self::Signed(Signed::NoName),
+        Self::Signed(Signed::LongName),
+        Self::Signed(Signed::NoSong),
+        Self::Signed(Signed::LongSong),
+        Self::Signed(Signed::Gone),
+        Self::Signed(Signed::OtherName),
+        Self::Signed(Signed::NameTaken),
+        Self::Signed(Signed::TooMany),
+        Self::Signed(Signed::Full),
+        Self::Ready,
+    ];
+
+    #[must_use]
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Signed(Signed::Added) => "on",
+            Self::Signed(Signed::Closed) => "shut",
+            Self::Signed(Signed::NoName) => "noname",
+            Self::Signed(Signed::LongName) => "longname",
+            Self::Signed(Signed::NoSong) => "nosong",
+            Self::Signed(Signed::LongSong) => "longsong",
+            Self::Signed(Signed::Gone) => "changed",
+            Self::Signed(Signed::OtherName) => "phone",
+            Self::Signed(Signed::NameTaken) => "taken",
+            Self::Signed(Signed::TooMany) => "enough",
+            Self::Signed(Signed::Full) => "full",
+            Self::Ready => "ready",
+        }
+    }
+
+    #[must_use]
+    pub fn by_tag(tag: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.tag() == tag)
+    }
+
+    fn is_good(self) -> bool {
+        matches!(self, Self::Signed(Signed::Added) | Self::Ready)
+    }
+
+    fn sentence(self, w: &SingWords) -> &'static str {
+        match self {
+            Self::Signed(Signed::Added) => w.added,
+            Self::Signed(Signed::Closed) => w.closed,
+            Self::Signed(Signed::NoName) => w.no_name,
+            Self::Signed(Signed::LongName) => w.long_name,
+            Self::Signed(Signed::NoSong) => w.no_song,
+            Self::Signed(Signed::LongSong) => w.long_song,
+            Self::Signed(Signed::Gone) => w.gone,
+            Self::Signed(Signed::OtherName) => w.other_name,
+            Self::Signed(Signed::NameTaken) => w.name_taken,
+            Self::Signed(Signed::TooMany) => w.too_many,
+            Self::Signed(Signed::Full) => w.full,
+            Self::Ready => w.ready_said,
+        }
+    }
+}
+
+/// K4: what the *Sing* part shows one phone.
+#[derive(Debug, Clone, Default)]
+pub struct SingView {
+    /// Whether the host is taking names now.
+    pub open: bool,
+    /// The singer this phone put down tonight.
+    pub name: Option<String>,
+    pub place: Option<Place>,
+    /// Whether this singer may put down another song now.
+    pub more: bool,
+    /// Songs come from the songbook; otherwise they are written.
+    pub songbook: bool,
+    /// The name typed with a search, carried to the results.
+    pub typed_name: String,
+    /// What was searched for, when something was.
+    pub query: Option<String>,
+    pub matches: Vec<Match>,
+    pub said: Option<Sang>,
+}
+
+fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
+    html.push_str("<section class=\"sing\" id=\"sing\">\n<h2>");
+    html.push_str(w.heading);
+    html.push_str("</h2>\n");
+    if let Some(said) = sing.said {
+        html.push_str("<p class=\"said ");
+        html.push_str(if said.is_good() { "good" } else { "no" });
+        html.push_str("\" role=\"status\">");
+        html.push_str(said.sentence(w));
+        html.push_str("</p>\n");
+    }
+    if let Some(name) = &sing.name {
+        html.push_str("<p class=\"you\">");
+        html.push_str(&escape(&w.you.replace("{name}", name)));
+        html.push_str(" <strong>");
+        html.push_str(&match sing.place {
+            Some(Place::Waiting(0)) => w.next.to_owned(),
+            Some(Place::Waiting(1)) => w.one_before.to_owned(),
+            Some(Place::Waiting(n)) => w.before.replace("{n}", &n.to_string()),
+            Some(Place::Coming) => w.coming.to_owned(),
+            Some(Place::Sung) | None => w.sung.to_owned(),
+        });
+        html.push_str("</strong></p>\n");
+        if sing.place == Some(Place::Waiting(0)) && sing.said != Some(Sang::Ready) {
+            html.push_str(
+                "<form method=\"post\" action=\"/ready\"><button type=\"submit\" class=\"ready\">",
+            );
+            html.push_str(w.ready);
+            html.push_str("</button></form>\n");
+        }
+    }
+    let may_choose = sing.open && (sing.name.is_none() || sing.more);
+    if !may_choose {
+        if !sing.open && sing.name.is_none() {
+            html.push_str("<p class=\"closed\">");
+            html.push_str(w.closed);
+            html.push_str("</p>\n");
+        }
+        html.push_str("</section>\n");
+        return;
+    }
+    let name = sing.name.as_deref().unwrap_or(&sing.typed_name);
+    if sing.name.is_some() {
+        html.push_str("<h3>");
+        html.push_str(w.another);
+        html.push_str("</h3>\n");
+    }
+    if sing.songbook {
+        html.push_str("<form method=\"get\" action=\"/#sing\">\n");
+        name_field(html, sing, w, name);
+        html.push_str("<label for=\"q\">");
+        html.push_str(w.find_label);
+        html.push_str("</label>\n<input id=\"q\" name=\"q\" type=\"search\" autocomplete=\"off\" enterkeyhint=\"search\" maxlength=\"80\" placeholder=\"");
+        html.push_str(w.find_placeholder);
+        html.push_str("\" value=\"");
+        html.push_str(&escape(sing.query.as_deref().unwrap_or_default()));
+        html.push_str("\">\n<button type=\"submit\">");
+        html.push_str(w.find);
+        html.push_str("</button>\n</form>\n");
+        if sing.query.is_some() {
+            if sing.matches.is_empty() {
+                html.push_str("<p class=\"none\">");
+                html.push_str(w.none);
+                html.push_str("</p>\n");
+            } else {
+                html.push_str("<ul class=\"songs\">\n");
+                for found in &sing.matches {
+                    html.push_str("<li><span class=\"what\">");
+                    html.push_str(&escape(&found.title));
+                    if !found.artist.is_empty() {
+                        html.push_str("<span class=\"by\">");
+                        html.push_str(&escape(&found.artist));
+                        html.push_str("</span>");
+                    }
+                    html.push_str("</span><form method=\"post\" action=\"/sing\"><input type=\"hidden\" name=\"name\" value=\"");
+                    html.push_str(&escape(name));
+                    html.push_str("\"><input type=\"hidden\" name=\"song\" value=\"");
+                    html.push_str(&escape(&found.token));
+                    html.push_str("\"><button type=\"submit\" class=\"plus\">");
+                    html.push_str(w.sing_this);
+                    html.push_str("</button></form></li>\n");
+                }
+                html.push_str("</ul>\n");
+            }
+        }
+    } else {
+        html.push_str("<form method=\"post\" action=\"/sing\">\n");
+        name_field(html, sing, w, name);
+        html.push_str("<label for=\"written\">");
+        html.push_str(w.written_label);
+        html.push_str("</label>\n<input id=\"written\" name=\"written\" type=\"text\" autocomplete=\"off\" maxlength=\"");
+        html.push_str(&LONGEST_SONG.to_string());
+        html.push_str("\">\n<button type=\"submit\">");
+        html.push_str(w.send);
+        html.push_str("</button>\n</form>\n");
+    }
+    html.push_str("</section>\n");
+}
+
+/// The name field, or the name itself once this phone has put one down.
+fn name_field(html: &mut String, sing: &SingView, w: &SingWords, name: &str) {
+    if sing.name.is_some() {
+        html.push_str("<input type=\"hidden\" name=\"name\" value=\"");
+        html.push_str(&escape(name));
+        html.push_str("\">\n");
+        return;
+    }
+    html.push_str("<label for=\"name\">");
+    html.push_str(w.name);
+    html.push_str("</label>\n<input id=\"name\" name=\"name\" type=\"text\" autocomplete=\"nickname\" maxlength=\"");
+    html.push_str(&LONGEST_NAME.to_string());
+    html.push_str("\" value=\"");
+    html.push_str(&escape(name));
+    html.push_str("\">\n");
 }
 
 fn voices(words: &Words, count: u32) -> String {
@@ -391,6 +720,17 @@ button:active{background:#3d86e0}
 .plus{width:auto;margin:0;min-height:2.25rem;padding:0 .8rem;font-size:.9rem;
  background:#1e2833;color:#cfd8e3}
 .mark{margin-top:2.5rem;text-align:center;color:#4a5563;font-size:.75rem;letter-spacing:.14em}
+.sing{margin-top:2.5rem;padding-top:.5rem;border-top:1px solid #1c222a}
+.sing h3{font-size:1rem;margin:1.25rem 0 .5rem;color:#cfd8e3}
+.sing label{margin-top:.8rem}
+.you{margin:0 0 .75rem;font-size:1.05rem}
+.you strong{display:block;font-size:1.25rem;margin-top:.2rem;color:#9fe6b4}
+.ready{min-height:3.6rem;font-size:1.25rem;background:#3fbf6f;color:#06150c}
+.none{color:#b9c4d0}
+.songs{list-style:none;margin:.75rem 0 0;padding:0}
+.songs li{display:flex;align-items:center;gap:.6rem;padding:.6rem 0;border-top:1px solid #1c222a}
+.songs form{margin:0}
+.by{display:block;color:#8b97a6;font-size:.85rem}
 ";
 
 #[cfg(test)]
@@ -405,6 +745,7 @@ mod tests {
             lines: Vec::new(),
             said: None,
             open: true,
+            sing: None,
         }
     }
 

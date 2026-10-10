@@ -2919,6 +2919,19 @@ export async function openShell(
             if (cmd === "guests_export") return Promise.resolve(null);
             return Promise.resolve(structuredClone(held));
           }
+          // K4: the host's switches for singers from phones.
+          if (cmd === "sing_rules" || cmd === "sing_rules_set") {
+            const rules = (win.__singRules ??= structuredClone(
+              answers.sing_rules ?? { open: false, songs_each: 1, songbook: true, songs: 0, serving: false },
+            )) as Record<string, unknown>;
+            if (cmd === "sing_rules_set") {
+              ((win.__singCalls ??= []) as unknown[]).push({ ...args });
+              if (args.open !== undefined) rules.open = args.open;
+              if (args.songsEach !== undefined) rules.songs_each = args.songsEach;
+              if (args.songbook !== undefined) rules.songbook = args.songbook;
+            }
+            return Promise.resolve(structuredClone(rules));
+          }
           if (cmd.startsWith("karaoke_")) {
             ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
             const rotation = (win.__rotation ??= structuredClone(

@@ -4920,7 +4920,32 @@ export interface Singer {
   name: string;
   songs: SingerRequest[];
   turns: number;
+  /** K4: put down by the guest from their own phone. */
+  from_phone?: boolean;
+  /** K4: their phone said they are ready while up next. */
+  ready?: boolean;
 }
+
+/** K4: what phones may do on the room's page (docs/KARAOKE.md §7). */
+export interface SingRules {
+  /** Whether phones may put names down now. */
+  open: boolean;
+  /** Songs one singer may have waiting, 1 to 3. */
+  songs_each: number;
+  /** Songs come from the songbook; otherwise they are written in. */
+  songbook: boolean;
+  /** Records in the songbook: those with words. */
+  songs: number;
+  /** Whether the room's page is being served at all. */
+  serving: boolean;
+}
+
+export const singRules = () => invoke<SingRules>("sing_rules");
+export const singRulesSet = (change: {
+  open?: boolean;
+  songsEach?: number;
+  songbook?: boolean;
+}) => invoke<SingRules>("sing_rules_set", change);
 
 /** §107: somebody sang something, in some key. */
 export interface Sung {

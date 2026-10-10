@@ -2017,6 +2017,29 @@ impl Library {
         })
     }
 
+    /// K4: the songbook — every record with words to sing, instrumentals
+    /// left out, in the order they joined the collection, at most `most`.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn songbook(&self, most: usize) -> Result<Vec<LibraryTrack>> {
+        self.with(|conn| {
+            let mut statement = conn.prepare(&format!(
+                "SELECT {TRACK_COLUMNS} FROM tracks
+                 WHERE id IN (SELECT track_id FROM lyrics WHERE found = 1 AND instrumental = 0)
+                 ORDER BY rowid
+                 LIMIT ?1"
+            ))?;
+            let rows =
+                statement.query_map([i64::try_from(most).unwrap_or(i64::MAX)], read_track)?;
+            let mut tracks = Vec::new();
+            for row in rows {
+                tracks.push(row??);
+            }
+            Ok(tracks)
+        })
+    }
+
     /// Remember what the lyrics database said about one record.
     ///
     /// # Errors
@@ -3624,6 +3647,35 @@ mod tests {
         assert_eq!(lib.notes("friday").unwrap().len(), 1);
         assert_eq!(lib.notes("saturday").unwrap()[0].body, "there");
         assert!(lib.notes("sunday").unwrap().is_empty());
+    }
+
+    /// **K4: the songbook is the records with words to sing** — not one
+    /// asked about and missed, not an instrumental, not one never asked.
+    #[test]
+    fn the_songbook_is_the_records_with_words() {
+        let lib = library();
+        for (byte, title) in [
+            (1, "sung"),
+            (2, "missed"),
+            (3, "instrumental"),
+            (4, "never"),
+        ] {
+            lib.upsert_track(&track(byte, title, "someone")).unwrap();
+        }
+        let id = |byte: u8| TrackId::from_bytes([byte; 32]);
+        lib.remember_words(id(1), "la la la", None, false, "lrclib", 1)
+            .unwrap();
+        lib.remember_words(id(2), "", None, false, "lrclib", 1)
+            .unwrap();
+        lib.remember_words(id(3), "", None, true, "lrclib", 1)
+            .unwrap();
+        let book = lib.songbook(100).unwrap();
+        let titles: Vec<_> = book
+            .iter()
+            .map(|t| t.tags.title.clone().unwrap_or_default())
+            .collect();
+        assert_eq!(titles, vec!["sung".to_owned()]);
+        assert!(lib.songbook(0).unwrap().is_empty());
     }
 
     /// **A marker with no words is a complete note.**

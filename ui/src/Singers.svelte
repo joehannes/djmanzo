@@ -31,6 +31,8 @@
     karaokeSang,
     librarySearch,
     loadTrack,
+    singRules,
+    singRulesSet,
     lookChoose,
     lookChosen,
     looksCatalogue,
@@ -41,6 +43,7 @@
     type LibraryTrack,
     type Look,
     type Rotation,
+    type SingRules,
     type Vocals,
     type VocalsState,
   } from "./api";
@@ -98,6 +101,40 @@
     if (!enabled) return;
     void refresh();
   });
+
+  /**
+   * K4: singers from the room. Whether phones may put names down, and how —
+   * the host's switches; the names themselves arrive in the rotation.
+   */
+  let phones = $state<SingRules | null>(null);
+  function readPhones() {
+    void singRules()
+      .then((rules) => (phones = rules))
+      .catch(() => {});
+  }
+  $effect(() => {
+    if (!enabled) return;
+    readPhones();
+  });
+  // While phones may sign up, names arrive without anybody here pressing
+  // anything: the rotation is read again every few seconds.
+  const phonesOpen = $derived(phones?.open ?? false);
+  $effect(() => {
+    if (!enabled || !phonesOpen) return;
+    const timer = setInterval(() => {
+      void refresh();
+      readPhones();
+    }, 3000);
+    return () => clearInterval(timer);
+  });
+  async function setPhones(change: { open?: boolean; songsEach?: number; songbook?: boolean }) {
+    error = "";
+    try {
+      phones = await singRulesSet(change);
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /**
    * §122: the look behind the words on the singers' screen — djmanzo's own
@@ -324,7 +361,11 @@
       across the booth with a microphone in the other hand.
     -->
     <section class="up" aria-label="Up next">
-      <p class="who">{upNext.name}</p>
+      <p class="who">
+        {upNext.name}
+        {#if upNext.ready}<span class="badge ready" data-ready>Ready</span>{/if}
+        {#if upNext.from_phone}<span class="badge" title="Put their own name down from their phone">phone</span>{/if}
+      </p>
       <p class="what">{next.title}</p>
       <div class="key" role="group" aria-label="Key for {upNext.name}">
         <button
@@ -460,7 +501,12 @@
       {#each waiting.slice(1) as person, index (person.name)}
         <li>
           <span class="pos mono">{index + 2}</span>
-          <span class="name">{person.name}</span>
+          <span class="name"
+            >{person.name}{#if person.from_phone}<span
+                class="badge"
+                title="Put their own name down from their phone">phone</span
+              >{/if}</span
+          >
           <span class="song">{person.songs[0].title}</span>
           {#if person.songs[0].key !== 0}
             <span class="mono k">{signed(person.songs[0].key)}</span>
@@ -512,6 +558,51 @@
     </div>
     <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
   </form>
+
+  {#if phones}
+    <!--
+      K4: singers put their own names down from their phones, through the
+      room's page — off until the host opens it.
+    -->
+    <section class="phones" aria-label="Singers from phones" data-from-phones>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={phones.open}
+          onchange={(event) => void setPhones({ open: event.currentTarget.checked })}
+        />
+        Singers put their names down from their phones
+      </label>
+      {#if phones.open && !phones.serving}
+        <p class="problem" role="status">
+          The room's page is not being served. Start it in Requests; its QR code takes them there.
+        </p>
+      {/if}
+      <div class="break-row">
+        <div class="choices" role="group" aria-label="Songs waiting per singer">
+          <span>songs each</span>
+          {#each [1, 2, 3] as n (n)}
+            <button aria-pressed={phones.songs_each === n} onclick={() => void setPhones({ songsEach: n })}>{n}</button>
+          {/each}
+        </div>
+        <div class="choices" role="group" aria-label="How a singer chooses a song">
+          <button aria-pressed={phones.songbook} onclick={() => void setPhones({ songbook: true })}
+            >From the songbook</button
+          >
+          <button aria-pressed={!phones.songbook} onclick={() => void setPhones({ songbook: false })}
+            >Written in</button
+          >
+        </div>
+      </div>
+      <p class="hint" data-songbook>
+        {#if phones.songbook}
+          {phones.songs === 1 ? "1 record" : `${phones.songs} records`} with words in the songbook.
+        {:else}
+          A song written in is found in your collection by you before it can be called.
+        {/if}
+      </p>
+    </section>
+  {/if}
 
   {#if rotation && rotation.lately.length > 0}
     <details class="lately">
@@ -799,5 +890,24 @@
 
   .look .hint {
     margin: 0;
+  }
+  .phones {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .badge {
+    display: inline-block;
+    margin-left: 0.4em;
+    padding: 0 0.4em;
+    border-radius: 0.3em;
+    font-size: 0.7em;
+    vertical-align: middle;
+    border: 1px solid currentColor;
+    opacity: 0.8;
+  }
+  .badge.ready {
+    color: var(--success);
+    opacity: 1;
   }
 </style>

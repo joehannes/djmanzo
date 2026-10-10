@@ -265,7 +265,7 @@ impl RequestBook {
 }
 
 /// Trim, and collapse runs of whitespace into single spaces.
-fn tidy(text: &str) -> String {
+pub(crate) fn tidy(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -275,7 +275,7 @@ fn tidy(text: &str) -> String {
 /// accents are the point: half a room types "Obsesión" and half types
 /// "Obsesion", and a book that treats those as two songs splits the tally in
 /// half — which is the one number the whole feature exists to produce.
-fn fold(text: &str) -> String {
+pub(crate) fn fold(text: &str) -> String {
     text.replace('&', " and ")
         .chars()
         .flat_map(char::to_lowercase)
