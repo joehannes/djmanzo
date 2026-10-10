@@ -2922,13 +2922,15 @@ export async function openShell(
           // K4: the host's switches for singers from phones.
           if (cmd === "sing_rules" || cmd === "sing_rules_set") {
             const rules = (win.__singRules ??= structuredClone(
-              answers.sing_rules ?? { open: false, songs_each: 1, songbook: true, songs: 0, serving: false },
+              answers.sing_rules ?? { open: false, songs_each: 1, songbook: true, key: false, guide: false, songs: 0, serving: false },
             )) as Record<string, unknown>;
             if (cmd === "sing_rules_set") {
               ((win.__singCalls ??= []) as unknown[]).push({ ...args });
               if (args.open !== undefined) rules.open = args.open;
               if (args.songsEach !== undefined) rules.songs_each = args.songsEach;
               if (args.songbook !== undefined) rules.songbook = args.songbook;
+              if (args.key !== undefined) rules.key = args.key;
+              if (args.guide !== undefined) rules.guide = args.guide;
             }
             return Promise.resolve(structuredClone(rules));
           }
@@ -3003,6 +3005,17 @@ export async function openShell(
             if (cmd === "karaoke_key") {
               const singer = rotation.singers.find((s) => s.name === args.singer);
               if (singer?.songs[0]) singer.songs[0].key = Math.max(-7, Math.min(7, Number(args.key)));
+            }
+            // K4: a phone's proposal taken or refused, as `Rotation::take_asks`.
+            if (cmd === "karaoke_take" || cmd === "karaoke_refuse") {
+              const song = rotation.singers.find((s) => s.name === args.singer)?.songs[0] as
+                | { key: number; voice?: string | null; asks?: { key: number | null; voice: string | null } | null }
+                | undefined;
+              if (song?.asks && cmd === "karaoke_take") {
+                if (song.asks.key !== null) song.key = song.asks.key;
+                if (song.asks.voice) song.voice = song.asks.voice;
+              }
+              if (song) song.asks = null;
             }
             rotation.up_next = upNext();
             return Promise.resolve(structuredClone(rotation));

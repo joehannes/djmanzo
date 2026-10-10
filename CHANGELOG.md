@@ -24,6 +24,10 @@ Versioning follows semver, with one project-specific convention:
   marks their row *Ready* for you. One singer per phone; you choose how many
   songs each may have waiting, and whether songs are chosen from the
   songbook or written in. Off until you switch it on.
+- **A singer can ask for a key and the guide vocal (K4).** Where you allow
+  it, the phone offers the key and what to do with the record's own singer;
+  your row shows *asks key -2 · guide* with *Take* and *No thanks*. Nothing
+  changes until you take it, and *Load on* then sets both on the deck.
 
 ## v0.40.0 — Packs to make and share, and records in Opus
 

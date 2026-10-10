@@ -40,6 +40,10 @@ pub struct Rules {
     pub songs_each: u8,
     /// Whether the song is chosen from the songbook (true) or written (false).
     pub songbook: bool,
+    /// Whether a phone may propose a key.
+    pub key: bool,
+    /// Whether a phone may propose what is done with the record's singer.
+    pub guide: bool,
 }
 
 impl Default for Rules {
@@ -48,7 +52,57 @@ impl Default for Rules {
             open: false,
             songs_each: 1,
             songbook: true,
+            key: false,
+            guide: false,
         }
+    }
+}
+
+/// The most a proposed key may move, either way: the rotation's own bound
+/// (`dj_app::karaoke::KEY_RANGE`).
+pub const KEY_RANGE: i32 = 7;
+
+/// What a singer may ask be done with the record's own singer — the three
+/// the Singers panel offers per deck.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Voice {
+    AsRecorded,
+    Guide,
+    Out,
+}
+
+impl Voice {
+    pub const ALL: [Self; 3] = [Self::AsRecorded, Self::Guide, Self::Out];
+
+    /// As the page's form and the rotation name it.
+    #[must_use]
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::AsRecorded => "as-recorded",
+            Self::Guide => "guide",
+            Self::Out => "out",
+        }
+    }
+
+    #[must_use]
+    pub fn by_tag(tag: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.tag() == tag)
+    }
+}
+
+/// What a singer asks for besides the song: proposals the host takes or
+/// refuses, never settings (docs/KARAOKE.md §7).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Proposal {
+    /// Semitones from the record's own key.
+    pub key: Option<i32>,
+    pub voice: Option<Voice>,
+}
+
+impl Proposal {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.key.is_none() && self.voice.is_none()
     }
 }
 
@@ -98,6 +152,8 @@ impl Chosen {
 pub struct SignUp {
     pub name: String,
     pub song: Chosen,
+    /// Only what the host allows phones to propose; the rest is dropped.
+    pub proposal: Proposal,
     pub at: SystemTime,
 }
 
@@ -271,6 +327,23 @@ impl Stage {
         written: Option<&str>,
         now: SystemTime,
     ) -> Signed {
+        self.sign_with(phone, name, token, written, Proposal::default(), now)
+    }
+
+    /// [`Stage::sign`], with what the singer proposes besides the song. A
+    /// part the host does not allow is dropped rather than refused — the
+    /// page offers only what is allowed, so it can only come from a page
+    /// opened before the host changed their mind — and a key is held to
+    /// [`KEY_RANGE`].
+    pub fn sign_with(
+        &mut self,
+        phone: &str,
+        name: &str,
+        token: Option<&str>,
+        written: Option<&str>,
+        proposal: Proposal,
+        now: SystemTime,
+    ) -> Signed {
         if !self.rules.open {
             return Signed::Closed;
         }
@@ -323,9 +396,18 @@ impl Stage {
             return Signed::Full;
         }
         self.names.insert(phone.to_owned(), name.clone());
+        let proposal = Proposal {
+            key: proposal
+                .key
+                .filter(|_| self.rules.key)
+                .map(|key| key.clamp(-KEY_RANGE, KEY_RANGE))
+                .filter(|key| *key != 0),
+            voice: proposal.voice.filter(|_| self.rules.guide),
+        };
         self.waiting.push(SignUp {
             name,
             song,
+            proposal,
             at: now,
         });
         Signed::Added
@@ -519,6 +601,7 @@ mod tests {
             open: true,
             songs_each: 3,
             songbook: true,
+            ..Rules::default()
         });
         let t = token(&stage, "obsesion");
         assert_eq!(stage.sign("a", "Ana", Some(&t), None, now()), Signed::Added);
@@ -565,12 +648,59 @@ mod tests {
             open: true,
             songs_each: 2,
             songbook: true,
+            ..Rules::default()
         });
         assert_eq!(stage.sign("a", "Ana", Some(&t), None, now()), Signed::Added);
         assert_eq!(
             stage.sign("a", "Ana", Some(&t), None, now()),
             Signed::TooMany
         );
+    }
+
+    /// **A proposal is kept only where the host allows it, and in range.**
+    #[test]
+    fn a_proposal_is_what_the_host_allows() {
+        let mut stage = open_stage();
+        let t = token(&stage, "obsesion");
+        let asks = Proposal {
+            key: Some(-12),
+            voice: Some(Voice::Guide),
+        };
+        // Neither allowed: the song is taken, the proposal dropped.
+        assert_eq!(
+            stage.sign_with("a", "Ana", Some(&t), None, asks, now()),
+            Signed::Added
+        );
+        assert!(stage.take().0[0].proposal.is_empty());
+        stage.set_order(vec![], vec!["Ana".into()]);
+        stage.set_rules(Rules {
+            open: true,
+            key: true,
+            guide: true,
+            ..Rules::default()
+        });
+        assert_eq!(
+            stage.sign_with("a", "Ana", Some(&t), None, asks, now()),
+            Signed::Added
+        );
+        assert_eq!(
+            stage.take().0[0].proposal,
+            Proposal {
+                key: Some(-KEY_RANGE),
+                voice: Some(Voice::Guide),
+            },
+            "the key held to the range"
+        );
+        // As recorded is no proposal at all.
+        let none = Proposal {
+            key: Some(0),
+            voice: None,
+        };
+        assert_eq!(
+            stage.sign_with("a", "Ana", Some(&t), None, none, now()),
+            Signed::Added
+        );
+        assert!(stage.take().0[0].proposal.is_empty());
     }
 
     /// **The same songbook again keeps every phone's search good.**
@@ -608,6 +738,7 @@ mod tests {
             open: true,
             songs_each: 1,
             songbook: false,
+            ..Rules::default()
         });
         assert_eq!(
             stage.sign("a", "Ana", Some("anything"), Some("  "), now()),
@@ -649,6 +780,7 @@ mod tests {
             open: true,
             songs_each: 1,
             songbook: true,
+            ..Rules::default()
         });
         let t = token(&stage, "obsesion");
         stage.sign("a", "Ana", Some(&t), None, now());

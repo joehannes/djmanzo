@@ -30,7 +30,7 @@ const phones = (page: Page) => page.getByRole("region", { name: "Singers from ph
 test.describe("K4: singers from the room", () => {
   test("the host opens sign-ups and chooses how songs are chosen", async ({ page }) => {
     await singers(page, {
-      sing_rules: { open: false, songs_each: 1, songbook: true, songs: 42, serving: false },
+      sing_rules: { open: false, songs_each: 1, songbook: true, key: false, guide: false, songs: 42, serving: false },
     });
     const section = phones(page);
     const open = section.getByRole("checkbox", { name: "Singers put their names down from their phones" });
@@ -48,13 +48,22 @@ test.describe("K4: singers from the room", () => {
     await section.getByRole("button", { name: "Written in" }).click();
     await expect(section.locator("[data-songbook]")).toContainText("found in your collection by you");
 
-    expect(await calls(page)).toEqual([{ open: true }, { songsEach: 2 }, { songbook: false }]);
+    await section.getByRole("checkbox", { name: "May ask for a key" }).check();
+    await section.getByRole("checkbox", { name: "May ask for the guide vocal" }).check();
+
+    expect(await calls(page)).toEqual([
+      { open: true },
+      { songsEach: 2 },
+      { songbook: false },
+      { key: true },
+      { guide: true },
+    ]);
     expect(errorsThrown(page)).toEqual([]);
   });
 
   test("a singer from a phone, ready, says so in the rotation", async ({ page }) => {
     await singers(page, {
-      sing_rules: { open: true, songs_each: 1, songbook: true, songs: 3, serving: true },
+      sing_rules: { open: true, songs_each: 1, songbook: true, key: true, guide: true, songs: 3, serving: true },
       karaoke_rotation: {
         singers: [
           {
@@ -88,6 +97,68 @@ test.describe("K4: singers from the room", () => {
     await expect(order.getByRole("listitem").filter({ hasText: "Carla" }).getByText("phone")).toHaveCount(0);
     // Open, served: nothing to warn about.
     await expect(phones(page).getByRole("status")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **What a singer asks for waits for the host.** Shown as asked; taken,
+   * it becomes the song's key, and loading the song sets the deck's vocal
+   * as asked; refused, the song stays as it was.
+   */
+  test("a key and a guide asked for are taken or refused, and taken is what loads", async ({ page }) => {
+    await singers(page, {
+      sing_rules: { open: true, songs_each: 1, songbook: true, key: true, guide: true, songs: 3, serving: true },
+      karaoke_rotation: {
+        singers: [
+          {
+            name: "Ana",
+            songs: [
+              {
+                title: "Aventura — Obsesión",
+                track: "00ff",
+                path: "/m/o.flac",
+                key: 0,
+                asks: { key: -2, voice: "guide" },
+              },
+            ],
+            turns: 0,
+            from_phone: true,
+          },
+          {
+            name: "Bob",
+            songs: [{ title: "Toxic", track: null, path: null, key: 0, asks: { key: 3, voice: null } }],
+            turns: 0,
+            from_phone: true,
+          },
+        ],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    const up = page.getByRole("region", { name: "Up next" });
+    const asks = up.getByRole("group", { name: "What Ana asks for" });
+    await expect(asks).toContainText("asks key -2 · guide");
+    await expect(up.locator("[data-key]")).toHaveText("as recorded", { useInnerText: true });
+    await asks.getByRole("button", { name: "Take" }).click();
+    await expect(up.locator("[data-key]")).toHaveText("key -2");
+    await expect(up.locator("[data-asks]")).toHaveCount(0);
+
+    await up.getByRole("button", { name: "Load on 1" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
+      .toEqual(expect.arrayContaining(["deck 1 key -2", "deck 1 voice 0.25"]));
+
+    const order = page.getByRole("list", { name: "Calling order" });
+    await expect(order.locator("[data-asks]")).toHaveText("asks key +3");
+    await order.getByRole("button", { name: "Refuse what Bob asks for" }).click();
+    await expect(order.locator("[data-asks]")).toHaveCount(0);
+    const karaoke = await page.evaluate(
+      () => (window as unknown as { __karaoke?: { cmd: string; singer?: string }[] }).__karaoke ?? [],
+    );
+    expect(karaoke.filter((c) => c.cmd === "karaoke_take" || c.cmd === "karaoke_refuse")).toEqual([
+      { cmd: "karaoke_take", singer: "Ana" },
+      { cmd: "karaoke_refuse", singer: "Bob" },
+    ]);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

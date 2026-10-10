@@ -49,6 +49,24 @@ pub struct Request {
     /// Semitones from the record's own key. Zero is as recorded.
     #[serde(default)]
     pub key: i32,
+    /// K4: what is done with the record's own singer when it is loaded —
+    /// `as-recorded`, `guide` or `out` — once the host has taken it. None
+    /// leaves the deck as it is.
+    #[serde(default)]
+    pub voice: Option<String>,
+    /// K4: what the singer asked for from their phone, waiting for the host
+    /// to take or refuse. Nothing of it is applied until taken.
+    #[serde(default)]
+    pub asks: Option<Asks>,
+}
+
+/// K4: a singer's proposal, as the host's row shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Asks {
+    #[serde(default)]
+    pub key: Option<i32>,
+    #[serde(default)]
+    pub voice: Option<String>,
 }
 
 /// One singer in the rotation.
@@ -164,6 +182,8 @@ impl Rotation {
             track,
             path,
             key,
+            voice: None,
+            asks: None,
         };
         match self
             .singers
@@ -284,6 +304,40 @@ impl Rotation {
         true
     }
 
+    /// K4: the host takes what `name` asked for on their next song: the key
+    /// and what is done with the record's singer become the song's own.
+    pub fn take_asks(&mut self, name: &str) -> bool {
+        let Some(song) = self
+            .singers
+            .iter_mut()
+            .find(|singer| same(&singer.name, name))
+            .and_then(|singer| singer.songs.first_mut())
+        else {
+            return false;
+        };
+        let Some(asks) = song.asks.take() else {
+            return false;
+        };
+        if let Some(key) = asks.key {
+            song.key = key.clamp(-KEY_RANGE, KEY_RANGE);
+        }
+        if asks.voice.is_some() {
+            song.voice = asks.voice;
+        }
+        true
+    }
+
+    /// K4: the host refuses what `name` asked for on their next song; the
+    /// song stays as it was.
+    pub fn refuse_asks(&mut self, name: &str) -> bool {
+        self.singers
+            .iter_mut()
+            .find(|singer| same(&singer.name, name))
+            .and_then(|singer| singer.songs.first_mut())
+            .and_then(|song| song.asks.take())
+            .is_some()
+    }
+
     /// The key this singer last sang this song in, if they have.
     ///
     /// Matched on the record when both are known, and on the title otherwise
@@ -364,6 +418,14 @@ impl Rotation {
                     .find(|singer| same(&singer.name, &sign.name))
             {
                 singer.from_phone = true;
+                if !sign.proposal.is_empty()
+                    && let Some(song) = singer.songs.last_mut()
+                {
+                    song.asks = Some(Asks {
+                        key: sign.proposal.key,
+                        voice: sign.proposal.voice.map(|v| v.tag().to_owned()),
+                    });
+                }
                 changed = true;
             }
         }
@@ -673,6 +735,56 @@ mod tests {
         );
         // Nothing new: nothing to keep.
         assert!(!rotation.from_phones(&mut stage, |_| None));
+    }
+
+    /// **K4: what a singer asks for waits for the host**, applied only when
+    /// taken, and a refusal leaves the song as it was.
+    #[test]
+    fn a_proposal_waits_for_the_host() {
+        let mut rotation = Rotation::default();
+        let mut stage = phones();
+        stage.set_rules(dj_net::stage::Rules {
+            open: true,
+            key: true,
+            guide: true,
+            songs_each: 2,
+            ..dj_net::stage::Rules::default()
+        });
+        let token = stage.search("obsesion")[0].token.clone();
+        let asks = dj_net::stage::Proposal {
+            key: Some(-2),
+            voice: Some(dj_net::stage::Voice::Guide),
+        };
+        let at = std::time::SystemTime::UNIX_EPOCH;
+        stage.sign_with("a", "Ana", Some(&token), None, asks, at);
+        stage.sign_with("b", "Bob", Some(&token), None, asks, at);
+        rotation.from_phones(&mut stage, |_| None);
+
+        let ana = &rotation.singers[0].songs[0];
+        assert_eq!(ana.key, 0, "nothing applied before the host takes it");
+        assert_eq!(ana.voice, None);
+        assert_eq!(
+            ana.asks,
+            Some(Asks {
+                key: Some(-2),
+                voice: Some("guide".into()),
+            })
+        );
+
+        assert!(rotation.take_asks("ana"));
+        let ana = &rotation.singers[0].songs[0];
+        assert_eq!(
+            (ana.key, ana.voice.as_deref(), ana.asks.is_none()),
+            (-2, Some("guide"), true)
+        );
+        assert!(!rotation.take_asks("Ana"), "taken once");
+
+        assert!(rotation.refuse_asks("Bob"));
+        let bob = &rotation.singers[1].songs[0];
+        assert_eq!(
+            (bob.key, bob.voice.as_deref(), bob.asks.is_none()),
+            (0, None, true)
+        );
     }
 
     /// **K4: ready counts for the singer up next, and only until they sing.**

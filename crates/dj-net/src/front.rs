@@ -19,7 +19,7 @@
 
 use crate::page::{self, Line, Said, Sang, SingView, View, Words};
 use crate::room::{Ask, RequestBook, Standing};
-use crate::stage::{Signed, Stage};
+use crate::stage::{Proposal, Signed, Stage, Voice};
 use crate::web::{Handler, Incoming, Method, Reply};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -254,6 +254,10 @@ impl Doorman {
                         .unwrap_or_default(),
                     query,
                     said: request.param("sang").and_then(Sang::by_tag),
+                    key: rules.key,
+                    chosen_key: request.param("key").and_then(|k| k.parse().ok()),
+                    guide: rules.guide,
+                    chosen_voice: request.param("voice").and_then(Voice::by_tag),
                 })
             })
             .flatten()
@@ -265,14 +269,19 @@ impl Doorman {
         let name = request.field("name").unwrap_or_default();
         let token = request.field("song");
         let written = request.field("written");
+        let proposal = Proposal {
+            key: request.field("key").and_then(|k| k.trim().parse().ok()),
+            voice: request.field("voice").as_deref().and_then(Voice::by_tag),
+        };
         let signed = self
             .front
             .stage(|stage| {
-                stage.sign(
+                stage.sign_with(
                     &phone,
                     &name,
                     token.as_deref(),
                     written.as_deref(),
+                    proposal,
                     SystemTime::now(),
                 )
             })
@@ -678,6 +687,61 @@ mod tests {
         assert_eq!(front.stage(|s| s.take().1).unwrap(), vec!["Ana".to_owned()]);
         let after = get(server.address(), "/?sang=ready");
         assert!(after.contains("The DJ knows you're ready."), "{after}");
+    }
+
+    /// **A key and the record's singer are asked for only where the host
+    /// allows it**, carried from the search to the song chosen, and arrive
+    /// in the book as a proposal.
+    #[test]
+    fn a_guest_asks_for_a_key_and_a_guide_where_the_host_allows_it() {
+        let (server, front) = serving();
+        singing(&front);
+        let plain = get(server.address(), "/?name=Ana&q=obsesion");
+        assert!(!plain.contains("name=\"key\""), "not allowed, not offered");
+        assert!(!plain.contains("name=\"voice\""));
+
+        front.stage(|s| {
+            s.set_rules(crate::stage::Rules {
+                open: true,
+                key: true,
+                guide: true,
+                ..crate::stage::Rules::default()
+            });
+        });
+        let found = get(server.address(), "/?name=Ana&q=obsesion&key=-2&voice=guide");
+        assert!(
+            found.contains("<option value=\"-2\" selected>2 semitones lower</option>"),
+            "{found}"
+        );
+        assert!(
+            found.contains("<option value=\"guide\" selected>Quietly, as a guide</option>"),
+            "{found}"
+        );
+        assert!(
+            found.contains("The DJ sees what you ask for and decides."),
+            "{found}"
+        );
+        assert!(
+            found.contains("name=\"key\" value=\"-2\""),
+            "carried to the song: {found}"
+        );
+        let token = first_token(&found);
+        post_to(
+            server.address(),
+            "/sing",
+            &format!(
+                "name=Ana&song={}&key=-2&voice=guide",
+                urlencoding::encode(&token)
+            ),
+        );
+        let (signed, _) = front.stage(|s| s.take()).unwrap();
+        assert_eq!(
+            signed[0].proposal,
+            crate::stage::Proposal {
+                key: Some(-2),
+                voice: Some(crate::stage::Voice::Guide),
+            }
+        );
     }
 
     /// **A refusal keeps the name**, so it need not be typed again.

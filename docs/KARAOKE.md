@@ -965,3 +965,19 @@ file each reading before the other writes is a name lost. *New night*
 forgets every phone's name before it clears the rotation, so none is taken
 in on its way out. Where the songbook is not offered, a song is written in
 and arrives without a record, for the host to find.
+
+**Step 2, proposals — built (10 October).** Two more of the host's
+switches, *May ask for a key* and *May ask for the guide vocal*, both off.
+Where on, the phone's search form offers the key — fifteen choices, *7
+semitones lower* to *7 semitones higher*, *As recorded* between — and the
+record's own singer (*As recorded*, *Quietly, as a guide*, *Taken out*),
+says *The DJ sees what you ask for and decides*, and carries the choice
+into each *Sing this*. `Stage::sign_with` keeps only what the host allows —
+a part from a page opened before the host changed their mind is dropped,
+not refused — holds the key to seven semitones, and counts *as recorded*
+as no proposal. The song arrives in the rotation with `asks`; the host's
+row says *asks key -2 · guide* with *Take* and *No thanks*, and the
+calling order the same with ✓ and ✗. Taken, the key is the song's key and
+the guide its `voice`, which *Load on* sets on the deck with the key;
+refused, the song is as it was. Not yet: a refusal sends the phone back
+with its name but not its choices.

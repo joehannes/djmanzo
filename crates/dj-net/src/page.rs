@@ -18,7 +18,7 @@
 //! request box in a bar in Santo Domingo cannot be.
 
 use crate::room::{Ask, LONGEST_ASK, Outcome};
-use crate::stage::{LONGEST_NAME, LONGEST_SONG, Match, Place, Signed};
+use crate::stage::{KEY_RANGE, LONGEST_NAME, LONGEST_SONG, Match, Place, Signed, Voice};
 
 /// The visible text of the page, in one language.
 #[derive(Debug, Clone, Copy)]
@@ -372,6 +372,20 @@ pub struct SingWords {
     pub name_taken: &'static str,
     pub too_many: &'static str,
     pub full: &'static str,
+    pub key: &'static str,
+    pub key_as_recorded: &'static str,
+    pub key_lower_one: &'static str,
+    /// Formatted with the count, as `{n}`.
+    pub key_lower: &'static str,
+    pub key_higher_one: &'static str,
+    /// Formatted with the count, as `{n}`.
+    pub key_higher: &'static str,
+    pub voice: &'static str,
+    pub voice_as_recorded: &'static str,
+    pub voice_guide: &'static str,
+    pub voice_out: &'static str,
+    /// Under the choices: they are asked for, not set.
+    pub proposals: &'static str,
 }
 
 impl SingWords {
@@ -407,6 +421,17 @@ impl SingWords {
             name_taken: "Someone is down by that name. Add your surname.",
             too_many: "You have as many songs waiting as the DJ allows.",
             full: "The list is full tonight.",
+            key: "Key",
+            key_as_recorded: "As recorded",
+            key_lower_one: "1 semitone lower",
+            key_lower: "{n} semitones lower",
+            key_higher_one: "1 semitone higher",
+            key_higher: "{n} semitones higher",
+            voice: "The record's own singer",
+            voice_as_recorded: "As recorded",
+            voice_guide: "Quietly, as a guide",
+            voice_out: "Taken out",
+            proposals: "The DJ sees what you ask for and decides.",
         }
     }
 
@@ -442,6 +467,17 @@ impl SingWords {
             name_taken: "Alguien ya está con ese nombre. Añade tu apellido.",
             too_many: "Ya tienes todas las canciones que el DJ permite.",
             full: "La lista está llena esta noche.",
+            key: "Tono",
+            key_as_recorded: "Como está grabada",
+            key_lower_one: "1 semitono más bajo",
+            key_lower: "{n} semitonos más bajo",
+            key_higher_one: "1 semitono más alto",
+            key_higher: "{n} semitonos más alto",
+            voice: "La voz de la grabación",
+            voice_as_recorded: "Como está grabada",
+            voice_guide: "Suave, como guía",
+            voice_out: "Quitada",
+            proposals: "El DJ ve lo que pides y decide.",
         }
     }
 
@@ -541,6 +577,12 @@ pub struct SingView {
     pub query: Option<String>,
     pub matches: Vec<Match>,
     pub said: Option<Sang>,
+    /// Whether a key may be proposed, and the one chosen with a search.
+    pub key: bool,
+    pub chosen_key: Option<i32>,
+    /// Whether the record's singer may be, and what was chosen.
+    pub guide: bool,
+    pub chosen_voice: Option<Voice>,
 }
 
 fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
@@ -599,7 +641,9 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
         html.push_str(w.find_placeholder);
         html.push_str("\" value=\"");
         html.push_str(&escape(sing.query.as_deref().unwrap_or_default()));
-        html.push_str("\">\n<button type=\"submit\">");
+        html.push_str("\">\n");
+        proposal_fields(html, sing, w);
+        html.push_str("<button type=\"submit\">");
         html.push_str(w.find);
         html.push_str("</button>\n</form>\n");
         if sing.query.is_some() {
@@ -621,7 +665,18 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
                     html.push_str(&escape(name));
                     html.push_str("\"><input type=\"hidden\" name=\"song\" value=\"");
                     html.push_str(&escape(&found.token));
-                    html.push_str("\"><button type=\"submit\" class=\"plus\">");
+                    html.push_str("\">");
+                    if let Some(key) = sing.chosen_key.filter(|_| sing.key) {
+                        html.push_str("<input type=\"hidden\" name=\"key\" value=\"");
+                        html.push_str(&key.to_string());
+                        html.push_str("\">");
+                    }
+                    if let Some(voice) = sing.chosen_voice.filter(|_| sing.guide) {
+                        html.push_str("<input type=\"hidden\" name=\"voice\" value=\"");
+                        html.push_str(voice.tag());
+                        html.push_str("\">");
+                    }
+                    html.push_str("<button type=\"submit\" class=\"plus\">");
                     html.push_str(w.sing_this);
                     html.push_str("</button></form></li>\n");
                 }
@@ -635,11 +690,67 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
         html.push_str(w.written_label);
         html.push_str("</label>\n<input id=\"written\" name=\"written\" type=\"text\" autocomplete=\"off\" maxlength=\"");
         html.push_str(&LONGEST_SONG.to_string());
-        html.push_str("\">\n<button type=\"submit\">");
+        html.push_str("\">\n");
+        proposal_fields(html, sing, w);
+        html.push_str("<button type=\"submit\">");
         html.push_str(w.send);
         html.push_str("</button>\n</form>\n");
     }
     html.push_str("</section>\n");
+}
+
+/// K4: the key and the record's singer, where the host lets a phone ask.
+fn proposal_fields(html: &mut String, sing: &SingView, w: &SingWords) {
+    if sing.key {
+        html.push_str("<label for=\"key\">");
+        html.push_str(w.key);
+        html.push_str("</label>\n<select id=\"key\" name=\"key\">\n");
+        for key in -KEY_RANGE..=KEY_RANGE {
+            let words = match key {
+                0 => w.key_as_recorded.to_owned(),
+                -1 => w.key_lower_one.to_owned(),
+                1 => w.key_higher_one.to_owned(),
+                k if k < 0 => w.key_lower.replace("{n}", &(-k).to_string()),
+                k => w.key_higher.replace("{n}", &k.to_string()),
+            };
+            html.push_str("<option value=\"");
+            html.push_str(&key.to_string());
+            html.push('"');
+            if sing.chosen_key.unwrap_or(0) == key {
+                html.push_str(" selected");
+            }
+            html.push('>');
+            html.push_str(&words);
+            html.push_str("</option>\n");
+        }
+        html.push_str("</select>\n");
+    }
+    if sing.guide {
+        html.push_str("<label for=\"voice\">");
+        html.push_str(w.voice);
+        html.push_str("</label>\n<select id=\"voice\" name=\"voice\">\n");
+        for voice in Voice::ALL {
+            html.push_str("<option value=\"");
+            html.push_str(voice.tag());
+            html.push('"');
+            if sing.chosen_voice.unwrap_or(Voice::AsRecorded) == voice {
+                html.push_str(" selected");
+            }
+            html.push('>');
+            html.push_str(match voice {
+                Voice::AsRecorded => w.voice_as_recorded,
+                Voice::Guide => w.voice_guide,
+                Voice::Out => w.voice_out,
+            });
+            html.push_str("</option>\n");
+        }
+        html.push_str("</select>\n");
+    }
+    if sing.key || sing.guide {
+        html.push_str("<p class=\"asks\">");
+        html.push_str(w.proposals);
+        html.push_str("</p>\n");
+    }
 }
 
 /// The name field, or the name itself once this phone has put one down.
@@ -731,6 +842,9 @@ button:active{background:#3d86e0}
 .songs li{display:flex;align-items:center;gap:.6rem;padding:.6rem 0;border-top:1px solid #1c222a}
 .songs form{margin:0}
 .by{display:block;color:#8b97a6;font-size:.85rem}
+select{width:100%;padding:.75rem .8rem;border-radius:.6rem;border:1px solid #2b333d;
+ background:#141920;color:#e9edf2;font-size:1.05rem}
+.sing p.asks{margin:.5rem 0 0;color:#8b97a6;font-size:.9rem}
 ";
 
 #[cfg(test)]

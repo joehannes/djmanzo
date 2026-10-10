@@ -27,8 +27,10 @@
     karaokeLeave,
     karaokeMove,
     karaokeNotHere,
+    karaokeRefuse,
     karaokeRotation,
     karaokeSang,
+    karaokeTake,
     librarySearch,
     loadTrack,
     singRules,
@@ -44,6 +46,8 @@
     type Look,
     type Rotation,
     type SingRules,
+    type SingerRequest,
+    type VoiceTag,
     type Vocals,
     type VocalsState,
   } from "./api";
@@ -75,6 +79,20 @@
     { level: 0.25, label: "Guide" },
     { level: 0, label: "Out" },
   ] as const;
+
+  /** K4: the deck's vocal level for each of a singer's choices. */
+  const VOICE_LEVEL: Record<VoiceTag, number> = { "as-recorded": 1, guide: 0.25, out: 0 };
+  const VOICE_WORD: Record<VoiceTag, string> = { "as-recorded": "as recorded", guide: "guide", out: "voice out" };
+
+  /** K4: what a singer asked for, as the host reads it: "asks −2 · guide". */
+  function asked(song: SingerRequest): string | null {
+    const asks = song.asks;
+    if (!asks) return null;
+    const parts = [];
+    if (asks.key !== null && asks.key !== undefined) parts.push(`key ${signed(asks.key)}`);
+    if (asks.voice) parts.push(VOICE_WORD[asks.voice]);
+    return parts.length > 0 ? `asks ${parts.join(" · ")}` : null;
+  }
 
   function voiceOf(deck: number): number {
     return decks.find((d) => d.number === deck)?.voice ?? 1;
@@ -127,7 +145,13 @@
     }, 3000);
     return () => clearInterval(timer);
   });
-  async function setPhones(change: { open?: boolean; songsEach?: number; songbook?: boolean }) {
+  async function setPhones(change: {
+    open?: boolean;
+    songsEach?: number;
+    songbook?: boolean;
+    key?: boolean;
+    guide?: boolean;
+  }) {
     error = "";
     try {
       phones = await singRulesSet(change);
@@ -271,6 +295,8 @@
     try {
       await loadTrack(deck, next.path);
       await dispatch(`deck ${deck} key ${next.key}`);
+      // K4: the singer's choice for the record's own voice, once taken.
+      if (next.voice) await dispatch(`deck ${deck} voice ${VOICE_LEVEL[next.voice]}`);
     } catch (e) {
       error = String(e);
     }
@@ -367,6 +393,13 @@
         {#if upNext.from_phone}<span class="badge" title="Put their own name down from their phone">phone</span>{/if}
       </p>
       <p class="what">{next.title}</p>
+      {#if asked(next)}
+        <div class="asks" role="group" aria-label="What {upNext.name} asks for" data-asks>
+          <span>{asked(next)}</span>
+          <button onclick={() => void change(karaokeTake(upNext.name))}>Take</button>
+          <button onclick={() => void change(karaokeRefuse(upNext.name))}>No thanks</button>
+        </div>
+      {/if}
       <div class="key" role="group" aria-label="Key for {upNext.name}">
         <button
           aria-label="Lower the key"
@@ -508,6 +541,21 @@
               >{/if}</span
           >
           <span class="song">{person.songs[0].title}</span>
+          {#if asked(person.songs[0])}
+            <span class="asked" data-asks>{asked(person.songs[0])}</span>
+            <button
+              class="quiet"
+              aria-label="Take what {person.name} asks for"
+              title="Take it"
+              onclick={() => void change(karaokeTake(person.name))}>✓</button
+            >
+            <button
+              class="quiet"
+              aria-label="Refuse what {person.name} asks for"
+              title="No thanks"
+              onclick={() => void change(karaokeRefuse(person.name))}>✗</button
+            >
+          {/if}
           {#if person.songs[0].key !== 0}
             <span class="mono k">{signed(person.songs[0].key)}</span>
           {/if}
@@ -593,6 +641,24 @@
             >Written in</button
           >
         </div>
+      </div>
+      <div class="break-row" role="group" aria-label="What a phone may ask for">
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={phones.key}
+            onchange={(event) => void setPhones({ key: event.currentTarget.checked })}
+          />
+          May ask for a key
+        </label>
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={phones.guide}
+            onchange={(event) => void setPhones({ guide: event.currentTarget.checked })}
+          />
+          May ask for the guide vocal
+        </label>
       </div>
       <p class="hint" data-songbook>
         {#if phones.songbook}
@@ -909,5 +975,16 @@
   .badge.ready {
     color: var(--success);
     opacity: 1;
+  }
+  .asks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.25rem 0;
+  }
+  .asks span,
+  .asked {
+    color: var(--warn);
   }
 </style>

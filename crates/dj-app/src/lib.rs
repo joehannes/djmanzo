@@ -946,6 +946,8 @@ pub fn run() {
             commands::karaoke_rotation,
             commands::sing_rules,
             commands::sing_rules_set,
+            commands::karaoke_take,
+            commands::karaoke_refuse,
             commands::karaoke_ask,
             commands::karaoke_sang,
             commands::karaoke_not_here,

@@ -4913,7 +4913,14 @@ export interface SingerRequest {
   path: string | null;
   /** Semitones from the record's own key. */
   key: number;
+  /** K4: what is done with the record's singer on loading, once taken. */
+  voice?: VoiceTag | null;
+  /** K4: what the singer asked for from their phone, not yet taken. */
+  asks?: { key: number | null; voice: VoiceTag | null } | null;
 }
+
+/** K4: what is done with the record's own singer. */
+export type VoiceTag = "as-recorded" | "guide" | "out";
 
 /** §107: one singer in the rotation. */
 export interface Singer {
@@ -4934,6 +4941,10 @@ export interface SingRules {
   songs_each: number;
   /** Songs come from the songbook; otherwise they are written in. */
   songbook: boolean;
+  /** Whether a phone may propose a key. */
+  key: boolean;
+  /** Whether a phone may propose the guide vocal. */
+  guide: boolean;
   /** Records in the songbook: those with words. */
   songs: number;
   /** Whether the room's page is being served at all. */
@@ -4945,7 +4956,11 @@ export const singRulesSet = (change: {
   open?: boolean;
   songsEach?: number;
   songbook?: boolean;
+  key?: boolean;
+  guide?: boolean;
 }) => invoke<SingRules>("sing_rules_set", change);
+export const karaokeTake = (singer: string) => invoke<Rotation>("karaoke_take", { singer });
+export const karaokeRefuse = (singer: string) => invoke<Rotation>("karaoke_refuse", { singer });
 
 /** §107: somebody sang something, in some key. */
 export interface Sung {

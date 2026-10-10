@@ -15145,6 +15145,10 @@ pub struct SingRulesDto {
     pub songs_each: u8,
     /// Songs come from the songbook; otherwise they are written in.
     pub songbook: bool,
+    /// Whether a phone may propose a key.
+    pub key: bool,
+    /// Whether a phone may propose the guide vocal.
+    pub guide: bool,
     /// Records in the songbook: those with words.
     pub songs: usize,
     /// Whether the room's page is being served at all.
@@ -15165,6 +15169,8 @@ fn sing_rules_dto(state: &AppState) -> SingRulesDto {
         open: rules.open,
         songs_each: rules.songs_each,
         songbook: rules.songbook,
+        key: rules.key,
+        guide: rules.guide,
         songs,
         serving: audience.status().running,
     }
@@ -15218,6 +15224,8 @@ pub fn sing_rules_set(
     open: Option<bool>,
     songs_each: Option<u8>,
     songbook: Option<bool>,
+    key: Option<bool>,
+    guide: Option<bool>,
 ) -> SingRulesDto {
     refresh_songbook(&state);
     state.audience().front().stage(|stage| {
@@ -15226,6 +15234,8 @@ pub fn sing_rules_set(
             open: open.unwrap_or(rules.open),
             songs_each: songs_each.unwrap_or(rules.songs_each),
             songbook: songbook.unwrap_or(rules.songbook),
+            key: key.unwrap_or(rules.key),
+            guide: guide.unwrap_or(rules.guide),
         });
     });
     sing_rules_dto(&state)
@@ -15255,6 +15265,20 @@ pub fn karaoke_ask(
     } else {
         Err("a request needs a singer's name and a song".to_owned())
     }
+}
+
+/// K4: take what a singer asked for from their phone, on their next song.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_take(state: State<'_, AppState>, singer: String) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.take_asks(&singer))
+}
+
+/// K4: refuse it; the song stays as it was.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_refuse(state: State<'_, AppState>, singer: String) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.refuse_asks(&singer))
 }
 
 /// §107: the singer up next has sung; they go to the back. §123: and the
