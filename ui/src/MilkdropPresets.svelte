@@ -63,7 +63,7 @@
     <p class="hint">
       MilkDrop's own <code>.milk</code> files, or Butterchurn's <code>.json</code>. Each becomes a look,
       "Yours: …", behind the words or on the projector. They are yours to answer for: djmanzo draws
-      them and never shares them.
+      them and never sends them anywhere, and a pack of them is made only when you make one.
     </p>
   {:else}
     <ul>

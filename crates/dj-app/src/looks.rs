@@ -265,6 +265,13 @@ fn text_of(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+/// The layers a look made of one MilkDrop preset draws: the preset, and the
+/// singers' voices as a halo over it. The DJ's own presets are offered so,
+/// and so is each look in a pack made of them (step 7b).
+pub(crate) fn preset_layers(preset: &str) -> Vec<Layer> {
+    vec![milkdrop(preset, 0.9), layer("halo", "voice", 0.5, "screen")]
+}
+
 /// The look a preset of the DJ's own is offered as.
 fn look_for(yours: &Yours) -> Look {
     let mut description = format!("Your own MilkDrop preset, from {}", yours.file);
@@ -275,10 +282,7 @@ fn look_for(yours: &Yours) -> Look {
     Look {
         name: format!("Yours: {}", yours.name),
         description,
-        layers: vec![
-            milkdrop(&format!("{YOURS}{}", yours.name), 0.9),
-            layer("halo", "voice", 0.5, "screen"),
-        ],
+        layers: preset_layers(&format!("{YOURS}{}", yours.name)),
     }
 }
 
@@ -678,6 +682,86 @@ impl Looks {
         Self::save(inner.dir.as_deref(), SETTINGS, &inner.chosen);
         drop(inner);
         Ok(self.packs())
+    }
+
+    /// Step 7b: the DJ's signing key — made the first time it is asked
+    /// for — by its fingerprint, and where it is kept.
+    ///
+    /// # Errors
+    /// There is no settings folder yet, or the key file there is not a key.
+    pub fn pack_key(&self) -> Result<crate::packs::Key, String> {
+        let dir = self
+            .inner()
+            .dir
+            .clone()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?;
+        let pkcs8 = crate::packs::signing_key(&dir)?;
+        let key = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            crate::packs::public_key(&pkcs8)?,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(crate::packs::Key {
+            fingerprint: crate::packs::fingerprint(&key),
+            file: dir.join(crate::packs::KEY).display().to_string(),
+        })
+    }
+
+    /// Step 7b: make a pack of the DJ's own presets, as `making` asks,
+    /// signed with their key, and write it to `to` — `.djpack` added when it
+    /// has no extension. What is written is read back and checked as an
+    /// installer checks it before it is said to be made.
+    ///
+    /// # Errors
+    /// A preset named that is not one of theirs, what
+    /// [`crate::packs::make`] refuses, or the file could not be written.
+    pub fn make_pack(
+        &self,
+        making: &crate::packs::Making,
+        to: &Path,
+    ) -> Result<crate::packs::Made, String> {
+        let dir = self
+            .inner()
+            .dir
+            .clone()
+            .ok_or_else(|| "there is no settings folder yet".to_owned())?;
+        let files = self.files();
+        let mut presets = Vec::new();
+        for name in &making.presets {
+            // Found among the files listed, never by joining the name to a path.
+            let path = files
+                .iter()
+                .find(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() == *name))
+                .ok_or_else(|| format!("there is no preset of yours called {name:?}"))?;
+            let file = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            presets.push((file, std::fs::read(path).map_err(|e| e.to_string())?));
+        }
+        let pkcs8 = crate::packs::signing_key(&dir)?;
+        let pack = crate::packs::make(making, &presets, &pkcs8)?;
+        let bytes = crate::packs::archive(&pack)?;
+        let to = if to.extension().is_none() {
+            to.with_extension("djpack")
+        } else {
+            to.to_path_buf()
+        };
+        let part = to.with_extension("djpack-part");
+        std::fs::write(&part, bytes)
+            .and_then(|()| std::fs::rename(&part, &to))
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&part);
+                format!("{}: {e}", to.display())
+            })?;
+        let again = crate::packs::read_archive(&to).and_then(crate::packs::check)?;
+        Ok(crate::packs::Made {
+            path: to.display().to_string(),
+            name: again.manifest.name.clone(),
+            version: again.manifest.version.clone(),
+            looks: again.manifest.looks.len(),
+            key: again.fingerprint(),
+        })
     }
 
     /// A pack's preset, `<id>/<name>`, found among the pack's own listed

@@ -705,6 +705,82 @@ test.describe("§122 step 7: packs", () => {
   });
 });
 
+test.describe("§122 step 7b: making a pack of the DJ's presets", () => {
+  const YOURS = [
+    { name: "Night Drive", file: "Night Drive.milk", note: null, problem: null },
+    { name: "glow", file: "glow.json", note: null, problem: null },
+    { name: "broken", file: "broken.json", note: null, problem: "it is not JSON" },
+  ];
+
+  /**
+   * **Made only once the DJ has said the presets are theirs to share.** The
+   * form offers only presets that can be drawn, shows the key it will be
+   * signed with and where it is kept, and holds *Make…* back until there is
+   * a name, a maker, a licence, a preset and the DJ's word; then it asks
+   * where to save, and sends exactly what was chosen.
+   */
+  test("a pack is made of the chosen presets once the DJ says they are theirs to share", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke", {}, { milkdrop_yours: YOURS });
+    await page.getByRole("button", { name: "Make a pack of your presets…" }).click();
+    const maker = page.locator("[data-pack-maker]");
+    await expect(maker.locator("[data-pack-own-key]")).toContainText("9f8e 7d6c 5b4a 3928");
+    await expect(maker.locator("[data-pack-own-key]")).toContainText("pack-key.pk8");
+    // Only what can be drawn is offered.
+    await expect(maker.getByRole("checkbox", { name: "Night Drive" })).toBeVisible();
+    await expect(maker.getByRole("checkbox", { name: "glow" })).toBeVisible();
+    await expect(maker.getByRole("checkbox", { name: "broken" })).toHaveCount(0);
+
+    const makeButton = maker.getByRole("button", { name: "Make…" });
+    await expect(makeButton).toBeDisabled();
+    await maker.getByLabel("Its name").fill("Booth Lights");
+    await maker.getByLabel("Made by").fill("DJ Manzo");
+    await maker.getByLabel("Licence", { exact: true }).fill("CC BY-SA 4.0");
+    await maker.getByRole("checkbox", { name: "Night Drive" }).check();
+    await expect(makeButton, "held back until the DJ says they are theirs").toBeDisabled();
+    await maker.locator("[data-pack-theirs]").getByRole("checkbox").check();
+    await expect(makeButton).toBeEnabled();
+    await maker.getByLabel("Licence", { exact: true }).fill(" ");
+    await expect(makeButton, "a licence is required").toBeDisabled();
+    await maker.getByLabel("Licence", { exact: true }).fill("CC BY-SA 4.0");
+
+    await page.evaluate(() => {
+      (window as unknown as { __dialogAnswer: unknown }).__dialogAnswer = "/home/dj/Booth Lights.djpack";
+    });
+    await makeButton.click();
+    await expect(page.locator("[data-pack-made]")).toContainText("Booth Lights");
+    await expect(page.locator("[data-pack-made]")).toContainText("one look");
+    await expect(page.locator("[data-pack-made]")).toContainText("/home/dj/Booth Lights.djpack");
+    await expect(maker).toHaveCount(0);
+    const asked = await page.evaluate(() => (window as unknown as { __packAsked: unknown[] }).__packAsked);
+    expect(asked).toEqual([
+      {
+        cmd: "pack_make",
+        path: "/home/dj/Booth Lights.djpack",
+        making: {
+          name: "Booth Lights",
+          author: "DJ Manzo",
+          licence: "CC BY-SA 4.0",
+          version: "1.0.0",
+          description: "",
+          presets: ["Night Drive"],
+          theirs: true,
+        },
+      },
+    ]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("with no presets of the DJ's own, the form says to add some first", async ({ page }) => {
+    await openShell(page, "/?panel=karaoke");
+    await page.getByRole("button", { name: "Make a pack of your presets…" }).click();
+    const maker = page.locator("[data-pack-maker]");
+    await expect(maker).toContainText("no presets of your own");
+    await expect(maker.getByRole("button", { name: "Make…" })).toHaveCount(0);
+    await maker.getByRole("button", { name: "Close" }).click();
+    await expect(maker).toHaveCount(0);
+  });
+});
+
 test.describe("§122: picking the look", () => {
   test("the Singers panel offers djmanzo's looks, says what each is for, and off", async ({ page }) => {
     await openShell(page, "/?panel=karaoke");

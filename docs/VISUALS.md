@@ -619,8 +619,7 @@ sends them anywhere.
 - Installed packs are listed (version · author · licence · looks), each with
   *Remove*.
 - Commands: `pack_inspect`, `pack_install`, `packs_installed`, `pack_remove`.
-  Making packs is 7b; until then the tests and the drive make theirs with
-  `ring`.
+  Packs are made by step 7b, below.
 
 **Driven in WebKitGTK** with a real pack: *Neon Nights*, signed with a fresh
 Ed25519 key, holding Bloom's preset as `milkdrop/neon.json` and two looks.
@@ -654,3 +653,66 @@ Ed25519 key, holding Bloom's preset as `milkdrop/neon.json` and two looks.
 - **Mutation-tested:** 20 mutants fail them (17 Rust, 3 interface). One
   survived at first: with folder names unfiltered, an install's leftover
   `.incoming-…` folder was listed as a pack. The test leaves one behind now.
+
+**Step 7b — built (10 October): a pack of the DJ's own presets.**
+- In the Singers panel, *Packs — Make a pack of your presets…* opens a form:
+  its name, *Made by*, the licence (typed, with the Creative Commons licences
+  and MIT offered), a version (1.0.0 to begin with), what it is, and a box for
+  each of the DJ's presets that can be drawn. Each preset chosen becomes one
+  look, called after it: the preset, with the singers' voices as a halo over
+  it, as the DJ's own presets are offered.
+- **Nothing is made until the DJ says the presets are theirs to share** under
+  the licence they name: "I made them, or their own licence lets me pass them
+  on under it". The signature will say the DJ made the pack; nothing can check
+  that the works in it are theirs, so the DJ is asked, and Rust refuses
+  without it as the form does.
+- **The DJ's key** is an Ed25519 key made the first time the form opens, kept
+  as `pack-key.pk8` beside the settings, readable by the DJ alone on Linux and
+  macOS (0600), and never sent anywhere. The form shows its fingerprint and
+  its file, and says why to keep a copy: a new version of a pack is an update
+  only when it is signed with the same key. A file there that is not a key is
+  left as it is and said — it may be the only copy of the key the DJ's packs
+  are known by.
+- *Make…* asks where to save the `.djpack`. What is written is read back and
+  checked whole, as an install checks it, before the form says it is made,
+  with its looks, its key's fingerprint and where it is.
+- Commands: `pack_key`, `pack_make`.
+
+**Driven in WebKitGTK.** In one djmanzo with two presets of the DJ's own (a
+`.milk` and a Butterchurn `.json`):
+- The key file was made at mode 600 when the form opened, and its fingerprint
+  shown.
+- With a name, maker, licence (CC BY-SA 4.0) and both presets, *Make…* stayed
+  off until the box was ticked. The pack was saved through GTK's own dialog:
+  the two presets, `pack.json` and `pack.sig`, nothing else.
+- In a second djmanzo with a fresh home, *Add a pack…* showed it before
+  installing: *Booth Lights* 1.0.0 by DJ Manzo, the licence, two looks, and
+  the same fingerprint. Installed as `packs/booth-lights-2622cdeb/`; *Booth
+  Lights: Night Drive*, chosen behind the words, drew the pack's own `.milk`
+  on the singers' screen, moving.
+- Driving it found one fault: placeholders such as "CC BY 4.0" read in this
+  theme as values already filled in, so a DJ could think a licence was chosen
+  while *Make…* stayed off. The form has none now.
+
+**Tested:**
+- 3 Rust tests:
+  - the DJ's presets made into a pack that another djmanzo, never having seen
+    them, shows, installs and draws; only the presets chosen, as they are on
+    disk; one key, kept at 0600, the same each time
+  - the DJ's next version, made in a later run, replacing the last where it
+    is installed: the key is read, not made again
+  - nothing made without what it needs, each with why: not said to be theirs,
+    nothing chosen, a name that is not one of theirs or that climbs, an empty
+    licence, a preset chosen twice, one that cannot be drawn; nothing
+    written; a key file that is not a key left as it is
+- 2 browser tests:
+  - only drawable presets offered, the key shown, *Make…* held back until
+    there is a name, a maker, a licence, a preset and the DJ's word, then
+    exactly what was chosen sent
+  - with no presets of the DJ's own, the form says to add some first
+- **Mutation-tested:** 11 mutants fail them (7 Rust, 4 interface): the DJ's
+  word not asked; the key readable by others; a new key every time; a look
+  without its halo; every preset put in rather than those chosen; no
+  `.djpack` added to a bare name; a preset chosen twice let through; the form
+  not waiting for the DJ's word or for a licence; undrawable presets offered;
+  every preset sent rather than those chosen.

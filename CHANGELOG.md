@@ -23,6 +23,14 @@ Versioning follows semver, with one project-specific convention:
   changed, unsigned or unlisted, with the reason. A pack's looks are offered
   wherever looks are picked. A pack changed on disk after it was installed
   is not offered. A pack can be updated only by its own maker's key.
+- **Make a pack of your own presets (§122).** *Make a pack of your
+  presets…*, in the same place, takes a name, your name as its maker, a
+  licence and the presets to put in it, one look each. It asks you to say
+  first that the presets are yours to share under that licence. The pack is
+  signed with a key of your own, made the first time and kept beside your
+  settings; its fingerprint is shown so you can give it out with the pack,
+  and every pack you make with it can update the last. What is written is
+  checked as an install checks it before it is said to be made.
 
 ## v0.39.0 — Layers behind the words, MilkDrop, the artist, and looks your AI picks
 

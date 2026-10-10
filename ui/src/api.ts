@@ -6125,6 +6125,39 @@ export const packInstall = (path: string) => invoke<PackInstalled[]>("pack_insta
 export const packsInstalled = () => invoke<PackInstalled[]>("packs_installed");
 export const packRemove = (id: string) => invoke<PackInstalled[]>("pack_remove", { id });
 
+/** §122 step 7b: the DJ's signing key. See `dj_app::packs::Key`. */
+export interface PackKey {
+  fingerprint: string;
+  /** Where it is kept, so the DJ can keep a copy. */
+  file: string;
+}
+
+/** §122 step 7b: what to make into a pack. See `dj_app::packs::Making`. */
+export interface PackMaking {
+  name: string;
+  author: string;
+  licence: string;
+  version: string;
+  description: string;
+  /** The DJ's own presets to put in it, by name. */
+  presets: string[];
+  /** The DJ has said the presets are theirs to share under the licence. */
+  theirs: boolean;
+}
+
+/** §122 step 7b: a pack made. See `dj_app::packs::Made`. */
+export interface PackMade {
+  path: string;
+  name: string;
+  version: string;
+  looks: number;
+  key: string;
+}
+
+/** The DJ's signing key, made the first time it is asked for. */
+export const packKey = () => invoke<PackKey>("pack_key");
+export const packMake = (making: PackMaking, path: string) => invoke<PackMade>("pack_make", { making, path });
+
 /** Step 6: let the DJ's AI pick each record's look; refused with no provider set up. */
 export const lookAi = (on: boolean) => invoke<LookChosen>("look_ai", { on });
 export const lookPicked = (deck: number) => invoke<LookPicked>("look_picked", { deck });

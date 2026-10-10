@@ -2552,6 +2552,24 @@ export async function openShell(
             ];
             return Promise.resolve(structuredClone(win.__packs));
           }
+          // Step 7b: the DJ's key, and a pack made of their presets, as
+          // Rust makes it: refused without the DJ's word, one look a preset.
+          if (cmd === "pack_key") {
+            return Promise.resolve({ fingerprint: "9f8e 7d6c 5b4a 3928", file: "/home/dj/.config/djmanzo/pack-key.pk8" });
+          }
+          if (cmd === "pack_make") {
+            ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            const making = args.making as { name: string; version: string; presets: string[]; theirs: boolean };
+            if (!making.theirs) return Promise.reject("say first that these presets are yours to share under its licence");
+            const path = String(args.path).endsWith(".djpack") ? String(args.path) : `${String(args.path)}.djpack`;
+            return Promise.resolve({
+              path,
+              name: making.name,
+              version: making.version,
+              looks: making.presets.length,
+              key: "9f8e 7d6c 5b4a 3928",
+            });
+          }
           if (cmd === "pack_remove") {
             ((win.__packAsked ??= []) as unknown[]).push({ cmd, ...args });
             win.__packs = ((win.__packs ?? []) as { id: string }[]).filter((p) => p.id !== args.id);

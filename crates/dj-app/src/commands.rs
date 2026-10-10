@@ -457,6 +457,32 @@ pub fn pack_remove(
     state.looks().remove_pack(&id)
 }
 
+/// §122 step 7b: the DJ's signing key — made the first time it is asked
+/// for, kept beside the settings — by its fingerprint and where it is.
+///
+/// # Errors
+/// No settings folder yet, or the file there is not a key.
+#[tauri::command]
+pub fn pack_key(state: State<'_, AppState>) -> Result<crate::packs::Key, String> {
+    state.looks().pack_key()
+}
+
+/// §122 step 7b: make a pack of the DJ's own presets, signed with their key,
+/// at `path`, checked as it will be when installed.
+///
+/// # Errors
+/// What [`crate::looks::Looks::make_pack`] refuses.
+#[tauri::command]
+pub fn pack_make(
+    state: State<'_, AppState>,
+    making: crate::packs::Making,
+    path: String,
+) -> Result<crate::packs::Made, String> {
+    state
+        .looks()
+        .make_pack(&making, std::path::Path::new(&path))
+}
+
 /// §122 step 6: let the DJ's AI provider pick each record's look, or not.
 ///
 /// # Errors

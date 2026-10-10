@@ -5,9 +5,25 @@
    * (`dj_app::packs`) before anything is installed, and its licence, author,
    * looks and key are shown first: the DJ installs it, or does not. See
    * `docs/VISUALS.md`, step 7.
+   *
+   * Step 7b: the DJ makes a pack of their own presets, signed with their own
+   * key — made the first time and kept beside the settings — once they have
+   * said the presets are theirs to share under the licence they name.
    */
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { packInspect, packInstall, packRemove, packsInstalled, type PackInspected, type PackInstalled } from "./api";
+  import { open, save } from "@tauri-apps/plugin-dialog";
+  import {
+    milkdropPresets,
+    packInspect,
+    packInstall,
+    packKey,
+    packMake,
+    packRemove,
+    packsInstalled,
+    type PackInspected,
+    type PackInstalled,
+    type PackKey,
+    type PackMade,
+  } from "./api";
 
   let { onchange }: { onchange?: () => void } = $props();
 
@@ -45,6 +61,83 @@
     }
   }
 
+  /** Licences a DJ is likely to share presets under; any other can be typed. */
+  const LICENCES = ["CC BY 4.0", "CC BY-SA 4.0", "CC BY-NC 4.0", "CC0 1.0", "MIT"];
+
+  /** The maker form, while it is open. */
+  let making = $state<{
+    key: PackKey;
+    presets: string[];
+    name: string;
+    author: string;
+    licence: string;
+    version: string;
+    description: string;
+    chosen: string[];
+    theirs: boolean;
+  } | null>(null);
+  let made = $state<PackMade | null>(null);
+
+  const ready = $derived(
+    making !== null &&
+      [making.name, making.author, making.licence, making.version].every((field) => field.trim() !== "") &&
+      making.chosen.length > 0 &&
+      making.theirs,
+  );
+
+  async function startMaking() {
+    error = "";
+    made = null;
+    try {
+      const [key, yours] = await Promise.all([packKey(), milkdropPresets()]);
+      making = {
+        key,
+        presets: yours.filter((preset) => !preset.problem).map((preset) => preset.name),
+        name: "",
+        author: "",
+        licence: "",
+        version: "1.0.0",
+        description: "",
+        chosen: [],
+        theirs: false,
+      };
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  function toggle(name: string, on: boolean) {
+    if (!making) return;
+    making.chosen = on ? [...making.chosen, name] : making.chosen.filter((chosen) => chosen !== name);
+  }
+
+  async function make() {
+    if (!making || !ready) return;
+    error = "";
+    try {
+      const path = await save({
+        defaultPath: `${making.name.trim()}.djpack`,
+        filters: [{ name: "djmanzo packs", extensions: ["djpack"] }],
+      });
+      if (!path) return;
+      made = await packMake(
+        {
+          name: making.name,
+          author: making.author,
+          licence: making.licence,
+          version: making.version,
+          description: making.description,
+          presets: making.presets.filter((name) => making?.chosen.includes(name)),
+          theirs: making.theirs,
+        },
+        path,
+      );
+      making = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function remove(id: string) {
     error = "";
     try {
@@ -60,7 +153,66 @@
   <div class="head">
     <span>Packs</span>
     <button onclick={() => void add()}>Add a pack…</button>
+    <button class="quiet" onclick={() => void startMaking()} disabled={making !== null}>
+      Make a pack of your presets…
+    </button>
   </div>
+  {#if making}
+    <section class="pending" aria-label="Make a pack of your presets" data-pack-maker>
+      {#if making.presets.length === 0}
+        <p class="hint">
+          You have no presets of your own to put in a pack yet: add some under <em>Your MilkDrop presets</em> first.
+        </p>
+        <button onclick={() => (making = null)}>Close</button>
+      {:else}
+        <label>Its name <input bind:value={making.name} /></label>
+        <label>Made by <input bind:value={making.author} /></label>
+        <label>
+          Licence
+          <input bind:value={making.licence} list="pack-licences" />
+          <datalist id="pack-licences">
+            {#each LICENCES as licence (licence)}<option value={licence}></option>{/each}
+          </datalist>
+        </label>
+        <label>Version <input bind:value={making.version} /></label>
+        <label>What it is <textarea bind:value={making.description} rows="2" maxlength="600"></textarea></label>
+        <fieldset>
+          <legend>Your presets in it — one look each</legend>
+          {#each making.presets as name (name)}
+            <label class="check">
+              <input
+                type="checkbox"
+                checked={making.chosen.includes(name)}
+                onchange={(event) => toggle(name, event.currentTarget.checked)}
+              />
+              {name}
+            </label>
+          {/each}
+        </fieldset>
+        <label class="check" data-pack-theirs>
+          <input type="checkbox" bind:checked={making.theirs} />
+          These presets are mine to share under this licence: I made them, or their own licence lets me pass them on
+          under it.
+        </label>
+        <p class="hint" data-pack-own-key>
+          Signed with your key <code>{making.key.fingerprint}</code>, kept at <code>{making.key.file}</code>. Keep a
+          copy: a new version of this pack is taken as an update only when it is signed with the same key. Give the
+          fingerprint with the pack, so those who install it can check it.
+        </p>
+        <div class="buttons">
+          <button onclick={() => void make()} disabled={!ready}>Make…</button>
+          <button class="quiet" onclick={() => (making = null)}>Cancel</button>
+        </div>
+      {/if}
+    </section>
+  {/if}
+  {#if made}
+    <p class="made" role="status" data-pack-made>
+      Made <strong>{made.name}</strong>
+      {made.version} — {made.looks === 1 ? "one look" : `${made.looks} looks`}, signed by
+      <code>{made.key}</code> — at <code>{made.path}</code>.
+    </p>
+  {/if}
   {#if pending}
     <section class="pending" aria-label="The pack to install" data-pack-pending>
       {#if pending.seen.problem}
@@ -145,6 +297,29 @@
 
   .licence {
     font-size: 1.05em;
+  }
+
+  .pending label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .pending label.check {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+
+  fieldset {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border, currentColor);
+    border-radius: 0.3rem;
+  }
+
+  .made {
+    margin: 0;
   }
 
   ul {

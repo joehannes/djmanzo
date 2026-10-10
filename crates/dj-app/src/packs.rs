@@ -514,7 +514,7 @@ pub fn inspected(pack: &Checked, installed: Option<String>) -> Inspected {
 }
 
 /// Sign `manifest` with the PKCS#8 Ed25519 key `pkcs8`: the bytes of
-/// [`SIGNATURE`]. Step 7b makes packs with it; the tests make theirs.
+/// [`SIGNATURE`]: how [`make`] signs a pack.
 ///
 /// # Errors
 /// The key is not an Ed25519 key.
@@ -535,6 +535,184 @@ pub fn public_key(pkcs8: &[u8]) -> Result<String, String> {
     let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8)
         .map_err(|_| "that is not an Ed25519 key".to_owned())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(pair.public_key().as_ref()))
+}
+
+/// Where the DJ's own signing key is kept, beside the other settings: made
+/// the first time it is wanted, and never sent anywhere.
+pub const KEY: &str = "pack-key.pk8";
+
+/// The DJ's signing key, PKCS#8, from `dir`: made there the first time,
+/// readable by the DJ alone where the system has such a thing. A file there
+/// that is not a key is left alone and said, never replaced: it may be the
+/// only copy of the key the DJ's packs are known by.
+///
+/// # Errors
+/// The folder cannot be written, or the file there is not an Ed25519 key.
+pub fn signing_key(dir: &Path) -> Result<Vec<u8>, String> {
+    let path = dir.join(KEY);
+    match std::fs::read(&path) {
+        Ok(pkcs8) => {
+            ring::signature::Ed25519KeyPair::from_pkcs8(&pkcs8).map_err(|_| {
+                format!(
+                    "{} is not a signing key. djmanzo has left it as it is: move it aside, and a new key is made — but a pack signed with a new key is not an update to one signed with the old",
+                    path.display()
+                )
+            })?;
+            Ok(pkcs8)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let pkcs8 =
+                ring::signature::Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new())
+                    .map_err(|_| "a key could not be made".to_owned())?;
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            match options.open(&path) {
+                Ok(mut file) => {
+                    use std::io::Write as _;
+                    file.write_all(pkcs8.as_ref())
+                        .and_then(|()| file.sync_all())
+                        .map_err(|e| e.to_string())?;
+                    Ok(pkcs8.as_ref().to_vec())
+                }
+                // Made by another asking a moment ago: that one is the key.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => signing_key(dir),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// What the DJ asks to have made into a pack (step 7b).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Making {
+    pub name: String,
+    pub author: String,
+    pub licence: String,
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+    /// The DJ's own presets to put in it, by name.
+    pub presets: Vec<String>,
+    /// The DJ has said these presets are theirs to share under the licence:
+    /// the signature will say they made the pack, and nothing checks that
+    /// the works in it are theirs.
+    pub theirs: bool,
+}
+
+/// A pack made of `presets` — each a file name and its bytes — as `making`
+/// asks, signed with `pkcs8`: one look a preset, called after it. Checked as
+/// [`check`] checks a pack before installing it, so what is made is what
+/// another djmanzo installs.
+///
+/// # Errors
+/// The DJ has not said the presets are theirs to share, nothing to put in
+/// it, too much, or what [`check`] refuses.
+pub fn make(
+    making: &Making,
+    presets: &[(String, Vec<u8>)],
+    pkcs8: &[u8],
+) -> Result<Checked, String> {
+    if !making.theirs {
+        return Err("say first that these presets are yours to share under its licence".to_owned());
+    }
+    if presets.is_empty() {
+        return Err("choose at least one of your presets to put in it".to_owned());
+    }
+    if presets.len() > MOST_FILES {
+        return Err(format!("a pack holds at most {MOST_FILES} presets"));
+    }
+    let mut files = Files::new();
+    let mut total: u64 = 0;
+    for (file, bytes) in presets {
+        let path = format!("{PRESETS}{file}");
+        if !is_preset_path(&path) {
+            return Err(format!("{file:?} cannot be put in a pack"));
+        }
+        if bytes.len() as u64 > MOST_FILE {
+            return Err(format!(
+                "{file} is larger than {} MB",
+                MOST_FILE / 1024 / 1024
+            ));
+        }
+        total += bytes.len() as u64;
+        if total > MOST_BYTES {
+            return Err(format!(
+                "together they are larger than {} MB",
+                MOST_BYTES / 1024 / 1024
+            ));
+        }
+        if files.insert(path, bytes.clone()).is_some() {
+            return Err(format!("{file} is chosen twice"));
+        }
+    }
+    let author = making.author.trim();
+    let looks = files
+        .keys()
+        .map(|path| Look {
+            name: stem(path).to_owned(),
+            description: format!("{}, a MilkDrop preset by {author}.", stem(path)),
+            layers: crate::looks::preset_layers(stem(path)),
+        })
+        .collect();
+    let manifest = Manifest {
+        format: FORMAT,
+        name: making.name.trim().to_owned(),
+        author: author.to_owned(),
+        licence: making.licence.trim().to_owned(),
+        version: making.version.trim().to_owned(),
+        description: making.description.trim().to_owned(),
+        key: public_key(pkcs8)?,
+        files: files
+            .iter()
+            .map(|(path, bytes)| (path.clone(), sha256(bytes)))
+            .collect(),
+        looks,
+    };
+    let bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
+    files.insert(SIGNATURE.to_owned(), sign(&bytes, pkcs8)?);
+    files.insert(MANIFEST.to_owned(), bytes);
+    check(files)
+}
+
+/// A checked pack as the bytes of its `.djpack`.
+///
+/// # Errors
+/// The archive could not be written.
+pub fn archive(pack: &Checked) -> Result<Vec<u8>, String> {
+    use std::io::Write as _;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    for (path, bytes) in &pack.files {
+        zip.start_file(path.as_str(), options)
+            .and_then(|()| zip.write_all(bytes).map_err(Into::into))
+            .map_err(|e| e.to_string())?;
+    }
+    zip.finish()
+        .map(std::io::Cursor::into_inner)
+        .map_err(|e| e.to_string())
+}
+
+/// The DJ's signing key, as the maker form shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Key {
+    pub fingerprint: String,
+    /// Where it is kept, so the DJ can keep a copy.
+    pub file: String,
+}
+
+/// A pack made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Made {
+    pub path: String,
+    pub name: String,
+    pub version: String,
+    pub looks: usize,
+    /// The fingerprint of the key it is signed with.
+    pub key: String,
 }
 
 #[cfg(test)]
@@ -887,6 +1065,179 @@ mod tests {
         assert!(looks.remove_pack(&id).unwrap().is_empty());
         assert_eq!(looks.chosen().singers, None);
         assert!(!home.path().join("packs").join(&id).exists());
+    }
+
+    /// What the maker form sends: `presets` from a DJ who has said they are
+    /// theirs to share.
+    fn making(name: &str, version: &str, presets: &[&str]) -> Making {
+        Making {
+            name: name.to_owned(),
+            author: "DJ Manzo".to_owned(),
+            licence: "CC BY-SA 4.0".to_owned(),
+            version: version.to_owned(),
+            description: "Made in the booth.".to_owned(),
+            presets: presets.iter().map(|p| (*p).to_owned()).collect(),
+            theirs: true,
+        }
+    }
+
+    /// A djmanzo with the DJ's own presets added: a `.milk` as MilkDrop
+    /// writes them, and a Butterchurn `.json`.
+    fn with_presets(home: &Path) -> Looks {
+        let looks = Looks::new();
+        looks.start(home);
+        let elsewhere = tempfile::tempdir().unwrap();
+        let night = elsewhere.path().join("Night Drive.milk");
+        std::fs::write(
+            &night,
+            "[preset00]\nfDecay=0.950000\nzoom=1.010000\nper_frame_1=rot = 0.01;\n",
+        )
+        .unwrap();
+        let glow = elsewhere.path().join("glow.json");
+        std::fs::write(&glow, drawable()).unwrap();
+        let added = looks.add(&[night, glow]);
+        assert!(added.refused.is_empty(), "{added:?}");
+        looks
+    }
+
+    /// **The DJ's own presets, made into a pack another djmanzo installs.**
+    /// Made from the presets chosen and none other, signed with the DJ's
+    /// key — made once, kept beside the settings for them alone — and
+    /// written as a `.djpack` that passes every check an install makes:
+    /// installed in a djmanzo that has never seen them, its looks are
+    /// offered and drawn from the pack's own files.
+    #[test]
+    fn the_djs_presets_are_made_into_a_pack_another_djmanzo_installs() {
+        let home = tempfile::tempdir().unwrap();
+        let looks = with_presets(home.path());
+        let key = looks.pack_key().unwrap();
+        assert_eq!(key.fingerprint.len(), 19, "{key:?}");
+        assert_eq!(looks.pack_key().unwrap(), key, "the same key every time");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(home.path().join(KEY))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "the key is the DJ's alone");
+        }
+
+        let out = tempfile::tempdir().unwrap();
+        let made = looks
+            .make_pack(
+                &making("Booth Lights", "1.0.0", &["Night Drive"]),
+                &out.path().join("Booth Lights"),
+            )
+            .unwrap();
+        assert!(made.path.ends_with("Booth Lights.djpack"), "{made:?}");
+        assert_eq!(made.key, key.fingerprint);
+        assert_eq!(made.looks, 1);
+
+        // Only what was chosen is in it, as it is on disk.
+        let files = read_archive(Path::new(&made.path)).unwrap();
+        assert_eq!(
+            files.keys().collect::<Vec<_>>(),
+            ["milkdrop/Night Drive.milk", MANIFEST, SIGNATURE]
+        );
+        assert_eq!(
+            files["milkdrop/Night Drive.milk"],
+            std::fs::read(home.path().join("milkdrop/Night Drive.milk")).unwrap()
+        );
+
+        let elsewhere = tempfile::tempdir().unwrap();
+        let theirs = Looks::new();
+        theirs.start(elsewhere.path());
+        let seen = theirs.inspect_pack(Path::new(&made.path));
+        assert_eq!(seen.problem, None);
+        assert_eq!(seen.author, "DJ Manzo");
+        assert_eq!(seen.licence, "CC BY-SA 4.0");
+        assert_eq!(seen.looks, ["Night Drive"]);
+        assert_eq!(seen.key, key.fingerprint);
+        let installed = theirs.install_pack(Path::new(&made.path)).unwrap();
+        let look = theirs
+            .catalogue()
+            .into_iter()
+            .find(|look| look.name == "Booth Lights: Night Drive")
+            .expect("its look offered");
+        assert_eq!(look.layers[0].kind, "milkdrop");
+        assert_eq!(look.layers[1].kind, "halo");
+        let drawn = theirs
+            .preset(look.layers[0].preset.as_deref().unwrap())
+            .unwrap();
+        assert_eq!(drawn["baseVals"]["decay"], 0.95);
+        assert_eq!(installed[0].key, key.fingerprint);
+    }
+
+    /// **The DJ's next version is an update.** Every pack the DJ makes is
+    /// signed with the one key, so a djmanzo with the first installed takes
+    /// the second in its place — a pack's name keeps its key.
+    #[test]
+    fn a_djs_next_version_replaces_the_last() {
+        let home = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let first = with_presets(home.path())
+            .make_pack(
+                &making("Booth Lights", "1.0.0", &["Night Drive"]),
+                &out.path().join("v1.djpack"),
+            )
+            .unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let theirs = Looks::new();
+        theirs.start(elsewhere.path());
+        theirs.install_pack(Path::new(&first.path)).unwrap();
+
+        // Later, in another run: the key is read, not made again.
+        let later = Looks::new();
+        later.start(home.path());
+        let second = later
+            .make_pack(
+                &making("Booth Lights", "1.1.0", &["Night Drive", "glow"]),
+                &out.path().join("v2.djpack"),
+            )
+            .unwrap();
+        assert_eq!(second.key, first.key);
+        let seen = theirs.inspect_pack(Path::new(&second.path));
+        assert_eq!(seen.problem, None, "{seen:?}");
+        assert_eq!(seen.installed.as_deref(), Some("1.0.0"));
+        let now = theirs.install_pack(Path::new(&second.path)).unwrap();
+        assert_eq!(now.len(), 1);
+        assert_eq!(now[0].version, "1.1.0");
+        assert_eq!(now[0].looks, 2);
+    }
+
+    /// **Nothing is made that should not be**, each refused with why: not
+    /// said to be the DJ's to share, nothing chosen, a name that is not one
+    /// of theirs, a licence left empty, a preset that cannot be drawn — and a
+    /// key file that is not a key is left as it is, never replaced.
+    #[test]
+    fn a_pack_is_not_made_without_what_it_needs() {
+        let home = tempfile::tempdir().unwrap();
+        let looks = with_presets(home.path());
+        let out = tempfile::tempdir().unwrap();
+        let to = out.path().join("x.djpack");
+        let refused = |making: Making| looks.make_pack(&making, &to).expect_err("refused");
+
+        let mut not_said = making("P", "1", &["glow"]);
+        not_said.theirs = false;
+        assert!(refused(not_said).contains("yours to share"));
+        assert!(refused(making("P", "1", &[])).contains("at least one"));
+        assert!(refused(making("P", "1", &["Elsewhere"])).contains("no preset of yours"));
+        assert!(refused(making("P", "1", &["../glow"])).contains("no preset of yours"));
+        let mut unlicensed = making("P", "1", &["glow"]);
+        unlicensed.licence = "  ".to_owned();
+        assert!(refused(unlicensed).contains("licence is empty"));
+        assert!(refused(making("P", "1", &["glow", "glow"])).contains("twice"));
+        std::fs::write(home.path().join("milkdrop/broken.json"), "not json").unwrap();
+        assert!(refused(making("P", "1", &["broken"])).contains("cannot be drawn"));
+        assert!(!to.exists(), "nothing written");
+
+        let fresh = tempfile::tempdir().unwrap();
+        std::fs::write(fresh.path().join(KEY), b"not a key").unwrap();
+        let other = Looks::new();
+        other.start(fresh.path());
+        assert!(other.pack_key().unwrap_err().contains("not a signing key"));
+        assert_eq!(std::fs::read(fresh.path().join(KEY)).unwrap(), b"not a key");
     }
 
     /// No name from the interface reaches outside the packs folder.

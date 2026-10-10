@@ -950,6 +950,8 @@ pub fn run() {
             commands::pack_install,
             commands::packs_installed,
             commands::pack_remove,
+            commands::pack_key,
+            commands::pack_make,
             commands::look_picked,
             commands::artist_picture,
             commands::word_timing,

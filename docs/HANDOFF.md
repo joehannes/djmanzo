@@ -1375,6 +1375,16 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   which is why controller mappings exist for Pioneer only. The owner supplies
   vendor MIDI tables when they can. Do not re-litigate this.
 - **Work happens on `main`.** No pull request unless one is asked for.
+- **A container can come back bare.** On 10 October the session resumed in a
+  new one: no `target/`, no `ui/node_modules`, none of the GTK/WebKit
+  headers, no Xvfb. Install CI's own list (`ci.yml`, "Install Linux build
+  dependencies") plus `xvfb imagemagick xdotool`, `npm ci` and
+  `npm run build` in `ui/` (tauri-build wants `dist/`), then build. In that
+  container one browser test failed on untouched code — §117's "the bar is
+  one row when that fits" (`dashboard.spec.ts`), tops `20,19,26,59` — on the
+  base commit as well, while CI passed that commit: the newly installed
+  system fonts are the likely cause, not confirmed. Check a red layout test
+  against the base commit before chasing it.
 - **CI builds with whatever Rust is stable today; the container keeps what it
   was made with.** CI uses `dtolnay/rust-toolchain@stable` and
   `RUSTFLAGS=-D warnings`, so a new stable's new warnings fail every job the
