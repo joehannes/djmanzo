@@ -7,6 +7,10 @@
         "ratio": 3.0,
         "threshold_db": -20.0
       },
+      "correction": {
+        "speed_ms": 40.0,
+        "strength": 0.800000011920929
+      },
       "de_esser": {
         "frequency_hz": 6500.0,
         "threshold_db": -30.0
@@ -53,6 +57,14 @@
       "compressor.threshold_db": [
         -50.0,
         0.0
+      ],
+      "correction.speed_ms": [
+        10.0,
+        200.0
+      ],
+      "correction.strength": [
+        0.0,
+        1.0
       ],
       "de_esser.frequency_hz": [
         2000.0,
@@ -166,6 +178,10 @@
         "ratio": 3.0,
         "threshold_db": -20.0
       },
+      "correction": {
+        "speed_ms": 40.0,
+        "strength": 0.800000011920929
+      },
       "de_esser": {
         "frequency_hz": 6500.0,
         "threshold_db": -30.0
@@ -212,6 +228,14 @@
       "compressor.threshold_db": [
         -50.0,
         0.0
+      ],
+      "correction.speed_ms": [
+        10.0,
+        200.0
+      ],
+      "correction.strength": [
+        0.0,
+        1.0
       ],
       "de_esser.frequency_hz": [
         2000.0,
@@ -324,6 +348,7 @@
           "ratio": 3.0,
           "threshold_db": -20.0
         },
+        "correction": null,
         "de_esser": {
           "frequency_hz": 6500.0,
           "threshold_db": -30.0
@@ -354,6 +379,7 @@
           "ratio": 3.0,
           "threshold_db": -20.0
         },
+        "correction": null,
         "de_esser": {
           "frequency_hz": 6500.0,
           "threshold_db": -30.0
@@ -385,6 +411,10 @@
         "makeup_db": 3.0,
         "ratio": 3.0,
         "threshold_db": -20.0
+      },
+      "correction": {
+        "speed_ms": 40.0,
+        "strength": 0.800000011920929
       },
       "de_esser": {
         "frequency_hz": 6500.0,
@@ -432,6 +462,14 @@
       "compressor.threshold_db": [
         -50.0,
         0.0
+      ],
+      "correction.speed_ms": [
+        10.0,
+        200.0
+      ],
+      "correction.strength": [
+        0.0,
+        1.0
       ],
       "de_esser.frequency_hz": [
         2000.0,
@@ -547,6 +585,7 @@
           "ratio": 3.0,
           "threshold_db": -28.0
         },
+        "correction": null,
         "de_esser": {
           "frequency_hz": 6500.0,
           "threshold_db": -30.0
@@ -577,6 +616,7 @@
           "ratio": 3.0,
           "threshold_db": -20.0
         },
+        "correction": null,
         "de_esser": {
           "frequency_hz": 6500.0,
           "threshold_db": -30.0

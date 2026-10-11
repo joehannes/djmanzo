@@ -826,6 +826,8 @@ export interface StripSettings {
   /** 0 turns the high-pass off. */
   high_pass_hz: number;
   gate: { threshold_db: number; range_db: number } | null;
+  /** K9: the voice pulled toward the song's key; strength 0–1, speed in ms. */
+  correction: { strength: number; speed_ms: number } | null;
   eq: { low_db: number; mid_db: number; mid_hz: number; high_db: number } | null;
   compressor: { threshold_db: number; ratio: number; makeup_db: number } | null;
   de_esser: { frequency_hz: number; threshold_db: number } | null;

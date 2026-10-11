@@ -201,6 +201,14 @@ impl Vocals {
         self.unheard
     }
 
+    /// K9: the song's key, for every strip's pitch correction — one key,
+    /// since the singers sing one song. `None` pulls to nothing.
+    pub fn set_scale(&mut self, scale: Option<Scale>) {
+        for strip in &mut self.strips {
+            strip.set_scale(scale);
+        }
+    }
+
     /// Strip `index`'s voice in the last frame, before its echo and room —
     /// silence for a strip that is idle or not there.
     #[must_use]

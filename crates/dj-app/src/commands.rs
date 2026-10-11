@@ -15581,6 +15581,12 @@ pub(crate) fn score_heard(state: &AppState, heard: &[Option<f32>]) {
             .filter(|_| !rotation.unscored)
             .and_then(|(singer, song)| Some((singer.name.clone(), song.track.clone()?, song.key)));
         scoring.checked = Some(std::time::Instant::now());
+        // K9: and the key it is in, for the singers' pitch correction — sent
+        // every second rather than when it changes, so an engine made anew
+        // (a device reopened) has it again within one.
+        let _ = state.bus().send_command(dj_engine::Command::VocalKey {
+            scale: sung_scale(state),
+        });
     }
     let Some((_, track, key)) = scoring.up_next.clone() else {
         return;
@@ -24253,6 +24259,84 @@ mod performance_tests {
         assert!(
             !folder.join(&running).exists(),
             "the running recording stayed"
+        );
+    }
+}
+
+/// K9: the scale the song being sung is in — the up-next song's record's key
+/// as analysed, moved by the singer's own key change — for the singers'
+/// pitch correction. `None` with nobody up next, no record, or a record
+/// whose key is not known: the correction then pulls to nothing.
+pub(crate) fn sung_scale(state: &AppState) -> Option<dj_vocal::Scale> {
+    let (track, shift) = state
+        .karaoke()
+        .up_next()
+        .and_then(|(_, song)| Some((song.track.clone()?, song.key)))?;
+    let id = dj_core::TrackId::from_hex(&track)?;
+    let key = library(state)
+        .ok()?
+        .track(id)
+        .ok()
+        .flatten()?
+        .analysis
+        .key()?
+        .transposed(shift);
+    Some(match key.mode() {
+        dj_core::Mode::Major => dj_vocal::Scale::major(key.tonic()),
+        dj_core::Mode::Minor => dj_vocal::Scale::minor(key.tonic()),
+    })
+}
+
+#[cfg(test)]
+mod correction_tests {
+    use super::{AppState, sung_scale};
+
+    /// **K9: the singers are pulled to the song's key as it is sung** — the
+    /// record's key moved by the singer's own key change; nothing with no
+    /// record, or a record whose key is not known.
+    #[test]
+    fn the_key_pulled_to_is_the_songs_as_sung() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        assert_eq!(sung_scale(&state), None, "a key with nobody up next");
+
+        let id = dj_core::TrackId::from_bytes([7; 32]);
+        let db = state.library().get().expect("a library");
+        db.upsert_track(&dj_library::LibraryTrack {
+            id,
+            path: dir.path().join("valerie.mp3"),
+            tags: dj_library::Tags::default(),
+            duration_frames: 100,
+            sample_rate: dj_core::SampleRate::DEFAULT,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        })
+        .expect("kept");
+        let mut rotation = state.karaoke();
+        assert!(rotation.ask("Ana", "Valerie", Some(id.to_hex()), None, Some(2)));
+        state.set_karaoke(&rotation);
+        assert_eq!(
+            sung_scale(&state),
+            None,
+            "a key for a record never analysed"
+        );
+
+        let a_minor = dj_core::MusicalKey::new(8, dj_core::Mode::Minor).expect("8A");
+        db.set_analysis(
+            id,
+            &dj_library::StoredAnalysis::default().with_key(a_minor, 0.9),
+        )
+        .expect("analysed");
+        assert_eq!(
+            sung_scale(&state),
+            Some(dj_vocal::Scale::minor(11)),
+            "A minor two semitones up is B minor"
         );
     }
 }

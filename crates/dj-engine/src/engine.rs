@@ -148,6 +148,8 @@ pub struct Engine {
     /// K9: one singer's song, on its way to a file. See
     /// [`Command::PerformanceStream`].
     performance: Option<(usize, rtrb::Producer<f32>)>,
+    /// K9: the key the song being sung is in. See [`Command::VocalKey`].
+    vocal_scale: Option<dj_vocal::Scale>,
     /// Samples the ring would not take since recording started.
     ///
     /// A full ring means the writer thread is behind — a slow disk, a machine
@@ -244,6 +246,7 @@ impl Engine {
             clap_bypass: false,
             record_stream: None,
             performance: None,
+            vocal_scale: None,
             dropped_samples: 0,
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
@@ -552,11 +555,20 @@ impl Engine {
                 }
                 Command::Vocals { rack } => {
                     let previous = match rack {
-                        Some(rack) => self.vocals.replace(rack),
+                        Some(mut rack) => {
+                            rack.set_scale(self.vocal_scale);
+                            self.vocals.replace(rack)
+                        }
                         None => self.vocals.take(),
                     };
                     if let Some(previous) = previous {
                         self.retire(Retired::Vocals(previous));
+                    }
+                }
+                Command::VocalKey { scale } => {
+                    self.vocal_scale = scale;
+                    if let Some(vocals) = self.vocals.as_mut() {
+                        vocals.set_scale(scale);
                     }
                 }
                 Command::VocalInput { ring } => {
@@ -5992,6 +6004,77 @@ mod mic_tests {
             ..singer
         };
         (singer, mc)
+    }
+
+    /// K9: **the song's key reaches a rack installed after it** — the key is
+    /// kept by the engine, so microphones opened mid-song are pulled to it —
+    /// and a key taken away leaves the singer alone.
+    #[test]
+    fn the_songs_key_reaches_the_singers_whenever_they_open() {
+        let sung = |scale: Option<dj_vocal::Scale>| {
+            let mut rig = rig();
+            rig.send(Command::VocalKey { scale });
+            let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 1);
+            let (mut ring, consumer) = rtrb::RingBuffer::new(48_000 * 2);
+            assert!(vocals.set_input(Some(consumer)).is_none());
+            rig.send(Command::Vocals {
+                rack: Some(Box::new(vocals)),
+            });
+            rig.send(Command::VocalStrip {
+                strip: 0,
+                settings: dj_vocal::StripSettings {
+                    open: true,
+                    gate: None,
+                    compressor: None,
+                    de_esser: None,
+                    reverb: None,
+                    correction: Some(dj_vocal::CorrectionSettings {
+                        strength: 1.0,
+                        speed_ms: 20.0,
+                    }),
+                    ..dj_vocal::StripSettings::default()
+                },
+            });
+            let mut left = Vec::new();
+            let mut n = 0_u32;
+            for _ in 0..36 {
+                for _ in 0..2_048 {
+                    let t = n as f32 / SR.get() as f32;
+                    ring.push((std::f32::consts::TAU * 225.0 * t).sin() * 0.3)
+                        .expect("room");
+                    n += 1;
+                }
+                let mut out = vec![0.0; 2_048 * 2];
+                rig.engine.render(
+                    &mut out,
+                    &RenderContext {
+                        frames: 2_048,
+                        channels: 2,
+                        sample_rate: SR,
+                    },
+                );
+                left.extend(out.as_chunks::<2>().0.iter().map(|frame| frame[0]));
+            }
+            let tail = &left[left.len() / 2..];
+            let mut crossings = Vec::new();
+            for (i, pair) in tail.windows(2).enumerate() {
+                if pair[0] < 0.0 && pair[1] >= 0.0 {
+                    crossings.push(i as f32 + pair[0] / (pair[0] - pair[1]));
+                }
+            }
+            let cycles = (crossings.len() - 1) as f32;
+            SR.get() as f32 * cycles / (crossings[crossings.len() - 1] - crossings[0])
+        };
+        let pulled = sung(Some(dj_vocal::Scale::minor(9)));
+        assert!(
+            (1_200.0 * (pulled / 220.0).log2()).abs() < 10.0,
+            "{pulled} Hz"
+        );
+        let alone = sung(None);
+        assert!(
+            (1_200.0 * (alone / 225.0).log2()).abs() < 3.0,
+            "{alone} Hz with no key"
+        );
     }
 
     /// K9: **a performance is the singer and the music, and nothing else.**

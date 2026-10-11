@@ -338,6 +338,21 @@ impl MusicalKey {
         }
     }
 
+    /// K9: the key's tonic as a pitch class, C as 0 — 8B is C major, 8A A
+    /// minor, and an hour round the wheel is a fifth up, as [`Self::transposed`]
+    /// has it.
+    #[must_use]
+    pub fn tonic(self) -> u8 {
+        let major = (7 * (i32::from(self.hour) - 8)).rem_euclid(12);
+        let tonic = match self.mode {
+            Mode::Major => major,
+            Mode::Minor => (major + 9).rem_euclid(12),
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let tonic = tonic as u8;
+        tonic
+    }
+
     /// Keys that mix cleanly with this one: the same key, its neighbours on the
     /// wheel, and its relative major/minor.
     #[must_use]
@@ -459,6 +474,30 @@ impl KeyRelation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A key's tonic is its pitch class**: 8B is C major, 8A A minor, 12B E
+    /// major, 12A C# minor — and a key moved a semitone has its tonic moved
+    /// one.
+    #[test]
+    fn a_keys_tonic_is_its_pitch_class() {
+        let key = |hour, mode| MusicalKey::new(hour, mode).expect("a key");
+        assert_eq!(key(8, Mode::Major).tonic(), 0);
+        assert_eq!(key(8, Mode::Minor).tonic(), 9);
+        assert_eq!(key(9, Mode::Major).tonic(), 7);
+        assert_eq!(key(12, Mode::Major).tonic(), 4);
+        assert_eq!(key(12, Mode::Minor).tonic(), 1);
+        for hour in 1..=12 {
+            for mode in [Mode::Major, Mode::Minor] {
+                let k = key(hour, mode);
+                assert_eq!(
+                    k.transposed(1).tonic(),
+                    (k.tonic() + 1) % 12,
+                    "{}",
+                    k.camelot()
+                );
+            }
+        }
+    }
 
     fn rate() -> SampleRate {
         SampleRate::new(48_000).unwrap()

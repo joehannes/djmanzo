@@ -157,6 +157,12 @@ pub enum Command {
     Vocals {
         rack: Option<Box<dj_vocal::Vocals>>,
     },
+    /// K9: the key the song being sung is in, for every strip's pitch
+    /// correction — `None` when there is no song or its key is not known.
+    /// Kept by the engine and given to a rack installed later.
+    VocalKey {
+        scale: Option<dj_vocal::Scale>,
+    },
     /// K3: a new input ring for the singers' rack already installed — the
     /// interface came back after going. Only the ring changes: the strips,
     /// their settings and their tails stay as they were. The ring that was

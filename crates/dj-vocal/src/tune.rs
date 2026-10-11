@@ -62,19 +62,22 @@ impl Default for CorrectionSettings {
 }
 
 impl CorrectionSettings {
-    /// Held to what the screen offers: strength 0–1, speed 10–200 ms.
+    /// Held to what the screen offers: strength 0–1, speed 10–200 ms; a
+    /// value that is not a number at all is what the stage starts at, as
+    /// every other stage's is.
     #[must_use]
     pub fn held(self) -> Self {
+        let start = Self::default();
         Self {
             strength: if self.strength.is_finite() {
                 self.strength.clamp(0.0, 1.0)
             } else {
-                0.0
+                start.strength
             },
             speed_ms: if self.speed_ms.is_finite() {
                 self.speed_ms.clamp(10.0, 200.0)
             } else {
-                40.0
+                start.speed_ms
             },
         }
     }
@@ -578,5 +581,11 @@ mod tests {
         }
         .held();
         assert_eq!((held.strength, held.speed_ms), (1.0, 40.0));
+        let held = CorrectionSettings {
+            strength: f32::NAN,
+            speed_ms: 1.0,
+        }
+        .held();
+        assert_eq!((held.strength, held.speed_ms), (0.8, 10.0));
     }
 }

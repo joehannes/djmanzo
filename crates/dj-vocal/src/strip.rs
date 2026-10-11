@@ -52,6 +52,9 @@ pub struct StripSettings {
     pub de_esser: Option<DeEsserSettings>,
     pub echo: Option<EchoSettings>,
     pub reverb: Option<ReverbSettings>,
+    /// K9: the voice pulled toward the song's key (docs/KARAOKE.md §12) —
+    /// after the gate, before the EQ; off unless chosen.
+    pub correction: Option<crate::CorrectionSettings>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -179,6 +182,7 @@ impl Default for StripSettings {
             de_esser: Some(DeEsserSettings::default()),
             echo: None,
             reverb: Some(ReverbSettings::default()),
+            correction: None,
         }
     }
 }
@@ -218,11 +222,15 @@ pub mod range {
     pub const REVERB_SECONDS: (f32, f32) = (0.2, crate::LONGEST_REVERB_SECONDS);
     /// The lowest a high-pass that is on goes.
     pub(crate) const HIGH_PASS_LOWEST_HZ: f32 = 20.0;
+    /// K9: how hard a voice is pulled to the key, 0 to 1.
+    pub const CORRECTION_STRENGTH: (f32, f32) = (0.0, 1.0);
+    /// K9: how long the pull takes, in milliseconds.
+    pub const CORRECTION_SPEED_MS: (f32, f32) = (10.0, 200.0);
 }
 
 /// Every number a strip takes, by the name the interface knows it by — a
 /// stage's numbers as `stage.number` — with its range from [`range`].
-pub const LIMITS: [(&str, (f32, f32)); 22] = [
+pub const LIMITS: [(&str, (f32, f32)); 24] = [
     ("gain_db", range::GAIN_DB),
     ("pan", range::PAN),
     ("to_main", range::SEND),
@@ -245,6 +253,8 @@ pub const LIMITS: [(&str, (f32, f32)); 22] = [
     ("echo.level", range::LEVEL),
     ("reverb.seconds", range::REVERB_SECONDS),
     ("reverb.level", range::LEVEL),
+    ("correction.strength", range::CORRECTION_STRENGTH),
+    ("correction.speed_ms", range::CORRECTION_SPEED_MS),
 ];
 
 /// `value` inside `(min, max)`; `fallback` when it is not a number at all.
@@ -265,6 +275,7 @@ impl StripSettings {
         Self {
             eq: Some(EqSettings::default()),
             echo: Some(EchoSettings::default()),
+            correction: Some(crate::CorrectionSettings::default()),
             ..Self::default()
         }
     }
@@ -357,6 +368,7 @@ impl StripSettings {
                     level: hold(reverb.level, range::LEVEL, start.level),
                 }
             }),
+            correction: self.correction.map(crate::CorrectionSettings::held),
         }
     }
 
@@ -373,6 +385,7 @@ impl StripSettings {
             de_esser: self.de_esser,
             echo: self.echo,
             reverb: self.reverb,
+            correction: self.correction,
         }
     }
 
@@ -391,6 +404,7 @@ impl StripSettings {
             de_esser: chain.de_esser,
             echo: chain.echo,
             reverb: chain.reverb,
+            correction: chain.correction,
             ..*self
         }
     }
@@ -413,6 +427,8 @@ pub struct Chain {
     pub de_esser: Option<DeEsserSettings>,
     pub echo: Option<EchoSettings>,
     pub reverb: Option<ReverbSettings>,
+    #[serde(default)]
+    pub correction: Option<crate::CorrectionSettings>,
 }
 
 impl Default for Chain {
@@ -524,8 +540,11 @@ impl Preset {
                 ..singer
             },
         };
+        // A preset is about the room and the dynamics; pitch correction is
+        // the singer's own choice, and stays as it was.
         settings.with_chain(&Chain {
             preset: self,
+            correction: settings.correction,
             ..chain.chain()
         })
     }
@@ -572,6 +591,8 @@ pub struct Strip {
     de_esser: DeEsser,
     echo: Echo,
     reverb: Reverb,
+    /// K9: made here, used only while the strip's settings ask for it.
+    corrector: crate::Corrector,
     ducker: Ducker,
     meter: PeakMeter,
     /// Frames since a voice last came through. Counts the tail down.
@@ -604,6 +625,7 @@ impl Strip {
             de_esser: DeEsser::new(sample_rate),
             echo: Echo::new(sample_rate),
             reverb: Reverb::new(sample_rate),
+            corrector: crate::Corrector::new(sample_rate),
             ducker: Ducker::new(sample_rate),
             meter: PeakMeter::new(sample_rate),
             since_voice: usize::MAX,
@@ -664,6 +686,9 @@ impl Strip {
         if let Some(reverb) = settings.reverb {
             self.reverb.set(reverb.seconds);
         }
+        if let Some(correction) = settings.correction {
+            self.corrector.set(correction);
+        }
         self.ducker.set_enabled(settings.talkover);
         let echo = settings.echo.map_or(0, |_| self.echo.tail_frames());
         let reverb = settings.reverb.map_or(0, |_| self.reverb.tail_frames());
@@ -672,6 +697,11 @@ impl Strip {
         let settle = (0.1 * rate) as usize;
         self.tail = echo.max(reverb) + settle;
         self.settings = *settings;
+    }
+
+    /// K9: the song's key, for the pitch correction to pull to.
+    pub fn set_scale(&mut self, scale: Option<crate::Scale>) {
+        self.corrector.set_scale(scale);
     }
 
     #[must_use]
@@ -711,6 +741,9 @@ impl Strip {
         }
         if settings.gate.is_some() {
             voice = self.gate.process(voice);
+        }
+        if settings.correction.is_some() {
+            voice = self.corrector.process(voice);
         }
         if settings.eq.is_some() {
             voice = self.high.process(self.mid.process(self.low.process(voice)));
@@ -815,6 +848,90 @@ mod tests {
             open: true,
             ..StripSettings::default()
         }
+    }
+
+    /// The frequency of a stretch of a voice, from its rising zero crossings.
+    fn frequency(voice: &[f32]) -> f32 {
+        let mut crossings = Vec::new();
+        for (i, pair) in voice.windows(2).enumerate() {
+            if pair[0] < 0.0 && pair[1] >= 0.0 {
+                #[allow(clippy::cast_precision_loss)]
+                crossings.push(i as f32 + pair[0] / (pair[0] - pair[1]));
+            }
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let cycles = (crossings.len() - 1) as f32;
+        RATE * cycles / (crossings[crossings.len() - 1] - crossings[0])
+    }
+
+    /// **K9: a strip pulls its singer to the song's key only when its
+    /// correction is on** — 225 Hz in A minor comes out at A, 220 Hz — and
+    /// a preset chosen afterwards leaves the singer's correction as it was.
+    #[test]
+    fn a_strip_corrects_only_when_asked() {
+        let sing = |settings: StripSettings| {
+            let mut strip = Strip::new(RATE);
+            strip.apply(&settings);
+            strip.set_scale(Some(crate::Scale::minor(9)));
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let out: Vec<f32> = (0..(RATE * 1.5) as usize)
+                .map(|n| {
+                    #[allow(clippy::cast_precision_loss)]
+                    let t = n as f32 / RATE;
+                    strip
+                        .process((std::f32::consts::TAU * 225.0 * t).sin() * 0.3)
+                        .voice
+                })
+                .collect();
+            frequency(&out[out.len() / 2..])
+        };
+        let plain = StripSettings {
+            gate: None,
+            compressor: None,
+            de_esser: None,
+            reverb: None,
+            ..open()
+        };
+        let corrected = StripSettings {
+            correction: Some(crate::CorrectionSettings {
+                strength: 1.0,
+                speed_ms: 20.0,
+            }),
+            ..plain
+        };
+        let heard = sing(corrected);
+        assert!(
+            (1_200.0 * (heard / 220.0).log2()).abs() < 10.0,
+            "{heard} Hz"
+        );
+        let heard = sing(plain);
+        assert!(
+            (1_200.0 * (heard / 225.0).log2()).abs() < 3.0,
+            "corrected unasked: {heard} Hz"
+        );
+
+        let mc = Preset::Mc.applied_to(&corrected);
+        assert_eq!(
+            mc.correction, corrected.correction,
+            "a preset took the correction away"
+        );
+        let wild = StripSettings {
+            correction: Some(crate::CorrectionSettings {
+                strength: 9.0,
+                speed_ms: 1.0,
+            }),
+            ..plain
+        }
+        .held();
+        assert_eq!(
+            wild.correction.map(|c| (c.strength, c.speed_ms)),
+            Some((1.0, 10.0))
+        );
+        assert_eq!(
+            corrected.chain().correction,
+            corrected.correction,
+            "not the singer's to keep"
+        );
     }
 
     /// **A closed microphone is silent, and costs nothing once it is.**
@@ -967,6 +1084,10 @@ mod tests {
                 seconds: value,
                 level: value,
             }),
+            correction: Some(crate::CorrectionSettings {
+                strength: value,
+                speed_ms: value,
+            }),
             ..StripSettings::default()
         };
         let limit = |name: &str| {
@@ -1060,6 +1181,7 @@ mod tests {
                 frequency_hz: 7_500.0,
                 ..DeEsserSettings::default()
             }),
+            correction: Some(crate::CorrectionSettings::default()),
             ..Preset::SoftSinger.applied_to(&StripSettings::default())
         };
         let laid = rig.with_chain(&singer.chain());

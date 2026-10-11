@@ -1894,8 +1894,8 @@ so it hears what the singer sang — the condition K6 set.
   is added to what the singer hears in their wedge (K3 measures about
   11 ms at 256 frames), which is why it is off unless chosen, and why the
   panel says *+20 ms* beside it.
-- *The song's key.* Sent to the rack with the song (`deck N key`, *Load
-  on*, *Bring them in*): one key for every strip, since the singers sing
+- *The song's key.* Sent to the rack with the song (as built: once a
+  second, from the rotation — step 2 below): one key for every strip, since the singers sing
   the same song. No key — a record never analysed — and the stage does
   nothing, and says why.
 
@@ -1919,6 +1919,24 @@ Measured on synthetic voices: a held 225 Hz in A minor comes out at
 a glide from 200 to 240 Hz at half strength rises through every tenth of a
 second; noise, silence and a hum far under a voice are not read. Nothing
 allocates (`dj-vocal/tests/realtime.rs`).
+
+**Step 2 built (11 October 2026): in the chain, pulled to the song's key.**
+`StripSettings::correction` (strength 0–1, speed 10–200 ms, both in
+`dj_vocal::LIMITS`) is a stage after the gate and before the EQ, off unless
+chosen; a preset leaves it as it was — it is the singer's choice, not the
+room's — and it is kept with a singer's chain like every other stage. The
+song's key does not ride on *Load on* and *Bring them in* as designed above:
+the listening thread, which already reads the rotation once a second for the
+score, sends `Command::VocalKey` with it — the up-next song's record's
+analysed key moved by the singer's key change (`MusicalKey::tonic`) — so a
+key change, a new singer, or an engine made anew when a device reopens is
+picked up within a second, with nothing to remember to send. The engine
+keeps the key and gives it to a rack installed later. A record never
+analysed sends no key and the stage passes the voice through. Held by
+tests through the strip (225 Hz comes out within 10 cents of 220 Hz in
+A minor; untouched with the stage off) and through the engine (a rack
+opened after the key is pulled to it; no key, no pull); every mutant of
+the wiring was killed.
 
 **The order.** 1. The corrector in `dj-vocal`, pure, with its tests. 2.
 The stage in the chain, the song's key sent to the rack, and kept with a
