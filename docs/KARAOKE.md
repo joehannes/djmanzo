@@ -1008,3 +1008,109 @@ a night, in memory only. The host's Singers panel lists them — *Show it*,
 *Refuse*, and once shown *Take it down* — and the singers' screen asks for
 the approved photo of the singer singing, and draws it in the bottom left
 corner while they sing, never before. *New night* forgets them all.
+
+## 8. Break music that leads somewhere (K5)
+
+*Designed 11 October 2026, before any code.* The outline: at a hybrid gig the
+music between singers leads *into* the next singer's song — break records
+ranked against that song's key and tempo by the Next rail's own scorer — and
+a planned transition carries the room from the dance set into a karaoke song
+and back out. A karaoke-only program cannot do this, because it does not mix;
+djmanzo already has every part that does, and K5 is the joining of them.
+
+What exists: §107's break music (`dj_app::breaks`) fades a host-named
+playlist in on one deck after two seconds of quiet and out when anything
+else plays, walking the playlist in its order. The Next rail ranks records
+with `dj_library::suggest::score`. The planner (`dj_app::plan`) chooses where
+a mix starts, how long it runs and in what style, and the automix performs a
+held transition with the style table in `dj_app::shape`. None of this is
+replaced.
+
+### Chosen for the next song
+
+When break music asks for a record, it asks the scorer which record in the
+playlist leads best into **the song of the singer up next**
+(`Rotation::up_next`), and plays that one. The song is judged as it will be
+*sung*: a song the host has moved two semitones down is ranked in its new
+key, which needs `MusicalKey::transposed` (a semitone is seven hours round
+the Camelot wheel); its tempo is the record's own, since a key change keeps
+the tempo. The score is the move *from* the break record *to* the song —
+`score(&Playing::of(candidate), Trajectory::Hold, song)` — the same scorer,
+weights and reasons the rail draws, so a break record and a rail suggestion
+can never disagree about one pair. *Hold*, because a break should leave the
+room where the last singer left it.
+
+- **Not twice in a night** while any of the playlist is left unplayed: the
+  records played are kept with the settings (`Settings::played`) and
+  forgotten at *New night* or once every record has had its turn.
+- **Ties keep the host's order**, walking from where it got to, so a
+  playlist the scorer cannot tell apart plays as it did before.
+- **Nothing to rank against** — nobody waiting, a song written in with no
+  record found, or a record not analysed — and the record just sung is the
+  target instead (`Rotation::history`'s last): the music leads *out of* the
+  karaoke rather than into it. With neither, the walk, exactly as §107.
+- **A switch**, *Lead into the next song*, on by default; off is §107's walk.
+- **The panel says why**: *For Ana — Dancing Queen: same key · tempo fits*,
+  from the typed reasons, so a host who disagrees can see what with.
+
+Chosen when it is loaded. A host who reorders the rotation during a break
+does not cut the record off; the next one is ranked against the new order.
+
+### Bringing them in
+
+The singer is called and their song is on a deck (*Load on*). Today the host
+presses play on it and break music fades out over two seconds wherever it
+is. K5 adds *Bring them in* to the up-next row, shown when the song is
+loaded, paused, and something is playing to the room — break music or the
+DJ's own dance record, which is how a dance set becomes a karaoke hour.
+
+Pressing it plans the mix from the record playing into the song with the
+planner, and holds it as §68's transition object, so it is drawn on the
+waveforms like any other. Two differences from a mix out of a dance record:
+
+- **Soon, not late.** The planner answers *the last* phrase boundary that
+  leaves room; a singer standing at the microphone wants *the next* one
+  that does, at least eight beats ahead so the press is never late —
+  `plan::soonest`, beside `plan`.
+- **The song keeps its tempo.** Automix syncs the incoming record to the one
+  the room is dancing to. Here the singer rehearsed at the record's own
+  speed, so it is the record playing that moves to the song's tempo before
+  the blend, and the song plays exactly as it was recorded. Where the
+  tempos are too far apart for that, the planner already says *Cut*.
+
+The mix is performed by the automix's own machinery, once, for this
+transition — the style table, the faders, the effects — and then the
+automix is as it was: off stays off. The song starts from its first beat,
+or from the cue point if the host set one. Break music lets go of its deck
+as the mix finishes, and its fader goes back where the host left it.
+
+### Back out
+
+Between singers, a song ending and two seconds of quiet is §107's break: it
+stays the default, because applause wants the room quiet. A switch, *Mix out
+of each song*, off by default, has break music bring its record in under
+the song's last phrase instead — the planner's ordinary mix-out, at the
+break level. A record mixed in under one song and leading into the next
+has two neighbours, so it is ranked against both — the two scores added —
+and against the song ending alone when nobody is waiting, which is how the
+end of the karaoke hour leads back into the dance set. The tempo rule is the
+one above: here the break record is the incoming one, and it is the one
+synced.
+
+### Not here
+
+Pitching the karaoke song to suit the break record. The song's key is the
+singer's; break music fits around it, never the reverse. And no automatic
+*Bring them in*: a singer is ready when the host can see them at the
+microphone, which djmanzo cannot.
+
+### The order
+
+1. **Chosen for the next song** — the transposed key, the ranking, *played*,
+   the switch, the reasons on the panel.
+2. **Bringing them in** — `plan::soonest`, the held transition, the song
+   keeping its tempo, the one-shot performance.
+3. **Back out** — the mix-out switch.
+
+Each is held by tests on the machine and the ranking, and driven in the
+running application with a rotation, a break playlist and the decks.
