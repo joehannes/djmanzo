@@ -7994,6 +7994,25 @@ impl From<dj_library::Note> for NoteDtoJournal {
 /// Falls back to whatever is loaded when nothing is playing: a DJ marking the
 /// moment before they bring something in still means that record.
 fn now_playing(state: &AppState) -> String {
+    now_playing_to(state, false)
+}
+
+/// K7: the record the room must not be told of — the quiz's, while its
+/// question is open and the answer not yet shown. A page or a stream that
+/// named it would answer the question for every phone in the room.
+pub(crate) fn quiz_secret(state: &AppState) -> Option<dj_core::TrackId> {
+    let round = state.quiz().lock().ok()?;
+    round
+        .question
+        .as_ref()
+        .filter(|_| !round.revealed)
+        .map(|question| question.record)
+}
+
+/// What is playing, for the DJ or — `room` — for the room, which is not
+/// told the quiz's record while its question is open.
+fn now_playing_to(state: &AppState, room: bool) -> String {
+    let secret = if room { quiz_secret(state) } else { None };
     let registry = state.registry();
     let tracks = state.deck_tracks();
     let Ok(tracks) = tracks.lock() else {
@@ -8002,7 +8021,12 @@ fn now_playing(state: &AppState) -> String {
 
     // The same naming the request book is matched against, so what the room
     // reads and what a played request is ticked off by cannot drift apart.
-    let describe = |deck: u8| tracks.get(&deck).map(crate::track_name);
+    let describe = |deck: u8| {
+        tracks
+            .get(&deck)
+            .filter(|track| secret.is_none_or(|secret| track.id != secret))
+            .map(crate::track_name)
+    };
 
     let decks: Vec<u8> = (1..=state.deck_count())
         .filter_map(|n| u8::try_from(n).ok())
@@ -16131,6 +16155,8 @@ pub(crate) fn new_night(state: &AppState) -> RotationDto {
         tracing::warn!(%error, "tonight's guests are still in the journal");
     }
     everybody_off_the_mics(state);
+    // K7: nobody's nickname or points carried into another night.
+    state.audience().front().quiz(dj_net::quiz::QuizBook::clear);
     // K6: no song being scored.
     if let Ok(mut scoring) = state.scoring().lock() {
         scoring.reset();
@@ -17420,12 +17446,47 @@ pub struct QuizDto {
     pub problem: Option<String>,
     /// The quiz deck's fader is down: a clip would play to nobody.
     pub quiet: bool,
+    /// K7: the phones playing along.
+    pub phones: QuizPhonesDto,
+}
+
+/// K7: the phones playing along, as the host's panel draws them.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct QuizPhonesDto {
+    /// Phones with a nickname tonight.
+    pub players: usize,
+    /// How many answered the open question.
+    pub answered: usize,
+    /// How many chose each answer, once it is shown.
+    pub counts: Option<[usize; 4]>,
+    /// The night's top ten: nickname and points.
+    pub leaders: Vec<(String, u32)>,
+}
+
+/// K7: the phones, from the room's page's quiz book.
+fn quiz_phones(state: &AppState) -> QuizPhonesDto {
+    state
+        .audience()
+        .front()
+        .quiz(|book| {
+            let question = book.question();
+            QuizPhonesDto {
+                players: book.players(),
+                answered: question.map_or(0, |q| q.counts().iter().sum()),
+                counts: question
+                    .filter(|q| q.right().is_some())
+                    .map(dj_net::quiz::Asked::counts),
+                leaders: book.leaders(),
+            }
+        })
+        .unwrap_or_default()
 }
 
 fn quiz_dto(state: &AppState) -> QuizDto {
     use dj_core::param::DeckParam;
+    let phones = quiz_phones(state);
     let Ok(round) = state.quiz().lock() else {
-        return quiz_view(&crate::quiz::Round::default(), false);
+        return quiz_view(&crate::quiz::Round::default(), false, phones);
     };
     let quiet = dj_core::DeckId::from_human(round.settings.deck)
         .filter(|deck| deck.index() < state.deck_count())
@@ -17435,12 +17496,12 @@ fn quiz_dto(state: &AppState) -> QuizDto {
                 .get(dj_core::ParamId::Deck(deck, DeckParam::Volume))
                 < 0.05
         });
-    quiz_view(&round, quiet)
+    quiz_view(&round, quiet, phones)
 }
 
 /// K7: a round as the panel draws it.
 #[must_use]
-pub fn quiz_view(round: &crate::quiz::Round, quiet: bool) -> QuizDto {
+pub fn quiz_view(round: &crate::quiz::Round, quiet: bool, phones: QuizPhonesDto) -> QuizDto {
     QuizDto {
         deck: round.settings.deck,
         kinds: round.settings.kinds.clone(),
@@ -17457,6 +17518,7 @@ pub fn quiz_view(round: &crate::quiz::Round, quiet: bool) -> QuizDto {
         playing: round.clip.is_some(),
         problem: round.problem.clone(),
         quiet,
+        phones,
     }
 }
 
@@ -17478,11 +17540,60 @@ mod quiz_view_tests {
             right: 2,
             from: 0.0,
         });
-        let hidden = quiz_view(&round, false).question.expect("a question");
+        let hidden = quiz_view(&round, false, super::QuizPhonesDto::default())
+            .question
+            .expect("a question");
         assert_eq!(hidden.right, None);
         assert_eq!((hidden.number, hidden.words), (1, "Chipmunk"));
         round.revealed = true;
-        assert_eq!(quiz_view(&round, false).question.unwrap().right, Some(2));
+        let shown = quiz_view(&round, false, super::QuizPhonesDto::default());
+        assert_eq!(shown.question.unwrap().right, Some(2));
+    }
+
+    /// **The room is not told the quiz's record while its question is
+    /// open** — not on the room's page, not on the stream — and is once the
+    /// answer is shown. The DJ always is.
+    #[test]
+    fn the_room_is_not_told_the_answer() {
+        use crate::state::AppState;
+        let state = AppState::new(true);
+        let record = dj_core::TrackId::from_bytes([1; 32]);
+        let deck = dj_core::DeckId::from_human(2).expect("a deck");
+        state.set_deck_track(
+            deck,
+            crate::state::LoadedTrackInfo {
+                title: "Obsesión".to_owned(),
+                artist: Some("Aventura".to_owned()),
+                id: record,
+                chosen: dj_library::Chosen::Dj,
+            },
+        );
+        state.registry().set(
+            dj_core::ParamId::Deck(deck, dj_core::param::DeckParam::Playing),
+            1.0,
+        );
+        let room = |state: &AppState| super::now_playing_to(state, true);
+        assert!(room(&state).contains("Obsesión"), "no quiz, nothing hidden");
+        if let Ok(mut round) = state.quiz().lock() {
+            round.question = Some(crate::quiz::Question {
+                kind: crate::quiz::Kind::NameIt,
+                record,
+                path: std::path::PathBuf::new(),
+                answers: Default::default(),
+                right: 0,
+                from: 0.0,
+            });
+        }
+        assert!(!room(&state).contains("Obsesión"), "{}", room(&state));
+        assert!(
+            super::now_playing(&state).contains("Obsesión"),
+            "the DJ is told"
+        );
+        assert_eq!(super::quiz_secret(&state), Some(record));
+        if let Ok(mut round) = state.quiz().lock() {
+            round.revealed = true;
+        }
+        assert!(room(&state).contains("Obsesión"));
     }
 }
 
@@ -17675,14 +17786,25 @@ fn quiz_next_on(state: &AppState) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     {
         let mut round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
-        if round.next(&tracks).is_none() {
+        let (number, of) = (round.asked.len() + 1, round.settings.count);
+        let Some(question) = round.next(&tracks).cloned() else {
             round.question = None;
             return Err(
                 "No record is left to ask about: a question needs a record with a title and an \
                  artist, at least thirty seconds long, and three others to stand beside it."
                     .to_owned(),
             );
-        }
+        };
+        // K7 step 2: phones answer from the moment it is asked.
+        state.audience().front().quiz(|book| {
+            book.ask(
+                question.answers.clone(),
+                question.right,
+                number,
+                of,
+                std::time::SystemTime::now(),
+            )
+        });
     }
     quiz_play(state, found)
 }
@@ -17710,6 +17832,7 @@ pub async fn quiz_again(app: tauri::AppHandle) -> Result<QuizDto, String> {
         }
         let found = quiz_put_back(&state).unwrap_or_else(|| quiz_found(&state, deck));
         quiz_play(&state, found)?;
+        state.audience().front().quiz(dj_net::quiz::QuizBook::again);
         Ok(quiz_dto(&state))
     })
     .await
@@ -17723,6 +17846,10 @@ pub fn quiz_reveal(state: State<'_, AppState>) -> QuizDto {
     if let Ok(mut round) = state.quiz().lock() {
         round.revealed = round.question.is_some();
     }
+    state
+        .audience()
+        .front()
+        .quiz(|book| book.reveal(std::time::SystemTime::now()));
     quiz_dto(&state)
 }
 
@@ -17734,6 +17861,10 @@ pub fn quiz_end(state: State<'_, AppState>) -> QuizDto {
     if let Ok(mut round) = state.quiz().lock() {
         round.end();
     }
+    state
+        .audience()
+        .front()
+        .quiz(|book| book.end_round(std::time::SystemTime::now()));
     quiz_dto(&state)
 }
 
@@ -17760,6 +17891,11 @@ pub fn tick_quiz(state: &AppState, now: f64) {
         let step = clip.step(&deck, now);
         if step.done {
             round.clip = None;
+            // Answers are taken for ten seconds more.
+            state
+                .audience()
+                .front()
+                .quiz(|book| book.clip_over(std::time::SystemTime::now()));
         }
         step.actions
     };
@@ -19800,7 +19936,7 @@ pub fn audience_status(state: State<'_, AppState>) -> crate::audience::AudienceS
     let audience = state.audience();
     // What the page shows as playing, from the poll the interface makes
     // anyway. Blank rather than stale when nothing is loaded.
-    let playing = now_playing(&state);
+    let playing = now_playing_to(&state, true);
     audience
         .front()
         .set_playing((!playing.is_empty()).then_some(playing));

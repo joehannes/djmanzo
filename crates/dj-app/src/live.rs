@@ -128,11 +128,18 @@ fn words_for(state: &crate::state::AppState, deck: Option<u8>) -> String {
     let Some(deck) = deck else {
         return String::new();
     };
+    // K7: not the quiz's record while its question is open.
+    let secret = crate::commands::quiz_secret(state);
     state
         .deck_tracks()
         .lock()
         .ok()
-        .and_then(|tracks| tracks.get(&deck).map(crate::track_name))
+        .and_then(|tracks| {
+            tracks
+                .get(&deck)
+                .filter(|track| secret.is_none_or(|secret| track.id != secret))
+                .map(crate::track_name)
+        })
         .unwrap_or_default()
 }
 

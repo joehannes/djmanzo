@@ -1486,3 +1486,39 @@ things: quick presses on the round's settings each built on the panel's
 stale copy and undid the one before (now kept before sending), and a
 refusal stayed on screen after the host chose another deck (now cleared by
 any change to the settings).
+
+**Step 2, the phones — built (11 October).** `dj_net::quiz::QuizBook` is
+the room's page's third book. A question is asked into it the moment the
+host asks it, with its four answers and which is right (never sent to a
+phone before it is shown); the clip ending closes it ten seconds later
+(`CLOSES_AFTER`), and *Play it again* opens it until the clip ends again.
+A phone gives a nickname once a night — forty characters, one per phone,
+no two alike in any case — and answers each question once, by its
+address, carrying the question's number so a page left open on the last
+question cannot answer this one; an answer after the close is refused.
+Points are added when the question is settled — shown, the next asked, or
+the round ended — so a phone's total says nothing before the answer: half
+of `WORTH` for being right, the other half shrinking to nothing between
+opening and closing. The night's points and nicknames outlast a round;
+*New night* forgets them. The quiz is its own page, `/quiz`, rather than
+a part of the room's page, because it reloads itself every three seconds
+(`<meta http-equiv="refresh">`; the page still has no script) to bring the
+next question — a page that reloads must not hold a half-typed request, nor
+a half-typed nickname, so a phone without one is not reloaded. The room's
+page says a quiz is running and links to it while a round runs. The phone
+shows the four answers as large buttons, A to D; once answered, its letter;
+once shown, the right answer and whether it had it; the leaderboard (the
+top ten) between questions. The host's panel counts the phones playing and
+the answers given, each answer's count once shown, and the top five.
+Driven with a phone-sized Chromium against the running application, and a
+second phone by `curl` from another loopback address: a nickname, the four
+buttons, an answer, the buttons gone, *You were right!* and *Not this
+time.* after the reveal, the panel's counts *1 / 1 / 0 / 0*, the next
+question, *No quiz right now* after the end. The drive found three things:
+the panel stopped counting answers once the clip ended, though phones answer
+for ten seconds more (now asked while the question is open); the board's
+places were missing on phones, a flex row having no list marker; and,
+worst, the room's page said *Playing now: Darte un Beso* during a question
+about Darte un Beso. The room is now not told the quiz's record while its
+question is open (`commands::quiz_secret`) — neither the room's page nor
+the stream's line — and is told again once the answer is shown.

@@ -242,6 +242,8 @@ pub struct View<'a> {
     /// K4: the *Sing* part, when the host has sign-ups open or this phone
     /// has a singer down tonight.
     pub sing: Option<SingView>,
+    /// K7: a quiz round is running, and the page says where to play.
+    pub quiz: bool,
 }
 
 /// The most rows the page shows.
@@ -266,6 +268,10 @@ pub fn request_page(view: &View) -> String {
     html.push_str(w.title);
     html.push_str("</title>\n<style>\n");
     html.push_str(STYLE);
+    if view.quiz {
+        // K7: the invitation's own look, only on a page that carries it.
+        html.push_str(crate::quiz_page::QUIZ_STYLE);
+    }
     html.push_str("</style>\n</head>\n<body>\n<main>\n");
 
     html.push_str("<h1>");
@@ -332,6 +338,10 @@ pub fn request_page(view: &View) -> String {
 
     if let Some(sing) = &view.sing {
         sing_part(&mut html, sing, &SingWords::by_tag(w.tag));
+    }
+
+    if view.quiz {
+        html.push_str(&crate::quiz_page::invitation(w.tag));
     }
 
     html.push_str("<p class=\"mark\">djmanzo</p>\n</main>\n</body>\n</html>\n");
@@ -890,7 +900,7 @@ pub(crate) fn escape(text: &str) -> String {
 }
 
 /// Dark, because of the room. Large, because of the one hand.
-const STYLE: &str = "\
+pub(crate) const STYLE: &str = "\
 :root{color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:#0b0d10;color:#e9edf2;
@@ -952,6 +962,7 @@ mod tests {
             said: None,
             open: true,
             sing: None,
+            quiz: false,
         }
     }
 

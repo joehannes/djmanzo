@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The quiz on phones (K7).** While a quiz round runs, the room's page
+  invites phones to play along: a nickname once a night, then each question
+  as four large buttons, one answer each, refused once the question has
+  closed — ten seconds after its clip. A right answer is worth up to a
+  thousand, half for being right and half for being quick; the points and
+  the night's top ten appear when the answer is shown. The host's panel
+  counts the phones and their answers. While a question is open, neither the
+  room's page nor the stream names the record it is about.
+
 - **A quiz made from the collection (K7).** *Quiz* in the Singers panel
   asks questions about the DJ's own records: a ten-second clip from a third
   of the way in to name, played as recorded, backwards, or as a chipmunk —

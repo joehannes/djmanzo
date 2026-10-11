@@ -18,6 +18,8 @@
 //! here to it, rather than because something checks.
 
 use crate::page::{self, Line, PhotoSaid, Said, Sang, SingView, View, Words};
+use crate::quiz::{Answered, LETTERS, Named, QuizBook};
+use crate::quiz_page::{PhoneQuestion, QuizSaid, QuizView};
 use crate::room::{Ask, RequestBook, Standing};
 use crate::stage::{Posed, Proposal, Signed, Stage, Voice};
 use crate::web::{Handler, Incoming, Method, Reply};
@@ -36,6 +38,8 @@ pub struct Front {
     show_playing: AtomicBool,
     /// K4: the second book — singers putting their own names down.
     stage: Mutex<Stage>,
+    /// K7: the third — answers to the quiz.
+    quiz: Mutex<QuizBook>,
 }
 
 impl Default for Front {
@@ -48,6 +52,7 @@ impl Default for Front {
             playing: Mutex::new(None),
             show_playing: AtomicBool::new(true),
             stage: Mutex::new(Stage::new()),
+            quiz: Mutex::new(QuizBook::new()),
         }
     }
 }
@@ -168,6 +173,11 @@ impl Front {
         self.stage.lock().ok().map(|mut stage| change(&mut stage))
     }
 
+    /// K7: read or change the quiz's book. `None` when it is poisoned.
+    pub fn quiz<T>(&self, change: impl FnOnce(&mut QuizBook) -> T) -> Option<T> {
+        self.quiz.lock().ok().map(|mut quiz| change(&mut quiz))
+    }
+
     /// Mark the request a track answers, if the room asked for it.
     ///
     /// Called when a track starts, so a DJ who happened to play what the room
@@ -221,7 +231,75 @@ impl Doorman {
             said: request.param("said").and_then(Said::by_tag),
             open: self.front.is_open(),
             sing: self.sing_view(request, &phone),
+            quiz: self.front.quiz(|quiz| quiz.is_on()).unwrap_or(false),
         }))
+    }
+
+    /// K7: the quiz as this phone plays it.
+    fn quiz_show(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let heading = self.front.heading();
+        let tag = self.front.language();
+        let now = SystemTime::now();
+        let view = self.front.quiz(|quiz| QuizView {
+            words: crate::quiz_page::QuizWords::by_tag(&tag),
+            tag: &tag,
+            heading: &heading,
+            on: quiz.is_on(),
+            nickname: quiz.nickname(&phone).map(str::to_owned),
+            points: quiz.points_of(&phone),
+            question: quiz.question().map(|asked| PhoneQuestion {
+                id: asked.id,
+                answers: asked.answers.clone(),
+                number: asked.number,
+                of: asked.of,
+                open: asked.open_at(now),
+                chosen: asked.chosen_by(&phone),
+                right: asked.right(),
+            }),
+            // Between questions: while one is open, the board would be
+            // read instead of the question.
+            leaders: if quiz.question().is_none_or(|asked| asked.right().is_some()) {
+                quiz.leaders()
+            } else {
+                Vec::new()
+            },
+            said: request.param("said").and_then(QuizSaid::by_tag),
+        });
+        match view {
+            Some(view) => Reply::html(crate::quiz_page::quiz_page(&view)),
+            None => Reply::see_other("/"),
+        }
+    }
+
+    /// K7: a nickname for the night.
+    fn quiz_name(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let nickname = request.field("nickname").unwrap_or_default();
+        let named = self
+            .front
+            .quiz(|quiz| quiz.name(&phone, &nickname))
+            .unwrap_or(Named::Empty);
+        Reply::see_other(format!("/quiz?said={}", QuizSaid::Named(named).tag()))
+    }
+
+    /// K7: an answer, by the question it was given to and its letter.
+    fn quiz_answer(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let id = request
+            .field("question")
+            .and_then(|id| id.trim().parse::<u64>().ok());
+        let letter = request
+            .field("letter")
+            .and_then(|letter| LETTERS.iter().position(|l| *l == letter.trim()));
+        let answered = match (id, letter) {
+            (Some(id), Some(letter)) => self
+                .front
+                .quiz(|quiz| quiz.answer(&phone, id, letter, SystemTime::now()))
+                .unwrap_or(Answered::Closed),
+            _ => Answered::Closed,
+        };
+        Reply::see_other(format!("/quiz?said={}", QuizSaid::Answered(answered).tag()))
     }
 
     /// K4: the *Sing* part for this phone — shown while the host takes names,
@@ -369,6 +447,9 @@ impl Handler for Doorman {
             (Method::Post, "/sing") => self.sing(request),
             (Method::Post, "/ready") => self.ready(request),
             (Method::Post, "/photo") => self.photo(request),
+            (Method::Get, "/quiz") => self.quiz_show(request),
+            (Method::Post, "/quiz/name") => self.quiz_name(request),
+            (Method::Post, "/quiz/answer") => self.quiz_answer(request),
             _ => Reply::not_found(),
         }
     }
@@ -889,5 +970,61 @@ mod tests {
             "{page}"
         );
         assert!(page.contains("value=\"Ana\""), "{page}");
+    }
+
+    /// **K7: a phone plays a question over a real socket** — the room's
+    /// page points to the quiz while a round runs; a nickname first; four
+    /// buttons; one answer; the answer shown and the points with it. A
+    /// second phone, by the book, answers wrong.
+    #[test]
+    fn a_phone_plays_a_quiz_question() {
+        let (server, front) = serving();
+        assert!(
+            !get(server.address(), "/").contains("href=\"/quiz\""),
+            "no round, no link"
+        );
+        let answers =
+            ["Obsesión — Aventura", "Suavemente — Elvis Crespo", "C", "D"].map(str::to_owned);
+        let id = front
+            .quiz(|quiz| quiz.ask(answers, 1, 1, 5, SystemTime::now()))
+            .unwrap();
+        let room = get(server.address(), "/");
+        assert!(room.contains("href=\"/quiz\""));
+        assert!(room.contains(".play{"), "the invitation unstyled");
+
+        let first = get(server.address(), "/quiz");
+        assert!(first.contains("action=\"/quiz/name\""), "{first}");
+        assert!(!first.contains("/quiz/answer"), "answers before a nickname");
+        let named = post_to(server.address(), "/quiz/name", "nickname=Ana");
+        assert!(named.contains("/quiz?said=in"), "{named}");
+
+        let page = get(server.address(), "/quiz");
+        assert_eq!(page.matches("action=\"/quiz/answer\"").count(), 4, "{page}");
+        assert!(page.contains("Suavemente — Elvis Crespo"));
+        let answer = format!("question={id}&letter=B");
+        assert!(post_to(server.address(), "/quiz/answer", &answer).contains("said=got"));
+        assert!(post_to(server.address(), "/quiz/answer", &answer).contains("said=again"));
+        assert!(get(server.address(), "/quiz").contains("You answered B."));
+
+        front.quiz(|quiz| {
+            quiz.name("phone-b", "Bo");
+            quiz.answer("phone-b", id, 0, SystemTime::now())
+        });
+        front.quiz(|quiz| quiz.reveal(SystemTime::now()));
+        let shown = get(server.address(), "/quiz");
+        assert!(shown.contains("It was B:"), "{shown}");
+        assert!(shown.contains("You were right!"));
+        assert!(shown.contains("<span class=\"what\">Ana</span>"), "{shown}");
+        assert!(!shown.contains(">Bo<"), "nothing scored, not on the board");
+        let late = post_to(
+            server.address(),
+            "/quiz/answer",
+            &format!("question={id}&letter=A"),
+        );
+        assert!(late.contains("said=late"), "{late}");
+
+        front.quiz(|quiz| quiz.end_round(SystemTime::now()));
+        assert!(!get(server.address(), "/").contains("href=\"/quiz\""));
+        assert!(get(server.address(), "/quiz").contains("No quiz right now."));
     }
 }

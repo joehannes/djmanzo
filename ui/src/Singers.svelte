@@ -558,10 +558,11 @@
     void quizDo(readQuiz());
   });
 
-  // While a clip plays, asked again so the line under it says when it is over.
-  const quizPlaying = $derived(quiz?.playing ?? false);
+  // While a clip plays or its question is open, asked again: the line under
+  // it says when the clip is over, and phones answer for ten seconds after.
+  const quizLive = $derived(!!quiz && (quiz.playing || (!!quiz.question && quiz.question.right === null)));
   $effect(() => {
-    if (!enabled || !quizPlaying) return;
+    if (!enabled || !quizLive) return;
     const timer = setInterval(() => void quizDo(readQuiz()), 1000);
     return () => clearInterval(timer);
   });
@@ -906,8 +907,26 @@
         <ol class="answers" aria-label="Answers">
           {#each quiz.question.answers as answer, at (at)}
             <li data-right={quiz.question.right === at || undefined}>
-              <span class="letter mono">{LETTERS[at]}</span>{answer}
+              <span class="letter mono">{LETTERS[at]}</span>{answer}{#if quiz.phones.counts}<span class="count mono"
+                  >{quiz.phones.counts[at]}<span class="sr-only"
+                    >{quiz.phones.counts[at] === 1 ? " phone" : " phones"}</span
+                  ></span
+                >{/if}
             </li>
+          {/each}
+        </ol>
+      {/if}
+      {#if quiz.phones.players > 0}
+        <!-- K7: the phones playing along on the room's page. -->
+        <p class="hint" data-phones>
+          {quiz.phones.players}
+          {quiz.phones.players === 1 ? "phone" : "phones"} playing{#if quiz.question}, {quiz.phones.answered} answered{/if}
+        </p>
+      {/if}
+      {#if quiz.phones.leaders.length > 0}
+        <ol class="leaders" aria-label="Quiz leaderboard">
+          {#each quiz.phones.leaders.slice(0, 5) as [nickname, points], place (place)}
+            <li><span>{nickname}</span><span class="mono">{points}</span></li>
           {/each}
         </ol>
       {/if}
@@ -1359,6 +1378,39 @@
   .quiz .answers li[data-right] {
     color: var(--accent);
     font-weight: 600;
+  }
+
+  .quiz .answers .count {
+    margin-left: 0.5rem;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  /* Read aloud, not drawn: beside an answer, the number says it to the eye. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .quiz .hint {
+    margin: 0;
+  }
+
+  .quiz .leaders {
+    margin: 0;
+    padding-left: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .quiz .leaders li span:last-child {
+    margin-left: 0.5rem;
+    color: var(--text-dim);
   }
 
   .quiz .problem {

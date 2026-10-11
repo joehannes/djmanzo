@@ -5346,6 +5346,20 @@ export interface Quiz {
   problem: string | null;
   /** The quiz deck's fader is down. */
   quiet: boolean;
+  /** K7: the phones playing along on the room's page. */
+  phones: QuizPhones;
+}
+
+/** K7: the phones playing along, from `dj_app::commands::QuizPhonesDto`. */
+export interface QuizPhones {
+  /** Phones with a nickname tonight. */
+  players: number;
+  /** How many answered the open question. */
+  answered: number;
+  /** How many chose each answer, once it is shown. */
+  counts: [number, number, number, number] | null;
+  /** The night's top ten: nickname and points. */
+  leaders: [string, number][];
 }
 
 export const quiz = () => invoke<Quiz>("quiz");

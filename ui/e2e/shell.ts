@@ -327,6 +327,7 @@ export const ANSWERS: Record<string, unknown> = {
     playing: false,
     problem: null,
     quiet: false,
+    phones: { players: 0, answered: 0, counts: null, leaders: [] },
   },
   quiz_question: {
     kind: "backwards",
@@ -2757,6 +2758,8 @@ export async function openShell(
               held.playing = true;
             } else if (cmd === "quiz_reveal" && held.question) {
               held.question.right = answers.quiz_right;
+              // What phones chose, as the test gave it in `quiz_counts`.
+              if (answers.quiz_counts) (held.phones as Record<string, unknown>).counts = answers.quiz_counts;
             } else if (cmd === "quiz_end") {
               Object.assign(held, { asked: 0, question: null, playing: false });
             }

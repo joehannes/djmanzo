@@ -490,6 +490,7 @@ test.describe("K7: a quiz made from the collection", () => {
         playing: false,
         problem: null,
         quiet: false,
+        phones: { players: 0, answered: 0, counts: null, leaders: [] },
       },
     });
     const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
@@ -511,9 +512,81 @@ test.describe("K7: a quiz made from the collection", () => {
         playing: false,
         problem: null,
         quiet: true,
+        phones: { players: 0, answered: 0, counts: null, leaders: [] },
       },
     });
     const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
     await expect(quiz.getByRole("status")).toHaveText("Deck 3's fader is down: the room will not hear the clip.");
+  });
+
+  /**
+   * **K7 step 2: the phones on the host's panel** — how many play and
+   * answered while a question is open, each answer's count only once it is
+   * shown, and the top of the night's leaderboard.
+   */
+  test("the phones playing along are counted, and their answers once shown", async ({ page }) => {
+    await openSingers(page, {
+      quiz: {
+        deck: 2,
+        kinds: ["name-it"],
+        count: 5,
+        counts: [5, 10, 15],
+        asked: 0,
+        question: null,
+        playing: false,
+        problem: null,
+        quiet: false,
+        phones: { players: 3, answered: 2, counts: null, leaders: [["Ana", 1000], ["Bo", 625]] },
+      },
+      quiz_counts: [0, 2, 1, 0],
+    });
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await quiz.getByRole("button", { name: "Start the quiz" }).click();
+    await expect(quiz.locator("[data-phones]")).toHaveText("3 phones playing, 2 answered");
+    await expect(quiz.locator(".answers .count"), "counts before the answer is shown").toHaveCount(0);
+    const board = quiz.getByRole("list", { name: "Quiz leaderboard" }).getByRole("listitem");
+    await expect(board).toHaveText(["Ana1000", "Bo625"]);
+
+    await quiz.getByRole("button", { name: "Show the answer" }).click();
+    const answers = quiz.getByRole("list", { name: "Answers" }).getByRole("listitem");
+    await expect(answers.nth(1).locator(".count")).toHaveText(/^2\s+phones$/);
+    await expect(answers.nth(2).locator(".count")).toHaveText(/^1\s+phone$/);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The panel keeps counting after the clip ends**: phones answer for ten
+   * seconds more, so the count is asked for while the question is open, not
+   * only while the clip plays. Found driving it.
+   */
+  test("answers after the clip are counted while the question is open", async ({ page }) => {
+    await openSingers(page, {
+      quiz: {
+        deck: 2,
+        kinds: ["name-it"],
+        count: 5,
+        counts: [5, 10, 15],
+        asked: 0,
+        question: null,
+        playing: false,
+        problem: null,
+        quiet: false,
+        phones: { players: 1, answered: 0, counts: null, leaders: [] },
+      },
+    });
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await quiz.getByRole("button", { name: "Start the quiz" }).click();
+    await expect(quiz.locator("[data-phones]")).toHaveText("1 phone playing, 0 answered");
+    type Held = { playing: boolean; phones: { answered: number } };
+    // The clip ends, and the panel hears so…
+    await page.evaluate(() => {
+      ((window as unknown as { __quiz: Held }).__quiz).playing = false;
+    });
+    await expect(quiz.getByRole("status")).toHaveCount(0);
+    // …then a phone answers.
+    await page.evaluate(() => {
+      ((window as unknown as { __quiz: Held }).__quiz).phones.answered = 1;
+    });
+    await expect(quiz.locator("[data-phones]")).toHaveText("1 phone playing, 1 answered", { timeout: 4000 });
   });
 });
