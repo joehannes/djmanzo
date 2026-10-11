@@ -144,6 +144,84 @@ struct Rule {
 }
 
 static RULES: &[Rule] = &[
+    // -- K2, the singer rotation, first: its phrases hold "next", "pon" and
+    // "back", which the rules below would read as something else
+    // (docs/KARAOKE.md §4). Loading before calling the next singer, because
+    // "load the next singer on deck one" holds "next singer".
+    Rule {
+        phrases: &[
+            "load the next singer",
+            "next singer on",
+            "carga al siguiente",
+            "carga el siguiente",
+            "pon al siguiente",
+        ],
+        actions: &["karaoke load {deck}"],
+        reply: "The next singer's song on deck {deck}.",
+        default_deck: 1,
+    },
+    Rule {
+        phrases: &[
+            "bring them in",
+            "bring in the next singer",
+            "bring the next singer in",
+            "que entre",
+            "tráelo",
+            "traelo",
+            "tráela",
+            "traela",
+        ],
+        actions: &["karaoke bring_in"],
+        reply: "Bringing the next singer in at the next phrase.",
+        default_deck: 1,
+    },
+    Rule {
+        phrases: &["next singer", "siguiente cantante", "ya cantó", "ya canto"],
+        actions: &["karaoke sang"],
+        reply: "Sung — on to the next singer.",
+        default_deck: 1,
+    },
+    // The record's own singer: the guide first, since "bring the vocal back
+    // a bit" holds "vocal back".
+    Rule {
+        phrases: &[
+            "guide vocal",
+            "vocal back a bit",
+            "a bit of vocal",
+            "voz guía",
+            "voz guia",
+            "un poco de voz",
+        ],
+        actions: &["deck {deck} voice 0.25"],
+        reply: "A guide vocal on deck {deck}.",
+        default_deck: 1,
+    },
+    Rule {
+        phrases: &[
+            "karaoke on",
+            "pon el karaoke",
+            "vocal out",
+            "vocals out",
+            "quita la voz",
+            "sin voz",
+        ],
+        actions: &["deck {deck} voice 0"],
+        reply: "The singer out of deck {deck}.",
+        default_deck: 1,
+    },
+    Rule {
+        phrases: &[
+            "karaoke off",
+            "vocal back",
+            "vocals back",
+            "as recorded",
+            "devuelve la voz",
+            "quita el karaoke",
+        ],
+        actions: &["deck {deck} voice 1"],
+        reply: "Deck {deck} as recorded.",
+        default_deck: 1,
+    },
     // -- EQ, before transport, because "drop the bass" contains no verb the
     // transport rules would catch but "bring back the bass on deck 2" does.
     Rule {
@@ -311,6 +389,40 @@ mod tests {
         assert!(assumed("stop the ride"));
         assert!(!assumed("stop the right one"));
         assert!(!assumed("para el deck 1"));
+    }
+
+    /// **K2: the karaoke host's commands, in both languages** — the
+    /// record's singer by deck, and the rotation's steps — caught before the
+    /// rules whose words they hold: "pon el karaoke" is not *play*, and
+    /// "load the next singer" is not *next singer*.
+    #[test]
+    fn a_karaoke_host_is_understood() {
+        assert_eq!(actions("karaoke on deck two"), ["deck 2 voice 0"]);
+        assert_eq!(actions("pon el karaoke en el dos"), ["deck 2 voice 0"]);
+        assert_eq!(actions("quita la voz del deck 1"), ["deck 1 voice 0"]);
+        assert_eq!(
+            actions("bring the vocal back a bit on deck 2"),
+            ["deck 2 voice 0.25"]
+        );
+        assert_eq!(actions("voz guía en el uno"), ["deck 1 voice 0.25"]);
+        assert_eq!(actions("vocal back on deck one"), ["deck 1 voice 1"]);
+        assert_eq!(actions("karaoke off deck two"), ["deck 2 voice 1"]);
+        assert_eq!(
+            actions("load the next singer on deck one"),
+            ["karaoke load 1"]
+        );
+        assert_eq!(
+            actions("load the next singer to deck two"),
+            ["karaoke load 2"]
+        );
+        assert_eq!(actions("carga al siguiente en el dos"), ["karaoke load 2"]);
+        assert_eq!(actions("bring in the next singer"), ["karaoke bring_in"]);
+        assert_eq!(actions("que entre"), ["karaoke bring_in"]);
+        assert_eq!(actions("next singer"), ["karaoke sang"]);
+        assert_eq!(actions("siguiente cantante"), ["karaoke sang"]);
+        let assumed = |text| match_local(text).expect("understood").deck_assumed;
+        assert!(assumed("karaoke on"), "a voice change names its deck");
+        assert!(!assumed("next singer"), "the rotation has no deck to name");
     }
 
     /// The commands actually shouted at one in the morning.

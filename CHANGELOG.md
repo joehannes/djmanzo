@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Karaoke by voice (K2).** With push-to-talk held: "karaoke on deck two",
+  "a guide vocal on deck one", "vocal back", "next singer", "load the next
+  singer on deck one", "bring them in" — and in Spanish, "pon el karaoke
+  en el dos", "siguiente cantante", "que entre". *Load on*, *Bring them in*
+  and *Sang* are also words on the bus now (`karaoke load 2`,
+  `karaoke bring_in`, `karaoke sang`), so a controller pad can be any of
+  them.
+
 - **Spoken commands (A2).** What is said while push-to-talk is held is
   heard by Whisper on this machine and done: *Heard “pon el dos” → deck 2
   play*, the words first, so a mishearing shows as one. Commands djmanzo

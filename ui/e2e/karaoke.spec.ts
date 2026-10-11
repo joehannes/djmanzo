@@ -55,17 +55,18 @@ test.describe("§107: the singer rotation", () => {
     await up.getByRole("button", { name: "Raise the key" }).click();
     await expect(up.locator("[data-key]")).toHaveText("key +1");
 
+    // K2: *Load on 2* is Rust's `karaoke load 2` — the record, then its key,
+    // then the voice, in that order, held by `karaoke_voice_tests`.
     await up.getByRole("button", { name: "Load on 2" }).click();
-    // The record, then its key — in that order.
     await expect
-      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
-      .toContain("deck 2 key 1");
-    const order = await page.evaluate(() => {
-      const asked = (window as unknown as { __asked: string[] }).__asked;
-      return { load: asked.lastIndexOf("load_track"), key: asked.lastIndexOf("dispatch") };
-    });
-    expect(order.load, "the song was never loaded").toBeGreaterThanOrEqual(0);
-    expect(order.load, "the key was sent before the record arrived").toBeLessThan(order.key);
+      .poll(() =>
+        page.evaluate(() =>
+          ((window as unknown as { __karaoke?: { cmd: string; deck?: number }[] }).__karaoke ?? []).filter(
+            (call) => call.cmd === "karaoke_load",
+          ),
+        ),
+      )
+      .toEqual([{ cmd: "karaoke_load", deck: 2 }]);
 
     await up.getByRole("button", { name: "Sang", exact: true }).click();
     await expect(singers.getByText("Nobody is queued")).toBeVisible();

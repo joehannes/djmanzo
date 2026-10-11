@@ -1039,6 +1039,7 @@ pub fn run() {
             commands::karaoke_range_take,
             commands::karaoke_range_cancel,
             commands::voice_state,
+            commands::karaoke_load,
             commands::voice_strip_set,
             commands::karaoke_fits,
             commands::karaoke_songs_for,

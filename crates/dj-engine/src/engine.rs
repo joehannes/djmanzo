@@ -912,6 +912,9 @@ impl Engine {
             // Nor is push-to-talk: the application takes the strip out of the
             // PA with an ordinary `VocalStrip` command and puts it back.
             Action::Mixer(MixerAction::Listen(_)) => {}
+            // Nor the singer rotation: its steps are the application's, and
+            // what the engine sees of them is a load and a deck's key and voice.
+            Action::Mixer(MixerAction::Karaoke(_)) => {}
             Action::Mixer(MixerAction::Mic(change)) => {
                 use dj_core::action::MicChange;
                 match change {

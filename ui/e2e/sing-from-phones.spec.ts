@@ -197,10 +197,18 @@ test.describe("K4: singers from the room", () => {
     await expect(up.locator("[data-key]")).toHaveText("key -2");
     await expect(up.locator("[data-asks]")).toHaveCount(0);
 
+    // The key and guide taken are applied by Rust's *Load on* (K2,
+    // `karaoke_voice_tests`); the panel asks for it.
     await up.getByRole("button", { name: "Load on 1" }).click();
     await expect
-      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
-      .toEqual(expect.arrayContaining(["deck 1 key -2", "deck 1 voice 0.25"]));
+      .poll(() =>
+        page.evaluate(() =>
+          ((window as unknown as { __karaoke?: { cmd: string; deck?: number }[] }).__karaoke ?? []).filter(
+            (call) => call.cmd === "karaoke_load",
+          ),
+        ),
+      )
+      .toEqual([{ cmd: "karaoke_load", deck: 1 }]);
 
     const order = page.getByRole("list", { name: "Calling order" });
     await expect(order.locator("[data-asks]")).toHaveText("asks key +3");

@@ -52,7 +52,7 @@
     karaokeSang,
     karaokeTake,
     librarySearch,
-    loadTrack,
+    karaokeLoad,
     singPhotoApprove,
     singPhotoRefuse,
     singPhotos,
@@ -104,8 +104,8 @@
     { level: 0, label: "Out" },
   ] as const;
 
-  /** K4: the deck's vocal level for each of a singer's choices. */
-  const VOICE_LEVEL: Record<VoiceTag, number> = { "as-recorded": 1, guide: 0.25, out: 0 };
+  /** K4: a singer's choice for the record's voice, in the host's words. The
+   * level each sets on the deck is Rust's (`commands::load_up_next`). */
   const VOICE_WORD: Record<VoiceTag, string> = { "as-recorded": "as recorded", guide: "guide", out: "voice out" };
 
   /** K4: what a singer asked for, as the host reads it: "asks −2 · guide". */
@@ -402,20 +402,16 @@
   }
 
   /**
-   * Put the up-next song on a deck, in the singer's key.
-   *
-   * The load, then the key: the key belongs to the deck, and a key sent before
-   * the record arrived would be applied to whatever was on it.
+   * Put the up-next song on a deck, in the singer's key, with the voice they
+   * asked for — in Rust (K2), where `karaoke load N` does the same for a held
+   * command or a controller pad.
    */
   async function load(deck: number) {
     const next = rotation?.singers.find((s) => s.name === rotation?.up_next)?.songs[0];
     if (!next?.path) return;
     error = "";
     try {
-      await loadTrack(deck, next.path);
-      await dispatch(`deck ${deck} key ${next.key}`);
-      // K4: the singer's choice for the record's own voice, once taken.
-      if (next.voice) await dispatch(`deck ${deck} voice ${VOICE_LEVEL[next.voice]}`);
+      rotation = await karaokeLoad(deck);
     } catch (e) {
       error = String(e);
     }

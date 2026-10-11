@@ -25,7 +25,7 @@ pub mod sampler;
 pub mod time;
 pub mod vocabulary;
 
-pub use action::{Action, DeckAction, EqBand, MixerAction, Stem, StemChange};
+pub use action::{Action, DeckAction, EqBand, KaraokeStep, MixerAction, Stem, StemChange};
 pub use context::{
     AudioMetrics, Basis, BehaviourContext, Certainty, ContextEngine, Drift, EnvironmentContext,
     HardwareContext, HealthContext, MusicContext, Observation, SessionContext, SessionPhase,

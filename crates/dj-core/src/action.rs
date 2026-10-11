@@ -694,6 +694,24 @@ pub enum MixerAction {
     /// it means is the application's: the engine only ever sees the strip's
     /// sends set and put back.
     Listen(bool),
+    /// K2: a step of the singer rotation — what the Singers panel's buttons
+    /// do, as words, so a held command, a controller pad and a script can
+    /// each take it (`docs/KARAOKE.md` §4). The application's, as
+    /// [`MixerAction::Safe`] is.
+    Karaoke(KaraokeStep),
+}
+
+/// K2: a step of the singer rotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KaraokeStep {
+    /// *Load on N*: the up-next singer's song on a deck, in their key, with
+    /// the voice they asked for.
+    Load(DeckId),
+    /// *Bring them in*: mixed in from what the room hears, at the next
+    /// phrase.
+    BringIn,
+    /// *Sang*: the singer up next has sung, and goes to the back.
+    Sang,
 }
 
 impl Action {
@@ -809,6 +827,20 @@ impl Action {
             )?))),
             "clap" => Ok(Action::Mixer(MixerAction::Clap(parse_clap(&mut words)?))),
             "safe" => Ok(Action::Mixer(MixerAction::Safe)),
+            "karaoke" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "load" => {
+                    let number: u8 = words
+                        .next()
+                        .ok_or(ParseError::MissingDeckNumber)?
+                        .parse()
+                        .map_err(|_| ParseError::BadDeckNumber)?;
+                    let deck = DeckId::from_human(number).ok_or(ParseError::BadDeckNumber)?;
+                    Ok(Action::Mixer(MixerAction::Karaoke(KaraokeStep::Load(deck))))
+                }
+                "bring_in" => Ok(Action::Mixer(MixerAction::Karaoke(KaraokeStep::BringIn))),
+                "sang" => Ok(Action::Mixer(MixerAction::Karaoke(KaraokeStep::Sang))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
             "voice" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "listen_on" => Ok(Action::Mixer(MixerAction::Listen(true))),
                 "listen_off" => Ok(Action::Mixer(MixerAction::Listen(false))),
@@ -1547,6 +1579,13 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::Safe) => write!(f, "safe"),
             Action::Mixer(MixerAction::Listen(true)) => write!(f, "voice listen_on"),
             Action::Mixer(MixerAction::Listen(false)) => write!(f, "voice listen_off"),
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::Load(deck))) => {
+                write!(f, "karaoke load {deck}")
+            }
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::BringIn)) => {
+                write!(f, "karaoke bring_in")
+            }
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::Sang)) => write!(f, "karaoke sang"),
             Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
             Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
             Action::Mixer(MixerAction::Fx { slot, change }) => {
@@ -2448,6 +2487,9 @@ mod tests {
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),
             Action::Mixer(MixerAction::Listen(true)),
             Action::Mixer(MixerAction::Listen(false)),
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::Load(deck(2)))),
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::BringIn)),
+            Action::Mixer(MixerAction::Karaoke(KaraokeStep::Sang)),
         ];
         for action in cases {
             let text = action.to_string();

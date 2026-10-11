@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 84] = [
+static VOCABULARY: [VerbSpec; 87] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -728,6 +728,28 @@ static VOCABULARY: [VerbSpec; 84] = [
         help: "let beat jumps move by an exact beat from wherever you are",
         example: "quantize off",
     },
+    // -- K2: the singer rotation ---------------------------------------------
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "karaoke load",
+        argument: ArgSpec::Number { min: 1.0, max: 6.0 },
+        help: "put the next singer's song on that deck, in their key, with the voice they asked for",
+        example: "karaoke load 2",
+    },
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "karaoke bring_in",
+        argument: ArgSpec::None,
+        help: "mix the next singer's song in from what the room hears, at the next phrase",
+        example: "karaoke bring_in",
+    },
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "karaoke sang",
+        argument: ArgSpec::None,
+        help: "the singer up next has sung: they go to the back of the rotation",
+        example: "karaoke sang",
+    },
     VerbSpec {
         target: Target::Mixer,
         verb: "safe",
@@ -873,6 +895,9 @@ mod tests {
             "record on",
             "record off",
             "safe",
+            "karaoke load",
+            "karaoke bring_in",
+            "karaoke sang",
             "limiter on",
             "limiter off",
             "sync",

@@ -2546,6 +2546,18 @@ pub fn perform_action_by(
         };
     }
 
+    // K2's rotation, the same: the panel's buttons as words.
+    if let Action::Mixer(dj_core::MixerAction::Karaoke(step)) = parsed {
+        return match step {
+            dj_core::KaraokeStep::Load(deck) => load_up_next(state, deck, by),
+            dj_core::KaraokeStep::BringIn => bring_in_of(state).map(|_| ()),
+            dj_core::KaraokeStep::Sang => {
+                sang_of(state);
+                Ok(())
+            }
+        };
+    }
+
     // A plugin parameter goes to the engine like everything else — but the
     // cached list the interface draws from lives here, and a slider that
     // snapped back on the next snapshot would be unusable.
@@ -15805,20 +15817,25 @@ fn karaoke_mix(
 /// record left.
 #[tauri::command]
 pub fn karaoke_bring_in(state: State<'_, AppState>) -> Result<RotationDto, String> {
+    bring_in_of(&state)
+}
+
+/// The body of [`karaoke_bring_in`], for the bus's `karaoke bring_in` too.
+pub(crate) fn bring_in_of(state: &AppState) -> Result<RotationDto, String> {
     let next = state
         .karaoke()
         .up_next()
         .map(|(singer, song)| (singer.name.clone(), song.track.clone(), song.key))
         .ok_or("Nobody is up next.")?;
-    let decks = bringing_in(&state, &next)?;
+    let decks = bringing_in(state, &next)?;
     if decks.bringing {
-        return Ok(with_rotation(&state, |_| false));
+        return Ok(with_rotation(state, |_| false));
     }
     let (from, to) = (
         dj_core::DeckId::from_human(decks.from).ok_or("no such deck")?,
         dj_core::DeckId::from_human(decks.to).ok_or("no such deck")?,
     );
-    let transition = bring_in_between(&state, from, to, next.2)?.ok_or_else(|| {
+    let transition = bring_in_between(state, from, to, next.2)?.ok_or_else(|| {
         format!(
             "Not enough of the record on deck {} is left to mix {} in from.",
             decks.from, next.0
@@ -15829,7 +15846,7 @@ pub fn karaoke_bring_in(state: State<'_, AppState>) -> Result<RotationDto, Strin
         // The song arrives at full: it is what the room is here for.
         mix.perform_once(1.0);
     }
-    Ok(with_rotation(&state, |_| false))
+    Ok(with_rotation(state, |_| false))
 }
 
 /// §107: the singer rotation.
@@ -16304,6 +16321,67 @@ pub fn karaoke_refuse(state: State<'_, AppState>, singer: String) -> RotationDto
 #[tauri::command]
 #[must_use]
 pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
+    sang_of(&state)
+}
+
+/// K2: *Load on N* — the up-next singer's song on `deck`, then its key, then
+/// the voice they asked for, in that order, each through the bus as `by`'s
+/// doing. On the caller's thread, which decodes the record: the panel's
+/// button reaches it through [`karaoke_load`], off the interface's thread.
+///
+/// # Errors
+/// Nobody up next, a song with no record found, a record that will not
+/// decode, or a deck that will not take it.
+pub(crate) fn load_up_next(
+    state: &AppState,
+    deck: dj_core::DeckId,
+    by: dj_control::By,
+) -> Result<(), String> {
+    let (name, song) = state
+        .karaoke()
+        .up_next()
+        .map(|(singer, song)| (singer.name.clone(), song.clone()))
+        .ok_or("Nobody is up next.")?;
+    let path = song
+        .path
+        .ok_or_else(|| format!("{name}'s song has no record found to load."))?;
+    let decoded = decode_file(std::path::Path::new(&path)).map_err(|e| e.to_string())?;
+    put_on_deck(state, deck, decoded)?;
+    let n = deck.human_number();
+    perform_by(state, &format!("deck {n} key {}", song.key), by)?;
+    let level = match song.voice.as_deref() {
+        Some("as-recorded") => Some("1"),
+        Some("guide") => Some("0.25"),
+        Some("out") => Some("0"),
+        _ => None,
+    };
+    if let Some(level) = level {
+        perform_by(state, &format!("deck {n} voice {level}"), by)?;
+    }
+    Ok(())
+}
+
+/// K2: the Singers panel's *Load on N*, off the interface's thread — the
+/// same as `karaoke load N` on the bus.
+///
+/// # Errors
+/// Nobody up next, a song with no record found, a record that will not
+/// decode, or a deck that will not take it.
+#[tauri::command]
+pub async fn karaoke_load(app: tauri::AppHandle, deck: u8) -> Result<RotationDto, String> {
+    let deck = dj_core::DeckId::from_human(deck).ok_or_else(|| format!("no deck {deck}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state: State<'_, AppState> = app.state();
+        load_up_next(&state, deck, dj_control::By::Hand)?;
+        Ok(with_rotation(&state, |_| false))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The body of [`karaoke_sang`], for the bus's `karaoke sang` too.
+pub(crate) fn sang_of(state: &AppState) -> RotationDto {
     let mut sung = None;
     let mut called = false;
     // K6: the score of the singer who sang, from the microphone they were on
@@ -16313,7 +16391,7 @@ pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
         scoring.reset();
         kept
     });
-    let dto = with_rotation(&state, |rotation| {
+    let dto = with_rotation(state, |rotation| {
         let singer = rotation.up_next().map(|(singer, _)| singer.name.clone());
         sung = rotation.sang();
         if let Some(percent) = singer
@@ -16340,7 +16418,7 @@ pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
         state.obs().moment(crate::obs::Moment::Singer);
     }
     if let Some(sung) = sung {
-        let (event, place) = events_dir(&state)
+        let (event, place) = events_dir(state)
             .ok()
             .and_then(|dir| crate::gig::live(&dir).and_then(|id| crate::gig::load(&dir, &id)))
             .map(|gig| (gig.title, gig.place))
@@ -23726,5 +23804,101 @@ fn hear_take(app: &tauri::AppHandle, state: &AppState, samples: &[f32]) -> crate
     crate::voice::Said {
         seconds: Some(heard.load_seconds + heard.listen_seconds),
         ..act_on_words(state, &text, Some(heard.language), ask)
+    }
+}
+
+#[cfg(test)]
+mod karaoke_voice_tests {
+    use super::{AppState, act_on_words, perform};
+
+    /// **K2: said, done** — "next singer" through A2's words is the panel's
+    /// *Sang*, and "karaoke on deck two" takes deck 2's singer out.
+    #[test]
+    fn the_host_says_it_and_it_is_done() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let (producer, _queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut rotation = state.karaoke();
+        assert!(rotation.ask("Ana", "Valerie", None, None, None));
+        assert!(rotation.ask("Bo", "Jolene", None, None, None));
+        state.set_karaoke(&rotation);
+
+        let said = act_on_words(&state, "Next singer.", None, None);
+        assert_eq!(said.actions, vec!["karaoke sang".to_owned()]);
+        let after = state.karaoke();
+        assert_eq!(
+            after.up_next().map(|(singer, _)| singer.name.as_str()),
+            Some("Bo")
+        );
+
+        let said = act_on_words(&state, "Karaoke on deck two!", None, None);
+        assert_eq!(said.actions, vec!["deck 2 voice 0".to_owned()]);
+        let said = act_on_words(&state, "Karaoke on.", None, None);
+        assert!(
+            said.problem
+                .as_deref()
+                .is_some_and(|why| why.contains("Which deck"))
+        );
+    }
+
+    /// **K2: `karaoke load 2` is the panel's *Load on 2*** — the up-next
+    /// singer's record on deck 2, then their key, then the voice they asked
+    /// for, in that order, read off the engine's own queue; with nobody up
+    /// next, or a song with no record found, it says so and sends nothing,
+    /// and so does `karaoke bring_in`.
+    #[test]
+    fn karaoke_load_puts_the_song_on_in_its_key_and_voice() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut sent = move || {
+            let mut sent = Vec::new();
+            while let Ok(command) = queue.pop() {
+                match command {
+                    dj_engine::Command::Load { deck, .. } => sent.push(format!("load {deck}")),
+                    dj_engine::Command::Action(action) => sent.push(action.to_string()),
+                    _ => {}
+                }
+            }
+            sent
+        };
+
+        let refused = perform(&state, "karaoke load 2").expect_err("nobody is up next");
+        assert!(refused.contains("Nobody"), "{refused}");
+        let refused = perform(&state, "karaoke bring_in").expect_err("nobody is up next");
+        assert!(refused.contains("Nobody"), "{refused}");
+
+        let song = dir.path().join("valerie.wav");
+        let mut wav = crate::wav::Wav::create(&song, 8_000).expect("a file");
+        wav.write(&vec![0_i16; 8_000 * 2]).expect("written");
+        wav.close().expect("closed");
+        let mut rotation = state.karaoke();
+        assert!(rotation.ask(
+            "Ana",
+            "Valerie",
+            None,
+            Some(song.to_string_lossy().into_owned()),
+            Some(-2),
+        ));
+        rotation.singers[0].songs[0].voice = Some("guide".to_owned());
+        assert!(rotation.ask("Bo", "Jolene", None, None, None));
+        state.set_karaoke(&rotation);
+        sent();
+
+        perform(&state, "karaoke load 2").expect("loaded");
+        let sent_now = sent();
+        let at = |what: &str| sent_now.iter().position(|line| line == what);
+        let (load, key, voice) = (at("load 2"), at("deck 2 key -2"), at("deck 2 voice 0.25"));
+        assert!(load.is_some(), "the record never went on: {sent_now:?}");
+        assert!(load < key && key < voice, "out of order: {sent_now:?}");
+
+        perform(&state, "karaoke sang").expect("sung");
+        let refused = perform(&state, "karaoke load 1").expect_err("Bo's song has no record");
+        assert!(refused.contains("Bo"), "{refused}");
+        assert_eq!(sent(), Vec::<String>::new());
     }
 }

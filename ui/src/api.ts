@@ -5169,6 +5169,12 @@ export const karaokeAsk = (
   key: number | null,
 ) => invoke<Rotation>("karaoke_ask", { singer, title, track, path, key });
 export const karaokeSang = () => invoke<Rotation>("karaoke_sang");
+/**
+ * K2: *Load on N* — the up-next singer's song on deck N, then their key, then
+ * the voice they asked for, in Rust and off the interface's thread; the same
+ * as `karaoke load N` on the bus.
+ */
+export const karaokeLoad = (deck: number) => invoke<Rotation>("karaoke_load", { deck });
 export const karaokeNotHere = (singer: string) => invoke<Rotation>("karaoke_not_here", { singer });
 export const karaokeMove = (singer: string, to: number) =>
   invoke<Rotation>("karaoke_move", { singer, to });
