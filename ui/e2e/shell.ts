@@ -2750,7 +2750,15 @@ export async function openShell(
           // test has put in `__rangeTake`; the reading is Rust's.
           if (cmd === "karaoke_range_start") {
             ((win.__rangeCalls ??= []) as unknown[]).push({ cmd, ...args });
-            win.__rangeTake = { singer: args.singer, left: 20, voiced: 0, done: false, problem: null, range: null };
+            win.__rangeTake = {
+              singer: args.singer,
+              left: 20,
+              voiced: 0,
+              done: false,
+              problem: null,
+              range: null,
+              in_guest_book: false,
+            };
             return Promise.resolve(structuredClone(win.__rangeTake as unknown));
           }
           if (cmd === "karaoke_range_take") {

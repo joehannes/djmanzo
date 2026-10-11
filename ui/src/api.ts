@@ -4953,6 +4953,8 @@ export interface RangeTake {
   done: boolean;
   problem: string | null;
   range: SungRange | null;
+  /** Kept on their record in the guest book; otherwise for tonight only. */
+  in_guest_book: boolean;
 }
 
 export const karaokeRangeStart = (singer: string) => invoke<RangeTake | null>("karaoke_range_start", { singer });

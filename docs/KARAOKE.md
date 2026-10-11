@@ -414,7 +414,7 @@ piece of this document lands among them.
 | Break music that leads into the next song | the planner | **K5** | built (§8) |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | built (§10) |
-| A singer's range, and the key to sing in | K3, K6 | **K8** | designed (§11) |
+| A singer's range, and the key to sing in | K3, K6 | **K8** | built (§11) |
 | Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
 
 ---
@@ -1734,3 +1734,15 @@ synthetic tune, which sings about A3 to E4, marked *fits -1* — as
 recorded its top is a semitone above her, an octave down its bottom a
 semitone below — and *Songs for Ana* offered *held-a3* as recorded, then
 *sung-tune* at -1; pressing it put Ana up next with *sung-tune* in key -1.
+
+**Step 3, keeping it — built (11 October). K8 is complete.** A range read
+goes onto the singer's record in the guest book (`Guest::range`) only when
+they agreed to be kept, as K3's chain does, and onto their place in
+tonight's rotation either way; the form can neither set nor clear it, and
+it is forgotten the moment they withdraw. On another night — tonight's
+rotation empty of it — the guest book's is the one read for the fits and
+*Songs for them*, and the one the panel shows beside their name. The row
+says which: *kept in Ana's guest-book record* or *kept for tonight*.
+Driven in K6's home, where Ana has not agreed to be kept: her range read
+again, *kept for tonight*. The guest-book side is held by a test over a
+real journal on disk, both ways, and by a browser test of the words.

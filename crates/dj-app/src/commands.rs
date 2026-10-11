@@ -15463,6 +15463,16 @@ fn with_rotation(
         (changed, (rotation_dto(rotation), next))
     });
     dto.bring_in = next.and_then(|next| bringing_in(state, &next).ok());
+    // K8: a range read on another night, kept in the guest book.
+    let journal = state.guests();
+    for singer in dto
+        .singers
+        .iter_mut()
+        .filter(|singer| singer.range.is_none())
+    {
+        singer.range = journal.range(&singer.name);
+    }
+    drop(journal);
     if let Ok(scoring) = state.scoring().lock() {
         dto.scores = scoring
             .scores()
@@ -15805,6 +15815,8 @@ pub struct RangeTakeDto {
     pub problem: Option<String>,
     /// The range read, once it has been.
     pub range: Option<crate::range::Range>,
+    /// It was kept on their record in the guest book; otherwise for tonight.
+    pub in_guest_book: bool,
 }
 
 fn range_take_dto(state: &AppState) -> Option<RangeTakeDto> {
@@ -15817,6 +15829,7 @@ fn range_take_dto(state: &AppState) -> Option<RangeTakeDto> {
         done: take.result.is_some(),
         problem: take.result.clone().and_then(Result::err),
         range: take.result.clone().and_then(Result::ok),
+        in_guest_book: take.in_guest_book,
     })
 }
 
@@ -15861,14 +15874,16 @@ pub fn karaoke_range_cancel(state: State<'_, AppState>) {
     }
 }
 
-/// K8: the range of the rotation's singer `name`, if one has been read.
+/// K8: the range of the rotation's singer `name`: tonight's, else the one
+/// kept on their record in the guest book.
 fn singer_range(state: &AppState, name: &str) -> Option<crate::range::Range> {
-    state
+    let tonight = state
         .karaoke()
         .singers
         .iter()
-        .find(|singer| singer.name.to_lowercase() == name.trim().to_lowercase())?
-        .range
+        .find(|singer| singer.name.to_lowercase() == name.trim().to_lowercase())
+        .and_then(|singer| singer.range);
+    tonight.or_else(|| state.guests().range(name.trim()))
 }
 
 /// K8: a record's range, from its vocal line — `None` for none known.
@@ -15969,6 +15984,19 @@ pub(crate) fn range_heard(state: &AppState, heard: &[Option<f32>]) {
             .map(|range| (take.singer.clone(), range))
     };
     if let Some((name, range)) = read {
+        // On their record when they agreed to be kept; tonight's either way.
+        let mut journal = state.guests();
+        let kept = journal.keep_range(&name, range);
+        if kept {
+            if let Err(error) = state.set_guests(&journal, &[]) {
+                tracing::warn!(%error, "a singer's range could not be kept in the guest book");
+            } else if let Ok(mut take) = state.range_take().lock()
+                && let Some(take) = take.as_mut()
+            {
+                take.in_guest_book = true;
+            }
+        }
+        drop(journal);
         state.change_karaoke(|rotation| {
             match rotation
                 .singers
@@ -17746,6 +17774,78 @@ mod quiz_view_tests {
         round.revealed = true;
         let shown = quiz_view(&round, false, super::QuizPhonesDto::default());
         assert_eq!(shown.question.unwrap().right, Some(2));
+    }
+
+    /// **K8: a range read goes onto the singer's record in the guest book
+    /// only when they agreed to be kept — onto tonight's rotation either way
+    /// — and is read back from the guest book on another night.**
+    #[test]
+    fn a_range_is_kept_where_the_singer_agreed() {
+        use crate::state::AppState;
+        let state = AppState::new(true);
+        let dir = tempfile::tempdir().expect("a folder");
+        state.set_config_dir(dir.path().to_path_buf());
+        let mut journal = state.guests();
+        for (name, keep) in [("Ana", true), ("Bo", false)] {
+            let guest = crate::guests::Guest {
+                name: name.to_owned(),
+                consent: crate::guests::Consent {
+                    keep,
+                    ..crate::guests::Consent::default()
+                },
+                ..crate::guests::Guest::default()
+            };
+            journal.save(guest, 1).expect("saved");
+        }
+        state.set_guests(&journal, &[]).expect("kept");
+        state.change_karaoke(|rotation| {
+            rotation.ask("Ana", "Valerie", None, None, None);
+            rotation.ask("Bo", "Jolene", None, None, None);
+            (true, ())
+        });
+        let read = |name: &str| {
+            let mut take = crate::range::Take::new(name, 0);
+            take.readings = (0..200).map(|n| -2400.0 + n as f32 * 9.0).collect();
+            take.started = std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(21))
+                .expect("a past");
+            *state.range_take().lock().unwrap() = Some(take);
+            super::range_heard(&state, &[None]);
+            state
+                .range_take()
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|take| take.in_guest_book)
+        };
+        assert_eq!(read("Ana"), Some(true));
+        assert_eq!(read("Bo"), Some(false));
+        let journal = state.guests();
+        assert!(journal.range("Ana").is_some());
+        assert_eq!(journal.range("Bo"), None, "not kept without consent");
+        let tonight = state.karaoke();
+        assert!(
+            tonight.singers.iter().all(|singer| singer.range.is_some()),
+            "tonight's either way"
+        );
+        drop(tonight);
+
+        // Another night: tonight's is gone, the guest book's is still read.
+        state.change_karaoke(|rotation| {
+            for singer in &mut rotation.singers {
+                singer.range = None;
+            }
+            (true, ())
+        });
+        assert!(super::singer_range(&state, "ana").is_some());
+        assert_eq!(super::singer_range(&state, "Bo"), None);
+        let dto = super::with_rotation(&state, |_| false);
+        let ana = dto
+            .singers
+            .iter()
+            .find(|singer| singer.name == "Ana")
+            .expect("Ana");
+        assert!(ana.range.is_some(), "the panel is shown the guest book's");
     }
 
     /// **Finish the line reads every record's timed words**: the library's

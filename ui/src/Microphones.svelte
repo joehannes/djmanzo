@@ -438,6 +438,10 @@
                 {:else}
                   {#if take && take.singer.toLowerCase() === on.singer.toLowerCase() && take.range}
                     <p class="found" data-range>{rangeWords(take.range)}</p>
+                    <!-- K8: where it is kept — about a voice, so only where they agreed. -->
+                    <p class="hint" data-range-kept>
+                      {take.in_guest_book ? `kept in ${on.singer}'s guest-book record` : "kept for tonight"}
+                    </p>
                   {:else if take && take.singer.toLowerCase() === on.singer.toLowerCase() && take.problem}
                     <p class="problem" role="status">{take.problem}</p>
                   {/if}

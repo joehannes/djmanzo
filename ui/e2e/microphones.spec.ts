@@ -529,6 +529,7 @@ test.describe("K3: the singers' microphones", () => {
         done: false,
         problem: null,
         range: null,
+        in_guest_book: false,
       };
     });
     await expect(range.locator("[data-range-take]")).toContainText("8 s");
@@ -541,9 +542,11 @@ test.describe("K3: the singers' microphones", () => {
         done: true,
         problem: null,
         range: { low: -2400, high: -500 },
+        in_guest_book: true,
       };
     });
     await expect(range.locator("[data-range]")).toHaveText("A2 – E4, an octave and a fifth");
+    await expect(range.locator("[data-range-kept]")).toHaveText("kept in Ana's guest-book record");
     // The rotation is asked again, so the range reaches the singer's row.
     await expect
       .poll(async () => (await page.evaluate(() => (window as unknown as { __karaoke?: { cmd: string }[] }).__karaoke ?? [])).filter((c) => c.cmd === "karaoke_rotation").length)

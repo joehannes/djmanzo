@@ -146,6 +146,12 @@ pub struct Guest {
     /// tonight's rotation ([`crate::karaoke::Singer::microphone`]) and go
     /// with it.
     pub microphone: Option<dj_vocal::Chain>,
+    /// K8: their range, read from their microphone (docs/KARAOKE.md §11) —
+    /// about their voice, so kept here only with [`Consent::keep`], as the
+    /// chain is; without it, it is kept on their place in tonight's
+    /// rotation ([`crate::karaoke::Singer::range`]).
+    #[serde(default)]
+    pub range: Option<crate::range::Range>,
 }
 
 impl Guest {
@@ -477,6 +483,10 @@ impl Journal {
             .as_ref()
             .and_then(|g| g.microphone)
             .filter(|_| guest.consent.keep);
+        guest.range = before
+            .as_ref()
+            .and_then(|g| g.range)
+            .filter(|_| guest.consent.keep);
         let mut unlink = Vec::new();
         if !guest.consent.voice {
             for song in &mut guest.sang {
@@ -561,6 +571,28 @@ impl Journal {
             return false;
         }
         guest.microphone = Some(chain.held());
+        true
+    }
+
+    /// K8: the range kept for the rotation's singer `name` — only on a guest
+    /// who has agreed to be kept.
+    #[must_use]
+    pub fn range(&self, name: &str) -> Option<crate::range::Range> {
+        let guest = &self.guests[self.named(name)?];
+        guest.consent.keep.then_some(guest.range).flatten()
+    }
+
+    /// K8: keep `range` for the rotation's singer `name`, on their record —
+    /// when they are in the journal and have agreed to be kept. Answers
+    /// whether it was kept here.
+    pub fn keep_range(&mut self, name: &str, range: crate::range::Range) -> bool {
+        let Some(guest) = self.named(name).map(|at| &mut self.guests[at]) else {
+            return false;
+        };
+        if !guest.consent.keep {
+            return false;
+        }
+        guest.range = Some(range);
         true
     }
 
@@ -1238,6 +1270,41 @@ mod tests {
         assert!(lines[1].starts_with("\"Ana, from Madrid\""));
         assert!(lines[1].contains("\"Say \"\"yes\"\"\""));
         assert!(lines[3].starts_with("Bo,"));
+    }
+
+    /// **K8: a singer's range is about their voice: kept on their record only
+    /// when they agreed to be kept, never set or cleared by the form, and
+    /// forgotten when they withdraw.**
+    #[test]
+    fn a_range_is_kept_only_with_keep() {
+        let range = crate::range::Range {
+            low: -2300.0,
+            high: -600.0,
+        };
+        let mut journal = Journal::default();
+        let mut forged = guest("Ana");
+        forged.consent.keep = true;
+        forged.range = Some(range);
+        let id = journal.save(forged, 1).expect("saved").id;
+        assert_eq!(journal.range("Ana"), None, "not the form's to set");
+
+        assert!(journal.keep_range("ana", range));
+        assert_eq!(journal.range("Ana"), Some(range));
+        let mut sent_back = journal.get(&id).expect("there").clone();
+        sent_back.range = None;
+        journal.save(sent_back, 2).expect("saved");
+        assert_eq!(journal.range("Ana"), Some(range), "nor the form's to clear");
+
+        let mut tonight_only = journal.get(&id).expect("there").clone();
+        tonight_only.consent.keep = false;
+        journal.save(tonight_only, 3).expect("saved");
+        assert_eq!(journal.range("Ana"), None);
+        assert!(!journal.keep_range("Ana", range));
+        assert!(
+            journal.get(&id).expect("there").range.is_none(),
+            "forgotten when they withdraw"
+        );
+        assert!(!journal.keep_range("Nobody", range));
     }
 
     /// K3: **a guest's microphone chain is the journal's, kept only while

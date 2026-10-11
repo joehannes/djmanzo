@@ -229,6 +229,9 @@ pub struct Take {
     pub readings: Vec<f32>,
     /// What it came to, once over: their range, or why not.
     pub result: Option<Result<Range, String>>,
+    /// The range was kept on their record in the guest book, not only for
+    /// tonight.
+    pub in_guest_book: bool,
 }
 
 impl Take {
@@ -240,6 +243,7 @@ impl Take {
             started: std::time::Instant::now(),
             readings: Vec::new(),
             result: None,
+            in_guest_book: false,
         }
     }
 

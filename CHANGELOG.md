@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A singer's range, kept (K8).** A range read for a guest who agreed to be
+  kept goes on their record in the guest book and is there the next night,
+  for the fits and *Songs for them*; otherwise it is kept for tonight only.
+  The microphone row says which.
+
 - **Songs that fit a singer (K8).** Once a singer's range is read, the songs
   found for them in the collection say how each fits — as recorded, a key
   change, a stretch, or out of their range — and choosing one sets its key.
