@@ -33,6 +33,7 @@
 mod dynamics;
 mod space;
 mod strip;
+mod tune;
 
 pub use dynamics::{Compressor, DeEsser, Gate};
 pub use space::{Echo, LONGEST_ECHO_SECONDS, LONGEST_REVERB_SECONDS, Reverb};
@@ -40,6 +41,7 @@ pub use strip::{
     Chain, CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, LIMITS,
     Preset, ReverbSettings, Strip, StripFrame, StripSettings, range,
 };
+pub use tune::{CorrectionSettings, Corrector, Scale};
 
 /// The most microphones djmanzo will run: the input count of a large
 /// interface. A strip is a few hundred kilobytes, most of it the reverb's and

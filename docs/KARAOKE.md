@@ -1908,6 +1908,18 @@ cannot be held by here:** whether it *sounds* good. The tests measure
 pitch; a person hears the warble a crossfading shifter can leave on a
 long vowel, and that is for a booth to judge.
 
+**Step 1 built (11 October 2026): the corrector** (`dj_vocal::Corrector`,
+`tune.rs`), pure and not yet in a chain. One thing the design above did not
+say: two taps mixed all the time comb-filter a voice that needs no shift,
+so each tap is heard alone except in the 15 % of its sweep where it hands
+over, and with nothing to correct the taps drift — about five cents —
+back to where one is heard alone: at rest it is a clean 10 ms delay.
+Measured on synthetic voices: a held 225 Hz in A minor comes out at
+220.5 Hz at full strength (4 cents from A), about 20 cents above A at half;
+a glide from 200 to 240 Hz at half strength rises through every tenth of a
+second; noise, silence and a hum far under a voice are not read. Nothing
+allocates (`dj-vocal/tests/realtime.rs`).
+
 **The order.** 1. The corrector in `dj-vocal`, pure, with its tests. 2.
 The stage in the chain, the song's key sent to the rack, and kept with a
 singer's chain. 3. The strip's row: on, strength, speed, and the key it

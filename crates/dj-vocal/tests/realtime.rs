@@ -126,3 +126,35 @@ fn eight_singers_never_allocate() {
     assert!(vocals.unheard() > 0, "the listening rings never filled");
     assert!(vocals.starved_frames() > 0, "the dry half never ran");
 }
+
+/// K9: **pitch correction allocates nothing** — hearing, pulling and moving a
+/// voice, its key and its settings changed mid-way, and silence between.
+#[test]
+fn pitch_correction_does_not_allocate() {
+    use dj_vocal::{CorrectionSettings, Corrector, Scale};
+    let mut corrector = Corrector::new(48_000.0);
+    corrector.set_scale(Some(Scale::minor(9)));
+    let allocations = counted(|| {
+        for i in 0..96_000_u32 {
+            #[allow(clippy::cast_precision_loss)]
+            let t = i as f32 / 48_000.0;
+            let voice = if (i / 12_000) % 2 == 0 {
+                0.3 * (std::f32::consts::TAU * 225.0 * t).sin()
+            } else {
+                0.0
+            };
+            if i == 48_000 {
+                corrector.set(CorrectionSettings {
+                    strength: 0.5,
+                    speed_ms: 100.0,
+                });
+                corrector.set_scale(Some(Scale::major(0)));
+            }
+            std::hint::black_box(corrector.process(voice));
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "pitch correction allocated {allocations} times"
+    );
+}
