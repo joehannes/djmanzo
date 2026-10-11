@@ -414,7 +414,7 @@ piece of this document lands among them.
 | Break music that leads into the next song | the planner | **K5** | built (§8) |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | built (§10) |
-| A singer's range, and the key to sing in | K3, K6 | **K8** | outlined |
+| A singer's range, and the key to sing in | K3, K6 | **K8** | designed (§11) |
 | Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
 
 ---
@@ -1594,3 +1594,100 @@ decoys Spanish, the line large on the singers' screen above the four
 answers. The drive also found the five kinds' buttons breaking their own
 words in a narrow panel (*Name / it*); they keep their words now and the
 row wraps.
+
+---
+
+## 11. A singer's range, and the key to sing in (K8)
+
+*Designed 11 October 2026, before any code.* The outline: a singer sings up
+and down into a strip; djmanzo compares their range with the range of each
+record's separated vocal and suggests songs, with the key change each one
+needs. The range is kept on the guest's record only with §123's consent to
+keep them.
+
+What exists: K3 puts a singer on a strip; K6's listening thread reads each
+open strip's pitch twenty times a second (`VocalParam::Pitch`, cents above
+A4, the true octave — the score folds octaves, the reading does not) and
+reads every separated record's vocal line (`vocal_lines`, the same scale).
+A song's key change is already the singer's own (`Request::key`), applied
+when the song is loaded. So a range is two numbers from readings that
+already arrive, a record's range two numbers from a line already kept, and
+a suggestion is arithmetic between them that ends in a key djmanzo already
+knows how to set.
+
+### Measuring a singer
+
+In the Singers panel, on a singer who is on a microphone, *Find their
+range*: twenty seconds in which the singer slides from the lowest note
+they can hold comfortably to the highest and back — the panel says so, in
+those words, and shows the note heard as it moves (K6 already draws it on
+the Microphones row). The readings of their strip are kept while it runs;
+the range is the 10th to the 90th percentile of the voiced ones, so a
+crack at the top, a growl at the bottom and YIN's odd octave slip do not
+become the range. Fewer than four seconds of voice is not a range, and is
+said so rather than guessed from. The result reads as notes: *A2 – E4,
+an octave and a fifth*. Taken again, it replaces the last.
+
+### A record's range
+
+From its vocal line: the 10th to the 90th percentile of the points where
+the voice sings — the part of the song that is sung most of the time, not
+the one high note at the end that everyone reaches for anyway. A record
+whose line is not scorable (K6's `LEAST_SUNG`) has no range, as it has no
+score.
+
+### The key to sing in
+
+A song fits when its range, moved by *k* semitones and by whole octaves,
+sits inside the singer's: a baritone singing a soprano's song an octave
+down is how karaoke has always been sung, and an octave costs nothing —
+only *k* is a key change, the deck's own. For every *k* from −6 to +6 the
+song's range is placed against the singer's at the octave that fits best;
+the fit is how far the song stays inside, in semitones (negative where it
+spills over). The key offered is the smallest change that fits; a song
+that fits as recorded is offered as recorded. Moving a record more than
+four semitones makes it sound like something else — chipmunks and
+treacle — so beyond ±4 a song is shown as *a stretch* rather than offered,
+and beyond ±6 not at all.
+
+### Where it shows
+
+- On the singer's row: their range, and *Find their range* again.
+- Adding a song for a singer with a range: the matches from the collection
+  are marked with how each fits — *fits as recorded*, *fits −2*, *a
+  stretch* — and choosing one sets the song's key to the change offered.
+  The host can still change it; the offer is a starting key, not a rule.
+- *Songs for them*: up to ten records from the collection that fit, the
+  closest to as-recorded first, for a singer who does not know what to
+  sing.
+- The singer's phone (K4) is not asked to measure anything — the
+  microphone is in the room, not in the phone.
+
+### Keeping it
+
+A range is about a person's voice. It is kept on their guest record only
+with §123's *keep* consent, as K3's microphone chain is; without it, it is
+kept on their place in tonight's rotation and goes with the night. *New
+night* forgets the rotation's; the guest book keeps what it was allowed
+to.
+
+### Not here
+
+Judging a voice, training one, or telling anyone their range is small.
+Pitch correction (K9). Ranges for records never separated: a record with
+no vocal line has no range, and is shown as unknown rather than guessed
+from its key.
+
+### The order
+
+1. **The ranges** — a singer's from their strip (`dj_analysis`, pure, over
+   readings; the panel's *Find their range*), a record's from its line,
+   and the fit (pure), with tests over synthetic readings and lines.
+2. **The suggestions** — fits marked where a song is chosen, the key set
+   from the offer, *Songs for them*.
+3. **Keeping it** — on the guest record with consent, on the rotation
+   without, and *New night*.
+
+Driven, as K6 was, with the null backend singing a synthetic voice into a
+strip — a slide from A2 to E4 — and records whose vocal lines are known.
+Nothing here can say how a real voice measures.
