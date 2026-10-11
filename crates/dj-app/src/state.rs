@@ -303,6 +303,8 @@ pub struct AppState {
     quiz: Mutex<crate::quiz::Round>,
     /// K8: a singer's range being read from their strip.
     range_take: Mutex<Option<crate::range::Take>>,
+    /// A2: push-to-talk's take, and what the last came to.
+    voice: Mutex<crate::voice::Voice>,
     /// K6: the song being scored and each singer's score through it.
     scoring: Mutex<crate::score::Scoring>,
     /// K6: the room's applause being listened for, after the last *Sang*.
@@ -621,6 +623,7 @@ impl AppState {
             breaks: Mutex::new(crate::breaks::Held::default()),
             quiz: Mutex::new(crate::quiz::Round::default()),
             range_take: Mutex::new(None),
+            voice: Mutex::new(crate::voice::Voice::default()),
             scoring: Mutex::new(crate::score::Scoring::default()),
             applause: Mutex::new(None),
             karaoke_lock: Mutex::new(()),
@@ -1639,6 +1642,12 @@ impl AppState {
         &self.range_take
     }
 
+    /// A2: push-to-talk.
+    #[must_use]
+    pub fn voice(&self) -> &Mutex<crate::voice::Voice> {
+        &self.voice
+    }
+
     /// §121: the density band the main window is wearing, by name.
     pub fn interface_density(&self) -> &Mutex<String> {
         &self.interface_density
@@ -1743,6 +1752,39 @@ impl AppState {
             .and_then(|text| serde_json::from_str::<Vec<dj_vocal::StripSettings>>(&text).ok())
             .map(|strips| strips.iter().map(dj_vocal::StripSettings::held).collect())
             .unwrap_or_default()
+    }
+
+    /// A2: the strip spoken commands come from — Mic 1 (`0`) unless the DJ
+    /// chose another.
+    #[must_use]
+    pub fn voice_strip(&self) -> usize {
+        self.config_dir
+            .lock()
+            .ok()
+            .and_then(|dir| dir.clone())
+            .and_then(|dir| std::fs::read_to_string(dir.join("voice.json")).ok())
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|kept| kept.get("strip")?.as_u64())
+            .and_then(|strip| usize::try_from(strip).ok())
+            .filter(|&strip| strip < dj_vocal::MOST_STRIPS)
+            .unwrap_or(0)
+    }
+
+    /// Keep it.
+    pub fn set_voice_strip(&self, strip: usize) {
+        let Some(path) = self
+            .config_dir
+            .lock()
+            .ok()
+            .and_then(|dir| dir.clone())
+            .map(|dir| dir.join("voice.json"))
+        else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, serde_json::json!({ "strip": strip }).to_string())
+        {
+            tracing::warn!(%error, ?path, "the microphone for spoken commands will not survive a restart");
+        }
     }
 
     /// Keep them.

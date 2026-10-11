@@ -689,6 +689,8 @@ export const ANSWERS: Record<string, unknown> = {
   list_inputs: [],
   // K3: the singers' microphones, closed, as Rust answers (`vocals.json`).
   vocals_state: vocals.closed,
+  // A2: push-to-talk, nothing held and nothing taken yet.
+  voice_state: { strip: 0, listening: false, seconds: 0, last: null },
   // Not a command: what `vocals_state` answers once the inputs are open.
   vocals_opened: vocals.open,
   secrets_persist: true,
@@ -2760,6 +2762,16 @@ export async function openShell(
               in_guest_book: false,
             };
             return Promise.resolve(structuredClone(win.__rangeTake as unknown));
+          }
+          // A2: push-to-talk — the test's `__voice`, or nothing held; the
+          // take and the strip held out of the PA are Rust's and tested there.
+          if (cmd === "voice_state") {
+            return Promise.resolve(structuredClone((win.__voice ?? answers.voice_state) as unknown));
+          }
+          if (cmd === "voice_strip_set") {
+            const held = (win.__voice ??= structuredClone(answers.voice_state)) as { strip: number };
+            held.strip = Number(args.strip);
+            return Promise.resolve(structuredClone(held as unknown));
           }
           if (cmd === "karaoke_range_take") {
             return Promise.resolve(structuredClone((win.__rangeTake ?? null) as unknown));

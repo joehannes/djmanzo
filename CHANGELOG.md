@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Push-to-talk (A2, first step).** Hold **B**, or *Hold to talk* on the
+  assistant panel, and the microphone chosen under *Commands from* takes
+  what the DJ says while it is out of the PA and the singers' monitor —
+  the room does not hear "deck two, play". Let go and it is back as it was.
+  A controller pad can be the button too: `voice listen_on` /
+  `voice listen_off`. What is said is not yet turned into words; the panel
+  shows how long was taken and how much of it was voice.
+
 - **A singer's range, kept (K8).** A range read for a guest who agreed to be
   kept goes on their record in the guest book and is there the next night,
   for the fits and *Songs for them*; otherwise it is kept for tonight only.

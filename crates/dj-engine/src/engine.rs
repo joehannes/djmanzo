@@ -909,6 +909,9 @@ impl Engine {
             // the one thing worse than a mix going wrong is a mix going wrong
             // through a path no session file can reproduce.
             Action::Mixer(MixerAction::Safe) => {}
+            // Nor is push-to-talk: the application takes the strip out of the
+            // PA with an ordinary `VocalStrip` command and puts it back.
+            Action::Mixer(MixerAction::Listen(_)) => {}
             Action::Mixer(MixerAction::Mic(change)) => {
                 use dj_core::action::MicChange;
                 match change {

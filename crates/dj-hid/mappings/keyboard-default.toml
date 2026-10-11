@@ -9,7 +9,10 @@
 #    ⇧1 2 3 4                   ⇧7 8 9 0     hot cues (⌥⇧ sets one)
 #     Q W E R                    U I O P     beat jump, loop
 #     A S D F        G  H        J K L ;     transport, roll
-#     Z X C V                    M , . /     EQ kills, brake
+#     Z X C V        B           M , . /     EQ kills, brake
+#
+# B, between the hands, is push-to-talk: held, the DJ's microphone takes a
+# spoken command and is out of the PA meanwhile (docs/ASSISTANT.md §4).
 #
 # **Hold Alt for the same geometry, one layer down: setting up rather than
 # playing.** Everything on the alt layer is something you do to a track before
@@ -754,3 +757,16 @@ on = "alt+Digit0"
 press = "deck 2 hotcue_clear 4"
 label = "Clear hot cue 4"
 group = "Deck 2"
+
+# ------------------------------------------------------------- push-to-talk
+#
+# Held, not latched: a microphone that a forgotten key left out of the PA is
+# a microphone the room cannot hear. Between the hands, so either index finger
+# reaches it without leaving a deck.
+
+[[key]]
+on = "KeyB"
+press = "voice listen_on"
+release = "voice listen_off"
+label = "Push to talk (hold)"
+group = "Voice"

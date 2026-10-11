@@ -68,9 +68,10 @@ impl VocalFrame {
     };
 }
 
-/// K6: the rate each strip's voice is handed to the listening at, in hertz
-/// — the rate `dj_analysis::melody` reads pitch at.
-pub const LISTEN_RATE: u32 = 8_000;
+/// K6 and A2: the rate each strip's voice is handed to the listening at, in
+/// hertz — whisper's, so a spoken command is heard from the same tap; the
+/// listening halves it for `dj_analysis::melody`, which reads pitch at 8 kHz.
+pub const LISTEN_RATE: u32 = 16_000;
 
 /// K6: how much of a voice a listening ring holds, in seconds. A listener
 /// that falls this far behind loses the oldest of it, never the audio.
@@ -335,13 +336,14 @@ mod tests {
 
     const RATE: f32 = 48_000.0;
 
-    /// **K6: each strip's microphone reaches the listening at 8 kHz, as it
-    /// came in, and only while the strip is open.** A second at 48 kHz and a
-    /// second at 44.1 kHz are each eight thousand samples; an A3 on strip 0
+    /// **K6: each strip's microphone reaches the listening at
+    /// [`LISTEN_RATE`], as it came in, and only while the strip is open.** A
+    /// second at 48 kHz and a second at 44.1 kHz are each sixteen thousand
+    /// samples; an A3 on strip 0
     /// arrives as an A3 (its zero crossings 220 a second); strip 1, closed,
     /// hands on silence however loud its input.
     #[test]
-    fn the_listening_hears_each_open_strip_at_eight_kilohertz() {
+    fn the_listening_hears_each_open_strip_at_the_listening_rate() {
         for rate in [48_000.0f32, 44_100.0] {
             let mut vocals = Vocals::new(rate, 2);
             vocals.strip_mut(0).unwrap().apply(&singer());
@@ -358,7 +360,7 @@ mod tests {
             let heard: Vec<f32> = std::iter::from_fn(|| ears[0].pop().ok()).collect();
             let closed: Vec<f32> = std::iter::from_fn(|| ears[1].pop().ok()).collect();
             assert!(
-                (heard.len() as i64 - 8_000).abs() <= 1,
+                (heard.len() as i64 - i64::from(LISTEN_RATE)).abs() <= 1,
                 "{rate}: {}",
                 heard.len()
             );

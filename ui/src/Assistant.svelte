@@ -19,6 +19,7 @@
   import { onMount } from "svelte";
   import Conduct from "./Conduct.svelte";
   import AiSetup from "./AiSetup.svelte";
+  import PushToTalk from "./PushToTalk.svelte";
   import {
     ask,
     assistantSight,
@@ -238,6 +239,8 @@
       {/if}
     </details>
   {/if}
+
+  <PushToTalk />
 
   <div class="compose">
     <input

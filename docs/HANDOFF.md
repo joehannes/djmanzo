@@ -1414,6 +1414,16 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   when a lint suggests a newer API: clippy's `incompatible_msrv` turns that
   suggestion into the next error.
 
+- **A key held past the auto-repeat delay under Xvfb loses its key-up.**
+  `xdotool keydown h; sleep 1.5; xdotool keyup h` leaves deck 2's loop roll
+  rolling, and the same with every held key in the default map — push-to-talk
+  on B included; a hold of 0.3 s releases cleanly. Found driving A2 on 11
+  October. Whether WebKitGTK on a real X server does the same is not known
+  from here (no real display), and neither is whether the key-up is lost
+  before WebKit or inside it. Drive a long hold with the mouse on a held button instead, and
+  read a stuck key in a screenshot as this before reading it as a defect.
+  A2's take ends by itself at eight seconds for exactly this reason.
+
 ## Where the work stands, and what is next
 
 `DIRECTIVE-STATUS.md` holds the live count; re-run its script rather than

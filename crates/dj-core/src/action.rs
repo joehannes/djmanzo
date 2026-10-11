@@ -686,6 +686,14 @@ pub enum MixerAction {
     /// so every part of it logs and replays like anything else, and there is no
     /// privileged path that a session file cannot reproduce.
     Safe,
+    /// A2: push-to-talk — the DJ's microphone taking a spoken command while
+    /// it is held, out of the PA meanwhile, or let go.
+    ///
+    /// In the vocabulary so a key, a controller pad and a script can each be
+    /// the button (`docs/ASSISTANT.md` §4). Like [`MixerAction::Safe`], what
+    /// it means is the application's: the engine only ever sees the strip's
+    /// sends set and put back.
+    Listen(bool),
 }
 
 impl Action {
@@ -801,6 +809,11 @@ impl Action {
             )?))),
             "clap" => Ok(Action::Mixer(MixerAction::Clap(parse_clap(&mut words)?))),
             "safe" => Ok(Action::Mixer(MixerAction::Safe)),
+            "voice" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "listen_on" => Ok(Action::Mixer(MixerAction::Listen(true))),
+                "listen_off" => Ok(Action::Mixer(MixerAction::Listen(false))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -1532,6 +1545,8 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::SetRecording(true)) => write!(f, "record on"),
             Action::Mixer(MixerAction::SetRecording(false)) => write!(f, "record off"),
             Action::Mixer(MixerAction::Safe) => write!(f, "safe"),
+            Action::Mixer(MixerAction::Listen(true)) => write!(f, "voice listen_on"),
+            Action::Mixer(MixerAction::Listen(false)) => write!(f, "voice listen_off"),
             Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
             Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
             Action::Mixer(MixerAction::Fx { slot, change }) => {
@@ -2431,6 +2446,8 @@ mod tests {
             Action::Mixer(MixerAction::MonitorMusicDb(-9.5)),
             Action::Mixer(MixerAction::Crossfader(-0.25)),
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),
+            Action::Mixer(MixerAction::Listen(true)),
+            Action::Mixer(MixerAction::Listen(false)),
         ];
         for action in cases {
             let text = action.to_string();

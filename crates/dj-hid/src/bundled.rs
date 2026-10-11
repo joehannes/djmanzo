@@ -105,6 +105,22 @@ mod tests {
         assert!(map.keys.len() > 40, "only {} keys", map.keys.len());
     }
 
+    /// **A2: push-to-talk is held, not latched.** B down takes a spoken
+    /// command and B up lets it go; a key that only pressed would leave the
+    /// DJ's microphone out of the PA until something else put it back.
+    #[test]
+    fn push_to_talk_is_held_on_b() {
+        let map = keyboard().expect("the bundled keyboard");
+        let b = crate::keys::Chord::parse("KeyB").expect("a key");
+        assert_eq!(map.translate(&b, true, false), Some("voice listen_on"));
+        assert_eq!(map.translate(&b, false, false), Some("voice listen_off"));
+        assert_eq!(
+            map.translate(&b, true, true),
+            None,
+            "a repeat is not a press"
+        );
+    }
+
     /// The commented-out `[audio]` example is documentation, and documentation
     /// that does not parse is worse than none: a DJ uncomments it, the mapping
     /// stops loading, and the file they were told to copy is the reason.

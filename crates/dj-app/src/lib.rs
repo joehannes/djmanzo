@@ -113,6 +113,7 @@ pub mod timecode;
 pub mod transition;
 pub mod uiop;
 pub mod video;
+pub mod voice;
 pub mod wav;
 pub mod waveform;
 pub mod welcome;
@@ -496,9 +497,11 @@ pub fn run() {
                     let scorer = handle.clone();
                     crate::listen::spawn(state.registry(), move |heard| {
                         let state: tauri::State<'_, AppState> = scorer.state();
-                        commands::score_heard(&state, heard);
+                        commands::score_heard(&state, &heard.pitches);
                         // K8: and a singer's range, while one is read.
-                        commands::range_heard(&state, heard);
+                        commands::range_heard(&state, &heard.pitches);
+                        // A2: and a spoken command, while one is held.
+                        commands::voice_heard(&state, &heard.fresh);
                     });
                 }
                 let pump = handle.clone();
@@ -1027,6 +1030,8 @@ pub fn run() {
             commands::karaoke_range_start,
             commands::karaoke_range_take,
             commands::karaoke_range_cancel,
+            commands::voice_state,
+            commands::voice_strip_set,
             commands::karaoke_fits,
             commands::karaoke_songs_for,
             commands::set_activity_mode,

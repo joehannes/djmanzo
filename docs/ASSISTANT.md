@@ -229,6 +229,29 @@ words is tested — the take, the strip held out of the PA, the matcher on
 text whisper would hand it — and how well a spoken command is heard in a
 real booth is for a real booth to say.
 
+**Step 1, as built (11 October 2026).** The tap is at 16 kHz and the
+listening halves it for the pitch. `voice listen_on` and `voice
+listen_off` are in the action vocabulary (`MixerAction::Listen`), so the
+keyboard map, a controller mapping and the line protocol all reach them
+through the same check as every other action; the engine ignores them, as
+it ignores `safe`. A model's answer is the one place they are refused
+(`extract_actions`): push-to-talk is a hand, and once heard words reach a
+model its answer must not be able to start the next take. **B** is push-to-talk in the default keyboard, held, not
+latched. The assistant panel has *Hold to talk*, *Commands from Mic N*
+(kept in `voice.json`, Mic 1 unless chosen) and what the last take came
+to. While a take runs, every setting sent to its strip — the one sent when
+the key goes down, and any the host sends meanwhile — goes out with the
+PA and monitor sends at nothing and talkover off (`dj_app::voice::held_out`);
+let go, the strip is sent as the rig and its singer have it *now*, so a
+fader moved during the command is kept. A press with the strip closed is
+refused, and the refusal is kept as the last take's end so the panel shows
+it whichever way the press came — a key has nowhere else to say so. **A
+take ends by itself at eight seconds**, key down or not: driving it under
+Xvfb, a held key's key-up never arrived (HANDOFF, "a key held past the
+auto-repeat delay"), and a microphone left out of the PA all night is the
+failure this must never have. What a take holds is not yet transcribed;
+the panel says so.
+
 ---
 
 ## 5. Musical intelligence

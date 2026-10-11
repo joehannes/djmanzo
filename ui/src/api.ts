@@ -4959,6 +4959,28 @@ export interface RangeTake {
 
 export const karaokeRangeStart = (singer: string) => invoke<RangeTake | null>("karaoke_range_start", { singer });
 export const karaokeRangeTake = () => invoke<RangeTake | null>("karaoke_range_take");
+
+/** A2: what push-to-talk's last take came to. See `dj_app::commands::VoiceEndedDto`. */
+export interface VoiceEnded {
+  seconds: number;
+  /** Seconds of it that were voice. */
+  voiced: number;
+  /** Why it will not be transcribed, when it will not. */
+  problem: string | null;
+}
+
+/** A2: push-to-talk. See `dj_app::commands::VoiceDto`. */
+export interface VoiceState {
+  /** The strip spoken commands come from, from 0. */
+  strip: number;
+  listening: boolean;
+  /** Seconds taken so far. */
+  seconds: number;
+  last: VoiceEnded | null;
+}
+
+export const voiceState = () => invoke<VoiceState>("voice_state");
+export const voiceStripSet = (strip: number) => invoke<VoiceState>("voice_strip_set", { strip });
 export const karaokeRangeCancel = () => invoke<void>("karaoke_range_cancel");
 
 /** K8: how a song is offered to a singer, from `dj_app::range::Offer`. */

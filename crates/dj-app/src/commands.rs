@@ -1403,7 +1403,14 @@ pub fn vocals_open(
     let device = device_id.map(dj_audio::DeviceId::new);
     let config = state
         .host()
-        .open_vocals(device, played_vocal_settings(&state))
+        .open_vocals(
+            device,
+            played_vocal_settings(&state)
+                .into_iter()
+                .enumerate()
+                .map(|(strip, settings)| as_played(&state, strip, settings))
+                .collect(),
+        )
         .map_err(|e| e.to_string())?;
     Ok(MicDeviceDto::from(&config))
 }
@@ -1465,11 +1472,32 @@ fn vocal_settings_changed(state: &AppState) {
     state.registry().set(rev, state.registry().get(rev) + 1.0);
 }
 
+/// A2: a strip's settings as the engine is to play them — held out of the
+/// room while push-to-talk is taking from it, whatever the screen sends
+/// meanwhile, so moving its fader mid-command does not put "deck two, play"
+/// through the PA.
+fn as_played(
+    state: &AppState,
+    strip: usize,
+    settings: dj_vocal::StripSettings,
+) -> dj_vocal::StripSettings {
+    let taking = lock(state.voice())
+        .take
+        .as_ref()
+        .is_some_and(|take| take.strip == strip);
+    if taking {
+        crate::voice::held_out(settings)
+    } else {
+        settings
+    }
+}
+
 fn send_vocal_strip(
     state: &AppState,
     strip: usize,
     settings: dj_vocal::StripSettings,
 ) -> Result<(), String> {
+    let settings = as_played(state, strip, settings);
     let strip = u8::try_from(strip).map_err(|_| "no such microphone".to_owned())?;
     vocal_settings_changed(state);
     state
@@ -2506,6 +2534,16 @@ pub fn perform_action_by(
     // `make_safe` for what it does and, more importantly, what it refuses to.
     if let Action::Mixer(dj_core::MixerAction::Safe) = parsed {
         return make_safe(state);
+    }
+
+    // A2's push-to-talk, the application's for the same reason: what the
+    // engine sees of it is a strip's sends set and put back.
+    if let Action::Mixer(dj_core::MixerAction::Listen(on)) = parsed {
+        return if on {
+            voice_listen_on(state)
+        } else {
+            voice_listen_off(state)
+        };
     }
 
     // A plugin parameter goes to the engine like everything else — but the
@@ -23099,4 +23137,264 @@ pub fn crowd_settings_save(
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("goals.json"), text).map_err(|e| e.to_string())?;
     crowd_view_of(&state, session)
+}
+
+/// A2: what push-to-talk's last take came to.
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceEndedDto {
+    pub seconds: f64,
+    /// Seconds of it that were voice.
+    pub voiced: f64,
+    /// Why it will not be transcribed, when it will not.
+    pub problem: Option<String>,
+}
+
+/// A2: push-to-talk, as the assistant panel shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceDto {
+    /// The strip commands come from, from 0.
+    pub strip: usize,
+    /// Whether a take is running.
+    pub listening: bool,
+    /// Seconds taken so far.
+    pub seconds: f64,
+    /// What the last take came to.
+    pub last: Option<VoiceEndedDto>,
+}
+
+fn voice_dto(state: &AppState) -> VoiceDto {
+    let strip = state.voice_strip();
+    let voice = lock(state.voice());
+    VoiceDto {
+        strip,
+        listening: voice.take.is_some(),
+        seconds: voice.take.as_ref().map_or(0.0, crate::voice::Take::seconds),
+        last: voice.last.as_ref().map(|ended| VoiceEndedDto {
+            seconds: ended.seconds,
+            voiced: ended.voiced,
+            problem: ended.problem.clone(),
+        }),
+    }
+}
+
+/// A2: push-to-talk now.
+#[tauri::command]
+#[must_use]
+pub fn voice_state(state: State<'_, AppState>) -> VoiceDto {
+    voice_dto(&state)
+}
+
+/// A2: take spoken commands from microphone `strip` (from 0), kept for the
+/// next time djmanzo starts.
+///
+/// # Errors
+/// No such microphone, or a command is being taken.
+#[tauri::command]
+pub fn voice_strip_set(state: State<'_, AppState>, strip: u8) -> Result<VoiceDto, String> {
+    let strip = strip_index(strip)?;
+    if lock(state.voice()).take.is_some() {
+        return Err("Let go of push-to-talk first.".to_owned());
+    }
+    state.set_voice_strip(strip);
+    Ok(voice_dto(&state))
+}
+
+/// A2: push-to-talk down — the command strip held out of the room and its
+/// voice kept (docs/ASSISTANT.md §4). Down again while held is nothing.
+fn voice_listen_on(state: &AppState) -> Result<(), String> {
+    let strip = state.voice_strip();
+    let inputs = vocals_dto(state).inputs;
+    let played = played_vocal_settings(state)
+        .get(strip)
+        .copied()
+        .unwrap_or_default();
+    if strip >= inputs || !played.open {
+        let refused = format!(
+            "Spoken commands come from Mic {}, and it is not open: open it under Microphones.",
+            strip + 1
+        );
+        // Kept as the last take's end as well as answered: the key and a
+        // controller pad have nowhere to show an error, and a press that did
+        // nothing visible is the one a DJ presses again harder.
+        lock(state.voice()).last = Some(crate::voice::Ended {
+            seconds: 0.0,
+            voiced: 0.0,
+            problem: Some(refused.clone()),
+            samples: Vec::new(),
+        });
+        return Err(refused);
+    }
+    {
+        let mut voice = lock(state.voice());
+        if voice.take.is_some() {
+            return Ok(());
+        }
+        voice.take = Some(crate::voice::Take::new(strip));
+        voice.last = None;
+    }
+    // After the take is in place, so `as_played` holds it out.
+    send_vocal_strip(state, strip, played)
+}
+
+/// A2: push-to-talk up — the strip put back as the rig and its singer have
+/// it now, and the take ended. Up with nothing held is nothing.
+fn voice_listen_off(state: &AppState) -> Result<(), String> {
+    let Some(take) = lock(state.voice()).take.take() else {
+        return Ok(());
+    };
+    let strip = take.strip;
+    let ended = crate::voice::Ended::of(take);
+    lock(state.voice()).last = Some(ended);
+    let played = played_vocal_settings(state)
+        .get(strip)
+        .copied()
+        .unwrap_or_default();
+    send_vocal_strip(state, strip, played)
+}
+
+/// A2: one listening's voice, every strip's, for push-to-talk's take if one
+/// runs — ended here when it has run its course with the key still down. On
+/// the listening thread.
+pub(crate) fn voice_heard(state: &AppState, fresh: &[Vec<f32>]) {
+    let run_out = {
+        let mut voice = lock(state.voice());
+        let Some(take) = voice.take.as_mut() else {
+            return;
+        };
+        take.hear(fresh);
+        take.run_out()
+    };
+    if run_out && let Err(error) = voice_listen_off(state) {
+        tracing::warn!(%error, "push-to-talk's microphone could not be put back");
+    }
+}
+
+#[cfg(test)]
+mod voice_tests {
+    use super::{AppState, perform, set_vocal_strip, voice_dto, voice_heard};
+
+    fn tone(seconds: f64, level: f32) -> Vec<f32> {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let n = (seconds * f64::from(crate::voice::RATE)) as usize;
+        (0..n)
+            .map(|i| {
+                #[allow(clippy::cast_precision_loss)]
+                let t = i as f32 / crate::voice::RATE as f32;
+                level * (std::f32::consts::TAU * 220.0 * t).sin()
+            })
+            .collect()
+    }
+
+    /// **A2: push-to-talk holds the command strip out of the room, and puts
+    /// it back as it is now.** What the engine is sent is read off the
+    /// command queue. Down: Mic 1 goes to nothing in the PA and the singers'
+    /// monitor, its talkover off, the DJ's headphones as they were; a second
+    /// press is nothing. The fader moved while held is kept but still held
+    /// out. Up: the strip as the rig has it now, and the take's voice
+    /// counted. A press refused is kept to be shown, since a key has nowhere
+    /// to show it. A take that runs its eight seconds with the key still down
+    /// puts the strip back by itself. A microphone not open is refused, by
+    /// name.
+    #[test]
+    fn push_to_talk_holds_the_strip_out_of_the_room_and_puts_it_back() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut sent = move || {
+            let mut sent = Vec::new();
+            while let Ok(command) = queue.pop() {
+                if let dj_engine::Command::VocalStrip { strip, settings } = command {
+                    sent.push((strip, settings));
+                }
+            }
+            sent
+        };
+
+        let refused = perform(&state, "voice listen_on").expect_err("no microphone is open");
+        assert!(refused.contains("Mic 1"), "{refused}");
+        assert!(!voice_dto(&state).listening);
+        assert_eq!(
+            voice_dto(&state).last.and_then(|last| last.problem),
+            Some(refused),
+            "a key refused has nowhere else to say so"
+        );
+
+        state.registry().set(
+            dj_core::ParamId::Global(dj_core::param::GlobalParam::VocalInputs),
+            2.0,
+        );
+        let rig = dj_vocal::StripSettings {
+            open: true,
+            to_main: 0.8,
+            to_cue: 0.4,
+            to_monitor: 0.5,
+            talkover: true,
+            ..dj_vocal::StripSettings::default()
+        };
+        set_vocal_strip(&state, 0, rig).expect("kept and sent");
+        assert_eq!(sent(), vec![(0, rig)]);
+
+        perform(&state, "voice listen_on").expect("held");
+        let held = sent();
+        assert_eq!(held.len(), 1);
+        let (strip, out) = held[0];
+        assert_eq!(strip, 0);
+        assert_eq!(
+            (out.to_main, out.to_monitor, out.talkover),
+            (0.0, 0.0, false)
+        );
+        assert_eq!((out.to_cue, out.open), (0.4, true));
+        perform(&state, "voice listen_on").expect("still held");
+        assert_eq!(sent(), Vec::new(), "a second press is nothing");
+        assert!(voice_dto(&state).listening);
+
+        let louder = dj_vocal::StripSettings {
+            gain_db: -6.0,
+            ..rig
+        };
+        set_vocal_strip(&state, 0, louder).expect("kept and sent");
+        let moved = sent();
+        assert_eq!(moved[0].1.gain_db, -6.0);
+        assert_eq!(
+            moved[0].1.to_main, 0.0,
+            "a fader moved while held let the room hear"
+        );
+
+        voice_heard(&state, &[tone(1.0, 0.3), tone(1.0, 0.3)]);
+        assert!((voice_dto(&state).seconds - 1.0).abs() < 1e-9);
+
+        perform(&state, "voice listen_off").expect("let go");
+        assert_eq!(
+            sent(),
+            vec![(0, louder)],
+            "not put back as the rig has it now"
+        );
+        let after = voice_dto(&state);
+        assert!(!after.listening);
+        let last = after.last.expect("the take's end");
+        assert!((last.voiced - 1.0).abs() < 0.02, "{}", last.voiced);
+        assert_eq!(last.problem, None);
+        perform(&state, "voice listen_off").expect("nothing held");
+        assert_eq!(sent(), Vec::new(), "a second release is nothing");
+
+        perform(&state, "voice listen_on").expect("held");
+        sent();
+        for _ in 0..9 {
+            voice_heard(&state, &[tone(1.0, 0.3)]);
+        }
+        assert_eq!(
+            sent(),
+            vec![(0, louder)],
+            "a take that ran out left Mic 1 out of the PA"
+        );
+        assert!(!voice_dto(&state).listening);
+
+        state.set_voice_strip(1);
+        assert_eq!(voice_dto(&state).strip, 1);
+        let refused = perform(&state, "voice listen_on").expect_err("Mic 2 is closed");
+        assert!(refused.contains("Mic 2"), "{refused}");
+        assert_eq!(sent(), Vec::new());
+    }
 }

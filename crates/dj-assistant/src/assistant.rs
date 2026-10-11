@@ -137,6 +137,11 @@ pub fn extract_actions(text: &str) -> (Vec<String>, Vec<String>) {
         }
 
         match Action::parse(line) {
+            // A2's push-to-talk is a hand on a key, never a model's: a model
+            // that pressed it would take the DJ's microphone out of the room,
+            // and once spoken words reach a model, its own answer could start
+            // the next take.
+            Ok(Action::Mixer(dj_core::MixerAction::Listen(_))) => rejected.push(line.to_owned()),
             // Round-trip through `Display` rather than keeping the model's
             // text. What executes is then exactly what the type says, with no
             // room for a spelling the parser tolerated to mean something else.
@@ -663,6 +668,18 @@ mod tests {
         assert_eq!(guesses[0].artist, "50 Cent");
         let bullets = parse_guesses("2) 2 Live Crew | Me So Horny | ");
         assert_eq!(bullets[0].artist, "2 Live Crew");
+    }
+
+    /// **A model does not press push-to-talk**: the line parses, and is
+    /// refused all the same.
+    #[test]
+    fn a_model_does_not_press_push_to_talk() {
+        let (actions, rejected) = extract_actions("deck 1 play\nvoice listen_on\nvoice listen_off");
+        assert_eq!(actions, vec!["deck 1 play".to_owned()]);
+        assert_eq!(
+            rejected,
+            vec!["voice listen_on".to_owned(), "voice listen_off".to_owned()]
+        );
     }
 
     /// **A row missing half of itself is not a row.**
