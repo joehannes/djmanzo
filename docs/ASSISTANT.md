@@ -166,6 +166,69 @@ Voice-driven DJing can issue a lot of requests. The assistant therefore:
 Audio for the assistant is captured on its own input stream and never touches
 the realtime mixing path.
 
+### A2, as it is built
+
+*Designed 11 October 2026, before any code.* Since this section was
+written, three of its pieces arrived by other roads: the local matcher
+(`dj_assistant::intent`), whisper.cpp inside djmanzo (`dj_app::whispercpp`,
+§122, with its models downloaded on the DJ's choice), and the singers'
+microphones (K3, `dj_vocal`), which already open the interface's inputs and
+tap each strip off the audio thread (K6, `dj_app::listen`). A2 is the road
+between them: a held key, the DJ's own microphone, the words, the matcher,
+the bus.
+
+**Which microphone.** Not a second stream on the same device: most
+interfaces and most systems refuse a second opener of an input already
+open, and K3 holds it open all night. The DJ's microphone is one of the
+strips the Microphones section already shows; the DJ chooses which takes
+commands (*Commands from Mic 1*, Mic 1 unless chosen otherwise). Its tap
+runs at 16 kHz — whisper's rate — and the listening thread halves it for
+K6's pitch, which reads at 8 kHz, so there is one tap, not two.
+
+**Push-to-talk first, and only it to begin with.** A held key, a held
+button on the assistant panel, and two actions on the bus — `voice
+listen_on` and `voice listen_off` — so a controller pad can be the button
+in a booth too loud for anything else. F1 is the keys surface already; the
+key is chosen with the rest of the keyboard's map (§117) and shown where it
+is set. Held, the strip's readings are kept, eight seconds at most; let go,
+they are transcribed. **While it is held the strip is out of the PA and the
+singers' monitor**: the room does not hear "deck two, play" through the
+speakers. That is the one change to the audio path, a gain the strip
+already has, set and put back.
+
+**The words.** whisper.cpp on its own thread, with the smallest model the
+DJ has downloaded that hears both languages — a three-second command is not
+worth `small`'s seventy seconds a song — the language left to the model,
+because a DJ in the intended rooms changes language mid-sentence. What it
+heard is shown before what was done: *Heard "pon el dos" → deck 2 play*.
+
+**What is done.** The local matcher first, always, and with no provider
+needed: today's `ask` refuses everything when no AI provider is set, which
+is right for a typed question and wrong for "deck two, play" in a room with
+no internet. Only words the matcher does not know go to the DJ's provider,
+when there is one, and through the same validation as typed ones
+(ADR-0005); with none, the words are shown and nothing guessed.
+
+**The wake phrase, later, and only with a model whose licence ADR-0002
+admits.** openWakeWord's code is Apache-2.0, but the models it ships are,
+as far as this design knows, under a non-commercial licence; that is to be
+read from their own pages before anything is built on them, and if it is
+so they are out, as LAME was for MP3. The alternative — whisper's smallest
+model spotting the phrase on stretches of voice — costs CPU all night, and
+is measured before it is chosen. Push-to-talk is what a club needs anyway.
+
+**The order.** 1. The 16 kHz tap, the command strip, push-to-talk from
+key, button and action, the strip out of the PA while held. 2. The words —
+whisper on the take, what was heard and done shown, the matcher without a
+provider. 3. The wake phrase, once a model and its licence are settled.
+
+**What cannot be proved here.** This container has no microphone, no
+speech synthesiser to make a spoken command from, and no whisper model on
+disk (their host is outside its network policy). Everything around the
+words is tested — the take, the strip held out of the PA, the matcher on
+text whisper would hand it — and how well a spoken command is heard in a
+real booth is for a real booth to say.
+
 ---
 
 ## 5. Musical intelligence
