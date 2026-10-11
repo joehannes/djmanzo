@@ -18,6 +18,9 @@
    */
   import {
     dispatch,
+    karaokeRangeCancel,
+    karaokeRangeStart,
+    karaokeRangeTake,
     listInputs,
     MONITOR_MUSIC_OFF_DB,
     vocalStripKeep,
@@ -30,12 +33,14 @@
     type Device,
     type MicDevice,
     type OnMic,
+    type RangeTake,
     type StripSettings,
     type VocalPreset,
     type Vocals,
     type VocalsState,
   } from "./api";
   import StripChain from "./StripChain.svelte";
+  import { noteName, rangeWords } from "./notes";
   import { BUFFER_CHOICES } from "./audiopref";
 
   let {
@@ -44,6 +49,7 @@
     vocals = $bindable(null),
     singers = [],
     buffer,
+    onrange,
   }: {
     live?: VocalsState;
     enabled?: boolean;
@@ -51,6 +57,8 @@
     vocals?: Vocals | null;
     /** Tonight's rotation, by name: who can be put on a microphone. */
     singers?: string[];
+    /** K8: a range was read and is on the singer's place in the rotation. */
+    onrange?: () => void;
     /**
      * The interface's buffer, and how to open it again at another — the
      * choice Settings has, offered where its cost to a singer is said. Not
@@ -153,24 +161,45 @@
     }
   }
 
+  /**
+   * K8: a singer's range, read from the microphone they are on — twenty
+   * seconds of them sliding from their lowest note to their highest. Asked
+   * twice a second while it runs, so the countdown moves.
+   */
+  let take = $state<RangeTake | null>(null);
+  async function findRange(singer: string) {
+    error = "";
+    try {
+      take = await karaokeRangeStart(singer);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+  async function forgetRange() {
+    take = null;
+    await karaokeRangeCancel().catch(() => {});
+  }
+  const taking = $derived(!!take && !take.done);
+  $effect(() => {
+    if (!taking) return;
+    const timer = setInterval(() => {
+      void karaokeRangeTake()
+        .then((now) => {
+          take = now;
+          // Read on the listening thread, onto the rotation: the panel
+          // above draws it from there, so it is asked to look again.
+          if (now?.range) onrange?.();
+        })
+        .catch(() => {});
+    }, 500);
+    return () => clearInterval(timer);
+  });
+
   /** Who can be put on a strip: the rotation, and whoever is on it already. */
   const choices = (on: OnMic | null) =>
     on && !singers.some((name) => name.toLowerCase() === on.singer.toLowerCase()) ? [on.singer, ...singers] : singers;
 
   /** Where the chain a singer is singing through came from, said for the host. */
-  /**
-   * K6: a pitch as a note — cents above A4 to the nearest note's name and
-   * octave, with how far off it is when that is more than ten cents.
-   */
-  function noteName(cents: number): string {
-    const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    const midi = 69 + cents / 100;
-    const nearest = Math.round(midi);
-    const off = Math.round((midi - nearest) * 100);
-    const name = `${NAMES[((nearest % 12) + 12) % 12]}${Math.floor(nearest / 12) - 1}`;
-    return Math.abs(off) > 10 ? `${name} ${off > 0 ? "+" : "−"}${Math.abs(off)}` : name;
-  }
-
   function whence(on: OnMic): string {
     if (on.kept === "guest-book") return `${on.singer}'s own, from the guest book`;
     if (on.kept === "tonight") return `${on.singer}'s own, kept for tonight`;
@@ -396,6 +425,30 @@
                 >
               {/if}
             </div>
+            {#if on}
+              <!-- K8: their range, from this microphone. -->
+              <div class="range" role="group" aria-label="{on.singer}'s range">
+                {#if take && take.singer.toLowerCase() === on.singer.toLowerCase() && !take.done}
+                  <p class="taking" role="status" data-range-take>
+                    {on.singer}: sing from your lowest note to your highest, and back.
+                    <strong class="mono">{Math.ceil(take.left)} s</strong>
+                    <span class="hint">{Math.floor(take.voiced)} s of voice heard</span>
+                  </p>
+                  <button onclick={() => void forgetRange()}>Stop</button>
+                {:else}
+                  {#if take && take.singer.toLowerCase() === on.singer.toLowerCase() && take.range}
+                    <p class="found" data-range>{rangeWords(take.range)}</p>
+                  {:else if take && take.singer.toLowerCase() === on.singer.toLowerCase() && take.problem}
+                    <p class="problem" role="status">{take.problem}</p>
+                  {/if}
+                  <button
+                    disabled={taking}
+                    title="Twenty seconds of {on.singer} sliding from their lowest note to their highest, read from Mic {i + 1}"
+                    onclick={() => void findRange(on.singer)}>Find {on.singer}'s range</button
+                  >
+                {/if}
+              </div>
+            {/if}
             <StripChain
               index={i}
               {strip}
@@ -602,6 +655,26 @@
   .buffer select {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .range {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+  }
+
+  .range p {
+    margin: 0;
+  }
+
+  .range .found {
+    font-weight: 600;
+  }
+
+  .range .problem {
+    color: var(--warn);
   }
 
   .who {

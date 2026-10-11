@@ -4933,7 +4933,31 @@ export interface Singer {
   from_phone?: boolean;
   /** K4: their phone said they are ready while up next. */
   ready?: boolean;
+  /** K8: their range, read from their microphone tonight. */
+  range?: SungRange | null;
 }
+
+/** K8: a range of pitches, in cents above A4, from `dj_app::range::Range`. */
+export interface SungRange {
+  low: number;
+  high: number;
+}
+
+/** K8: a range being read from a singer's microphone, from `dj_app::commands::RangeTakeDto`. */
+export interface RangeTake {
+  singer: string;
+  /** Seconds left to sing. */
+  left: number;
+  /** Seconds of voice heard so far. */
+  voiced: number;
+  done: boolean;
+  problem: string | null;
+  range: SungRange | null;
+}
+
+export const karaokeRangeStart = (singer: string) => invoke<RangeTake | null>("karaoke_range_start", { singer });
+export const karaokeRangeTake = () => invoke<RangeTake | null>("karaoke_range_take");
+export const karaokeRangeCancel = () => invoke<void>("karaoke_range_cancel");
 
 /** K4: what phones may do on the room's page (docs/KARAOKE.md §7). */
 export interface SingRules {

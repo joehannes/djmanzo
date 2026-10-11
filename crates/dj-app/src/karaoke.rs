@@ -92,6 +92,10 @@ pub struct Singer {
     /// when they sing or are passed over.
     #[serde(default)]
     pub ready: bool,
+    /// K8: their range, read from their microphone tonight
+    /// (docs/KARAOKE.md §11).
+    #[serde(default)]
+    pub range: Option<crate::range::Range>,
 }
 
 /// Somebody sang something, in some key. The history keys are read from.
@@ -270,6 +274,7 @@ impl Rotation {
                 microphone: None,
                 from_phone: false,
                 ready: false,
+                range: None,
             }),
         }
         true

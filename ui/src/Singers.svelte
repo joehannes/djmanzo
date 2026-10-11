@@ -16,6 +16,7 @@
   import Packs from "./Packs.svelte";
   import WordTiming from "./WordTiming.svelte";
   import { validate } from "./looks";
+  import { rangeWords } from "./notes";
   import {
     detachPanel,
     dispatch,
@@ -590,6 +591,12 @@
         {upNext.name}
         {#if upNext.ready}<span class="badge ready" data-ready>Ready</span>{/if}
         {#if upNext.from_phone}<span class="badge" title="Put their own name down from their phone">phone</span>{/if}
+        {#if upNext.range}
+          <!-- K8: their range, read from their microphone. -->
+          <span class="range" data-range title="{upNext.name}'s range, read from their microphone tonight"
+            >{rangeWords(upNext.range)}</span
+          >
+        {/if}
       </p>
       <p class="what">{next.title}</p>
       {#if next.track && line !== undefined}
@@ -1158,6 +1165,7 @@
     bind:vocals={mics}
     singers={(rotation?.singers ?? []).map((s) => s.name)}
     {buffer}
+    onrange={() => void refresh()}
   />
 
   <WordTiming {decks} {deckCount} />
@@ -1269,6 +1277,13 @@
   .breaks .chosen .why {
     margin-left: 0.5rem;
     font-size: 0.85em;
+  }
+
+  .up .who .range {
+    margin-left: 0.5rem;
+    font-size: 0.85em;
+    font-weight: 400;
+    color: var(--text-dim);
   }
 
   .up {

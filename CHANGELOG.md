@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A singer's range (K8).** Put a singer on a microphone and press *Find
+  their range*: twenty seconds of them sliding from their lowest note to
+  their highest, and djmanzo says their range in notes — *A#2 – D#4, an
+  octave and a fourth* — on their microphone's row and beside their name
+  when they are up next. Kept for tonight with their place in the rotation.
+
 - **Finish the line (K7).** A quiz question for records with timed words:
   the record plays up to the end of a line shown on the screen and the
   phones, stopping before the next; the answers are that next line and

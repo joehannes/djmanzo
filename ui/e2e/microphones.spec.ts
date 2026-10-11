@@ -501,4 +501,58 @@ test.describe("K3: the singers' microphones", () => {
     await expect(here.locator(".monitor output")).toHaveText("off");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **K8: a singer's range, from the microphone they are on.** Asked for
+   * on their row, counted down while they sing, and said in notes once
+   * Rust has read it — the reading itself is `dj_app::range`'s.
+   */
+  test("a singer's range is read from their microphone and said in notes", async ({ page }) => {
+    await singers(page, { vocals_opened: vocals.singing });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    const first = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem").nth(0);
+    await first.getByRole("button", { name: "Ana", exact: true }).click();
+    const range = here.getByRole("group", { name: "Ana's range" });
+    const rotationAsks = (
+      await page.evaluate(() => (window as unknown as { __karaoke?: { cmd: string }[] }).__karaoke ?? [])
+    ).filter((c) => c.cmd === "karaoke_rotation").length;
+    await range.getByRole("button", { name: "Find Ana's range" }).click();
+    await expect(range.locator("[data-range-take]")).toContainText("sing from your lowest note to your highest");
+    await expect(range.locator("[data-range-take]")).toContainText("20 s");
+    await page.evaluate(() => {
+      (window as unknown as { __rangeTake: unknown }).__rangeTake = {
+        singer: "Ana",
+        left: 7.2,
+        voiced: 9.6,
+        done: false,
+        problem: null,
+        range: null,
+      };
+    });
+    await expect(range.locator("[data-range-take]")).toContainText("8 s");
+    await expect(range.locator("[data-range-take]")).toContainText("9 s of voice heard");
+    await page.evaluate(() => {
+      (window as unknown as { __rangeTake: unknown }).__rangeTake = {
+        singer: "Ana",
+        left: 0,
+        voiced: 16,
+        done: true,
+        problem: null,
+        range: { low: -2400, high: -500 },
+      };
+    });
+    await expect(range.locator("[data-range]")).toHaveText("A2 – E4, an octave and a fifth");
+    // The rotation is asked again, so the range reaches the singer's row.
+    await expect
+      .poll(async () => (await page.evaluate(() => (window as unknown as { __karaoke?: { cmd: string }[] }).__karaoke ?? [])).filter((c) => c.cmd === "karaoke_rotation").length)
+      .toBeGreaterThan(rotationAsks);
+    await expect(range.getByRole("button", { name: "Find Ana's range" })).toBeEnabled();
+    const asked = await page.evaluate(
+      () => (window as unknown as { __rangeCalls?: Record<string, unknown>[] }).__rangeCalls ?? [],
+    );
+    expect(asked[0]).toMatchObject({ cmd: "karaoke_range_start", singer: "Ana" });
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

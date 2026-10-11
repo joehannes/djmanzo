@@ -611,3 +611,23 @@ test.describe("K7: a quiz made from the collection", () => {
     await expect(quiz).toContainText("Finish the line");
   });
 });
+
+test.describe("K8: a singer's range", () => {
+  /** **The up-next singer's range, read tonight, is on their row in notes.** */
+  test("the up-next singer's range is on their row", async ({ page }) => {
+    const song = (title: string) => [{ title, track: null, path: null, key: 0 }];
+    await openSingers(page, {
+      karaoke_rotation: {
+        singers: [
+          { name: "Ana", songs: song("Valerie"), turns: 0, range: { low: -2400, high: -500 } },
+          { name: "Bo", songs: song("Jolene"), turns: 0 },
+        ],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    await expect(up.locator("[data-range]")).toHaveText("A2 – E4, an octave and a fifth");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

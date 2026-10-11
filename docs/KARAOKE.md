@@ -1622,9 +1622,11 @@ range*: twenty seconds in which the singer slides from the lowest note
 they can hold comfortably to the highest and back — the panel says so, in
 those words, and shows the note heard as it moves (K6 already draws it on
 the Microphones row). The readings of their strip are kept while it runs;
-the range is the 10th to the 90th percentile of the voiced ones, so a
-crack at the top, a growl at the bottom and YIN's odd octave slip do not
-become the range. Fewer than four seconds of voice is not a range, and is
+the range is the 5th to the 95th percentile of the voiced ones, so a
+crack at the top, a growl at the bottom and YIN's odd octave slip — a
+handful of readings each — do not become the range, while the slide's two
+ends, which it passes only briefly and which are the very notes asked for,
+still do. Fewer than four seconds of voice is not a range, and is
 said so rather than guessed from. The result reads as notes: *A2 – E4,
 an octave and a fifth*. Taken again, it replaces the last.
 
@@ -1691,3 +1693,28 @@ from its key.
 Driven, as K6 was, with the null backend singing a synthetic voice into a
 strip — a slide from A2 to E4 — and records whose vocal lines are known.
 Nothing here can say how a real voice measures.
+
+**Step 1, the ranges — built (11 October).** `range::of_singer` reads the
+5th to 95th percentile of a take's voiced readings (four seconds of voice
+at least), `range::of_line` the 10th to 90th of a scorable vocal line,
+and `range::offer` the key: for every change from −6 to +6, the song
+placed at the octave where it has most room inside the singer's range;
+the smallest change with room offered, the roomier of two as small; past
+±4 a stretch. `range::Take` keeps one strip's readings for twenty seconds
+— fed from K6's listening thread beside the score — and reads the range
+once, onto the singer's place in tonight's rotation (`Singer::range`), or
+says there was not enough voice. In the Microphones section, a singer on
+a strip has *Find their range* under their row; while it runs the row
+says *sing from your lowest note to your highest, and back*, counts down
+and counts the voice heard; then it says the range in notes and the span
+between them — *A#2 – D#4, an octave and a fourth* — and the up-next row
+shows it too. Driven with the null input sliding A2 to E4 and back, eight
+seconds each way: read as A#2 – D#4, which is what the 5th to 95th
+percentile of that slide is. The design first said 10th to 90th for both;
+measuring a slide showed that trims the singer's two ends — the notes
+being asked for, which a slide passes only briefly — by two semitones
+each, while a crack or an octave slip is a handful of readings; a record
+keeps 10th to 90th, where the trimmed tail really is the one high note.
+The drive also found the range reaching the rotation unseen by the panel,
+which only re-reads the rotation on its own changes; the Microphones
+section tells it to once a take has read a range.

@@ -86,6 +86,7 @@ pub mod presets;
 pub mod profile;
 pub mod quiz;
 pub mod rackcapture;
+pub mod range;
 pub mod regress;
 pub mod remembered;
 pub mod remote;
@@ -496,6 +497,8 @@ pub fn run() {
                     crate::listen::spawn(state.registry(), move |heard| {
                         let state: tauri::State<'_, AppState> = scorer.state();
                         commands::score_heard(&state, heard);
+                        // K8: and a singer's range, while one is read.
+                        commands::range_heard(&state, heard);
                     });
                 }
                 let pump = handle.clone();
@@ -1021,6 +1024,9 @@ pub fn run() {
             commands::quiz_reveal,
             commands::quiz_end,
             commands::quiz_screen,
+            commands::karaoke_range_start,
+            commands::karaoke_range_take,
+            commands::karaoke_range_cancel,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::list_events,

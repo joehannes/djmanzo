@@ -2746,6 +2746,21 @@ export async function openShell(
           // K7: the quiz. Recorded like the rotation; the questions and
           // their clips are Rust's and tested there, so a question asked is
           // the test's `quiz_question`, and its answer `quiz_right`.
+          // K8: a range take — started as Rust starts one, then whatever the
+          // test has put in `__rangeTake`; the reading is Rust's.
+          if (cmd === "karaoke_range_start") {
+            ((win.__rangeCalls ??= []) as unknown[]).push({ cmd, ...args });
+            win.__rangeTake = { singer: args.singer, left: 20, voiced: 0, done: false, problem: null, range: null };
+            return Promise.resolve(structuredClone(win.__rangeTake as unknown));
+          }
+          if (cmd === "karaoke_range_take") {
+            return Promise.resolve(structuredClone((win.__rangeTake ?? null) as unknown));
+          }
+          if (cmd === "karaoke_range_cancel") {
+            ((win.__rangeCalls ??= []) as unknown[]).push({ cmd });
+            win.__rangeTake = null;
+            return Promise.resolve(null);
+          }
           // K7: the quiz on the singers' screen — the test's `quiz_screen`,
           // or what it has since put in `__quizScreen`.
           if (cmd === "quiz_screen") {

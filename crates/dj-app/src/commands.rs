@@ -15792,6 +15792,107 @@ pub fn karaoke_rotation(state: State<'_, AppState>) -> RotationDto {
     with_rotation(&state, |_| false)
 }
 
+/// K8: a range take as the Singers panel draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RangeTakeDto {
+    pub singer: String,
+    /// Seconds left to sing.
+    pub left: f64,
+    /// Seconds of voice heard so far.
+    pub voiced: f64,
+    /// Over, and read — or not, with why.
+    pub done: bool,
+    pub problem: Option<String>,
+    /// The range read, once it has been.
+    pub range: Option<crate::range::Range>,
+}
+
+fn range_take_dto(state: &AppState) -> Option<RangeTakeDto> {
+    let take = state.range_take().lock().ok()?;
+    let take = take.as_ref()?;
+    Some(RangeTakeDto {
+        singer: take.singer.clone(),
+        left: (crate::range::TAKE_SECONDS - take.started.elapsed().as_secs_f64()).max(0.0),
+        voiced: take.voiced(),
+        done: take.result.is_some(),
+        problem: take.result.clone().and_then(Result::err),
+        range: take.result.clone().and_then(Result::ok),
+    })
+}
+
+/// K8: start reading `singer`'s range from the microphone they are on —
+/// twenty seconds of them sliding from their lowest note to their highest
+/// (docs/KARAOKE.md §11).
+///
+/// # Errors
+/// They are not on a microphone.
+#[tauri::command]
+pub fn karaoke_range_start(
+    state: State<'_, AppState>,
+    singer: String,
+) -> Result<Option<RangeTakeDto>, String> {
+    let strip = lock(state.on_mics())
+        .iter()
+        .position(|on| {
+            on.as_ref()
+                .is_some_and(|on| on.singer.to_lowercase() == singer.to_lowercase())
+        })
+        .ok_or_else(|| {
+            format!("Put {singer} on a microphone first: their range is read from it.")
+        })?;
+    if let Ok(mut take) = state.range_take().lock() {
+        *take = Some(crate::range::Take::new(&singer, strip));
+    }
+    Ok(range_take_dto(&state))
+}
+
+/// K8: the range take, while one runs and once it has ended.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_range_take(state: State<'_, AppState>) -> Option<RangeTakeDto> {
+    range_take_dto(&state)
+}
+
+/// K8: stop a range take, or forget one that has ended.
+#[tauri::command]
+pub fn karaoke_range_cancel(state: State<'_, AppState>) {
+    if let Ok(mut take) = state.range_take().lock() {
+        *take = None;
+    }
+}
+
+/// K8: one reading of every strip, for the range take if one runs; the
+/// range, once read, onto the singer's place in tonight's rotation. On the
+/// listening thread.
+pub(crate) fn range_heard(state: &AppState, heard: &[Option<f32>]) {
+    let read = {
+        let Ok(mut take) = state.range_take().lock() else {
+            return;
+        };
+        let Some(take) = take.as_mut() else {
+            return;
+        };
+        let seconds = take.started.elapsed().as_secs_f64();
+        take.hear(heard, seconds)
+            .map(|range| (take.singer.clone(), range))
+    };
+    if let Some((name, range)) = read {
+        state.change_karaoke(|rotation| {
+            match rotation
+                .singers
+                .iter_mut()
+                .find(|singer| singer.name.to_lowercase() == name.to_lowercase())
+            {
+                Some(singer) => {
+                    singer.range = Some(range);
+                    (true, ())
+                }
+                None => (false, ()),
+            }
+        });
+    }
+}
+
 /// K4: take what phones sent into the rotation, if they sent anything.
 pub(crate) fn from_phones_due(state: &AppState) {
     let news = state
