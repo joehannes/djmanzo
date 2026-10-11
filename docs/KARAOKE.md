@@ -1522,3 +1522,28 @@ worst, the room's page said *Playing now: Darte un Beso* during a question
 about Darte un Beso. The room is now not told the quiz's record while its
 question is open (`commands::quiz_secret`) — neither the room's page nor
 the stream's line — and is told again once the answer is shown.
+
+**Step 3, the screen — built (11 October).** While a round runs the
+singers' screen is the quiz's (`commands::quiz_screen`, asked every
+second): *Question 3 of 10 · Backwards* in the song's place, then
+*Listen…* while the clip plays, the seconds left to answer once it is over
+(from the book's own close, `Asked::closes_in`), *Time's up* after; the
+four answers lettered as on the phones, two by two, as large as a line of
+words. Shown, the right answer is marked, the others fade, and each says
+how many phones chose it; between questions the night's top ten and where
+to join — the room's page's own address and QR square, the one printed on
+the stickers, since the room's page leads to the quiz while a round runs.
+The record's name, its words and its cover are not drawn while the quiz
+has the screen, and `singer_lyrics` and `singer_backdrop` refuse the
+quiz's record while its question is open: with no singer's deck playing
+the screen follows whatever plays, which during a question is the clip.
+Tonight's best, the scores and the versus bars give way to the quiz's
+board; who is next stays — the rotation is the interlude. When the round
+ends the words come back. Driven in WebKitGTK: *Listen…*, a countdown
+from ten, the reveal with *1 phone* beside the right answer and beside a
+wrong one, *1 Ana 590* and the QR square. The drive showed the answers
+jumping as *Listen…* became a large countdown digit (the line has one
+height now), and a bare *1* beside an answer read as nothing from across
+a room (*1 phone* now). Not held by a test: the two commands' refusal,
+which needs a library a unit test does not have; the screen hides the
+record whatever they answer.

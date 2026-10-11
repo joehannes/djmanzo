@@ -342,6 +342,7 @@ export const ANSWERS: Record<string, unknown> = {
     number: 1,
   },
   quiz_right: 1,
+  quiz_screen: { on: false, question: null, leaders: [], join: null },
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -2744,6 +2745,11 @@ export async function openShell(
           // K7: the quiz. Recorded like the rotation; the questions and
           // their clips are Rust's and tested there, so a question asked is
           // the test's `quiz_question`, and its answer `quiz_right`.
+          // K7: the quiz on the singers' screen — the test's `quiz_screen`,
+          // or what it has since put in `__quizScreen`.
+          if (cmd === "quiz_screen") {
+            return Promise.resolve(structuredClone((win.__quizScreen ?? answers.quiz_screen) as unknown));
+          }
           if (cmd.startsWith("quiz")) {
             ((win.__quizCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
             type Held = { asked: number; question: Record<string, unknown> | null } & Record<string, unknown>;

@@ -1020,6 +1020,7 @@ pub fn run() {
             commands::quiz_again,
             commands::quiz_reveal,
             commands::quiz_end,
+            commands::quiz_screen,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::list_events,

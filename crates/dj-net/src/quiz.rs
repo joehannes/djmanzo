@@ -71,6 +71,17 @@ impl Asked {
         !self.settled && self.closes.is_none_or(|closes| now <= closes)
     }
 
+    /// How long answers are still taken, once the clip is over; `None`
+    /// while it plays, and nothing left once settled.
+    #[must_use]
+    pub fn closes_in(&self, now: SystemTime) -> Option<Duration> {
+        if self.settled {
+            return Some(Duration::ZERO);
+        }
+        self.closes
+            .map(|closes| closes.duration_since(now).unwrap_or_default())
+    }
+
     /// How many phones chose each answer.
     #[must_use]
     pub fn counts(&self) -> [usize; 4] {
@@ -365,7 +376,16 @@ mod tests {
         let id = book.ask(answers(), 2, 1, 10, at(0.0));
         assert_eq!(book.answer("quick", id, 2, at(0.0)), Answered::Taken);
         assert_eq!(book.answer("wrong", id, 1, at(1.0)), Answered::Taken);
+        assert_eq!(
+            book.question().unwrap().closes_in(at(5.0)),
+            None,
+            "while the clip plays"
+        );
         book.clip_over(at(10.0));
+        assert_eq!(
+            book.question().unwrap().closes_in(at(13.0)),
+            Some(Duration::from_secs(7))
+        );
         assert_eq!(book.answer("slow", id, 2, at(15.0)), Answered::Taken);
         assert_eq!(
             book.points_of("quick"),
@@ -387,6 +407,10 @@ mod tests {
         assert_eq!(book.points_of("late"), 0);
         assert_eq!(book.question().unwrap().counts(), [0, 1, 2, 0]);
         assert_eq!(book.question().unwrap().right(), Some(2));
+        assert_eq!(
+            book.question().unwrap().closes_in(at(30.0)),
+            Some(Duration::ZERO)
+        );
     }
 
     /// **Shown early, the question closes then**, and the clock for the

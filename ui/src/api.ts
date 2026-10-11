@@ -5370,6 +5370,37 @@ export const quizAgain = () => invoke<Quiz>("quiz_again");
 export const quizReveal = () => invoke<Quiz>("quiz_reveal");
 export const quizEnd = () => invoke<Quiz>("quiz_end");
 
+/** K7: the question on the room's display, from `dj_app::commands::QuizScreenQuestionDto`. */
+export interface QuizScreenQuestion {
+  /** Counted from one. */
+  number: number;
+  of: number;
+  /** What the kind is called. */
+  words: string;
+  answers: [string, string, string, string];
+  /** The right one, once shown. */
+  right: number | null;
+  /** How many phones chose each, once shown. */
+  counts: [number, number, number, number] | null;
+  /** The clip is on its deck. */
+  playing: boolean;
+  /** Seconds left to answer, once the clip is over. */
+  closes_in: number | null;
+}
+
+/** K7: the quiz for the singers' screen, from `dj_app::commands::QuizScreenDto`. */
+export interface QuizScreen {
+  /** A round is running: the screen is the quiz's. */
+  on: boolean;
+  question: QuizScreenQuestion | null;
+  /** The night's top ten: nickname and points. */
+  leaders: [string, number][];
+  /** Where phones join, between questions. */
+  join: WayIn | null;
+}
+
+export const quizScreen = () => invoke<QuizScreen>("quiz_screen");
+
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for
  * it. From `dj_app::activity`.

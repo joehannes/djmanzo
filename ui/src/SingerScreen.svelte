@@ -29,12 +29,20 @@
    * Under the words (K4): who is next and with what, the two after them by
    * name only, and a line of the host's own; the DJ's logo in a corner. All
    * below the words or beside the song's name, so none can cover a lyric.
+   *
+   * K7: while a quiz round runs the screen is the quiz's — the question in
+   * the words' place, the answers lettered as on the phones, a countdown,
+   * the answer with how many phones chose each, and between questions the
+   * leaderboard and where to join. The record's name, words and cover are
+   * not drawn while it does: on the room's display they would be the answer.
    */
   import {
     artUrl,
     hasBrandLogo,
     karaokeRotation,
     logoUrl,
+    quizScreen,
+    type QuizScreen,
     onBrandLogo,
     singerPhoto,
     lookChosen,
@@ -229,6 +237,32 @@
     };
   });
 
+  /**
+   * K7: the quiz, asked every second while it runs (the countdown), and every
+   * three while it does not, so a round the host starts takes the screen.
+   */
+  let quiz = $state<QuizScreen | null>(null);
+  const quizOn = $derived(quiz?.on ?? false);
+  $effect(() => {
+    let alive = true;
+    const ask = async () => {
+      while (alive) {
+        try {
+          quiz = await quizScreen();
+        } catch {
+          // No quiz is the screen as it was.
+        }
+        await new Promise((r) => setTimeout(r, quiz?.on ? 1_000 : 3_000));
+      }
+    };
+    void ask();
+    return () => {
+      alive = false;
+    };
+  });
+  const LETTERS = ["A", "B", "C", "D"] as const;
+  const quizBetween = $derived(!!quiz?.on && (!quiz.question || quiz.question.right !== null));
+
   /** K4: the DJ's logo, when there is one; asked again when it changes. */
   let logo = $state<number | null>(null);
   $effect(() => {
@@ -244,8 +278,8 @@
 </script>
 
 <div class="screen" data-singer-screen>
-  <div class="backdrop" data-backdrop={backdrop?.source ?? "none"} aria-hidden="true">
-    {#each (backdrop?.shades ?? []).slice(0, GLOWS.length) as shade, i (i)}
+  <div class="backdrop" data-backdrop={quizOn ? "quiz" : (backdrop?.source ?? "none")} aria-hidden="true">
+    {#each (quizOn ? [] : (backdrop?.shades ?? [])).slice(0, GLOWS.length) as shade, i (i)}
       <span
         class="glow"
         data-shade={shade.colour}
@@ -253,7 +287,7 @@
         style:opacity={0.2 + 0.4 * shade.weight}
       ></span>
     {/each}
-    {#if backdrop && backdrop.source !== "sound" && !coverFailed}
+    {#if !quizOn && backdrop && backdrop.source !== "sound" && !coverFailed}
       <img class="cover" src={artUrl(backdrop.track)} alt="" onerror={() => (coverFailed = true)} />
     {/if}
     {#if shown}
@@ -269,6 +303,58 @@
     {/if}
   </div>
 
+  {#if quiz?.on}
+    <!-- K7: the quiz, in the words' place; nothing of the record's own. -->
+    <div class="quiz" data-quiz-screen aria-live="polite">
+      {#if quiz.question}
+        {@const q = quiz.question}
+        <p class="quiz-head">Question {q.number} of {q.of} · <strong>{q.words}</strong></p>
+        {#if q.right === null}
+          {#if q.playing}
+            <p class="quiz-state" data-quiz-state="listen">Listen…</p>
+          {:else if q.closes_in !== null && q.closes_in > 0}
+            <p class="quiz-state countdown" data-quiz-state="countdown">{Math.ceil(q.closes_in)}</p>
+          {:else}
+            <p class="quiz-state" data-quiz-state="closed">Time's up</p>
+          {/if}
+        {/if}
+        <ol class="quiz-answers">
+          {#each q.answers as answer, at (at)}
+            <li data-right={q.right === at || undefined} data-wrong={(q.right !== null && q.right !== at) || undefined}>
+              <span class="letter">{LETTERS[at]}</span>
+              <span class="answer">{answer}</span>
+              {#if q.counts}
+                <span class="phones" data-phones-chose>{q.counts[at]} {q.counts[at] === 1 ? "phone" : "phones"}</span>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+      {:else}
+        <p class="quiz-head"><strong>Quiz</strong></p>
+        <p class="quiz-state">Get your phones out</p>
+      {/if}
+      {#if quizBetween}
+        <div class="quiz-foot">
+          {#if quiz.leaders.length > 0}
+            <ol class="quiz-leaders" data-quiz-leaders>
+              {#each quiz.leaders as [nickname, points], place (place)}
+                <li><span class="place">{place + 1}</span> <span class="who">{nickname}</span> <strong>{points}</strong></li>
+              {/each}
+            </ol>
+          {/if}
+          {#if quiz.join}
+            <div class="quiz-join" data-quiz-join>
+              {#if quiz.join.qr}
+                <!-- Rust's own square (dj_net::sticker), the one printed on the stickers. -->
+                <span class="qr">{@html quiz.join.qr}</span>
+              {/if}
+              <p>Play along: <strong>{quiz.join.url}</strong></p>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else}
   {#if deck?.title}
     <p class="song">{deck.title}{deck.artist ? ` — ${deck.artist}` : ""}</p>
   {/if}
@@ -316,6 +402,7 @@
       <p class="none">No words for this song yet.</p>
     {/if}
   </div>
+  {/if}
 
   <div class="foot">
     {#if next}
@@ -327,7 +414,7 @@
     {#if rotation?.line}
       <p class="host-line" data-host-line>{rotation.line}</p>
     {/if}
-    {#if rotation?.versus}
+    {#if rotation?.versus && !quizOn}
       <!-- K6: the round, two bars. -->
       <div class="versus" data-versus>
         {#each rotation.versus as team (team.name)}
@@ -339,7 +426,9 @@
         {/each}
       </div>
     {/if}
-    {#if singer && (rotation?.scores ?? []).some((s) => s.percent !== null)}
+    {#if quizOn}
+      <!-- K7: the quiz's leaderboard is the one on the screen. -->
+    {:else if singer && (rotation?.scores ?? []).some((s) => s.percent !== null)}
       <!-- K6: how the singing is going, small and under the words. -->
       <p class="scores" data-scores>
         {#each (rotation?.scores ?? []).filter((s) => s.percent !== null) as score (score.strip)}
@@ -618,6 +707,137 @@
   }
 
   /* The singer's photo, in the corner under the words' height. */
+  /* K7: the quiz, as large as the words it stands in for. */
+  .quiz {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2vh;
+    min-height: 0;
+  }
+
+  .quiz-head {
+    margin: 0;
+    font-size: 3.4vh;
+    opacity: 0.85;
+  }
+
+  /* One height for "Listen…", the countdown and "Time's up", so the answers
+     do not jump as it changes. */
+  .quiz-state {
+    margin: 0;
+    height: 11vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 5vh;
+    font-weight: 600;
+  }
+
+  .quiz-state.countdown {
+    font-size: 9vh;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .quiz-answers {
+    list-style: none;
+    margin: 0 auto;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.6vh 3vw;
+    width: min(100%, 120vh);
+    text-align: left;
+  }
+
+  .quiz-answers li {
+    display: flex;
+    align-items: center;
+    gap: 1.6vh;
+    padding: 1.6vh 2vh;
+    border-radius: 1.2vh;
+    background: rgb(255 255 255 / 0.08);
+    font-size: 3.6vh;
+    line-height: 1.2;
+  }
+
+  .quiz-answers .letter {
+    font-weight: 800;
+    font-size: 4.4vh;
+    min-width: 4.4vh;
+    color: rgb(130 185 255);
+  }
+
+  .quiz-answers .answer {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .quiz-answers .phones {
+    font-size: 3vh;
+    opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .quiz-answers li[data-right] {
+    background: rgb(60 190 110 / 0.35);
+    outline: 0.4vh solid rgb(110 230 150);
+  }
+
+  .quiz-answers li[data-wrong] {
+    opacity: 0.45;
+  }
+
+  .quiz-foot {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5vw;
+  }
+
+  .quiz-leaders {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 2.8vh;
+    text-align: left;
+    columns: 2;
+    column-gap: 4vw;
+  }
+
+  .quiz-leaders .place {
+    display: inline-block;
+    min-width: 3vh;
+    opacity: 0.7;
+  }
+
+  .quiz-join {
+    display: flex;
+    align-items: center;
+    gap: 2vh;
+    font-size: 2.6vh;
+  }
+
+  .quiz-join p {
+    margin: 0;
+  }
+
+  .quiz-join .qr {
+    display: block;
+    width: 16vh;
+    height: 16vh;
+    padding: 1vh;
+    background: white;
+    border-radius: 1vh;
+  }
+
+  .quiz-join .qr :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+
   .screen > .singer-photo {
     position: absolute;
     left: 3vw;

@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The quiz on the singers' screen (K7).** While a round runs, the room's
+  display shows the question, the four answers lettered as on the phones,
+  *Listen…* during the clip and a countdown after it, then the answer with
+  how many phones chose each, and between questions the night's top ten
+  with the room page's QR code to join. The record's name, words and cover
+  are kept off it while its question is open.
+
 - **The quiz on phones (K7).** While a quiz round runs, the room's page
   invites phones to play along: a nickname once a night, then each question
   as four large buttons, one answer each, refused once the question has

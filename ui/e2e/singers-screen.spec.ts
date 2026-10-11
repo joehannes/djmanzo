@@ -316,3 +316,113 @@ test.describe("§107: the singers' screen", () => {
     await expect(page.locator(`${SCREEN} [data-up-next]`)).toContainText("Hey Jude");
   });
 });
+
+test.describe("K7: the quiz on the singers' screen", () => {
+  const QUESTION = {
+    number: 3,
+    of: 10,
+    words: "Backwards",
+    answers: [
+      "Propuesta Indecente — Romeo Santos",
+      "Bachata Rosa — Juan Luis Guerra",
+      "Darte un Beso — Prince Royce",
+      "Eres Mía — Romeo Santos",
+    ],
+    right: null,
+    counts: null,
+    playing: false,
+    closes_in: 6.2,
+  };
+  const QR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>';
+
+  async function quizScreen(page: Page, next: unknown) {
+    await page.evaluate((next) => {
+      (window as unknown as { __quizScreen: unknown }).__quizScreen = next;
+    }, next);
+  }
+
+  /**
+   * **The load-bearing one: while a question is open the screen is the
+   * question, never the record.** The record on the singing deck is the
+   * clip's — its name, its words and its cover would be the answer — so
+   * none of them is drawn; the four answers are, lettered, with a countdown.
+   */
+  test("a question takes the screen, and the record's name, words and cover do not show", async ({ page }) => {
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        singer_backdrop: {
+          source: "archive",
+          track: "ab".repeat(32),
+          shades: [{ colour: "rgb(255 60 0)", weight: 1 }],
+          pending: false,
+        },
+        quiz_screen: { on: true, question: QUESTION, leaders: [["Ana", 900]], join: null },
+      },
+    );
+    await singing(page, 14.5);
+    const quiz = page.locator(`${SCREEN} [data-quiz-screen]`);
+    await expect(quiz).toBeVisible();
+    await expect(quiz).toContainText("Question 3 of 10 · Backwards");
+    await expect(quiz.locator("[data-quiz-state]")).toHaveText("7");
+    await expect(quiz.locator(".quiz-answers li")).toHaveText([
+      /^\s*A\s+Propuesta Indecente — Romeo Santos\s*$/,
+      /^\s*B\s+Bachata Rosa — Juan Luis Guerra\s*$/,
+      /^\s*C\s+Darte un Beso — Prince Royce\s*$/,
+      /^\s*D\s+Eres Mía — Romeo Santos\s*$/,
+    ]);
+    await expect(page.locator(SCREEN)).not.toContainText("So long my friend");
+    await expect(page.locator(`${SCREEN} .song`)).toHaveCount(0);
+    await expect(page.locator(`${SCREEN} [data-backdrop]`)).toHaveAttribute("data-backdrop", "quiz");
+    await expect(page.locator(`${SCREEN} .glow`)).toHaveCount(0);
+    // The board waits for the answer: read now, it would be read instead of the question.
+    await expect(page.locator(`${SCREEN} [data-quiz-leaders]`)).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Listen, then the answer with each answer's count, then the board and
+   * where to join; and the words come back when the round ends.**
+   */
+  test("listen, the reveal with counts, the board, and the words back after", async ({ page }) => {
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        quiz_screen: { on: true, question: { ...QUESTION, playing: true, closes_in: null }, leaders: [], join: null },
+      },
+    );
+    await singing(page, 14.5);
+    const quiz = page.locator(`${SCREEN} [data-quiz-screen]`);
+    await expect(quiz.locator("[data-quiz-state]")).toHaveText("Listen…");
+
+    await quizScreen(page, {
+      on: true,
+      question: { ...QUESTION, right: 1, counts: [0, 5, 2, 1], closes_in: 0 },
+      leaders: [
+        ["Ana", 900],
+        ["Bo", 625],
+      ],
+      join: { kind: "lan", url: "http://192.168.1.20:7331/", caveat: "", qr: QR },
+    });
+    await expect(quiz.locator("li[data-right]")).toContainText("Bachata Rosa");
+    await expect(quiz.locator("li[data-right] [data-phones-chose]")).toHaveText("5 phones");
+    await expect(quiz.locator("li[data-wrong]")).toHaveCount(3);
+    await expect(quiz.locator("[data-quiz-state]")).toHaveCount(0);
+    await expect(quiz.locator("[data-quiz-leaders] li")).toHaveText([/1\s+Ana\s+900/, /2\s+Bo\s+625/]);
+    await expect(quiz.locator("[data-quiz-join]")).toContainText("Play along: http://192.168.1.20:7331/");
+    await expect(quiz.locator("[data-quiz-join] svg")).toHaveCount(1);
+
+    await quizScreen(page, { on: false, question: null, leaders: [], join: null });
+    await expect(quiz).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText(/So\s+long\s+my\s+friend/);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

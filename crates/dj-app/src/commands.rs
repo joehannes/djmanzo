@@ -17550,6 +17550,68 @@ mod quiz_view_tests {
         assert_eq!(shown.question.unwrap().right, Some(2));
     }
 
+    /// **The room's display: the countdown once the clip is over, and the
+    /// answer with each answer's count only once shown.**
+    #[test]
+    fn the_screen_counts_down_and_shows_the_counts_once_revealed() {
+        use std::time::{Duration, SystemTime};
+        let state = crate::state::AppState::new(true);
+        let now = SystemTime::now();
+        assert!(
+            !super::quiz_screen_of(&state, now).on,
+            "no round, no quiz on the screen"
+        );
+        let answers = ["A", "B", "C", "D"].map(str::to_owned);
+        if let Ok(mut round) = state.quiz().lock() {
+            round.asked.push(dj_core::TrackId::from_bytes([1; 32]));
+            round.question = Some(crate::quiz::Question {
+                kind: crate::quiz::Kind::Backwards,
+                record: dj_core::TrackId::from_bytes([1; 32]),
+                path: std::path::PathBuf::new(),
+                answers: answers.clone(),
+                right: 3,
+                from: 0.0,
+            });
+        }
+        let front = state.audience().front();
+        let id = front.quiz(|book| book.ask(answers, 3, 1, 10, now)).unwrap();
+        front.quiz(|book| {
+            book.name("phone", "Ana");
+            book.answer("phone", id, 3, now)
+        });
+        let playing = super::quiz_screen_of(&state, now)
+            .question
+            .expect("a question");
+        assert_eq!(playing.closes_in, None, "the clip is still playing");
+        front.quiz(|book| book.clip_over(now));
+        let open = super::quiz_screen_of(&state, now + Duration::from_secs(4));
+        let question = open.question.expect("a question");
+        assert_eq!(question.closes_in.map(f64::round), Some(6.0));
+        assert_eq!(
+            (question.right, question.counts),
+            (None, None),
+            "nothing given away"
+        );
+        assert_eq!(
+            (question.number, question.of, question.words),
+            (1, 10, "Backwards")
+        );
+        assert!(open.leaders.is_empty(), "no points before the answer");
+
+        if let Ok(mut round) = state.quiz().lock() {
+            round.revealed = true;
+        }
+        front.quiz(|book| book.reveal(now + Duration::from_secs(5)));
+        let shown = super::quiz_screen_of(&state, now + Duration::from_secs(5));
+        let question = shown.question.expect("a question");
+        assert_eq!(question.right, Some(3));
+        assert_eq!(question.counts, Some([0, 0, 0, 1]));
+        assert_eq!(
+            shown.leaders.first().map(|(name, _)| name.as_str()),
+            Some("Ana")
+        );
+    }
+
     /// **The room is not told the quiz's record while its question is
     /// open** — not on the room's page, not on the stream — and is once the
     /// answer is shown. The DJ always is.
@@ -17868,6 +17930,92 @@ pub fn quiz_end(state: State<'_, AppState>) -> QuizDto {
     quiz_dto(&state)
 }
 
+/// K7: the quiz as the room's display draws it — the singers' screen,
+/// which a round takes over.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct QuizScreenDto {
+    /// A round is running.
+    pub on: bool,
+    pub question: Option<QuizScreenQuestionDto>,
+    /// The night's top ten: nickname and points.
+    pub leaders: Vec<(String, u32)>,
+    /// Where phones join — the room's page, which links to the quiz — between
+    /// questions, while the page is being served.
+    pub join: Option<crate::audience::WayInDto>,
+}
+
+/// K7: the question on the room's display.
+#[derive(Debug, Clone, Serialize)]
+pub struct QuizScreenQuestionDto {
+    /// Counted from one.
+    pub number: usize,
+    pub of: usize,
+    /// What the kind is called.
+    pub words: &'static str,
+    pub answers: [String; 4],
+    /// The right one, once shown.
+    pub right: Option<usize>,
+    /// How many phones chose each, once shown.
+    pub counts: Option<[usize; 4]>,
+    /// The clip is on its deck.
+    pub playing: bool,
+    /// Seconds left to answer, once the clip is over.
+    pub closes_in: Option<f64>,
+}
+
+/// K7: the quiz for the room's display.
+#[tauri::command]
+#[must_use]
+pub fn quiz_screen(state: State<'_, AppState>) -> QuizScreenDto {
+    quiz_screen_of(&state, std::time::SystemTime::now())
+}
+
+/// K7: [`quiz_screen`], at `now`.
+fn quiz_screen_of(state: &AppState, now: std::time::SystemTime) -> QuizScreenDto {
+    let (on, question) = match state.quiz().lock() {
+        Ok(round) => (
+            round.question.is_some(),
+            round.question.as_ref().map(|q| QuizScreenQuestionDto {
+                number: round.asked.len(),
+                of: round.settings.count,
+                words: q.kind.words(),
+                answers: q.answers.clone(),
+                right: round.revealed.then_some(q.right),
+                counts: None,
+                playing: round.clip.is_some(),
+                closes_in: None,
+            }),
+        ),
+        Err(_) => (false, None),
+    };
+    let front = state.audience().front();
+    let (question, leaders) = front
+        .quiz(|book| {
+            let asked = book.question();
+            let question = question.clone().map(|mut q| {
+                q.counts = asked
+                    .filter(|a| a.right().is_some())
+                    .map(dj_net::quiz::Asked::counts);
+                q.closes_in = asked
+                    .and_then(|a| a.closes_in(now))
+                    .map(|left| left.as_secs_f64());
+                q
+            });
+            (question, book.leaders())
+        })
+        .unwrap_or((question, Vec::new()));
+    let between = question.as_ref().is_none_or(|q| q.right.is_some());
+    let join = (on && between)
+        .then(|| state.audience().status().ways_in.into_iter().next())
+        .flatten();
+    QuizScreenDto {
+        on,
+        question,
+        leaders,
+        join,
+    }
+}
+
 /// K7: one step of the quiz's clip, on the snapshot pump: started once its
 /// record is on the deck, the deck put back once it is over.
 pub fn tick_quiz(state: &AppState, now: f64) {
@@ -17914,6 +18062,10 @@ pub fn singer_lyrics(state: State<'_, AppState>, deck: u8) -> crate::karaoke::Si
     let Some(track) = DeckId::from_human(deck).and_then(|deck| state.deck_track_id(deck)) else {
         return crate::karaoke::lyrics_for(None);
     };
+    // K7: a record's words would answer the question it is the clip of.
+    if quiz_secret(&state) == Some(track) {
+        return crate::karaoke::lyrics_for(None);
+    }
     let Ok(library) = state.library().get() else {
         return crate::karaoke::lyrics_for(None);
     };
@@ -17947,6 +18099,10 @@ pub async fn singer_backdrop(
     let id = DeckId::from_human(deck)
         .and_then(|deck| state.deck_track_id(deck))
         .ok_or_else(|| format!("deck {deck} has no record on it"))?;
+    // K7: nor its cover.
+    if quiz_secret(&state) == Some(id) {
+        return Err("that record is a quiz question's".to_owned());
+    }
     let path = library(&state)?
         .track(id)
         .map_err(|e| e.to_string())?
