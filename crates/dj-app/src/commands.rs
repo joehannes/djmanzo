@@ -17751,7 +17751,32 @@ fn quiz_found(state: &AppState, deck: u8) -> crate::quiz::Found {
         keylock: get(DeckParam::Keylock) >= 0.5,
         reversed: get(DeckParam::Reversed) >= 0.5,
         synced: get(DeckParam::Synced) >= 0.5,
+        muted: [
+            get(DeckParam::StemVocalMute) >= 0.5,
+            get(DeckParam::StemDrumsMute) >= 0.5,
+            get(DeckParam::StemBassMute) >= 0.5,
+            get(DeckParam::StemOtherMute) >= 0.5,
+        ],
     }
+}
+
+/// K7: whether every second of `clip`'s span has been separated into stems
+/// on its deck.
+fn quiz_stems_ready(state: &AppState, deck: dj_core::DeckId, clip: &crate::quiz::Clip) -> bool {
+    let Some(stems) = state.deck_stems(deck, clip.record) else {
+        return false;
+    };
+    let table = stems.load();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let frame = |seconds: f64| (seconds * clip.rate).max(0.0) as usize;
+    let mut at = clip.from;
+    while at < clip.to {
+        if table.frame(frame(at)).is_none() {
+            return false;
+        }
+        at += 1.0;
+    }
+    table.frame(frame(clip.to) - 1).is_some()
 }
 
 /// K7: the clip on its deck put back, if one is — before another is asked,
@@ -17849,7 +17874,21 @@ fn quiz_next_on(state: &AppState) -> Result<(), String> {
     {
         let mut round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
         let (number, of) = (round.asked.len() + 1, round.settings.count);
-        let Some(question) = round.next(&tracks).cloned() else {
+        // *Stems in* needs a separator to bring the stems in from.
+        let separates = state.stems_worker().separator().is_some();
+        if !separates && round.settings.kinds == [crate::quiz::Kind::StemsIn] {
+            return Err(
+                "Stems in needs stem separation, which is not running here. Choose another kind \
+                 as well."
+                    .to_owned(),
+            );
+        }
+        let Some(question) = round
+            .next_of(&tracks, |kind| {
+                separates || kind != crate::quiz::Kind::StemsIn
+            })
+            .cloned()
+        else {
             round.question = None;
             return Err(
                 "No record is left to ask about: a question needs a record with a title and an \
@@ -18031,12 +18070,25 @@ pub fn tick_quiz(state: &AppState, now: f64) {
             return;
         };
         let view = automix_view(state).into_iter().find(|d| d.id == id);
+        let track = state.deck_track_id(id);
+        let stems_ready = clip.kind == crate::quiz::Kind::StemsIn
+            && clip.started.is_none()
+            && track == Some(clip.record)
+            && quiz_stems_ready(state, id, clip);
         let deck = crate::quiz::DeckView {
-            track: state.deck_track_id(id),
+            track,
             playing: view.as_ref().is_some_and(|d| d.playing),
             position: view.as_ref().map_or(0.0, |d| d.position / d.sample_rate),
+            stems_ready,
         };
         let step = clip.step(&deck, now);
+        if step.gave_up {
+            round.problem = Some(
+                "This record's stems were not separated in time to bring them in. Play it \
+                 again in a moment, or ask the next question."
+                    .to_owned(),
+            );
+        }
         if step.done {
             round.clip = None;
             // Answers are taken for ten seconds more.

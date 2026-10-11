@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Stems in (K7).** A quiz question that brings a record's separated stems
+  in one at a time over twenty seconds — drums, bass, the rest, the voice
+  last — so the quickest ears earn the most. It waits for the clip's stems
+  to be separated, and puts the deck's stem mutes back afterwards.
+
 - **The quiz on the singers' screen (K7).** While a round runs, the room's
   display shows the question, the four answers lettered as on the phones,
   *Listen…* during the clip and a countdown after it, then the answer with

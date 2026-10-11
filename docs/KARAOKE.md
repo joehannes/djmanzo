@@ -1547,3 +1547,21 @@ height now), and a bare *1* beside an answer read as nothing from across
 a room (*1 phone* now). Not held by a test: the two commands' refusal,
 which needs a library a unit test does not have; the screen hides the
 record whatever they answer.
+
+**Step 4a, *Stems in* — built (11 October).** A fourth kind
+(`Kind::StemsIn`): twenty seconds from a third of the way in, the stems
+brought in five seconds apart — drums alone, then bass, then the rest,
+the voice last (`STEMS_ORDER`) — so a phone that knows it from the beat
+alone earns most. The design asked for records whose stems are already
+separated; the deck separates any record outward from its playhead, so
+rather than limit the question to records separated before, the clip,
+once its record is on the deck, seeks to its start and waits until every
+second of its span has been separated (`commands::quiz_stems_ready`, the
+deck's own stem table), forty-five seconds at most; past that it is not
+played, the deck is put back, and the panel says so. The stem mutes are
+put back as found with the rest. Without a separator the kind is not
+drawn, and a round of nothing else says why. Driven with the built-in
+separator on a sixty-second record: drums alone at 0:23, with bass at
+0:27, with the rest at 0:32, with the voice at 0:36, paused at 0:40 with
+the stems as they were. Not driven: the wait itself — the record's span
+was separated by the time the clip asked; the tests hold it.

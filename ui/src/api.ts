@@ -5316,7 +5316,7 @@ export const karaokeBreaksSet = (
 ) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead, mixOut });
 
 /** K7: a kind of quiz question, from `dj_app::quiz::Kind`. */
-export type QuizKind = "name-it" | "backwards" | "chipmunk";
+export type QuizKind = "name-it" | "backwards" | "chipmunk" | "stems-in";
 
 /** K7: the open question, from `dj_app::commands::QuizQuestionDto`. */
 export interface QuizQuestion {

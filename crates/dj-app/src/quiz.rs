@@ -21,6 +21,26 @@ use dj_library::LibraryTrack;
 /// How long a clip lasts, in seconds of the record.
 pub const CLIP_SECONDS: f64 = 10.0;
 
+/// How long a *Stems in* clip lasts: its four stems brought in one at a
+/// time, [`STEM_EVERY`] apart.
+pub const STEMS_SECONDS: f64 = 20.0;
+
+/// How long each stem of a *Stems in* clip plays before the next joins it.
+pub const STEM_EVERY: f64 = 5.0;
+
+/// The order a *Stems in* clip brings the stems in: the rhythm first, the
+/// voice — the giveaway — last.
+pub const STEMS_ORDER: [dj_core::Stem; 4] = [
+    dj_core::Stem::Drums,
+    dj_core::Stem::Bass,
+    dj_core::Stem::Other,
+    dj_core::Stem::Vocal,
+];
+
+/// How long a *Stems in* clip waits for its stems to be separated before it
+/// gives up, in seconds.
+pub const STEMS_WAIT: f64 = 45.0;
+
 /// How fast a chipmunk plays, with keylock off: half as fast again, the voice
 /// up a fifth — the way the trick has always sounded.
 pub const CHIPMUNK_RATE: f64 = 1.5;
@@ -42,10 +62,12 @@ pub enum Kind {
     Backwards,
     /// The clip at [`CHIPMUNK_RATE`] with keylock off.
     Chipmunk,
+    /// The separated stems brought in one at a time ([`STEMS_ORDER`]).
+    StemsIn,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 3] = [Kind::NameIt, Kind::Backwards, Kind::Chipmunk];
+    pub const ALL: [Kind; 4] = [Kind::NameIt, Kind::Backwards, Kind::Chipmunk, Kind::StemsIn];
 
     /// What the screen calls it.
     #[must_use]
@@ -54,6 +76,16 @@ impl Kind {
             Kind::NameIt => "Name it",
             Kind::Backwards => "Backwards",
             Kind::Chipmunk => "Chipmunk",
+            Kind::StemsIn => "Stems in",
+        }
+    }
+
+    /// How long its clip lasts, in seconds of the record.
+    #[must_use]
+    pub const fn seconds(self) -> f64 {
+        match self {
+            Kind::StemsIn => STEMS_SECONDS,
+            _ => CLIP_SECONDS,
         }
     }
 }
@@ -219,12 +251,12 @@ pub fn decoys<'a>(
 
 /// Where a clip starts: a third of the way in, back to the phrase boundary
 /// there when the record has one — where it sounds like itself, past its
-/// intro — and early enough that the whole clip fits.
+/// intro — and early enough that the whole clip, `seconds` long, fits.
 #[must_use]
-pub fn clip_from(record: &LibraryTrack) -> f64 {
+pub fn clip_from(record: &LibraryTrack, seconds: f64) -> f64 {
     let length = record.duration_seconds();
     let third = length / 3.0;
-    let latest = (length - CLIP_SECONDS).max(0.0);
+    let latest = (length - seconds).max(0.0);
     let on_phrase = (|| {
         let grid = record.analysis.beatgrid()?;
         let beats = f64::from(record.analysis.phrase_beats?);
@@ -276,7 +308,7 @@ pub fn ask(
             path: record.path.clone(),
             answers,
             right,
-            from: clip_from(record),
+            from: clip_from(record, kind.seconds()),
         });
     }
     None
@@ -312,7 +344,7 @@ impl Default for Settings {
 }
 
 /// How the quiz found the deck, so it can be put back so: the pitch fader,
-/// keylock, reverse and sync. The record on it is not put back — the clip's
+/// keylock, reverse, sync, and which stems were muted. The record on it is not put back — the clip's
 /// record replaced it, and a quiz deck is not one the host was playing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Found {
@@ -320,6 +352,8 @@ pub struct Found {
     pub keylock: bool,
     pub reversed: bool,
     pub synced: bool,
+    /// Each stem muted, by [`dj_core::Stem::index`].
+    pub muted: [bool; 4],
 }
 
 /// A clip on its deck.
@@ -337,6 +371,11 @@ pub struct Clip {
     /// `None` while the record is still being put on the deck; then when
     /// the clip started, on the pump's clock.
     pub started: Option<f64>,
+    /// *Stems in*: when the record was found on the deck and the clip began
+    /// waiting for its stems.
+    pub waiting: Option<f64>,
+    /// *Stems in*: how many of [`STEMS_ORDER`] have been brought in.
+    pub brought_in: usize,
 }
 
 /// What the pump sees of the quiz's deck.
@@ -346,6 +385,8 @@ pub struct DeckView {
     pub playing: bool,
     /// Seconds of the record.
     pub position: f64,
+    /// Every stem of the clip's span has been separated.
+    pub stems_ready: bool,
 }
 
 /// What a step of the clip asks for.
@@ -355,6 +396,9 @@ pub struct Step {
     pub actions: Vec<String>,
     /// The clip is over and its deck put back.
     pub done: bool,
+    /// *Stems in*: its stems were not separated in time, and it was not
+    /// played.
+    pub gave_up: bool,
 }
 
 impl Clip {
@@ -366,10 +410,12 @@ impl Clip {
             record: question.record,
             kind: question.kind,
             from: question.from,
-            to: question.from + CLIP_SECONDS,
+            to: question.from + question.kind.seconds(),
             rate,
             found,
             started: None,
+            waiting: None,
+            brought_in: 0,
         }
     }
 
@@ -392,6 +438,13 @@ impl Clip {
             0.0
         };
         actions.push(format!("deck {deck} pitch {pitch}"));
+        if self.kind == Kind::StemsIn {
+            // The first stem alone; the rest muted until their turn.
+            for (n, stem) in STEMS_ORDER.iter().enumerate() {
+                let state = if n == 0 { "off" } else { "on" };
+                actions.push(format!("deck {deck} stem_mute_{state} {stem}"));
+            }
+        }
         let backwards = self.kind == Kind::Backwards;
         let at = if backwards { self.to } else { self.from };
         actions.push(format!("deck {deck} seek {:.0}", at * self.rate));
@@ -438,6 +491,16 @@ impl Clip {
         if found.synced {
             actions.push(format!("deck {deck} sync"));
         }
+        if self.kind == Kind::StemsIn {
+            for stem in dj_core::Stem::ALL {
+                let state = if found.muted[stem.index()] {
+                    "on"
+                } else {
+                    "off"
+                };
+                actions.push(format!("deck {deck} stem_mute_{state} {stem}"));
+            }
+        }
         actions
     }
 
@@ -445,17 +508,41 @@ impl Clip {
     /// is on the deck; put back once the clip has played past its end —
     /// back past its start, played backwards — or stopped, or the record
     /// is gone, or it has run well past how long it should take.
+    ///
+    /// *Stems in* waits, once its record is on the deck, until the stems of
+    /// its span are separated — seeking there first, because separation
+    /// works outward from the playhead — for [`STEMS_WAIT`] at most; then
+    /// brings in a stem every [`STEM_EVERY`].
     pub fn step(&mut self, deck: &DeckView, now: f64) -> Step {
         let ours = deck.track == Some(self.record);
         let Some(started) = self.started else {
-            if ours {
-                self.started = Some(now);
-                return Step {
-                    actions: self.start(),
-                    done: false,
-                };
+            if !ours {
+                return Step::default();
             }
-            return Step::default();
+            if self.kind == Kind::StemsIn && !deck.stems_ready {
+                let Some(since) = self.waiting else {
+                    self.waiting = Some(now);
+                    let seek = format!("deck {} seek {:.0}", self.deck, self.from * self.rate);
+                    return Step {
+                        actions: vec![seek],
+                        ..Step::default()
+                    };
+                };
+                if now - since > STEMS_WAIT {
+                    return Step {
+                        actions: self.put_back(ours),
+                        done: true,
+                        gave_up: true,
+                    };
+                }
+                return Step::default();
+            }
+            self.started = Some(now);
+            self.brought_in = usize::from(self.kind == Kind::StemsIn);
+            return Step {
+                actions: self.start(),
+                ..Step::default()
+            };
         };
         let speed = if self.kind == Kind::Chipmunk {
             CHIPMUNK_RATE
@@ -470,14 +557,28 @@ impl Clip {
         };
         // The deck reports the play a frame or two after it is asked for.
         let stopped = !deck.playing && elapsed > 1.0;
-        let late = elapsed > CLIP_SECONDS / speed + GRACE_SECONDS;
+        let late = elapsed > self.kind.seconds() / speed + GRACE_SECONDS;
         if !ours || (past && elapsed > 0.2) || stopped || late {
             return Step {
                 actions: self.put_back(ours),
                 done: true,
+                ..Step::default()
             };
         }
-        Step::default()
+        let mut actions = Vec::new();
+        if self.kind == Kind::StemsIn {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let due = ((elapsed / STEM_EVERY).floor() as usize + 1).min(STEMS_ORDER.len());
+            while self.brought_in < due {
+                let stem = STEMS_ORDER[self.brought_in];
+                actions.push(format!("deck {} stem_mute_off {stem}", self.deck));
+                self.brought_in += 1;
+            }
+        }
+        Step {
+            actions,
+            ..Step::default()
+        }
     }
 }
 
@@ -519,11 +620,25 @@ impl Round {
     /// kept as the open one. `None` when there is no record left to ask
     /// about.
     pub fn next(&mut self, library: &[LibraryTrack]) -> Option<&Question> {
-        let kinds = if self.settings.kinds.is_empty() {
+        self.next_of(library, |_| true)
+    }
+
+    /// [`Self::next`], of a kind `can` play — *Stems in* needs a separator.
+    /// `None`, too, when none of the kinds set can be played.
+    pub fn next_of(
+        &mut self,
+        library: &[LibraryTrack],
+        can: impl Fn(Kind) -> bool,
+    ) -> Option<&Question> {
+        let set = if self.settings.kinds.is_empty() {
             &Kind::ALL[..]
         } else {
             &self.settings.kinds[..]
         };
+        let kinds: Vec<Kind> = set.iter().copied().filter(|kind| can(*kind)).collect();
+        if kinds.is_empty() {
+            return None;
+        }
         let kind = kinds[self.dice.below(kinds.len())];
         let question = ask(kind, library, &self.asked, &mut self.dice)?;
         self.asked.push(question.record);
@@ -650,7 +765,7 @@ mod tests {
     #[test]
     fn a_clip_starts_on_a_phrase_a_third_in() {
         let mut plain = record(1, "A", "B", "", 120.0);
-        assert!((clip_from(&plain) - 200.0 / 3.0).abs() < 1e-9);
+        assert!((clip_from(&plain, CLIP_SECONDS) - 200.0 / 3.0).abs() < 1e-9);
         plain.analysis.grid_anchor = Some(0.0);
         plain.analysis.grid_beats_per_bar = Some(4);
         plain.analysis.grid_confidence = Some(0.9);
@@ -658,15 +773,23 @@ mod tests {
         plain.analysis.phrase_anchor = Some(0);
         // 16 beats at 120 is 8 s: a third of 200 s is 66.7, so 64.
         assert!(
-            (clip_from(&plain) - 64.0).abs() < 1e-9,
+            (clip_from(&plain, CLIP_SECONDS) - 64.0).abs() < 1e-9,
             "{}",
-            clip_from(&plain)
+            clip_from(&plain, CLIP_SECONDS)
         );
         let short = LibraryTrack {
             duration_frames: 12 * 48_000,
             ..record(2, "A", "B", "", 120.0)
         };
-        assert!(clip_from(&short) <= 2.0 + 1e-9);
+        assert!(clip_from(&short, CLIP_SECONDS) <= 2.0 + 1e-9);
+        let long = LibraryTrack {
+            duration_frames: 30 * 48_000,
+            ..record(2, "A", "B", "", 120.0)
+        };
+        assert!(
+            clip_from(&long, STEMS_SECONDS) <= 10.0 + 1e-9,
+            "a stems clip fits too"
+        );
     }
 
     fn question(kind: Kind) -> Question {
@@ -685,6 +808,7 @@ mod tests {
         keylock: true,
         reversed: false,
         synced: true,
+        muted: [false, false, true, false],
     };
 
     fn on_deck(playing: bool, position: f64) -> DeckView {
@@ -692,6 +816,7 @@ mod tests {
             track: Some(TrackId::from_bytes([1; 32])),
             playing,
             position,
+            stems_ready: true,
         }
     }
 
@@ -740,6 +865,7 @@ mod tests {
             track: None,
             playing: false,
             position: 0.0,
+            stems_ready: false,
         };
         assert_eq!(
             clip.step(&empty, 0.0),
@@ -789,6 +915,7 @@ mod tests {
             track: Some(TrackId::from_bytes([9; 32])),
             playing: true,
             position: 3.0,
+            stems_ready: true,
         };
         let step = gone.step(&other, 2.0);
         assert!(step.done && !step.actions.contains(&"deck 2 pause".to_owned()));
@@ -815,5 +942,117 @@ mod tests {
         round.end();
         assert!(round.asked.is_empty() && round.question.is_none());
         assert_eq!(round.settings.count, 5, "how it was set is kept");
+    }
+
+    fn waiting_for_stems(position: f64) -> DeckView {
+        DeckView {
+            stems_ready: false,
+            ..on_deck(false, position)
+        }
+    }
+
+    /// **Stems in waits for its stems**: on finding its record it seeks to
+    /// the clip — separation works outward from the playhead — and waits,
+    /// asking nothing more, until they are separated; then starts. Too long,
+    /// and it gives up and puts the deck back.
+    #[test]
+    fn stems_in_waits_for_its_stems() {
+        let mut clip = Clip::of(&question(Kind::StemsIn), 2, 48_000.0, FOUND);
+        assert_eq!(clip.to, 80.0, "twenty seconds");
+        let first = clip.step(&waiting_for_stems(0.0), 0.0);
+        assert_eq!(first.actions, ["deck 2 seek 2880000"]);
+        assert_eq!(clip.step(&waiting_for_stems(60.0), 5.0), Step::default());
+        let ready = clip.step(&on_deck(false, 60.0), 8.0);
+        assert!(
+            ready.actions.contains(&"deck 2 play".to_owned()),
+            "{:?}",
+            ready.actions
+        );
+
+        let mut slow = Clip::of(&question(Kind::StemsIn), 2, 48_000.0, FOUND);
+        slow.step(&waiting_for_stems(0.0), 0.0);
+        assert!(!slow.step(&waiting_for_stems(60.0), STEMS_WAIT - 1.0).done);
+        let gave_up = slow.step(&waiting_for_stems(60.0), STEMS_WAIT + 1.0);
+        assert!(gave_up.done && gave_up.gave_up);
+        assert!(gave_up.actions.contains(&"deck 2 pause".to_owned()));
+    }
+
+    /// **The stems come in drums, bass, the rest, the voice — five seconds
+    /// apart — and the deck's mutes are put back as found.**
+    #[test]
+    fn stems_come_in_one_at_a_time_and_are_put_back() {
+        let mut clip = Clip::of(&question(Kind::StemsIn), 2, 48_000.0, FOUND);
+        let start = clip.step(&on_deck(false, 0.0), 0.0).actions;
+        for (stem, state) in [
+            ("drums", "off"),
+            ("bass", "on"),
+            ("other", "on"),
+            ("vocal", "on"),
+        ] {
+            let action = format!("deck 2 stem_mute_{state} {stem}");
+            assert!(start.contains(&action), "{action} not in {start:?}");
+        }
+        for action in &start {
+            dj_core::Action::parse(action).unwrap_or_else(|e| panic!("{action}: {e:?}"));
+        }
+        assert_eq!(clip.step(&on_deck(true, 64.0), 4.0), Step::default());
+        assert_eq!(
+            clip.step(&on_deck(true, 65.1), 5.1).actions,
+            ["deck 2 stem_mute_off bass"]
+        );
+        // A pump that missed a beat brings in what is due, in order.
+        assert_eq!(
+            clip.step(&on_deck(true, 75.5), 15.5).actions,
+            ["deck 2 stem_mute_off other", "deck 2 stem_mute_off vocal"]
+        );
+        assert_eq!(
+            clip.step(&on_deck(true, 79.0), 19.0),
+            Step::default(),
+            "nothing left to bring in"
+        );
+        let over = clip.step(&on_deck(true, 80.01), 20.1);
+        assert!(over.done);
+        for (stem, state) in [
+            ("vocal", "off"),
+            ("drums", "off"),
+            ("bass", "on"),
+            ("other", "off"),
+        ] {
+            let action = format!("deck 2 stem_mute_{state} {stem}");
+            assert!(
+                over.actions.contains(&action),
+                "{action} not in {:?}",
+                over.actions
+            );
+        }
+    }
+
+    /// **A kind that cannot be played is not asked** — and with none left,
+    /// nothing is.
+    #[test]
+    fn a_kind_that_cannot_be_played_is_not_asked() {
+        let library = library();
+        let mut round = Round {
+            dice: Dice::new(5),
+            settings: Settings {
+                deck: 2,
+                kinds: vec![Kind::NameIt, Kind::StemsIn],
+                count: 15,
+            },
+            ..Round::default()
+        };
+        for _ in 0..5 {
+            let kind = round
+                .next_of(&library, |kind| kind != Kind::StemsIn)
+                .expect("a question")
+                .kind;
+            assert_eq!(kind, Kind::NameIt);
+        }
+        round.settings.kinds = vec![Kind::StemsIn];
+        assert!(
+            round
+                .next_of(&library, |kind| kind != Kind::StemsIn)
+                .is_none()
+        );
     }
 }

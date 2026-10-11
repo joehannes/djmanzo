@@ -527,6 +527,7 @@
     ["name-it", "Name it"],
     ["backwards", "Backwards"],
     ["chipmunk", "Chipmunk"],
+    ["stems-in", "Stems in"],
   ];
 
   async function quizDo(done: Promise<Quiz>) {

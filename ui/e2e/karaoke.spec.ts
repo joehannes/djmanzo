@@ -445,10 +445,11 @@ test.describe("K7: a quiz made from the collection", () => {
     await quiz.getByRole("group", { name: "Quiz questions a round" }).getByRole("button", { name: "5", exact: true }).click();
     await quiz.getByRole("group", { name: "Quiz deck" }).getByRole("button", { name: "1", exact: true }).click();
     await quiz.getByRole("button", { name: "Chipmunk" }).click();
+    await quiz.getByRole("button", { name: "Stems in" }).click();
     expect((await quizCalls(page)).filter((c) => c.cmd === "quiz_set").at(-1)).toMatchObject({
       deck: 1,
       count: 5,
-      kinds: ["name-it", "backwards"],
+      kinds: ["name-it", "backwards", "stems-in"],
     });
     await expect(quiz.getByRole("button", { name: "Chipmunk" })).toHaveAttribute("aria-pressed", "false");
 
