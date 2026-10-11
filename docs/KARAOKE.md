@@ -1855,6 +1855,64 @@ pulled to the song's key (K6 knows it) by a strength the host sets per
 singer. That is real DSP work and the reason it is second; it is designed
 in full before it is started.
 
+#### Pitch correction, designed in full (11 October 2026)
+
+*Before any code, as the order above asks.*
+
+**What the singer gets.** Their voice pulled toward the nearest note of
+the song's key — as the song is being sung, in the key the host set — by
+a **strength** (0 leaves them alone, 1 lands on the note) and a **speed**
+(how long the pull takes, 10–200 ms: fast is the robotic sound people know
+from records, slow is a nudge nobody notices). Off unless the host turns
+it on for a strip, and kept like the rest of a singer's chain (K3): on
+their guest record with *keep*, else on tonight's rotation.
+
+**Where it sits.** A stage of the strip's chain, after the gate and before
+the EQ: a corrector fed a hum or a breath between phrases would chase
+notes that are not there, and every stage after it works on the corrected
+voice. The score reads K6's tap, which is the raw input before the chain,
+so it hears what the singer sang — the condition K6 set.
+
+**How, on the audio thread.**
+
+- *Hearing the note.* YIN — the same method K6 uses — but on the strip's
+  own decimated copy of the voice (to 8 kHz, as the tap is), in a window
+  fixed at construction: 40 ms (320 samples) covers a period down to
+  80 Hz twice. Read every 5 ms (240 input frames), so the cost is bounded
+  and known: about 320 × 160 multiply-adds a reading, 200 readings a
+  second, per strip with correction on. No reading, or one YIN is not sure
+  of (its dip above 0.2), and the pull lets go.
+- *The target.* The nearest note of the song's scale to what was heard —
+  major or minor from `dj_core::MusicalKey`, moved by the singer's key
+  change — in cents; the pull is that distance times the strength, eased
+  over the speed.
+- *Moving it.* A delay line read by two taps half a window apart, each
+  moving at the shift's rate and crossfaded so neither's jump is heard —
+  the oldest pitch shifter there is, chosen because the shifts are small
+  (rarely more than half a semitone), it has no FFT, allocates nothing
+  after construction, and its latency is fixed: the window, 20 ms. That
+  is added to what the singer hears in their wedge (K3 measures about
+  11 ms at 256 frames), which is why it is off unless chosen, and why the
+  panel says *+20 ms* beside it.
+- *The song's key.* Sent to the rack with the song (`deck N key`, *Load
+  on*, *Bring them in*): one key for every strip, since the singers sing
+  the same song. No key — a record never analysed — and the stage does
+  nothing, and says why.
+
+**What it is held by.** Tests over synthetic voices: a held 225 Hz in A
+minor comes out within 10 cents of 220 Hz at full strength, and stays at
+225 Hz at none; a slide passes through without being stepped at half
+strength; noise is not shifted; a voice in no key is untouched; the stage
+allocates nothing (`rt_safety`); a closed strip costs nothing. **What it
+cannot be held by here:** whether it *sounds* good. The tests measure
+pitch; a person hears the warble a crossfading shifter can leave on a
+long vowel, and that is for a booth to judge.
+
+**The order.** 1. The corrector in `dj-vocal`, pure, with its tests. 2.
+The stage in the chain, the song's key sent to the rack, and kept with a
+singer's chain. 3. The strip's row: on, strength, speed, and the key it
+is pulling to.
+
 ### Per-singer monitor mixes — third
 
 K3 gives an interface with eight outputs or more one singers' wedge on 7–8.
