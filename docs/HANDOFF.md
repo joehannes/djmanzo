@@ -107,6 +107,9 @@ application is in a usable state rather than empty. `DJMANZO_NULL_AUDIO=1`
 makes it run without a sound card, and `WEBKIT_DISABLE_COMPOSITING_MODE=1` is
 what stops WebKitGTK failing outright where there is no GPU. Both `import` and
 `xdotool` need installing; they are the whole toolkit.
+`DJMANZO_NULL_VOICE=/path/to/a.wav` (16-bit PCM) makes the null input sing that
+file, round and round, into its first channel — the only singer a container
+without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 

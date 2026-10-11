@@ -458,6 +458,8 @@ pub struct VocalStripSnapshot {
     pub compression_db: f32,
     /// Open, or still sounding a tail.
     pub working: bool,
+    /// K6: the pitch last heard on it, in cents above A4, when one was.
+    pub pitch: Option<f32>,
 }
 
 /// One deck's stem playing over another's mix.
@@ -1042,6 +1044,8 @@ impl Snapshot {
                                 gate_open: strip(index, VocalParam::GateOpen) >= 0.5,
                                 compression_db: strip(index, VocalParam::CompressionDb),
                                 working: strip(index, VocalParam::Working) >= 0.5,
+                                pitch: (strip(index, VocalParam::Sung) >= 0.5)
+                                    .then(|| strip(index, VocalParam::Pitch)),
                             })
                             .collect(),
                         monitor_music_db: (get(GlobalParam::MonitorAvailable) >= 0.5)
@@ -1336,6 +1340,23 @@ mod tests {
         assert!((snapshot.decks[0].position_seconds - 2.0).abs() < 1e-6);
         assert!((snapshot.decks[0].length_seconds - 10.0).abs() < 1e-6);
         assert!(!snapshot.decks[1].playing);
+    }
+
+    /// **K6: a strip's pitch is said only while a pitch was heard.** The
+    /// listening leaves the last pitch it read in place when the singer stops;
+    /// the snapshot must not carry that stale note as if it were being sung.
+    #[test]
+    fn a_strips_pitch_is_said_only_while_one_is_heard() {
+        use dj_core::param::VocalParam;
+        let registry = ParameterRegistry::new();
+        registry.set(ParamId::Global(GlobalParam::VocalInputs), 2.0);
+        registry.set(ParamId::Vocal(0, VocalParam::Pitch), -1200.0);
+        registry.set(ParamId::Vocal(1, VocalParam::Pitch), -500.0);
+        registry.set(ParamId::Vocal(1, VocalParam::Sung), 1.0);
+        let snapshot = Snapshot::capture(&registry, 2);
+        let pitch = |i: usize| snapshot.master.vocals.strips[i].pitch;
+        assert_eq!(pitch(0), None, "a stale pitch was said");
+        assert_eq!(pitch(1), Some(-500.0));
     }
 
     /// **A record's seconds are its own.** The playhead and length count the

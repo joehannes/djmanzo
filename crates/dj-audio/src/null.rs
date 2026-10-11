@@ -26,6 +26,61 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// open.
 static LIVE_INPUTS: AtomicUsize = AtomicUsize::new(0);
 
+/// K6: a voice for the null input to sing, from `DJMANZO_NULL_VOICE` — a
+/// 16-bit PCM WAV, its first channel played into the input's first channel,
+/// round and round, at the stream's rate. Nothing in this container has a
+/// microphone, so this is how a singer reaches a strip to be listened to.
+/// `None` without the variable or with a file this cannot read; the input is
+/// silence then, as it always was.
+fn null_voice(rate: f64) -> Option<Vec<f32>> {
+    let path = std::env::var_os("DJMANZO_NULL_VOICE")?;
+    let bytes = std::fs::read(path).ok()?;
+    let (channels, source_rate, data) = wav_pcm16(&bytes)?;
+    let samples: Vec<f32> = data
+        .chunks_exact(2 * channels)
+        .map(|frame| f32::from(i16::from_le_bytes([frame[0], frame[1]])) / 32_768.0)
+        .collect();
+    if samples.is_empty() || rate <= 0.0 {
+        return None;
+    }
+    // Nearest sample: a test voice, not a recording anyone listens to.
+    let step = f64::from(source_rate) / rate;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let out = (samples.len() as f64 / step) as usize;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some(
+        (0..out)
+            .map(|n| samples[((n as f64 * step) as usize).min(samples.len() - 1)])
+            .collect(),
+    )
+}
+
+/// The channel count, rate and sample bytes of a 16-bit PCM WAV.
+fn wav_pcm16(bytes: &[u8]) -> Option<(usize, u32, &[u8])> {
+    if bytes.get(0..4)? != b"RIFF" || bytes.get(8..12)? != b"WAVE" {
+        return None;
+    }
+    let mut at = 12;
+    let mut format = None;
+    while at + 8 <= bytes.len() {
+        let id = &bytes[at..at + 4];
+        let size = u32::from_le_bytes(bytes[at + 4..at + 8].try_into().ok()?) as usize;
+        let body = bytes.get(at + 8..(at + 8 + size).min(bytes.len()))?;
+        if id == b"fmt " && body.len() >= 16 {
+            let channels = usize::from(u16::from_le_bytes([body[2], body[3]]));
+            let rate = u32::from_le_bytes(body[4..8].try_into().ok()?);
+            let bits = u16::from_le_bytes([body[14], body[15]]);
+            (bits == 16 && channels > 0).then_some(())?;
+            format = Some((channels, rate));
+        } else if id == b"data" {
+            let (channels, rate) = format?;
+            return Some((channels, rate, body));
+        }
+        at += 8 + size + size % 2;
+    }
+    None
+}
+
 /// Null capture streams currently open. See `LIVE_INPUTS`.
 #[must_use]
 pub fn live_input_streams() -> usize {
@@ -265,6 +320,8 @@ impl AudioBackend for NullBackend {
                         frames as f64 / active.sample_rate.as_f64(),
                     );
                     let mut next = std::time::Instant::now();
+                    let voice = null_voice(active.sample_rate.as_f64()).unwrap_or_default();
+                    let mut sung = 0usize;
                     while alive.load(Ordering::Relaxed) {
                         if running.load(Ordering::Relaxed) && !UNPLUGGED.load(Ordering::Relaxed) {
                             // Whatever will fit and no more. A real capture
@@ -272,10 +329,18 @@ impl AudioBackend for NullBackend {
                             // than blocking, and so does this one -- a reader
                             // that has stopped draining must not stall the
                             // device thread.
-                            for _ in 0..frames * channels {
-                                if sink.push(0.0).is_err() {
-                                    break;
+                            'block: for _ in 0..frames {
+                                for channel in 0..channels {
+                                    let sample = if channel == 0 && !voice.is_empty() {
+                                        voice[sung % voice.len()]
+                                    } else {
+                                        0.0
+                                    };
+                                    if sink.push(sample).is_err() {
+                                        break 'block;
+                                    }
                                 }
+                                sung = sung.wrapping_add(1);
                             }
                         }
                         next += period;
@@ -406,6 +471,33 @@ impl OfflineRenderer {
 
 #[cfg(test)]
 mod tests {
+    /// **K6: the test singer's file is read as written.** A 16-bit WAV's
+    /// channel count, rate and samples, past a chunk that is not either;
+    /// anything that is not 16-bit PCM is refused rather than misread.
+    #[test]
+    fn a_sixteen_bit_wav_is_read_and_anything_else_refused() {
+        let wav = |bits: u16| {
+            let mut out = b"RIFF\0\0\0\0WAVE".to_vec();
+            out.extend(b"LIST\x02\0\0\0xy");
+            out.extend(b"fmt \x10\0\0\0");
+            out.extend(1u16.to_le_bytes());
+            out.extend(2u16.to_le_bytes());
+            out.extend(22_050u32.to_le_bytes());
+            out.extend([0u8; 6]);
+            out.extend(bits.to_le_bytes());
+            out.extend(b"data\x08\0\0\0");
+            out.extend([1, 0, 2, 0, 3, 0, 4, 0]);
+            out
+        };
+        let good = wav(16);
+        let (channels, rate, data) = super::wav_pcm16(&good).expect("a WAV");
+        assert_eq!(
+            (channels, rate, data),
+            (2, 22_050, &[1u8, 0, 2, 0, 3, 0, 4, 0][..])
+        );
+        assert_eq!(super::wav_pcm16(&wav(24)), None);
+        assert_eq!(super::wav_pcm16(b"not a wav at all"), None);
+    }
     use super::*;
 
     /// Writes a constant so tests can tell "ran" from "did not run".

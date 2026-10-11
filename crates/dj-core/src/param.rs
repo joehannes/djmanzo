@@ -1133,10 +1133,16 @@ pub enum VocalParam {
     CompressionDb,
     /// 1.0 while the strip is working — open, or still sounding a tail.
     Working,
+    /// K6: the pitch last read from the strip's voice, in cents above A4 —
+    /// meaningful only while [`VocalParam::Sung`] says a pitch was read.
+    /// Written by the listening thread, not the engine.
+    Pitch,
+    /// K6: 1.0 while the last reading of the strip's voice found a pitch.
+    Sung,
 }
 
 impl VocalParam {
-    pub const COUNT: usize = 4;
+    pub const COUNT: usize = 6;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1150,6 +1156,8 @@ impl VocalParam {
             VocalParam::GateOpen,
             VocalParam::CompressionDb,
             VocalParam::Working,
+            VocalParam::Pitch,
+            VocalParam::Sung,
         ]
     }
 
@@ -1159,6 +1167,8 @@ impl VocalParam {
             VocalParam::GateOpen => "gate_open",
             VocalParam::CompressionDb => "compression_db",
             VocalParam::Working => "working",
+            VocalParam::Pitch => "pitch",
+            VocalParam::Sung => "sung",
         }
     }
 }

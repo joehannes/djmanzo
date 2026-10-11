@@ -68,6 +68,52 @@ impl VocalFrame {
     };
 }
 
+/// K6: the rate each strip's voice is handed to the listening at, in hertz
+/// — the rate `dj_analysis::melody` reads pitch at.
+pub const LISTEN_RATE: u32 = 8_000;
+
+/// K6: how much of a voice a listening ring holds, in seconds. A listener
+/// that falls this far behind loses the oldest of it, never the audio.
+pub const LISTEN_SECONDS: f64 = 1.0;
+
+/// K6: one strip's voice, decimated to [`LISTEN_RATE`] for the listening.
+///
+/// A box average over each output sample's span, the cheapest low-pass there
+/// is: a voice's fundamental sits far below the new Nyquist, and what folds
+/// down from above it is a sibilant's hiss, which has no period for the
+/// pitch reading to find. The rate need not divide the input's — the phase
+/// carries the fraction, so 44.1 kHz works as 48 does.
+#[derive(Debug)]
+struct Tap {
+    ring: rtrb::Producer<f32>,
+    /// Input samples per output sample.
+    step: f64,
+    phase: f64,
+    sum: f32,
+    count: u32,
+}
+
+impl Tap {
+    /// Take one input sample; hand one on whenever a span is complete. A full
+    /// ring drops it and says so: the listening loses a moment, never the
+    /// singer's audio.
+    fn feed(&mut self, sample: f32, dropped: &mut u64) {
+        self.sum += sample;
+        self.count += 1;
+        self.phase += 1.0;
+        if self.phase >= self.step {
+            self.phase -= self.step;
+            #[allow(clippy::cast_precision_loss)]
+            let heard = self.sum / self.count as f32;
+            if self.ring.push(heard).is_err() {
+                *dropped += 1;
+            }
+            self.sum = 0.0;
+            self.count = 0;
+        }
+    }
+}
+
 /// The singers' microphones.
 #[derive(Debug)]
 pub struct Vocals {
@@ -81,6 +127,12 @@ pub struct Vocals {
     /// Each strip's voice in the last frame, before its space
     /// ([`StripFrame::voice`]): what a recording of the singer on it takes.
     voices: [f32; MOST_STRIPS],
+    /// K6: each strip's voice for the listening, once [`Self::listen`] has
+    /// made the rings. Empty until then.
+    taps: Vec<Tap>,
+    /// K6: samples the listening rings had no room for.
+    unheard: u64,
+    sample_rate: f32,
 }
 
 impl Vocals {
@@ -98,7 +150,47 @@ impl Vocals {
             input: None,
             starved: 0,
             voices: [0.0; MOST_STRIPS],
+            taps: Vec::new(),
+            unheard: 0,
+            sample_rate,
         }
+    }
+
+    /// K6: a ring per strip, carrying that strip's microphone — as it comes
+    /// in, before its chain, while the strip is open, silence while it is
+    /// not — at [`LISTEN_RATE`], for a listening thread to read pitch from.
+    /// Hands back the reading ends, one per strip in order. Called where the
+    /// rack is built, never on the audio thread: the rings are allocated here.
+    pub fn listen(&mut self) -> Vec<rtrb::Consumer<f32>> {
+        let step = f64::from(self.sample_rate) / f64::from(LISTEN_RATE);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let capacity = (f64::from(LISTEN_RATE) * LISTEN_SECONDS) as usize;
+        let (taps, ears) = self
+            .strips
+            .iter()
+            .map(|_| {
+                let (ring, ear) = rtrb::RingBuffer::new(capacity);
+                (
+                    Tap {
+                        ring,
+                        step: step.max(1.0),
+                        phase: 0.0,
+                        sum: 0.0,
+                        count: 0,
+                    },
+                    ear,
+                )
+            })
+            .unzip();
+        self.taps = taps;
+        ears
+    }
+
+    /// K6: samples the listening rings had no room for — a listener that is
+    /// not keeping up.
+    #[must_use]
+    pub fn unheard(&self) -> u64 {
+        self.unheard
     }
 
     /// Strip `index`'s voice in the last frame, before its echo and room —
@@ -170,6 +262,10 @@ impl Vocals {
             } else {
                 0.0
             };
+            if let Some(tap) = self.taps.get_mut(index) {
+                let heard = if strip.settings().open { sample } else { 0.0 };
+                tap.feed(heard, &mut self.unheard);
+            }
             let out = strip.process(sample);
             if let Some(voice) = self.voices.get_mut(index) {
                 *voice = out.voice;
@@ -238,6 +334,50 @@ mod tests {
     use super::*;
 
     const RATE: f32 = 48_000.0;
+
+    /// **K6: each strip's microphone reaches the listening at 8 kHz, as it
+    /// came in, and only while the strip is open.** A second at 48 kHz and a
+    /// second at 44.1 kHz are each eight thousand samples; an A3 on strip 0
+    /// arrives as an A3 (its zero crossings 220 a second); strip 1, closed,
+    /// hands on silence however loud its input.
+    #[test]
+    fn the_listening_hears_each_open_strip_at_eight_kilohertz() {
+        for rate in [48_000.0f32, 44_100.0] {
+            let mut vocals = Vocals::new(rate, 2);
+            vocals.strip_mut(0).unwrap().apply(&singer());
+            let (mut input, ring) = rtrb::RingBuffer::new(rate as usize * 2 + 16);
+            vocals.set_input(Some(ring));
+            let mut ears = vocals.listen();
+            assert_eq!(ears.len(), 2);
+            for n in 0..rate as usize {
+                let t = n as f32 / rate;
+                let _ = input.push(0.5 * (std::f32::consts::TAU * 220.0 * t).sin());
+                let _ = input.push(0.5);
+                let _ = vocals.next_frame();
+            }
+            let heard: Vec<f32> = std::iter::from_fn(|| ears[0].pop().ok()).collect();
+            let closed: Vec<f32> = std::iter::from_fn(|| ears[1].pop().ok()).collect();
+            assert!(
+                (heard.len() as i64 - 8_000).abs() <= 1,
+                "{rate}: {}",
+                heard.len()
+            );
+            assert_eq!(closed.len(), heard.len());
+            assert!(
+                closed.iter().all(|s| *s == 0.0),
+                "a closed strip was listened to"
+            );
+            let crossings = heard
+                .windows(2)
+                .filter(|pair| pair[0] < 0.0 && pair[1] >= 0.0)
+                .count();
+            assert!(
+                (219..=221).contains(&crossings),
+                "{rate}: {crossings} a second"
+            );
+            assert_eq!(vocals.unheard(), 0);
+        }
+    }
 
     fn singer() -> StripSettings {
         StripSettings {

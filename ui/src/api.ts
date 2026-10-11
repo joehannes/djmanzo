@@ -780,6 +780,8 @@ export interface VocalStripState {
   compression_db: number;
   /** Open, or still sounding a tail; an idle strip costs nothing. */
   working: boolean;
+  /** K6: the pitch last heard on it, in cents above A4, when one was. */
+  pitch?: number | null;
 }
 
 /** K3: the singers' microphones, live. See `dj_app::snapshot::VocalsSnapshot`. */

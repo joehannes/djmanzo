@@ -330,6 +330,28 @@ pub fn line(samples: &[f32], sample_rate: u32) -> Vec<Option<f32>> {
         .collect()
 }
 
+/// K6: how many samples at [`WORK_RATE`] one live pitch reading looks at —
+/// two of the lowest period and room for YIN's tail, as every reading here.
+pub const LIVE_WINDOW: usize = (2.5 * WORK_RATE as f32 / LOWEST_HZ) as usize;
+
+/// K6: the pitch of the last moment of a live voice, in cents above A4 —
+/// `samples` already at [`WORK_RATE`], its last [`LIVE_WINDOW`] read. `None`
+/// for a moment too short, quieter than [`LINE_FLOOR`] or with no period:
+/// the same rules as [`line()`], so a singer is read the way the line they
+/// are scored against was.
+#[must_use]
+pub fn live_pitch(samples: &[f32]) -> Option<f32> {
+    let frame = samples.get(samples.len().checked_sub(LIVE_WINDOW)?..)?;
+    #[allow(clippy::cast_precision_loss)]
+    let power = frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32;
+    if power < LINE_FLOOR {
+        return None;
+    }
+    let longest = (WORK_RATE as f32 / LOWEST_HZ) as usize;
+    let shortest = (WORK_RATE as f32 / HIGHEST_HZ) as usize;
+    yin(frame, shortest, longest).map(|hz| 1200.0 * (hz / 440.0).log2())
+}
+
 /// Pitches `rate` times a second, refusing frames quieter than `floor`.
 fn pitches_every(samples: &[f32], sample_rate: u32, rate: f64, floor: f32) -> Vec<Option<f32>> {
     let work = resample(samples, sample_rate);
@@ -661,6 +683,24 @@ mod tests {
         );
         // The hum search keeps hearing it: the floor is the line's alone.
         assert!(pitches(&bleed, SR).iter().any(Option::is_some));
+    }
+
+    /// **K6: a live moment reads as the line does.** The last window of an
+    /// 8 kHz voice singing E4 is −500 cents; too little of it, or a whisper
+    /// under the floor, is nothing.
+    #[test]
+    fn a_live_moment_reads_as_the_line_does() {
+        let voice: Vec<f32> = (0..WORK_RATE as usize / 2)
+            .map(|n| {
+                let t = n as f32 / WORK_RATE as f32;
+                0.4 * (TAU * 329.63 * t).sin() + 0.15 * (TAU * 659.26 * t).sin()
+            })
+            .collect();
+        let cents = live_pitch(&voice).expect("a sung E4");
+        assert!((cents + 500.0).abs() < 10.0, "{cents}");
+        assert_eq!(live_pitch(&voice[..LIVE_WINDOW - 1]), None);
+        let whisper: Vec<f32> = voice.iter().map(|s| s * 0.001).collect();
+        assert_eq!(live_pitch(&whisper), None);
     }
 
     /// **§116: the pitches are the notes played, not only their shape.** A

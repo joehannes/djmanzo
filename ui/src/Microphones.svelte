@@ -158,6 +158,19 @@
     on && !singers.some((name) => name.toLowerCase() === on.singer.toLowerCase()) ? [on.singer, ...singers] : singers;
 
   /** Where the chain a singer is singing through came from, said for the host. */
+  /**
+   * K6: a pitch as a note — cents above A4 to the nearest note's name and
+   * octave, with how far off it is when that is more than ten cents.
+   */
+  function noteName(cents: number): string {
+    const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const midi = 69 + cents / 100;
+    const nearest = Math.round(midi);
+    const off = Math.round((midi - nearest) * 100);
+    const name = `${NAMES[((nearest % 12) + 12) % 12]}${Math.floor(nearest / 12) - 1}`;
+    return Math.abs(off) > 10 ? `${name} ${off > 0 ? "+" : "−"}${Math.abs(off)}` : name;
+  }
+
   function whence(on: OnMic): string {
     if (on.kept === "guest-book") return `${on.singer}'s own, from the guest book`;
     if (on.kept === "tonight") return `${on.singer}'s own, kept for tonight`;
@@ -342,8 +355,14 @@
           <span class="meter" aria-hidden="true">
             <span class="fill" style:width="{Math.min(1, face?.level ?? 0) * 100}%"></span>
           </span>
-          <span class="squeeze" title="How hard the compressor is working"
-            >{(face?.compression_db ?? 0) >= 0.5 ? `−${Math.round(face?.compression_db ?? 0)} dB` : ""}</span
+          <span class="squeeze"
+            ><span title="How hard the compressor is working"
+              >{(face?.compression_db ?? 0) >= 0.5 ? `−${Math.round(face?.compression_db ?? 0)} dB` : ""}</span
+            >
+            <!-- K6: the note djmanzo hears on this microphone — what will be scored. -->
+            <span class="heard mono" data-heard title="The note heard on Mic {i + 1}"
+              >{face?.pitch != null ? noteName(face.pitch) : ""}</span
+            ></span
           >
           <select
             aria-label="Mic {i + 1} is for"
@@ -466,7 +485,7 @@
 
   .strip {
     display: grid;
-    grid-template-columns: max-content 4.6rem minmax(5rem, 1fr) 4rem 3.2rem auto;
+    grid-template-columns: max-content 4.6rem minmax(5rem, 1fr) 4rem 5rem auto;
     align-items: center;
     gap: 0.4rem;
     padding: 0.25rem 0.4rem;
@@ -477,6 +496,11 @@
 
   .strip[data-open="true"] {
     border-color: var(--accent);
+  }
+
+  .heard {
+    margin-left: 0.3rem;
+    color: var(--accent);
   }
 
   /* WebKitGTK draws a select wider than Chromium does: in the application

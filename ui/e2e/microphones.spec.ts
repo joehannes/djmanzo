@@ -83,6 +83,29 @@ async function singers(page: Page, answers: Record<string, unknown> = {}) {
 
 test.describe("K3: the singers' microphones", () => {
   /**
+   * **K6: the note heard on each microphone**, as Rust reads it: cents above
+   * A4 named as a note, how far off it is said when that is more than ten
+   * cents, and nothing on a strip nobody is singing into.
+   */
+  test("each microphone shows the note it hears", async ({ page }) => {
+    await singers(page);
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    const heard = (pitch: (number | null)[]) => ({
+      ...TWO,
+      strips: TWO.strips.map((strip, i) => ({ ...strip, pitch: pitch[i] })),
+    });
+    await readings(page, heard([-1200, null]));
+    const rows = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem");
+    await expect(rows.nth(0).locator("[data-heard]")).toHaveText("A3");
+    await expect(rows.nth(1).locator("[data-heard]")).toHaveText("");
+    await readings(page, heard([-480, -2400]));
+    await expect(rows.nth(0).locator("[data-heard]")).toHaveText("E4 +20");
+    await expect(rows.nth(1).locator("[data-heard]")).toHaveText("A2");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The load-bearing one.** Closed until the host opens an interface; then
    * a row per input from what the engine reports, each showing its level,
    * its gate and its compression, and what Rust says the strip is for — the

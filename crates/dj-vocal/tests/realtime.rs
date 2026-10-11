@@ -67,6 +67,9 @@ fn eight_singers_never_allocate() {
     let mut vocals = Vocals::new(RATE, STRIPS);
     let (mut producer, consumer) = rtrb::RingBuffer::new(RATE as usize * STRIPS);
     vocals.set_input(Some(consumer));
+    // K6: the listening rings too, and nobody reading them, so they fill and
+    // drop — which must not allocate either.
+    let _ears = vocals.listen();
     let everything = StripSettings {
         open: true,
         talkover: true,
@@ -120,5 +123,6 @@ fn eight_singers_never_allocate() {
         }
     });
     assert_eq!(allocations, 0, "the singers' microphones allocated");
+    assert!(vocals.unheard() > 0, "the listening rings never filled");
     assert!(vocals.starved_frames() > 0, "the dry half never ran");
 }

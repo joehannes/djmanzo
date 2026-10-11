@@ -16,6 +16,10 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The note on each microphone (K6).** djmanzo listens to every open
+  singer's microphone — off the audio thread — and each row in Microphones
+  shows the note it hears: what scored singing will compare with the song.
+
 - **The line a song's voice sings (K6).** Once a record that has words has
   been separated, djmanzo reads the line its separated vocal sings and keeps
   it — what scored singing will score a singer against. The Singers panel

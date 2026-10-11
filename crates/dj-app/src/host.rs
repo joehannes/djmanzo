@@ -863,6 +863,9 @@ fn open_vocals(
         }
     }
     rack.set_input(Some(consumer));
+    // K6: the rack's listening rings, made here with the rack, read by the
+    // listening thread.
+    crate::listen::ears().hear(rack.listen());
     if bus
         .send_command(Command::Vocals {
             rack: Some(Box::new(rack)),
@@ -888,6 +891,8 @@ fn close_vocals(bus: &Arc<ActionBus<Command>>, slot: &mut Option<Box<dyn AudioSt
     if bus.send_command(Command::Vocals { rack: None }).is_err() {
         tracing::warn!("command queue full; the singers' microphones stay attached in the engine");
     }
+    // K6: nothing left to listen to.
+    crate::listen::ears().hear(Vec::new());
 }
 
 /// Detach the input device and tell the engine to let go of its end.

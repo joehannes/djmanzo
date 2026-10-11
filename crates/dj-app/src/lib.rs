@@ -60,6 +60,7 @@ pub mod leader;
 pub mod lens;
 pub mod level;
 pub mod library;
+pub mod listen;
 pub mod live;
 pub mod looks;
 pub mod memory;
@@ -486,6 +487,11 @@ pub fn run() {
                 // K4: names put down from phones, into the rotation within a
                 // couple of seconds whether or not the Singers panel is open
                 // — the singers' screen and every phone's place follow it.
+                // K6: the singers' pitch, read off the audio thread.
+                {
+                    let state: tauri::State<'_, AppState> = handle.state();
+                    crate::listen::spawn(state.registry());
+                }
                 let pump = handle.clone();
                 let spawned = std::thread::Builder::new()
                     .name("dj-sing-pump".into())

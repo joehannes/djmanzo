@@ -1297,3 +1297,20 @@ until it arrives. Driven: a synthetic tune in A minor over a kick read as
 at −500 within its vibrato, and was drawn; the K5 test song — chords and a
 kick, no tune — read as 0.08 % sung, which is what made *no single voice*
 a thing the panel says rather than an empty box it draws.
+
+**Step 2, the singer — built (11 October).** `Vocals::listen`, called where
+the host builds the rack, makes a ring per strip — a second long at 8 kHz —
+and the audio thread hands each open strip's microphone into it as it comes
+in, before its chain, a box average over each output sample's span (the
+phase carries the fraction, so 44.1 kHz works as 48 does), silence while the
+strip is closed, and a full ring drops and counts (`unheard`) rather than
+waiting; a counting allocator holds it at no allocation with the rings
+filling and nobody reading. The host gives the reading ends to
+`listen::ears()`; a thread drains them every 50 ms, keeps the last two
+windows of each, and reads the last with `melody::live_pitch` — the same
+YIN and floor as the line — publishing `VocalParam::Pitch` and
+`VocalParam::Sung` per strip. The snapshot says a pitch only while one is
+heard, and each Microphones row shows it as a note (*A3*, *E4 +20*). The
+null backend sings `DJMANZO_NULL_VOICE` into its first input. Driven: a
+looping voice, A3 for two seconds and E4 for two, opened on Mic 1 read
+*A3* and *E4* by turns on its row.
