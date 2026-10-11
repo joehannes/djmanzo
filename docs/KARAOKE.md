@@ -452,14 +452,14 @@ piece of this document lands among them.
 | Transcription and word times (whisper.cpp, in djmanzo) | M6 | **K2** | shipped; `small` measured at 73 s for a 4½-minute record, and the English aligner beside it |
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | shipped behind the words: djmanzo's own layers on the beat, the stems and the singers' microphones, picked in the Singers panel ([VISUALS.md](VISUALS.md)), MilkDrop among them, the DJ's own MilkDrop presets, the artist's photographs from Wikimedia Commons, credited, a look picked per record by the DJ's AI when turned on, and signed packs of looks and presets, checked before installing; packs made of the DJ's own presets, signed with their own key, and browsed from a community index |
-| Voice control | A2 | **K2** | waits on A2 |
+| Voice control | A2 | **K2** | built through A2's push-to-talk (§4) |
 | N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | built (§7) |
 | Break music that leads into the next song | the planner | **K5** | built (§8) |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | built (§10) |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | built (§11) |
-| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
+| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | designed (§12) |
 
 ---
 
@@ -1790,3 +1790,85 @@ says which: *kept in Ana's guest-book record* or *kept for tonight*.
 Driven in K6's home, where Ana has not agreed to be kept: her range read
 again, *kept for tonight*. The guest-book side is held by a test over a
 real journal on disk, both ways, and by a browser test of the words.
+
+---
+
+## 12. What K9 holds, and the order (K9)
+
+*Designed 11 October 2026, before any code.* K9 was five things named so
+they would not be forgotten. Each is read here against what is now built,
+and given a place in an order or a reason it has none.
+
+### Recorded performances — first
+
+**What.** A singer's song as the room heard it, kept as a file for them:
+their strip as the PA has it — their chain, their echo and room — over the
+records as the room hears them, before the DJ's microphone talks over them
+and before the master rack. Not the master itself: another singer's
+microphone, the MC's announcement and the talkover's dip are not part of
+*their* song.
+
+**Only with their agreement, asked on its own.** §123's voice question is
+about fifteen seconds for an AI music service; a whole song kept and
+handed to them is a different thing, so it is a fourth question in the
+guest book, worded and stamped like the other three: *Record my song
+tonight and give it to me.* Without it the button is not there. Taking it
+back deletes what was recorded, as the voice take's does.
+
+**How.** *Record their song* on the up-next row, for a singer who agreed
+and is on a microphone; it runs until *Sang*, or *Stop*, and at most ten
+minutes. The engine streams the frames through a ring to a file on a
+thread of its own, exactly as the set recording does (`setrec`), so the
+audio thread only pushes samples it already computed: one more ring, made
+when the recording starts, never on the audio thread. The strip's own
+share of the PA is kept apart from the others' for it (per strip, in the
+frame the rack already returns — on the stack, no allocation). A WAV,
+because djmanzo encodes no MP3 (LAME is GPL) — on the guest's record with
+their songs, given with their record when they ask for it, and sent by the
+DJ by hand: a WhatsApp link (A6) carries words, not a file.
+
+### Pitch correction — second
+
+The score already reads the strip **before** its chain (K6's tap is the
+raw voice), so a corrected voice cannot score what the corrector sang —
+the condition K6 set is met by construction. What is left is the
+corrector itself: a pitch reading and a pitch shift **on the audio
+thread**, without allocation, with a few milliseconds of latency at most,
+pulled to the song's key (K6 knows it) by a strength the host sets per
+singer. That is real DSP work and the reason it is second; it is designed
+in full before it is started.
+
+### Per-singer monitor mixes — third
+
+K3 gives an interface with eight outputs or more one singers' wedge on 7–8.
+A mix of their own per singer is one more output pair per strip, so an
+interface with that many — rare in the booths this is for. Built when a
+DJ has one to try it on; until then the one wedge stands.
+
+### Duet parts, lead apart from backing — not yet
+
+Needs a separation model that splits a lead vocal from the backing ones.
+The ones that do, as far as this design knows, are trained on data or
+published under licences that have to be read first; nothing is built on
+one until ADR-0002 admits it, as with openWakeWord's models (A2).
+
+### Phones as microphones — not on the LAN
+
+A phone's browser opens its microphone only on a secure page (HTTPS, or
+the phone's own `localhost`). djmanzo's room page is plain HTTP on the
+LAN, and a certificate a phone trusts cannot be issued for a LAN address,
+so the page cannot ask for the microphone at all. It would need the DJ's
+own domain and certificate, or an app on the phone — a different
+feature with a different conversation. And K9 already said what it would
+be worth: good enough for scoring, too late for the PA.
+
+### The order
+
+1. **Recorded performances** — the fourth question, the stream per strip,
+   *Record their song*, the file on the guest's record.
+2. **Pitch correction** — designed in full, then built.
+3. **Per-singer monitors**, when an interface with the outputs is there to
+   try it on.
+
+Driven, as K6 was, with the null input singing into a strip and a record
+playing; what a recording sounds like is for a person to hear.
