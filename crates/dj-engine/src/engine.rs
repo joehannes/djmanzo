@@ -1149,6 +1149,14 @@ impl Engine {
             set(DeckParam::GainDb, deck.gain_db());
             set(DeckParam::Loaded, if deck.is_loaded() { 1.0 } else { 0.0 });
             set(DeckParam::LengthFrames, deck.len_frames() as f32);
+            set(
+                DeckParam::SourceRate,
+                if deck.is_loaded() {
+                    deck.source_rate() as f32
+                } else {
+                    0.0
+                },
+            );
             set(DeckParam::EqLow, deck.eq_low());
             set(DeckParam::EqMid, deck.eq_mid());
             set(DeckParam::EqHigh, deck.eq_high());
@@ -2442,6 +2450,35 @@ mod tests {
             48_000.0
         );
         assert!(h.registry.get(ParamId::Global(GlobalParam::CpuLoad)) >= 0.0);
+    }
+
+    /// **A deck says the rate its record's frames are counted in**, which is
+    /// the record's and not the output's: a 44.1 kHz record on a 48 kHz
+    /// engine is 44,100 frames a second of playhead, and anything reading
+    /// the playhead with the device's rate puts it 8% short. An empty deck
+    /// says nothing.
+    #[test]
+    fn a_deck_publishes_its_records_own_rate() {
+        let (mut engine, mut h) = engine(2);
+        let cd = SampleRate::new(44_100).unwrap();
+        h.commands
+            .push(Command::Load {
+                deck: deck(1),
+                source: Arc::new(AudioBuffer::from_interleaved(vec![0.1; 4_410 * 2], cd)),
+            })
+            .unwrap();
+        render(&mut engine, 256);
+        let rate = |n| {
+            h.registry
+                .get(ParamId::Deck(deck(n), DeckParam::SourceRate))
+        };
+        assert_eq!(rate(1), 44_100.0);
+        assert_eq!(rate(2), 0.0, "an empty deck claimed a rate");
+        assert_eq!(
+            h.registry.get(ParamId::Global(GlobalParam::SampleRate)),
+            48_000.0,
+            "the engine is not at the record's rate, or this proves nothing"
+        );
     }
 
     #[test]

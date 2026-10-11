@@ -243,6 +243,14 @@ pub enum DeckParam {
     StemDrumsLevel,
     StemBassLevel,
     StemOtherLevel,
+    /// The sample rate of the record on the deck, in hertz; 0.0 when empty.
+    ///
+    /// [`DeckParam::Position`] and [`DeckParam::LengthFrames`] count the
+    /// record's own frames, not the output's, so this — not the device's
+    /// [`GlobalParam::SampleRate`] — is what turns them into seconds and
+    /// beats. A 44.1 kHz record on a 48 kHz output read with the device's
+    /// rate is about 8% shorter than it is.
+    SourceRate,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -274,7 +282,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 96;
+    pub const COUNT: usize = 97;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -381,6 +389,7 @@ impl DeckParam {
             StemDrumsLevel,
             StemBassLevel,
             StemOtherLevel,
+            SourceRate,
         ]
     }
 }
@@ -1324,6 +1333,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::StemDrumsLevel => "stem_drums_level",
         DeckParam::StemBassLevel => "stem_bass_level",
         DeckParam::StemOtherLevel => "stem_other_level",
+        DeckParam::SourceRate => "source_rate",
     }
 }
 

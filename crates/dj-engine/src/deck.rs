@@ -1831,6 +1831,13 @@ impl Deck {
         self.source.len_frames()
     }
 
+    /// The record's own sample rate: what its frames — the playhead, the
+    /// length, the grid — are counted in.
+    #[must_use]
+    pub fn source_rate(&self) -> f64 {
+        self.source.sample_rate().as_f64()
+    }
+
     /// Read a frame at the given position. If stems are available, applies
     /// per-stem EQ, Filter, Volume, and Mute, then mixes them down.
     /// If stems are not available, returns the raw track frame.

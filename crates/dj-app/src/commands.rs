@@ -5423,6 +5423,24 @@ mod tests {
         );
     }
 
+    /// **The automix counts a record's beats at the record's rate.** Its
+    /// playhead is in the record's frames, so a 44.1 kHz record measured at a
+    /// 48 kHz output's rate makes every beat — and every mix and break-music
+    /// fade timed in them — 8% too long. An empty deck has only the
+    /// device's.
+    #[test]
+    fn the_automix_reads_each_record_at_its_own_rate() {
+        use dj_core::param::{DeckParam, GlobalParam};
+        let state = AppState::new(true);
+        let registry = state.registry();
+        registry.set(dj_core::ParamId::Global(GlobalParam::SampleRate), 48_000.0);
+        let one = dj_core::DeckId::from_human(1).expect("deck 1");
+        registry.set(dj_core::ParamId::Deck(one, DeckParam::SourceRate), 44_100.0);
+        let decks = automix_view(&state);
+        assert_eq!(decks[0].sample_rate, 44_100.0);
+        assert_eq!(decks[1].sample_rate, 48_000.0);
+    }
+
     /// **The automix's own mix is filed as the machine's.**
     ///
     /// The one path where getting this wrong is worst: automix moves faders
@@ -14084,6 +14102,11 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
         .map(|id| {
             let get = |p| registry.get(dj_core::ParamId::Deck(id, p));
             let bpm = f64::from(get(DeckParam::EffectiveBpm));
+            // The record's own rate, which its frames are counted in; the
+            // device's only for an empty deck. Beats measured at the device's
+            // rate make every mix of a 44.1 kHz record on a 48 kHz output 8%
+            // longer than the beats it was asked for.
+            let own = f64::from(get(DeckParam::SourceRate));
             crate::automix::DeckView {
                 id,
                 loaded: get(DeckParam::Loaded) >= 0.5,
@@ -14091,7 +14114,7 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
                 position: f64::from(get(DeckParam::Position)),
                 length: f64::from(get(DeckParam::LengthFrames)),
                 bpm: (bpm > 1.0).then_some(bpm),
-                sample_rate,
+                sample_rate: if own > 0.0 { own } else { sample_rate },
             }
         })
         .collect()

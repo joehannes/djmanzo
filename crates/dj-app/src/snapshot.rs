@@ -682,13 +682,26 @@ impl Snapshot {
             .get(ParamId::Global(GlobalParam::SamplerBank))
             .max(1.0) as u8;
         let sample_rate = registry.get(ParamId::Global(GlobalParam::SampleRate));
-        // Before a device is open the rate is zero; dividing by it would put
-        // infinities on screen.
+        // Frames of the output, at the device's rate. Before a device is open
+        // the rate is zero; dividing by it would put infinities on screen.
+        //
+        // A deck's playhead and length are not: they count the record's own
+        // frames, so its own rate is what makes them seconds — a 44.1 kHz
+        // record read at a 48 kHz output's rate is 8% shorter than it is. The
+        // device's rate only where the engine has not said one, an empty
+        // deck.
         let to_seconds = |frames: f32| {
             if sample_rate > 0.0 {
                 frames / sample_rate
             } else {
                 0.0
+            }
+        };
+        let record_seconds = |frames: f32, rate: f32| {
+            if rate > 0.0 {
+                frames / rate
+            } else {
+                to_seconds(frames)
             }
         };
 
@@ -698,6 +711,7 @@ impl Snapshot {
                 let get = |param| registry.get(ParamId::Deck(id, param));
                 let position = get(DeckParam::Position);
                 let length = get(DeckParam::LengthFrames);
+                let rate = get(DeckParam::SourceRate);
                 DeckSnapshot {
                     number: id.human_number(),
                     // Filled in by `with_marks` after capture: this comes from
@@ -716,8 +730,8 @@ impl Snapshot {
                     loaded: get(DeckParam::Loaded) >= 0.5,
                     position_frames: position,
                     length_frames: length,
-                    position_seconds: to_seconds(position),
-                    length_seconds: to_seconds(length),
+                    position_seconds: record_seconds(position, rate),
+                    length_seconds: record_seconds(length, rate),
                     rate: get(DeckParam::Rate),
                     pitch: get(DeckParam::Pitch),
                     volume: get(DeckParam::Volume),
@@ -1322,6 +1336,30 @@ mod tests {
         assert!((snapshot.decks[0].position_seconds - 2.0).abs() < 1e-6);
         assert!((snapshot.decks[0].length_seconds - 10.0).abs() < 1e-6);
         assert!(!snapshot.decks[1].playing);
+    }
+
+    /// **A record's seconds are its own.** The playhead and length count the
+    /// record's frames: a ten-second 44.1 kHz record on a 48 kHz output is
+    /// ten seconds, not the 9.19 the device's rate makes of it. A deck that
+    /// has not said a rate falls back to the device's.
+    #[test]
+    fn a_records_seconds_are_counted_at_its_own_rate() {
+        let registry = ParameterRegistry::new();
+        let one = DeckId::from_human(1).unwrap();
+        let two = DeckId::from_human(2).unwrap();
+        registry.set(ParamId::Global(GlobalParam::SampleRate), 48_000.0);
+        registry.set(ParamId::Deck(one, DeckParam::SourceRate), 44_100.0);
+        registry.set(ParamId::Deck(one, DeckParam::Position), 88_200.0);
+        registry.set(ParamId::Deck(one, DeckParam::LengthFrames), 441_000.0);
+        registry.set(ParamId::Deck(two, DeckParam::LengthFrames), 480_000.0);
+        // The output's own frames stay the output's.
+        registry.set(ParamId::Global(GlobalParam::OutputLatencyFrames), 480.0);
+
+        let snapshot = Snapshot::capture(&registry, 2);
+        assert!((snapshot.decks[0].position_seconds - 2.0).abs() < 1e-6);
+        assert!((snapshot.decks[0].length_seconds - 10.0).abs() < 1e-6);
+        assert!((snapshot.decks[1].length_seconds - 10.0).abs() < 1e-6);
+        assert!((snapshot.master.output_latency_ms - 10.0).abs() < 1e-3);
     }
 
     /// Before a device is open the sample rate is zero. Naive division would

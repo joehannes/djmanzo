@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A record's times are its own.** A deck's playhead and length count the
+  record's frames, and they were turned into seconds at the output's rate:
+  a 44.1 kHz record on a 48 kHz output read about 8% short on the deck, and
+  the automix — and break music's fades — measured its beats 8% long. The
+  engine now says each deck's own rate and both read it.
 - **Break music leads into the next singer's song (K5).** With *Lead into
   the next song* on — the default — break music no longer plays its
   playlist in order: it plays the record that leads best into the song of
