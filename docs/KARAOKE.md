@@ -412,7 +412,7 @@ piece of this document lands among them.
 | N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
-| Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
+| Scored singing, from the separated vocal | K3, M6 | **K6** | designed (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | outlined |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | outlined |
 | Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
@@ -1164,3 +1164,117 @@ and the fader goes back where the host had it before the mix moved it
 (`Breaks::keep_fader`). Once per song. The panel's line names the song it
 led out of; the scorer's reasons on it are for that song only, although
 the choice weighed the next one too.
+
+## 9. Scored singing (K6)
+
+*Designed 11 October 2026, before any code.* The outline: the reference
+melody comes from the separated vocal, so any record in the collection can
+be scored, not only records somebody wrote notes for; pitch is read live on
+each K3 strip, octave-agnostic, with a timing tolerance; the score is on the
+singers' screen while the song runs and a leaderboard after it; a duet is
+scored per strip, with teams for a *versus* round; applause from §35's room
+reading is the alternative verdict.
+
+What exists: `dj_analysis::melody` reads a pitch contour with YIN — ten
+points a second, 70–700 Hz, the strongest periodic thing in a melodic band —
+for the hum search. `dj_stems` separates a record into four stems and keeps
+them in its chunk cache. `dj_vocal` runs a chain per singer on the audio
+thread, fed by one lock-free ring of interleaved input frames (`rtrb`). The
+rotation knows whose song is on which deck, and in what key.
+
+### The reference: the separated vocal's own line
+
+When a record that has words is separated, its **vocal stem** — not the
+mix, which is where the hum search's contour has to guess between the
+voice, the bass and a pad — is read with the same YIN at **twenty points a
+second** (a sung note is rarely shorter than 150 ms; twenty holds its
+onset to 50 ms) and kept as the record's *vocal line*: per point a pitch in
+cents above a fixed reference, or none where nobody sings. Kept in the
+library beside the hum search's melody (`vocal_lines`, by record, with the
+separator that produced it, so a better separator's line replaces a worse
+one's, as the stems cache already insists). A record with no separation
+has no line and is **not scored**; the screen says *not scored — this song
+has not been separated*, never a number made up from the mix.
+
+What the line cannot be, said in the code: a backing vocal or a harmony
+the separator leaves in the stem is part of it, and YIN takes the stronger
+voice; a record with a rapped verse has a line of noise there, which the
+scoring sees as unvoiced and leaves out rather than marking anyone down.
+
+### The singer: pitch per strip, off the audio thread
+
+The audio thread does no pitch detection. Each open strip **decimates its
+input to 8 kHz** (the rate melody already works at — a fixed-tap low-pass
+and every sixth sample at 48 kHz, a fixed fractional step at other rates,
+no allocation) and pushes it into a
+lock-free ring of its own, one per strip, sized for a second. A **listening
+thread** drains the rings, runs YIN on 50 ms windows every 50 ms, and
+publishes per strip a pitch (cents) and a confidence. A strip whose ring
+overflows drops samples and counts them — a busy machine loses score
+points, never audio. The gate already knows when a singer is quiet; a
+closed gate is *not singing*, not a wrong note.
+
+### The score
+
+For each reference point where the line has a pitch, while that singer's
+song plays:
+
+- **Octave-agnostic.** The difference is taken in cents, folded into one
+  octave (±600): a baritone singing a soprano's line an octave down sings
+  it right.
+- **In the key it is sung in.** The reference is moved by the song's key
+  (`Request::key`) — the deck plays it there, so the singer sings it there.
+- **A timing tolerance.** The singer's pitch is taken at the best of the
+  points within 150 ms either side, so a singer a breath behind is not wrong.
+- **Graded, not binary.** Within 50 cents is a hit; 50–150 is half; beyond,
+  none. The score is the hits over the line's sung points, as a percentage,
+  so a song with long instrumental stretches is not easier or harder for it.
+
+The score is per **strip**, so a duet is two scores; the singer is whoever
+the rotation put on that strip (K3's *on a microphone*). Held by tests over
+synthetic voices — a sine following the reference line scores near 100, the
+same an octave down the same, a semitone sharp throughout about half, a
+fifth off nothing, and a quarter-second late still near 100.
+
+### On the screen, and after
+
+While the song runs the singers' screen shows each singing strip's name and
+running score small, below the words, never over them — K1's rule. When the
+host presses *Sang*, the score is kept with the performance in the history
+(`Sung::score`) and the screen shows it for a few seconds, then *Tonight's
+best* — the top five of the night — until the next song starts. A host can
+switch scoring off for the night; off, nothing is listened to and nothing
+is shown. Scores are tonight's only, unless §123's guest has consented to be
+kept, in which case they go with the performance in the guest book like the
+key does.
+
+### Versus, and the room's verdict
+
+**Versus**: the host names two teams of singers; a team's score is the mean
+of its singers' songs that round, shown as two bars. **Applause** (§35's room
+reading, from the room microphone, never a singer's strip): after *Sang* the
+room's loudness over the next eight seconds, against the night's own
+applause so far, as a verdict the host can choose instead of — not as well
+as — the pitch score.
+
+### Not here
+
+Pitch correction (K9, decided with K6 because a corrected voice scores what
+the corrector sang — when K9 builds it, the score reads the strip *before*
+correction). Scoring against notes somebody wrote: djmanzo has none, and the
+separated vocal is the point. Anything kept about a singer's voice beyond
+tonight without §123's consent.
+
+### The order
+
+1. **The reference** — the vocal line read from the separated vocal stem,
+   kept per record and separator, and drawn under the words for the host.
+2. **The singer** — decimation and a ring per strip, the listening thread,
+   pitch and confidence per strip.
+3. **The score** — the comparison, the running score on the singers'
+   screen, `Sung::score`, *Tonight's best*, the host's switch.
+4. **Versus and applause.**
+
+Each held by tests over synthetic voices and driven with a synthetic
+singer fed into a strip through the null backend's inputs — this container
+has no microphone, so nothing here can say how a real voice scores.
