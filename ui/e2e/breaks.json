@@ -24,6 +24,7 @@
         "Full"
       ]
     ],
+    "mix_out": false,
     "on": true,
     "phase": "playing",
     "playlist": 7,
@@ -60,6 +61,7 @@
         "Full"
       ]
     ],
+    "mix_out": false,
     "on": true,
     "phase": "off",
     "playlist": null,
@@ -96,6 +98,7 @@
         "Full"
       ]
     ],
+    "mix_out": false,
     "on": false,
     "phase": "off",
     "playlist": null,
@@ -132,6 +135,7 @@
         "Full"
       ]
     ],
+    "mix_out": false,
     "on": true,
     "phase": "playing",
     "playlist": 7,

@@ -238,6 +238,15 @@ test.describe("§107: break music between singers", () => {
     expect(sets.at(-1)).toMatchObject({ on: true, deck: 2, playlist: 7, lead: false });
     await expect(lead).not.toBeChecked();
 
+    // K5's mix out of each song: off as Rust starts it, sent when switched,
+    // and the choosing switch left as it was.
+    const out = row.getByRole("checkbox", { name: "Mix out of each song" });
+    await expect(out).not.toBeChecked();
+    await out.check();
+    const after = (await calls(page)).filter((call) => call.cmd === "karaoke_breaks_set");
+    expect(after.at(-1)).toMatchObject({ lead: false, mixOut: true });
+    await expect(out).toBeChecked();
+
     // Leading out of the song just sung, when nobody is waiting.
     await page.evaluate((after) => {
       (window as unknown as { __breaks: unknown }).__breaks = after;

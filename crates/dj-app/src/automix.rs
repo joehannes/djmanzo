@@ -150,6 +150,10 @@ struct Running {
     /// K5: the incoming record keeps its tempo and the outgoing one was
     /// synced to it; its pitch as it was, to put back when it is done.
     keep_incoming: Option<f64>,
+    /// Where the incoming fader ends: full, except for K5's break music
+    /// mixed in under a song, which comes up to the break level the host
+    /// chose and no further.
+    arrive: f32,
     /// The outgoing playhead where the transition began, in frames.
     from: u64,
     /// How long it lasts, in frames.
@@ -215,6 +219,8 @@ pub struct Automix {
     /// K5: perform the held mix once, whether or not the automix is on, and
     /// nothing else; cleared when it is done or cannot be.
     once: bool,
+    /// Where a one-shot's incoming fader ends. See [`Running::arrive`].
+    once_level: f32,
     /// The last fader value written to each deck, so a tick that would change
     /// nothing sends nothing. A transition at 60 Hz is otherwise several
     /// hundred actions through the queue for no audible benefit.
@@ -238,6 +244,7 @@ impl Automix {
             phase: Phase::Watching,
             forced: false,
             once: false,
+            once_level: 1.0,
             written: [None; dj_core::MAX_DECKS],
         }
     }
@@ -247,8 +254,12 @@ impl Automix {
     /// loaded or mixed after it. A held mix that stops describing the decks
     /// before it starts is dropped, never replaced with an answer of the
     /// automix's own.
-    pub fn perform_once(&mut self) {
+    ///
+    /// `level` is where the incoming fader ends: 1.0 for a singer's song,
+    /// the break level for break music mixed in under one.
+    pub fn perform_once(&mut self, level: f32) {
         self.once = true;
+        self.once_level = level.clamp(0.0, 1.0);
         if !self.is_mixing() {
             self.phase = Phase::Watching;
         }
@@ -527,6 +538,7 @@ impl Automix {
             incoming,
             level: outgoing.volume,
             keep_incoming,
+            arrive: if self.once { self.once_level } else { 1.0 },
             from: outgoing.position as u64,
             span: span as u64,
             style,
@@ -536,7 +548,7 @@ impl Automix {
             // Nothing is audible at the same time, so there is no span for a
             // stem or an EQ plan to happen over: the outgoing deck stops on
             // the same tick the incoming one starts.
-            self.set_fader(incoming, 1.0, plan);
+            self.set_fader(incoming, running.arrive, plan);
             plan.deck(incoming, DeckAction::Play);
             self.finish(running, decks, plan);
             self.phase = Phase::Watching;
@@ -594,6 +606,7 @@ impl Automix {
             outgoing,
             incoming,
             level,
+            arrive,
             from,
             span,
             style,
@@ -616,7 +629,7 @@ impl Automix {
         // the moment both tracks are meant to be carrying it.
         let angle = progress * std::f64::consts::FRAC_PI_2;
         self.set_fader(outgoing, level * angle.cos() as f32, plan);
-        self.set_fader(incoming, angle.sin() as f32, plan);
+        self.set_fader(incoming, arrive * angle.sin() as f32, plan);
 
         // The style's EQ plan. Guarded on whether there *is* a plan rather than
         // on the value it currently gives: a swap is nought at the start too,
@@ -645,10 +658,11 @@ impl Automix {
             incoming,
             style,
             keep_incoming,
+            arrive,
             ..
         } = running;
         self.once = false;
-        self.set_fader(incoming, 1.0, plan);
+        self.set_fader(incoming, arrive, plan);
         plan.deck(incoming, DeckAction::SetEqLow(1.0));
 
         plan.deck(outgoing, DeckAction::Pause);
@@ -864,7 +878,7 @@ mod tests {
             keep_incoming: true,
             ..held_at(40.0, 16, TransitionStyle::Blend)
         }));
-        mix.perform_once();
+        mix.perform_once(1.0);
         let breaks = |seconds| DeckView {
             volume: 0.7,
             pitch: 0.02,
@@ -911,6 +925,33 @@ mod tests {
         );
     }
 
+    /// **K5: break music mixed out of a song comes up to its own level**, not
+    /// to full; an ordinary mix's record still syncs to the song going out.
+    #[test]
+    fn a_one_shot_brings_its_record_up_to_the_level_asked() {
+        let mut mix = Automix::new();
+        mix.hold(Some(held_at(40.0, 16, TransitionStyle::Blend)));
+        mix.perform_once(0.4);
+        let opening = text(&mix.tick(&[playing(1, 40.0), loaded_idle(2)]));
+        assert!(opening.iter().any(|a| a == "deck 2 sync"), "{opening:?}");
+        let level = |plan: &Plan| {
+            text(plan)
+                .iter()
+                .filter_map(|a| a.strip_prefix("deck 2 volume "))
+                .filter_map(|v| v.parse::<f64>().ok())
+                .next_back()
+        };
+        let halfway = level(&mix.tick(&[playing(1, 44.0), playing(2, 4.0)])).expect("moved");
+        assert!(
+            (halfway - 0.4 * std::f64::consts::FRAC_PI_4.sin()).abs() < 0.003,
+            "{halfway}"
+        );
+        // Quantised to the fader's 1/512 steps.
+        let done = level(&mix.tick(&[playing(1, 48.0), playing(2, 8.0)])).expect("arrived");
+        assert!((done - 0.4).abs() < 1.0 / 512.0, "{done}");
+        assert!(!mix.is_performing_once());
+    }
+
     /// **A one-shot that no longer describes the decks is dropped**, never
     /// replaced with the automix's own answer — and it asks for no record.
     #[test]
@@ -920,7 +961,7 @@ mod tests {
             keep_incoming: true,
             ..held_at(40.0, 16, TransitionStyle::Blend)
         }));
-        mix.perform_once();
+        mix.perform_once(1.0);
         // The song's deck has been emptied.
         let plan = mix.tick(&[playing(1, 55.0), empty(2)]);
         assert_eq!(plan, Plan::default());
@@ -936,7 +977,7 @@ mod tests {
             keep_incoming: true,
             ..held_at(40.0, 16, TransitionStyle::Blend)
         }));
-        mix.perform_once();
+        mix.perform_once(1.0);
         assert_eq!(
             mix.tick(&[playing(1, 35.0), loaded_idle(2)]),
             Plan::default()

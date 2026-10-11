@@ -5229,6 +5229,8 @@ export interface Breaks {
   playlists: BreakPlaylist[];
   /** K5: choose the record that leads into the next singer's song. */
   lead: boolean;
+  /** K5: bring the break record in under the end of each song. */
+  mix_out: boolean;
   /** K5: what the record on the deck was chosen for, and why. */
   chosen: BreakChoice | null;
 }
@@ -5253,7 +5255,8 @@ export const karaokeBreaksSet = (
   level: number,
   decks: number,
   lead: boolean,
-) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead });
+  mixOut: boolean,
+) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead, mixOut });
 
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for

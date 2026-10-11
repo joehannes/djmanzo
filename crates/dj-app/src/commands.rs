@@ -15320,6 +15320,19 @@ fn bring_in_between(
     to: dj_core::DeckId,
     semitones: i32,
 ) -> Result<Option<crate::transition::Transition>, String> {
+    karaoke_mix(state, (from, to), (0, semitones), true)
+}
+
+/// K5: a mix between two decks either side of a karaoke song, with each
+/// record's key as it is heard — `(out, in)` semitones from the record's own
+/// — planned as soon as it can be (`soon`, a singer brought in) or as late
+/// (a mix out of a song's last phrase).
+fn karaoke_mix(
+    state: &AppState,
+    (from, to): (dj_core::DeckId, dj_core::DeckId),
+    (out_semitones, semitones): (i32, i32),
+    soon: bool,
+) -> Result<Option<crate::transition::Transition>, String> {
     use dj_library::suggest::{Playing, Trajectory, score};
 
     let db = library(state)?;
@@ -15330,16 +15343,22 @@ fn bring_in_between(
     let Some(in_track) = current_track(state, to).and_then(|id| db.track(id).ok().flatten()) else {
         return Ok(None);
     };
-    let Some(outgoing) = outgoing_of(state, from, &out_track) else {
+    let Some(mut outgoing) = outgoing_of(state, from, &out_track) else {
         return Ok(None);
     };
+    outgoing.key = outgoing.key.map(|key| key.transposed(out_semitones));
     let incoming = crate::plan::Incoming {
         bpm: in_track.analysis.bpm.unwrap_or(outgoing.bpm),
         phrase: phrase_of(&in_track),
         key: in_track.analysis.key().map(|key| key.transposed(semitones)),
     };
     let confidence = score(&Playing::of(&out_track), Trajectory::Hold, &in_track).confidence();
-    Ok(crate::transition::Transition::plan_soonest(
+    let plan = if soon {
+        crate::transition::Transition::plan_soonest
+    } else {
+        crate::transition::Transition::plan_as
+    };
+    Ok(plan(
         (from, to),
         (out_track.id, in_track.id),
         outgoing,
@@ -15382,7 +15401,8 @@ pub fn karaoke_bring_in(state: State<'_, AppState>) -> Result<RotationDto, Strin
     })?;
     state.arm_transition(transition);
     if let Ok(mut mix) = state.automix().lock() {
-        mix.perform_once();
+        // The song arrives at full: it is what the room is here for.
+        mix.perform_once(1.0);
     }
     Ok(with_rotation(&state, |_| false))
 }
@@ -16529,6 +16549,8 @@ pub struct BreaksDto {
     pub playlists: Vec<BreakPlaylistDto>,
     /// K5: choose the record that leads into the next singer's song.
     pub lead: bool,
+    /// K5: bring the break record in under the end of each song.
+    pub mix_out: bool,
     /// K5: what the record on the deck was chosen for, and why.
     pub chosen: Option<crate::breaks::Chosen>,
 }
@@ -16634,6 +16656,7 @@ pub fn breaks_view(
         problem,
         playlists,
         lead: settings.lead,
+        mix_out: settings.mix_out,
         chosen: None,
     }
 }
@@ -16651,6 +16674,9 @@ pub fn karaoke_breaks(state: State<'_, AppState>) -> BreaksDto {
 /// # Errors
 /// A deck that is not on screen, or a level that is not offered.
 #[tauri::command]
+// A command's arguments are the shape of the call the interface sends, one
+// named field each; gathering them into a struct here would only rename them.
+#[allow(clippy::too_many_arguments)]
 pub fn karaoke_breaks_set(
     state: State<'_, AppState>,
     on: bool,
@@ -16658,9 +16684,10 @@ pub fn karaoke_breaks_set(
     playlist: Option<i64>,
     level: f32,
     decks: u8,
-    // K5's switch. Absent from a caller that does not know it, and then kept
-    // as it was.
+    // K5's switches. Absent from a caller that does not know them, and then
+    // kept as they were.
     lead: Option<bool>,
+    mix_out: Option<bool>,
 ) -> Result<BreaksDto, String> {
     if deck == 0 || deck > decks.min(state.deck_count() as u8) {
         return Err(format!("deck {deck} is not on screen"));
@@ -16689,6 +16716,7 @@ pub fn karaoke_breaks_set(
                 0
             },
             lead: lead.unwrap_or(before.lead),
+            mix_out: mix_out.unwrap_or(before.mix_out),
             played: if playlist == before.playlist {
                 before.played
             } else {
@@ -16737,6 +16765,9 @@ pub fn tick_breaks(state: &AppState, now: f64) -> Option<dj_core::DeckId> {
     {
         return None;
     }
+    if let Some(deck) = mix_out_of_the_song(state) {
+        return Some(deck);
+    }
     let plan = {
         let mut held = state.breaks().lock().ok()?;
         let settings = held
@@ -16757,6 +16788,88 @@ pub fn tick_breaks(state: &AppState, now: f64) -> Option<dj_core::DeckId> {
         }
     }
     plan.load
+}
+
+/// K5: *Mix out of each song*. While the up-next singer's song plays and
+/// is within [`crate::breaks::MIX_OUT_LEAD_SECONDS`] of its end, the break
+/// record is asked for (answered with the deck to load it on), and once it
+/// is on its deck the planner's mix out of the song's last phrase is armed
+/// and the automix performs it once, bringing the record up to the break
+/// level. Break music adopts it when it finds it playing. Once per song.
+fn mix_out_of_the_song(state: &AppState) -> Option<dj_core::DeckId> {
+    let settings = {
+        let mut held = state.breaks().lock().ok()?;
+        held.settings
+            .get_or_insert_with(|| state.read_break_settings())
+            .clone()
+    };
+    if !settings.on || !settings.mix_out {
+        return None;
+    }
+    let break_deck = dj_core::DeckId::from_human(settings.deck)?;
+    let (track, key) = state
+        .karaoke()
+        .up_next()
+        .and_then(|(_, song)| Some((song.track.clone()?, song.key)))?;
+    let decks = break_view(state);
+    let song = decks
+        .iter()
+        .find(|d| d.id != break_deck && d.playing && d.track.as_deref() == Some(track.as_str()));
+    let Some(song) = song else {
+        // Not playing — paused, ended, or another record: nothing is being
+        // mixed out of, and the next time it plays is a new song.
+        if let Ok(mut held) = state.breaks().lock() {
+            held.mixed_out_of = None;
+        }
+        return None;
+    };
+    if (song.length - song.position) / song.sample_rate > crate::breaks::MIX_OUT_LEAD_SECONDS {
+        return None;
+    }
+    let ours_on = |held: &crate::breaks::Held| {
+        decks
+            .iter()
+            .find(|d| d.id == break_deck)
+            .filter(|d| d.loaded && d.track.is_some() && d.track.as_deref() == held.machine.ours())
+            .cloned()
+    };
+    let deck_view = {
+        let mut held = state.breaks().lock().ok()?;
+        match held.mixed_out_of.clone() {
+            Some((of, true)) if of == track => return None,
+            Some((of, false)) if of == track => {
+                // Asked for: arm once it is there.
+                ours_on(&held).filter(|d| !d.playing && d.position < d.length - 1.0)?
+            }
+            _ => {
+                let empty = decks
+                    .iter()
+                    .find(|d| d.id == break_deck)
+                    .is_some_and(|d| !d.loaded || (!d.playing && ours_on(&held).is_some()));
+                if !empty {
+                    // The host's record, or ours playing: not ours to take.
+                    return None;
+                }
+                held.mixed_out_of = Some((track, false));
+                return Some(break_deck);
+            }
+        }
+    };
+    if let Ok(mut held) = state.breaks().lock() {
+        held.mixed_out_of = Some((track, true));
+        held.machine.keep_fader(deck_view.volume);
+    }
+    match karaoke_mix(state, (song.id, break_deck), (key, 0), false) {
+        Ok(Some(transition)) => {
+            state.arm_transition(transition);
+            if let Ok(mut mix) = state.automix().lock() {
+                mix.perform_once(settings.level);
+            }
+        }
+        Ok(None) => {}
+        Err(error) => tracing::warn!(%error, "break music could not plan its mix out of the song"),
+    }
+    None
 }
 
 /// §107: put the next break record on `deck`. Off the pump.
@@ -16825,13 +16938,35 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
             true,
         ))
     });
+    // K5: the next singer's song still playing is a mix out of it — the
+    // record comes in under its end — so it is the song the record leads
+    // out of, and the one after it the song it leads into: ranked against
+    // both.
+    let singing = next.as_ref().is_some_and(|(_, _, track, _, _)| {
+        automix_view(state)
+            .iter()
+            .any(|d| d.playing && state.deck_track_id(d.id) == Some(track.id))
+    });
+    let after = rotation
+        .order()
+        .get(1)
+        .filter(|_| singing)
+        .and_then(|(_, song)| Some((find(song.track.as_deref())?, song.key)));
+    let next = next.map(|(singer, title, track, key, _)| (singer, title, track, key, singing));
     let song = [next, last]
         .into_iter()
         .flatten()
         .find(|(_, _, track, key, _)| crate::breaks::Towards { track, key: *key }.analysed());
+    let out_of = song.as_ref().is_some_and(|(_, _, _, _, out)| *out);
     let towards: Vec<crate::breaks::Towards<'_>> = song
         .iter()
         .map(|(_, _, track, key, _)| crate::breaks::Towards { track, key: *key })
+        .chain(
+            after
+                .iter()
+                .filter(|_| out_of)
+                .map(|(track, key)| crate::breaks::Towards { track, key: *key }),
+        )
         .collect();
 
     // Moved on whether or not this one reads: a file that will not load must

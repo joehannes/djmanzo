@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Mix out of each song (K5).** A switch in break music, off by default:
+  the break record comes in under the last phrase of each song at the
+  break level, chosen to lead out of that song and into the next singer's,
+  and fades out for them like any break.
+
 ## v0.41.0 — Singers from the room, and break music that leads into their song
 
 - **Bring them in (K5).** With the next singer's song on a deck and break

@@ -1148,3 +1148,19 @@ cleared, is dropped rather than turned into an end-of-file mix of the
 automix's own. Break music stands aside while it runs and takes its deck
 back after, the fader where the host had it. The row reads *Bringing Ana
 in from deck 2…* until the mix is done.
+
+**Step 3, back out — built (11 October). K5 is complete.** *Mix out of
+each song*, off. Where on, while the up-next singer's song plays and is
+within thirty seconds of its end, break music asks for its record then —
+ranked against the song ending and the song after it, both as they will be
+sung — and once it is on its deck arms the planner's ordinary mix out of
+the song's last phrase, which the automix performs once, as for *Bring
+them in*, but with the record synced to the song as in any mix, and
+brought up to the break level rather than to full (`perform_once(level)`).
+The song's deck is ejected as the mix ends, as the automix leaves any
+record it has mixed out of. Break music then finds its own record playing
+and adopts it as a break under way, so the next singer's song fades it out
+and the fader goes back where the host had it before the mix moved it
+(`Breaks::keep_fader`). Once per song. The panel's line names the song it
+led out of; the scorer's reasons on it are for that song only, although
+the choice weighed the next one too.

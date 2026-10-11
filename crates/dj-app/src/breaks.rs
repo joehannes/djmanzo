@@ -104,7 +104,17 @@ pub struct Settings {
     /// night*, with a new playlist, and once every record has had its turn.
     #[serde(default)]
     pub played: Vec<String>,
+    /// K5: bring the break record in under the last phrase of each song,
+    /// rather than after two seconds of quiet. Off unless the host turns it
+    /// on: applause wants the room quiet.
+    #[serde(default)]
+    pub mix_out: bool,
 }
+
+/// K5: how long before a song's end its break record is asked for, in
+/// seconds of the song, when break music mixes out of it. The automix's
+/// own lead, for the same reason: long enough to read a file and plan.
+pub const MIX_OUT_LEAD_SECONDS: f64 = 30.0;
 
 /// How many played records are remembered. A playlist that lost records
 /// while they were remembered would otherwise leave their ids behind for
@@ -255,6 +265,7 @@ impl Default for Settings {
             next: 0,
             lead: Self::default_lead(),
             played: Vec::new(),
+            mix_out: false,
         }
     }
 }
@@ -313,6 +324,10 @@ pub struct Held {
     /// K5: what the record on the deck was chosen for, when it was chosen
     /// rather than next in the playlist.
     pub chosen: Option<Chosen>,
+    /// K5: the song, by the library's id, a mix out of it has begun for,
+    /// and whether it is armed yet (else its record has been asked for) —
+    /// so one song is mixed out of once, however many ticks that takes.
+    pub mixed_out_of: Option<(String, bool)>,
 }
 
 /// K5: a break record chosen for a song, as the Singers panel says it.
@@ -391,6 +406,12 @@ impl Breaks {
     /// The record the host's loader put on the break deck.
     pub fn loaded(&mut self, track: String) {
         self.ours = Some(track);
+    }
+
+    /// K5: where the host had the break deck's fader, kept to give back,
+    /// before a mix out of a song moves it — unless one is already kept.
+    pub fn keep_fader(&mut self, level: f32) {
+        self.restore.get_or_insert(level);
     }
 
     /// Stop, giving the fader back to the host.
@@ -504,6 +525,13 @@ impl Breaks {
 
         // Off: is it a break yet?
         if deck.playing {
+            if self.is_ours(deck) {
+                // K5: our own record playing with nothing else — brought in
+                // under the end of a song — is a break under way, and fades
+                // out for the next singer like any other.
+                self.phase = Phase::Playing;
+                return plan;
+            }
             // The break deck playing something by hand is not a break.
             self.quiet_since = None;
             return plan;
@@ -680,6 +708,41 @@ mod tests {
         for now in [0.0, 2.0, 5.0, 30.0] {
             assert_eq!(breaks.tick(&settings(), &decks, now), Plan::default());
         }
+    }
+
+    /// **K5: a record of ours found playing is a break under way.** Brought
+    /// in under the end of a song by the automix, it is adopted, and fades
+    /// out for the next singer like any break, the fader given back where
+    /// the host had it — kept before the mix moved it.
+    #[test]
+    fn a_record_brought_in_under_a_song_is_adopted() {
+        let mut breaks = Breaks::new();
+        breaks.loaded("bgm".to_owned());
+        breaks.keep_fader(0.9);
+        breaks.keep_fader(0.2);
+        let ours = |seconds: f64, volume: f32| DeckView {
+            playing: true,
+            position: seconds * RATE,
+            volume,
+            ..with(2, "bgm")
+        };
+        let plan = breaks.tick(&settings(), &[deck(1), ours(10.0, 0.7)], 0.0);
+        assert_eq!(plan, Plan::default(), "adopting it moved something");
+        assert_eq!(breaks.phase(), Phase::Playing);
+
+        let singer = DeckView {
+            playing: true,
+            ..with(1, "the next singer's song")
+        };
+        let _ = breaks.tick(&settings(), &[singer.clone(), ours(11.0, 0.7)], 1.0);
+        assert!(matches!(breaks.phase(), Phase::FadingOut { .. }));
+        let done = breaks.tick(&settings(), &[singer, ours(14.0, 0.0)], 4.0);
+        assert!(does(&done, &DeckAction::Pause));
+        assert_eq!(
+            volumes(&done).last(),
+            Some(&0.9),
+            "the first fader kept is the host's"
+        );
     }
 
     /// When a break record plays to its end the next one is asked for, and

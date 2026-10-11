@@ -383,12 +383,22 @@
     return () => clearInterval(timer);
   });
 
-  async function setBreaks(change: Partial<Pick<Breaks, "on" | "deck" | "playlist" | "level" | "lead">>) {
+  async function setBreaks(
+    change: Partial<Pick<Breaks, "on" | "deck" | "playlist" | "level" | "lead" | "mix_out">>,
+  ) {
     if (!breaks) return;
     const next = { ...breaks, ...change };
     error = "";
     try {
-      breaks = await karaokeBreaksSet(next.on, next.deck, next.playlist, next.level, deckCount, next.lead);
+      breaks = await karaokeBreaksSet(
+        next.on,
+        next.deck,
+        next.playlist,
+        next.level,
+        deckCount,
+        next.lead,
+        next.mix_out,
+      );
     } catch (e) {
       error = String(e);
     }
@@ -581,6 +591,19 @@
             onchange={(event) => void setBreaks({ lead: event.currentTarget.checked })}
           />
           Lead into the next song
+        </label>
+        <!--
+          K5: the break record brought in under the end of each song, at the
+          break level, rather than after two seconds of quiet. Off by
+          default: applause wants the room quiet.
+        -->
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={breaks.mix_out}
+            onchange={(event) => void setBreaks({ mix_out: event.currentTarget.checked })}
+          />
+          Mix out of each song
         </label>
       </div>
       {#if breaks.on}

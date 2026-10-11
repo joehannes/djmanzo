@@ -2717,6 +2717,7 @@ export async function openShell(
                 playlist: args.playlist,
                 level: args.level,
                 lead: args.lead,
+                mix_out: args.mixOut,
               });
             }
             return Promise.resolve(structuredClone(held));
