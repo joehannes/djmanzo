@@ -403,6 +403,73 @@ test.describe("K3: the singers' microphones", () => {
   });
 
   /**
+   * **K9: pitch correction on a strip** — off until chosen, what it adds to
+   * the singer's wedge said before it is, Rust's own starting point and
+   * ranges once on, and the key it pulls to as Rust names it: the up-next
+   * song's, or a plain word that there is none.
+   */
+  test("a strip's pitch correction says what it adds and the key it pulls to", async ({ page }) => {
+    const song = { title: "Valerie", track: "07".repeat(32), path: null, key: 2 };
+    const rotation = {
+      singers: [{ name: "Ana", songs: [song], turns: 0, microphone: null }],
+      up_next: "Ana",
+      lately: [],
+    };
+    await singers(page, { karaoke_rotation: { ...rotation, sung_key: null } });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    await here.getByRole("button", { name: "Mic 1", exact: true }).click();
+    const chain = here.getByRole("group", { name: "Mic 1's chain" });
+    const pitch = chain.locator('fieldset[data-stage="correction"]');
+
+    const on = chain.getByRole("checkbox", { name: "Mic 1 Pitch" });
+    await expect(on).not.toBeChecked();
+    await expect(pitch.locator("legend")).toContainText(`+${Math.round(vocals.open.correction_latency_ms)} ms`);
+    await expect(chain.getByRole("slider", { name: "Mic 1 Pitch Strength" })).toHaveCount(0);
+
+    const last = async () => (await calls(page)).filter((c) => c.cmd === "vocal_strip_set").at(-1);
+    await on.check();
+    await expect.poll(async () => (await last())?.settings?.correction).toEqual(vocals.open.every_stage.correction);
+    const limits = vocals.open.limits as Record<string, number[]>;
+    const strength = chain.getByRole("slider", { name: "Mic 1 Pitch Strength" });
+    await expect(strength).toHaveAttribute("max", String(limits["correction.strength"][1]));
+    const speed = chain.getByRole("slider", { name: "Mic 1 Pitch Speed" });
+    await expect(speed).toHaveAttribute("min", String(limits["correction.speed_ms"][0]));
+    await expect(speed).toHaveAttribute("max", String(limits["correction.speed_ms"][1]));
+    await expect(pitch).toContainText("No key to pull to");
+
+    await strength.fill("0.5");
+    await expect.poll(async () => (await last())?.settings?.correction?.strength).toBe(0.5);
+    await expect(pitch).toContainText("50 %");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **K9: the key pulled to is the rotation's** — Rust's name for the up-next
+   * song's key as it will be sung.
+   */
+  test("pitch correction names the up-next song's key", async ({ page }) => {
+    const song = { title: "Valerie", track: "07".repeat(32), path: null, key: 2 };
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: [song], turns: 0, microphone: null }],
+        up_next: "Ana",
+        lately: [],
+        sung_key: "Bm (10A)",
+      },
+      vocals_opened: { ...vocals.open, strips: [vocals.open.every_stage, vocals.open.strips[1]] },
+    });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    await here.getByRole("button", { name: "Mic 1", exact: true }).click();
+    const pitch = here.getByRole("group", { name: "Mic 1's chain" }).locator('fieldset[data-stage="correction"]');
+    await expect(pitch).toContainText("To Bm (10A)");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A row stays inside its panel, and so does its chain.** Found by driving
    * the application, not by a test: the Singers surface docked at the side
    * is narrower than a row's six things, and every row ran past the panel's
@@ -449,6 +516,18 @@ test.describe("K3: the singers' microphones", () => {
     if (!wide || !level) throw new Error("a fader and a meter");
     expect(level.y).toBeLessThan(wide.y + wide.height);
     expect(await overrun()).toEqual([0, 0]);
+
+    // Every stage on, so whichever lands in the last column has its
+    // controls: no column is narrower than a stage needs, at any width.
+    // (K9's stage put the De-esser in a third column 4 px past the row.)
+    const chain = here.getByRole("group", { name: "Mic 1's chain" });
+    for (const box of await chain.getByRole("checkbox").all()) await box.check();
+    for (let width = 280; width <= 900; width += 15) {
+      await list.evaluate((ul, w) => {
+        (ul as HTMLElement).style.width = `${w}px`;
+      }, width);
+      expect([width, ...(await overrun())]).toEqual([width, 0, 0]);
+    }
     expect(errorsThrown(page)).toEqual([]);
   });
 

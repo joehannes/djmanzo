@@ -16,11 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-- **Pitch correction in a singer's chain (K9).** A stage after the gate,
-  off unless chosen, pulling a voice toward the nearest note of the song
-  being sung — the record's analysed key, moved by the singer's key
-  change, followed within a second. A preset leaves it alone; a singer's
-  chain keeps it. Its row on the strip comes next.
+- **Pitch correction in a singer's chain (K9).** *Pitch*, behind a
+  microphone's name after the gate, off unless chosen: *+10 ms* said
+  beside it, since the singer's wedge hears that; strength and speed; and
+  the key it pulls to — the song up next as it will be sung, *To Bm
+  (10A)*, following the singer's key change. A preset leaves it alone; a
+  singer's chain keeps it.
+- **A microphone's chain no longer runs past a narrow panel** when a
+  stage that is switched on lands in its last column.
 
 - **A singer's song, recorded for them (K9).** A fourth question in the
   guest book — *Record my song tonight and give it to me* — and, for a

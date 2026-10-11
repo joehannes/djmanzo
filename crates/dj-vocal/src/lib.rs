@@ -41,7 +41,9 @@ pub use strip::{
     Chain, CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, LIMITS,
     Preset, ReverbSettings, Strip, StripFrame, StripSettings, range,
 };
-pub use tune::{CorrectionSettings, Corrector, Scale};
+pub use tune::{
+    CorrectionSettings, Corrector, LATENCY_SECONDS as CORRECTION_LATENCY_SECONDS, Scale,
+};
 
 /// The most microphones djmanzo will run: the input count of a large
 /// interface. A strip is a few hundred kilobytes, most of it the reverb's and
@@ -404,6 +406,48 @@ mod tests {
             );
             assert_eq!(vocals.unheard(), 0);
         }
+    }
+
+    /// **K9: the score hears the singer, not the corrector** — the
+    /// condition K6 set on pitch correction. A 225 Hz voice through a strip
+    /// pulling hard to A minor comes out of the PA at A (220 Hz), and the
+    /// listening still hears 225 Hz.
+    #[test]
+    fn the_listening_hears_the_voice_before_its_correction() {
+        let mut vocals = Vocals::new(RATE, 1);
+        vocals.strip_mut(0).unwrap().apply(&StripSettings {
+            gate: None,
+            correction: Some(CorrectionSettings {
+                strength: 1.0,
+                speed_ms: 20.0,
+            }),
+            ..singer()
+        });
+        vocals.set_scale(Some(Scale::minor(9)));
+        let (mut input, ring) = rtrb::RingBuffer::new(RATE as usize * 2);
+        vocals.set_input(Some(ring));
+        let mut ears = vocals.listen();
+        let mut sung = Vec::new();
+        let mut heard = Vec::new();
+        for n in 0..(RATE * 1.5) as usize {
+            let t = n as f32 / RATE;
+            let _ = input.push(0.3 * (std::f32::consts::TAU * 225.0 * t).sin());
+            sung.push(vocals.next_frame().main[0]);
+            heard.extend(std::iter::from_fn(|| ears[0].pop().ok()));
+        }
+        let per_second = |samples: &[f32]| {
+            samples
+                .windows(2)
+                .filter(|pair| pair[0] < 0.0 && pair[1] >= 0.0)
+                .count()
+        };
+        let pa = per_second(&sung[sung.len() - RATE as usize..]);
+        assert!((219..=222).contains(&pa), "the PA had {pa} a second");
+        let scored = per_second(&heard[heard.len() - LISTEN_RATE as usize..]);
+        assert!(
+            (224..=226).contains(&scored),
+            "the score heard {scored} a second"
+        );
     }
 
     fn singer() -> StripSettings {

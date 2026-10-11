@@ -18,21 +18,28 @@
     strip,
     limits,
     everyStage,
+    pulledTo = null,
+    latencyMs,
     onchange,
   }: {
     index: number;
     strip: StripSettings;
     limits: VocalLimits;
     everyStage: StripSettings;
+    /** K9: the key pitch correction pulls to, as Rust names it; none without one. */
+    pulledTo?: string | null;
+    /** K9: what pitch correction adds to the voice, in milliseconds, Rust's. */
+    latencyMs: number;
     onchange: (settings: StripSettings) => void;
   } = $props();
 
-  type Stage = "gate" | "eq" | "compressor" | "de_esser" | "echo" | "reverb";
+  type Stage = "gate" | "correction" | "eq" | "compressor" | "de_esser" | "echo" | "reverb";
   type Top = "high_pass_hz" | "pan" | "to_main" | "to_monitor" | "to_cue";
 
   /** In the order the voice goes through them. */
   const STAGES: { stage: Stage; name: string }[] = [
     { stage: "gate", name: "Gate" },
+    { stage: "correction", name: "Pitch" },
     { stage: "eq", name: "EQ" },
     { stage: "compressor", name: "Compressor" },
     { stage: "de_esser", name: "De-esser" },
@@ -54,6 +61,10 @@
     gate: [
       { key: "threshold_db", label: "Opens at", unit: "dB", step: 1 },
       { key: "range_db", label: "Closes by", unit: "dB", step: 1 },
+    ],
+    correction: [
+      { key: "strength", label: "Strength", unit: "", step: 0.05 },
+      { key: "speed_ms", label: "Speed", unit: "ms", step: 5 },
     ],
     eq: [
       { key: "low_db", label: "Low", unit: "dB", step: 0.5 },
@@ -153,6 +164,10 @@
           />
           <span>{name}</span>
         </label>
+        {#if stage === "correction"}
+          <!-- The singer's wedge hears it, so it is said before it is chosen. -->
+          <small class="late">+{Math.round(latencyMs)} ms</small>
+        {/if}
       </legend>
       {#if settings}
         {#each CONTROLS[stage] as control (control.key)}
@@ -173,6 +188,11 @@
             </label>
           {/if}
         {/each}
+        {#if stage === "correction"}
+          <p class="pulled">
+            {pulledTo ? `To ${pulledTo}` : "No key to pull to: the song up next has none known"}
+          </p>
+        {/if}
       {/if}
     </fieldset>
   {/each}
@@ -180,11 +200,14 @@
 
 <style>
   /* As wide as the row and no wider: a column a stage where the panel has
-     room, one column where it does not. */
+     room, one column where it does not. A column is never narrower than a
+     stage switched on — its label, slider and value (13.7rem with their
+     gaps) inside the fieldset's padding — or the last column runs past the
+     row. */
   .chain {
     display: grid;
     min-width: 0;
-    grid-template-columns: repeat(auto-fill, minmax(min(13rem, 100%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
     gap: 0.4rem;
     grid-column: 1 / -1;
     padding-top: 0.3rem;
@@ -206,6 +229,9 @@
   }
 
   legend {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
     padding: 0 0.2rem;
     font-weight: 600;
   }
@@ -229,5 +255,15 @@
   output {
     color: var(--text-dim);
     text-align: right;
+  }
+
+  .late,
+  .pulled {
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  .pulled {
+    margin: 0;
   }
 </style>

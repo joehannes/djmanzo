@@ -1302,6 +1302,7 @@
     {enabled}
     bind:vocals={mics}
     singers={(rotation?.singers ?? []).map((s) => s.name)}
+    sungKey={rotation?.sung_key ?? null}
     {buffer}
     onrange={() => void refresh()}
   />

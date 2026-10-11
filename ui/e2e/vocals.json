@@ -1,6 +1,7 @@
 {
   "closed": {
     "chain_cost": 0.006,
+    "correction_latency_ms": 10.0,
     "every_stage": {
       "compressor": {
         "makeup_db": 3.0,
@@ -172,6 +173,7 @@
   },
   "open": {
     "chain_cost": 0.006,
+    "correction_latency_ms": 10.0,
     "every_stage": {
       "compressor": {
         "makeup_db": 3.0,
@@ -406,6 +408,7 @@
   },
   "singing": {
     "chain_cost": 0.006,
+    "correction_latency_ms": 10.0,
     "every_stage": {
       "compressor": {
         "makeup_db": 3.0,

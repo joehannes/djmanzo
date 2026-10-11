@@ -21,6 +21,10 @@ use serde::{Deserialize, Serialize};
 /// The shifter's window, in seconds: twice the latency it adds at rest.
 pub const WINDOW_SECONDS: f32 = 0.020;
 
+/// K9: what the stage adds to a singer's voice at rest, in seconds — what
+/// the strip's row says beside it, since a wedge hears it.
+pub const LATENCY_SECONDS: f32 = WINDOW_SECONDS / 2.0;
+
 /// The rate the note is heard at, in hertz — the listening tap's own.
 const LISTEN_RATE: f32 = 8_000.0;
 /// The window the note is heard in, in samples at [`LISTEN_RATE`]: 40 ms,
@@ -556,7 +560,7 @@ mod tests {
             loud.iter().all(|&i| i.abs_diff(expected) <= 1),
             "heard at {loud:?}, not once at {expected}"
         );
-        assert!((late / RATE - WINDOW_SECONDS / 2.0).abs() < 1e-4);
+        assert!((late / RATE - LATENCY_SECONDS).abs() < 1e-4);
     }
 
     /// **The key's notes are the key's**: A minor has G and not G#, and a

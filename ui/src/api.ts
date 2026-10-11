@@ -860,6 +860,8 @@ export interface Vocals {
    * their chain already laid over the strip's row.
    */
   on: (OnMic | null)[];
+  /** K9: what pitch correction adds to a singer's voice, in milliseconds — their wedge hears it. */
+  correction_latency_ms: number;
 }
 
 /** K3: a singer on a microphone, and where the chain they sing through is kept. */
@@ -5108,6 +5110,8 @@ export interface Rotation {
   may_record?: boolean;
   /** K9: the song being recorded, while one is. */
   recording?: RecordingSong | null;
+  /** K9: the key the singers' pitch correction pulls to, `Bm (10A)`; none without a known key. */
+  sung_key?: string | null;
 }
 
 /** K9: a singer's song being recorded for them. See `dj_app::commands::RecordingSongDto`. */

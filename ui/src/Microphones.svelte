@@ -48,6 +48,7 @@
     enabled = true,
     vocals = $bindable(null),
     singers = [],
+    sungKey = null,
     buffer,
     onrange,
   }: {
@@ -57,6 +58,8 @@
     vocals?: Vocals | null;
     /** Tonight's rotation, by name: who can be put on a microphone. */
     singers?: string[];
+    /** K9: the key the singers' pitch correction pulls to, Rust's name for it. */
+    sungKey?: string | null;
     /** K8: a range was read and is on the singer's place in the rotation. */
     onrange?: () => void;
     /**
@@ -458,6 +461,8 @@
               {strip}
               limits={vocals.limits}
               everyStage={vocals.every_stage}
+              pulledTo={sungKey}
+              latencyMs={vocals.correction_latency_ms}
               onchange={(settings) => void set(i, settings)}
             />
           {/if}

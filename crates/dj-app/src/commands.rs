@@ -1296,6 +1296,10 @@ pub struct VocalsDto {
     /// they are singing through is kept, if anywhere yet. `strips` is what
     /// is played, their chain already laid over the strip's row.
     pub on: Vec<Option<crate::karaoke::OnMic>>,
+    /// K9: what pitch correction adds to a singer's voice, in milliseconds
+    /// (`dj_vocal::CORRECTION_LATENCY_SECONDS`) — said beside the stage,
+    /// since the singer's wedge hears it.
+    pub correction_latency_ms: f32,
 }
 
 /// K3: one preset, as the row offers it.
@@ -1390,6 +1394,7 @@ pub fn vocals_for(
             .collect(),
         every_stage: dj_vocal::StripSettings::every_stage(),
         on,
+        correction_latency_ms: dj_vocal::CORRECTION_LATENCY_SECONDS * 1_000.0,
     }
 }
 
@@ -15466,6 +15471,10 @@ pub struct RotationDto {
     pub may_record: bool,
     /// K9: the song being recorded, while one is.
     pub recording: Option<RecordingSongDto>,
+    /// K9: the key the singers' pitch correction pulls to — the up-next
+    /// song's as it will be sung, `Bm (10A)` — or none, when there is no
+    /// record or its key is not known.
+    pub sung_key: Option<String>,
 }
 
 /// K9: a singer's song being recorded for them.
@@ -15511,6 +15520,7 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         versus: rotation.standing(),
         may_record: false,
         recording: None,
+        sung_key: None,
     }
 }
 
@@ -15541,6 +15551,7 @@ fn with_rotation(
         .as_deref()
         .is_some_and(|name| journal.may_record(name).is_some());
     drop(journal);
+    dto.sung_key = sung_key(state).map(|key| format!("{} ({})", key.standard(), key.camelot()));
     dto.recording = lock(state.performance())
         .as_ref()
         .map(|run| RecordingSongDto {
@@ -24263,11 +24274,20 @@ mod performance_tests {
     }
 }
 
-/// K9: the scale the song being sung is in — the up-next song's record's key
-/// as analysed, moved by the singer's own key change — for the singers'
-/// pitch correction. `None` with nobody up next, no record, or a record
-/// whose key is not known: the correction then pulls to nothing.
+/// K9: the scale the song being sung is in, for the singers' pitch
+/// correction. `None` pulls to nothing. See [`sung_key`].
 pub(crate) fn sung_scale(state: &AppState) -> Option<dj_vocal::Scale> {
+    let key = sung_key(state)?;
+    Some(match key.mode() {
+        dj_core::Mode::Major => dj_vocal::Scale::major(key.tonic()),
+        dj_core::Mode::Minor => dj_vocal::Scale::minor(key.tonic()),
+    })
+}
+
+/// K9: the key the song being sung is in — the up-next song's record's key
+/// as analysed, moved by the singer's own key change. `None` with nobody up
+/// next, no record, or a record whose key is not known.
+pub(crate) fn sung_key(state: &AppState) -> Option<dj_core::MusicalKey> {
     let (track, shift) = state
         .karaoke()
         .up_next()
@@ -24281,10 +24301,7 @@ pub(crate) fn sung_scale(state: &AppState) -> Option<dj_vocal::Scale> {
         .analysis
         .key()?
         .transposed(shift);
-    Some(match key.mode() {
-        dj_core::Mode::Major => dj_vocal::Scale::major(key.tonic()),
-        dj_core::Mode::Minor => dj_vocal::Scale::minor(key.tonic()),
-    })
+    Some(key)
 }
 
 #[cfg(test)]
@@ -24326,6 +24343,7 @@ mod correction_tests {
             None,
             "a key for a record never analysed"
         );
+        assert_eq!(super::with_rotation(&state, |_| false).sung_key, None);
 
         let a_minor = dj_core::MusicalKey::new(8, dj_core::Mode::Minor).expect("8A");
         db.set_analysis(
@@ -24337,6 +24355,11 @@ mod correction_tests {
             sung_scale(&state),
             Some(dj_vocal::Scale::minor(11)),
             "A minor two semitones up is B minor"
+        );
+        assert_eq!(
+            super::with_rotation(&state, |_| false).sung_key.as_deref(),
+            Some("Bm (10A)"),
+            "the key said on the strip's row"
         );
     }
 }

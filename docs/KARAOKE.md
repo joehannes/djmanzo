@@ -1890,10 +1890,10 @@ so it hears what the singer sang — the condition K6 set.
   moving at the shift's rate and crossfaded so neither's jump is heard —
   the oldest pitch shifter there is, chosen because the shifts are small
   (rarely more than half a semitone), it has no FFT, allocates nothing
-  after construction, and its latency is fixed: the window, 20 ms. That
-  is added to what the singer hears in their wedge (K3 measures about
-  11 ms at 256 frames), which is why it is off unless chosen, and why the
-  panel says *+20 ms* beside it.
+  after construction, and its latency is fixed: half the 20 ms window,
+  10 ms, as built (step 1 below). That is added to what the singer hears
+  in their wedge (K3 measures about 11 ms at 256 frames), which is why it
+  is off unless chosen, and why the panel says *+10 ms* beside it.
 - *The song's key.* Sent to the rack with the song (as built: once a
   second, from the rotation — step 2 below): one key for every strip, since the singers sing
   the same song. No key — a record never analysed — and the stage does
@@ -1937,6 +1937,25 @@ tests through the strip (225 Hz comes out within 10 cents of 220 Hz in
 A minor; untouched with the stage off) and through the engine (a rack
 opened after the key is pulled to it; no key, no pull); every mutant of
 the wiring was killed.
+
+**Step 3 built (11 October 2026): the strip's row.** *Pitch* is a stage
+behind a strip's name, after the gate as the voice meets it, off until
+chosen: *+10 ms* beside its switch whether on or not
+(`dj_vocal::CORRECTION_LATENCY_SECONDS`, carried as `correction_latency_ms`),
+and once on, *Strength* and *Speed* over Rust's ranges from Rust's starting
+point (80 %, 40 ms), and the key it pulls to as the rotation names it —
+*To Bm (10A)* — or *No key to pull to* when the song up next has none known.
+Driven: a singer queued with the A-minor demo record, the key raised one and
+then two, and the row said *To Bbm (3A)* then *To Bm (10A)* as each press
+landed, with no reopening. Making the row found a fault of K3's own: a
+column of the chain was narrower than a stage switched on needs (13rem
+against 13.7rem of label, slider and value), and the stage moved the
+De-esser into a third column 4 px past the row; the column is now 15rem,
+and the narrow-panel test now switches every stage on and sweeps the
+width. And the condition K6 set — the score reads the voice before its
+correction — was true by construction and is now held by a test: 225 Hz
+through a strip pulling hard to A minor leaves the PA at 220 Hz and reaches
+the listening at 225.
 
 **The order.** 1. The corrector in `dj-vocal`, pure, with its tests. 2.
 The stage in the chain, the song's key sent to the rack, and kept with a
