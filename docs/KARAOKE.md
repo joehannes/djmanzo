@@ -412,8 +412,8 @@ piece of this document lands among them.
 | N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
 | Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
 | Break music that leads into the next song | the planner | **K5** | outlined |
-| Scored singing, from the separated vocal | K3, M6 | **K6** | designed (§9) |
-| A quiz made from the collection | K4, M6 | **K7** | outlined |
+| Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
+| A quiz made from the collection | K4, M6 | **K7** | designed (§10) |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | outlined |
 | Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
 
@@ -1359,3 +1359,99 @@ the verdict back to the singing. Driven: two teams set up and started in
 the panel, kept by Rust from tonight's third song, and drawn as two bars
 in WebKitGTK. Not driven: applause from a real room — the room surface's
 microphone is WebKitGTK's mock here, so the number would be the mock's.
+
+## 10. A quiz made from the collection (K7)
+
+*Designed 11 October 2026, before any code.* The outline: rounds generated
+from the DJ's own records, using what djmanzo can already do to them — a
+snippet to name, a reversed or sped-up clip, a chipmunk voice (keylock off),
+the stems brought in one at a time, a missing line from the stored lyrics.
+Phones answer through the room's page, four buttons each, with a short
+karaoke interlude between questions.
+
+What exists: every effect a question needs is an action a DJ already has —
+`deck N reverse_on`, `keylock_off`, `rate`, a stem's mute, a seek — so a
+question is played on a deck through the ordinary vocabulary, filed as the
+machine's, and visible on the mixer like everything else djmanzo does.
+The room's page (`dj_net::front`) already carries requests and K4's
+sign-ups under one rule — a phone can add to a book and reach nothing else
+— and the singers' screen is already on the room's display.
+
+### The questions, made by rules
+
+No model writes them: each kind is a rule over the library, so a question
+can be checked, and a DJ who sees a wrong one can see why.
+
+- **Name it.** Ten seconds from a third of the way in, from a phrase
+  boundary — where a record sounds like itself, past its intro. Four
+  answers, *Title — Artist*: the record and three decoys from the
+  collection.
+- **Backwards** and **Chipmunk.** The same clip reversed, or at 1.5× with
+  keylock off — the voice up a fifth, the way the trick has always sounded.
+- **Stems in.** The record's separated stems brought in one at a time over
+  twenty seconds — drums, bass, the rest, the voice last — and an answer
+  given sooner is worth more. Only for a record whose stems are separated.
+- **Finish the line.** A line of a record's stored words on the screen,
+  the record playing up to it; the answers are the line that follows and
+  three lines of other records' words of a similar length. Only for a
+  record with timed words.
+
+**The decoys are the craft.** Three titles picked at random from a
+collection of bachata and techno make a bachata question answer itself, so
+decoys come from the record's own genre family and within a tenth of its
+tempo, falling back to the nearest the collection has, and never another
+version of the same title. A record with no title or artist tags is not
+asked about — *Unknown — Unknown* is not a question.
+
+### Answering from phones
+
+While a question is open the room's page shows it — the four answers as
+four large buttons, A to D, the same letters as the screen — and takes one
+answer per phone per question, by the phone's address and a token for the
+night, as K4 counts sign-ups. A phone gives a nickname once a night (forty
+characters, the K4 rule; never in the guest book). An answer is worth a
+thousand if right, less the longer it took: half of it for being right, the
+other half shrinking to nothing at the question's end. The question closes
+ten seconds after the clip ends; an answer after that is refused, not
+counted late. The book keeps the night's scores; the leaderboard is the top
+ten.
+
+### On the screen
+
+The room's display — the singers' screen, which a quiz takes over while a
+round runs — shows the question, the four answers lettered, a countdown,
+then the answer with how many phones chose each, then the leaderboard
+between questions. The words-first rule still holds: the question is the
+words here, and nothing covers it.
+
+### The host
+
+In the Singers panel, *Quiz*: how many questions a round (five, ten,
+fifteen), which kinds, which deck plays them (not one a singer's song is
+on), and *Next question*. The host runs a round between singers — the
+karaoke interlude is the rotation carrying on — and a press asks the next
+question; nothing advances on its own, because a room needs the host's
+timing. The deck is put back as it was found after each clip: rate,
+keylock, reverse and stems.
+
+### Not here
+
+Questions about anything the collection does not hold — facts about artists,
+charts, years — which would need data djmanzo does not have and should not
+make up. Music from outside the collection. Prizes.
+
+### The order
+
+1. **The questions** — the rules and their decoys, the host's *Quiz* in the
+   Singers panel, the clip played on the chosen deck and put back, the
+   answer revealed by hand. Without phones a quiz is already a quiz.
+2. **The phones** — the page's *Quiz* part, answers into a third book,
+   nicknames, points and the leaderboard.
+3. **The screen** — the question, the countdown, the reveal with each
+   answer's count, the leaderboard.
+4. **Stems in** and **Finish the line** — the two kinds that need more than
+   a decoded record.
+
+Held by tests of each rule over a small library of known records, over a
+real socket for the phones, and driven with a phone-sized browser against
+the running application, as K4 was.
