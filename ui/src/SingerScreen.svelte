@@ -318,6 +318,10 @@
             <p class="quiz-state" data-quiz-state="closed">Time's up</p>
           {/if}
         {/if}
+        {#if q.prompt}
+          <!-- Finish the line: the line the record has just sung; the answers are what follows. -->
+          <p class="quiz-prompt" data-quiz-prompt>{q.prompt}…</p>
+        {/if}
         <ol class="quiz-answers">
           {#each q.answers as answer, at (at)}
             <li data-right={q.right === at || undefined} data-wrong={(q.right !== null && q.right !== at) || undefined}>
@@ -738,6 +742,13 @@
   .quiz-state.countdown {
     font-size: 9vh;
     font-variant-numeric: tabular-nums;
+  }
+
+  .quiz-prompt {
+    margin: 0;
+    font-size: 5.4vh;
+    font-weight: 600;
+    font-style: italic;
   }
 
   .quiz-answers {

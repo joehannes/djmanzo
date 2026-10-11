@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Finish the line (K7).** A quiz question for records with timed words:
+  the record plays up to the end of a line shown on the screen and the
+  phones, stopping before the next; the answers are that next line and
+  three of other records' lines in the same language, of similar length.
+  With it, the quiz made from the collection is complete.
+
 - **Stems in (K7).** A quiz question that brings a record's separated stems
   in one at a time over twenty seconds — drums, bass, the rest, the voice
   last — so the quickest ears earn the most. It waits for the clip's stems

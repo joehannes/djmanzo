@@ -5316,7 +5316,7 @@ export const karaokeBreaksSet = (
 ) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead, mixOut });
 
 /** K7: a kind of quiz question, from `dj_app::quiz::Kind`. */
-export type QuizKind = "name-it" | "backwards" | "chipmunk" | "stems-in";
+export type QuizKind = "name-it" | "backwards" | "chipmunk" | "stems-in" | "finish-the-line";
 
 /** K7: the open question, from `dj_app::commands::QuizQuestionDto`. */
 export interface QuizQuestion {
@@ -5329,6 +5329,8 @@ export interface QuizQuestion {
   right: number | null;
   /** Counted from one. */
   number: number;
+  /** Finish the line: the line shown. */
+  prompt: string | null;
 }
 
 /** K7: the quiz, from `dj_app::commands::QuizDto`. */
@@ -5386,6 +5388,8 @@ export interface QuizScreenQuestion {
   playing: boolean;
   /** Seconds left to answer, once the clip is over. */
   closes_in: number | null;
+  /** Finish the line: the line shown. */
+  prompt: string | null;
 }
 
 /** K7: the quiz for the singers' screen, from `dj_app::commands::QuizScreenDto`. */

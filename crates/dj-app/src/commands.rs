@@ -17428,6 +17428,8 @@ pub struct QuizQuestionDto {
     pub right: Option<usize>,
     /// Counted from one.
     pub number: usize,
+    /// *Finish the line*: the line shown.
+    pub prompt: Option<String>,
 }
 
 /// K7: the quiz as the host's panel draws it.
@@ -17514,6 +17516,7 @@ pub fn quiz_view(round: &crate::quiz::Round, quiet: bool, phones: QuizPhonesDto)
             answers: q.answers.clone(),
             right: round.revealed.then_some(q.right),
             number: round.asked.len(),
+            prompt: q.prompt.clone(),
         }),
         playing: round.clip.is_some(),
         problem: round.problem.clone(),
@@ -17539,6 +17542,8 @@ mod quiz_view_tests {
             answers: Default::default(),
             right: 2,
             from: 0.0,
+            until: None,
+            prompt: None,
         });
         let hidden = quiz_view(&round, false, super::QuizPhonesDto::default())
             .question
@@ -17548,6 +17553,67 @@ mod quiz_view_tests {
         round.revealed = true;
         let shown = quiz_view(&round, false, super::QuizPhonesDto::default());
         assert_eq!(shown.question.unwrap().right, Some(2));
+    }
+
+    /// **Finish the line reads every record's timed words**: the library's
+    /// first, else a `.lrc` beside the file; untimed words, an instrumental
+    /// and a record with neither are left out.
+    #[test]
+    fn finish_the_line_reads_the_library_and_the_lrc_beside_the_record() {
+        let dir = std::env::temp_dir().join(format!("djmanzo-quiz-lines-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        std::fs::write(
+            dir.join("beside.lrc"),
+            "[00:10.00]First line\n[00:14.00]Second line here\n",
+        )
+        .expect("a sidecar");
+        let db = dj_library::Library::in_memory().expect("a library");
+        let track = |byte: u8, name: &str| dj_library::LibraryTrack {
+            id: dj_core::TrackId::from_bytes([byte; 32]),
+            path: dir.join(name),
+            tags: dj_library::Tags::default(),
+            duration_frames: 60 * 48_000,
+            sample_rate: dj_core::SampleRate::DEFAULT,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        };
+        let tracks = [
+            track(1, "stored.mp3"),
+            track(2, "beside.mp3"),
+            track(3, "plain.mp3"),
+            track(4, "instrumental.mp3"),
+            track(5, "nothing.mp3"),
+        ];
+        for record in &tracks {
+            db.upsert_track(record).expect("a track");
+        }
+        let synced = "[00:05.00]Hola\n[00:09.00]Adiós amor\n";
+        db.remember_words(
+            tracks[0].id,
+            "Hola\nAdiós amor",
+            Some(synced),
+            false,
+            "lrclib",
+            0,
+        )
+        .expect("words");
+        db.remember_words(tracks[2].id, "Only plain words", None, false, "lrclib", 0)
+            .expect("words");
+        db.remember_words(tracks[3].id, "", Some(synced), true, "lrclib", 0)
+            .expect("words");
+        let lines = super::quiz_lines(&db, &tracks);
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(lines.len(), 2, "{:?}", lines.keys().collect::<Vec<_>>());
+        assert_eq!(lines[&tracks[0].id][1], (9.0, "Adiós amor".to_owned()));
+        assert_eq!(
+            lines[&tracks[1].id][1],
+            (14.0, "Second line here".to_owned())
+        );
     }
 
     /// **The room's display: the countdown once the clip is over, and the
@@ -17571,10 +17637,14 @@ mod quiz_view_tests {
                 answers: answers.clone(),
                 right: 3,
                 from: 0.0,
+                until: None,
+                prompt: None,
             });
         }
         let front = state.audience().front();
-        let id = front.quiz(|book| book.ask(answers, 3, 1, 10, now)).unwrap();
+        let id = front
+            .quiz(|book| book.ask(answers, 3, (1, 10), None, now))
+            .unwrap();
         front.quiz(|book| {
             book.name("phone", "Ana");
             book.answer("phone", id, 3, now)
@@ -17644,6 +17714,8 @@ mod quiz_view_tests {
                 answers: Default::default(),
                 right: 0,
                 from: 0.0,
+                until: None,
+                prompt: None,
             });
         }
         assert!(!room(&state).contains("Obsesión"), "{}", room(&state));
@@ -17779,6 +17851,31 @@ fn quiz_stems_ready(state: &AppState, deck: dj_core::DeckId, clip: &crate::quiz:
     table.frame(frame(clip.to) - 1).is_some()
 }
 
+/// K7: every record's timed words — the library's, else a `.lrc` beside the
+/// file — as *Finish the line* reads them.
+fn quiz_lines(
+    db: &dj_library::Library,
+    tracks: &[dj_library::LibraryTrack],
+) -> std::collections::HashMap<dj_core::TrackId, crate::quiz::Lines> {
+    tracks
+        .iter()
+        .filter_map(|track| {
+            let stored = db
+                .words_for(track.id)
+                .ok()
+                .flatten()
+                .filter(|words| !words.instrumental)
+                .and_then(|words| words.synced);
+            let synced = stored.or_else(|| dj_library::own_words::sidecar(&track.path)?.synced)?;
+            let lines: crate::quiz::Lines = dj_library::lrc::parse(&synced)
+                .into_iter()
+                .map(|line| (line.at, line.text))
+                .collect();
+            (lines.len() > 1).then_some((track.id, lines))
+        })
+        .collect()
+}
+
 /// K7: the clip on its deck put back, if one is — before another is asked,
 /// or the round ends. Answers how the deck was found, which is still how it
 /// should be left: the registry may not have caught up with the putting
@@ -17868,11 +17965,36 @@ fn quiz_next_on(state: &AppState) -> Result<(), String> {
         return Err(refused);
     }
     let found = quiz_put_back(state).unwrap_or_else(|| quiz_found(state, deck));
-    let tracks = library(state)?
-        .all_tracks(usize::MAX >> 1)
-        .map_err(|e| e.to_string())?;
+    let db = library(state)?;
+    let tracks = db.all_tracks(usize::MAX >> 1).map_err(|e| e.to_string())?;
+    // *Finish the line*: the collection's timed words, once a round — read
+    // here, off the interface's thread, and never under the round's lock.
+    let wants_lines = state.quiz().lock().is_ok_and(|round| {
+        round.words.is_none()
+            && round
+                .settings
+                .kinds
+                .contains(&crate::quiz::Kind::FinishTheLine)
+    });
+    if wants_lines {
+        let lines = quiz_lines(&db, &tracks);
+        if let Ok(mut round) = state.quiz().lock() {
+            round.words = Some(lines);
+        }
+    }
     {
         let mut round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
+        let no_lines = round
+            .words
+            .as_ref()
+            .is_none_or(std::collections::HashMap::is_empty);
+        if no_lines && round.settings.kinds == [crate::quiz::Kind::FinishTheLine] {
+            return Err(
+                "Finish the line needs records with timed words — fetched for the collection, \
+                 or a .lrc beside the record — and none has any. Choose another kind as well."
+                    .to_owned(),
+            );
+        }
         let (number, of) = (round.asked.len() + 1, round.settings.count);
         // *Stems in* needs a separator to bring the stems in from.
         let separates = state.stems_worker().separator().is_some();
@@ -17901,8 +18023,8 @@ fn quiz_next_on(state: &AppState) -> Result<(), String> {
             book.ask(
                 question.answers.clone(),
                 question.right,
-                number,
-                of,
+                (number, of),
+                question.prompt.clone(),
                 std::time::SystemTime::now(),
             )
         });
@@ -18000,6 +18122,8 @@ pub struct QuizScreenQuestionDto {
     pub playing: bool,
     /// Seconds left to answer, once the clip is over.
     pub closes_in: Option<f64>,
+    /// *Finish the line*: the line shown.
+    pub prompt: Option<String>,
 }
 
 /// K7: the quiz for the room's display.
@@ -18023,6 +18147,7 @@ fn quiz_screen_of(state: &AppState, now: std::time::SystemTime) -> QuizScreenDto
                 counts: None,
                 playing: round.clip.is_some(),
                 closes_in: None,
+                prompt: q.prompt.clone(),
             }),
         ),
         Err(_) => (false, None),

@@ -92,6 +92,14 @@ pub fn read(path: &Path) -> Option<OwnWords> {
     choose([in_tags(path), beside(path)])
 }
 
+/// The timed words in a `.lrc` beside the record at `path`, if there is
+/// one — without opening the record itself. A stat or two a record, so a
+/// whole collection can be asked (K7's *Finish the line*).
+#[must_use]
+pub fn sidecar(path: &Path) -> Option<OwnWords> {
+    beside(path)
+}
+
 /// The first with timed words, else the first with any — see the module docs.
 fn choose<const N: usize>(found: [Option<OwnWords>; N]) -> Option<OwnWords> {
     let mut first = None;

@@ -17,6 +17,7 @@
 
 use dj_core::TrackId;
 use dj_library::LibraryTrack;
+use std::collections::HashMap;
 
 /// How long a clip lasts, in seconds of the record.
 pub const CLIP_SECONDS: f64 = 10.0;
@@ -41,6 +42,27 @@ pub const STEMS_ORDER: [dj_core::Stem; 4] = [
 /// gives up, in seconds.
 pub const STEMS_WAIT: f64 = 45.0;
 
+/// How long before the shown line a *Finish the line* clip starts, so the
+/// room hears the record arrive at it.
+pub const LINE_LEAD: f64 = 4.0;
+
+/// The longest a shown line may take to sing, in seconds: the clip ends where
+/// the next line begins.
+pub const LONGEST_LINE: f64 = 12.0;
+
+/// The shortest, so a line is a line and not a breath.
+pub const SHORTEST_LINE: f64 = 1.5;
+
+/// The fewest characters an answer line has: *oh, oh* is not a question.
+pub const FEWEST_CHARACTERS: usize = 12;
+
+/// How many lines of nearest length the three decoy lines are drawn from.
+const NEAREST_LINES: usize = 12;
+
+/// A record's timed words: each line's time, in seconds of the record, and
+/// its text — empty for a marked gap.
+pub type Lines = Vec<(f64, String)>;
+
 /// How fast a chipmunk plays, with keylock off: half as fast again, the voice
 /// up a fifth — the way the trick has always sounded.
 pub const CHIPMUNK_RATE: f64 = 1.5;
@@ -64,10 +86,20 @@ pub enum Kind {
     Chipmunk,
     /// The separated stems brought in one at a time ([`STEMS_ORDER`]).
     StemsIn,
+    /// A line of the record's words shown, the record playing up to its
+    /// end; the answers are lines, the one that follows and three of other
+    /// records'.
+    FinishTheLine,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::NameIt, Kind::Backwards, Kind::Chipmunk, Kind::StemsIn];
+    pub const ALL: [Kind; 5] = [
+        Kind::NameIt,
+        Kind::Backwards,
+        Kind::Chipmunk,
+        Kind::StemsIn,
+        Kind::FinishTheLine,
+    ];
 
     /// What the screen calls it.
     #[must_use]
@@ -77,6 +109,7 @@ impl Kind {
             Kind::Backwards => "Backwards",
             Kind::Chipmunk => "Chipmunk",
             Kind::StemsIn => "Stems in",
+            Kind::FinishTheLine => "Finish the line",
         }
     }
 
@@ -85,6 +118,7 @@ impl Kind {
     pub const fn seconds(self) -> f64 {
         match self {
             Kind::StemsIn => STEMS_SECONDS,
+            Kind::FinishTheLine => LINE_LEAD + LONGEST_LINE,
             _ => CLIP_SECONDS,
         }
     }
@@ -105,6 +139,11 @@ pub struct Question {
     pub right: usize,
     /// Where the clip starts, in seconds of the record.
     pub from: f64,
+    /// Where it ends, when not `from` and its kind's length: *Finish the
+    /// line* stops where the line it asks for begins.
+    pub until: Option<f64>,
+    /// *Finish the line*: the line shown, which the clip plays to the end of.
+    pub prompt: Option<String>,
 }
 
 fn hex<S: serde::Serializer>(id: &TrackId, out: S) -> Result<S::Ok, S::Error> {
@@ -309,6 +348,163 @@ pub fn ask(
             answers,
             right,
             from: clip_from(record, kind.seconds()),
+            until: None,
+            prompt: None,
+        });
+    }
+    None
+}
+
+/// A line as it is compared: lower case, letters and digits only, spaces
+/// single — so *Te quiero,* and *te quiero* are one line.
+fn folded(line: &str) -> String {
+    line.chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The words a record sings, each once, as compared.
+fn vocabulary(lines: &Lines) -> std::collections::HashSet<String> {
+    lines
+        .iter()
+        .flat_map(|(_, text)| {
+            folded(text)
+                .split(' ')
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+/// Whether two records sing in one tongue, near enough: a tenth of the
+/// other's words are the asked record's too. Records in one language share
+/// the little words — *the*, *and*, *de*, *la* — and records in two share
+/// almost none.
+fn same_tongue(
+    asked: &std::collections::HashSet<String>,
+    other: &std::collections::HashSet<String>,
+) -> bool {
+    !other.is_empty() && other.intersection(asked).count() * 10 >= other.len()
+}
+
+/// Three lines of other records' words to stand beside `answer`: from
+/// records sung in the asked record's tongue first — an English line among
+/// three Spanish ones answers itself — then the nearest in length, drawn
+/// from the [`NEAREST_LINES`] nearest, every one different from the answer
+/// and from each other. `None` when the collection has fewer.
+fn line_decoys(
+    answer: &str,
+    record: TrackId,
+    words: &HashMap<TrackId, Lines>,
+    dice: &mut Dice,
+) -> Option<[String; 3]> {
+    let length = answer.chars().count();
+    let own = folded(answer);
+    let asked = words.get(&record).map(vocabulary).unwrap_or_default();
+    // In the map's own order made stable: a seed must decide the draw.
+    let mut records: Vec<&TrackId> = words.keys().filter(|id| **id != record).collect();
+    records.sort_unstable_by_key(|id| id.to_hex());
+    let mut pool: Vec<(bool, &str)> = records
+        .into_iter()
+        .flat_map(|id| {
+            let foreign = !same_tongue(&asked, &vocabulary(&words[id]));
+            words[id]
+                .iter()
+                .map(move |(_, text)| (foreign, text.trim()))
+        })
+        .filter(|(_, text)| text.chars().count() >= FEWEST_CHARACTERS / 2 && folded(text) != own)
+        .collect();
+    pool.sort_by_key(|(foreign, text)| (*foreign, text.chars().count().abs_diff(length)));
+    let mut seen = Vec::new();
+    pool.retain(|(_, text)| {
+        let key = folded(text);
+        let fresh = !seen.contains(&key);
+        seen.push(key);
+        fresh
+    });
+    // Only the asked record's tongue, when it has three lines to offer.
+    let same = pool.iter().take_while(|(foreign, _)| !foreign).count();
+    let mut pool: Vec<&str> = pool.into_iter().map(|(_, text)| text).collect();
+    pool.truncate(if same >= 3 {
+        same.min(NEAREST_LINES)
+    } else {
+        NEAREST_LINES
+    });
+    if pool.len() < 3 {
+        return None;
+    }
+    let mut chosen = Vec::with_capacity(3);
+    while chosen.len() < 3 {
+        chosen.push(pool.remove(dice.below(pool.len())).to_owned());
+    }
+    Some([chosen[0].clone(), chosen[1].clone(), chosen[2].clone()])
+}
+
+/// A *Finish the line* question about a record of `library` with timed
+/// `words`, not in `asked`: a line it sings for between [`SHORTEST_LINE`]
+/// and [`LONGEST_LINE`], followed by a different line of at least
+/// [`FEWEST_CHARACTERS`]. The clip starts [`LINE_LEAD`] before the shown line
+/// and stops where the asked one begins, so the room never hears the answer.
+#[must_use]
+pub fn ask_line(
+    library: &[LibraryTrack],
+    words: &HashMap<TrackId, Lines>,
+    asked: &[TrackId],
+    dice: &mut Dice,
+) -> Option<Question> {
+    let mut fresh: Vec<&LibraryTrack> = library
+        .iter()
+        .filter(|track| words.contains_key(&track.id) && !asked.contains(&track.id))
+        .collect();
+    while !fresh.is_empty() {
+        let record = fresh.remove(dice.below(fresh.len()));
+        let lines = &words[&record.id];
+        let fits: Vec<usize> = lines
+            .windows(2)
+            .enumerate()
+            .filter(|(_, pair)| {
+                let ((at, shown), (next_at, next)) = (&pair[0], &pair[1]);
+                let sings = next_at - at;
+                shown.trim().chars().count() >= 4
+                    && next.trim().chars().count() >= FEWEST_CHARACTERS
+                    && folded(shown) != folded(next)
+                    && (SHORTEST_LINE..=LONGEST_LINE).contains(&sings)
+            })
+            .map(|(at, _)| at)
+            .collect();
+        if fits.is_empty() {
+            continue;
+        }
+        let at = fits[dice.below(fits.len())];
+        let (shown_at, shown) = &lines[at];
+        let (next_at, next) = &lines[at + 1];
+        let Some(decoys) = line_decoys(next.trim(), record.id, words, dice) else {
+            continue;
+        };
+        let right = dice.below(4);
+        let mut others = decoys.into_iter();
+        let answers: [String; 4] = std::array::from_fn(|place| {
+            if place == right {
+                next.trim().to_owned()
+            } else {
+                others.next().unwrap_or_default()
+            }
+        });
+        return Some(Question {
+            kind: Kind::FinishTheLine,
+            record: record.id,
+            path: record.path.clone(),
+            answers,
+            right,
+            from: (shown_at - LINE_LEAD).max(0.0),
+            // A breath before the next line, so its first word is not heard.
+            until: Some((next_at - 0.15).max(*shown_at)),
+            prompt: Some(shown.trim().to_owned()),
         });
     }
     None
@@ -410,7 +606,9 @@ impl Clip {
             record: question.record,
             kind: question.kind,
             from: question.from,
-            to: question.from + question.kind.seconds(),
+            to: question
+                .until
+                .unwrap_or(question.from + question.kind.seconds()),
             rate,
             found,
             started: None,
@@ -557,7 +755,7 @@ impl Clip {
         };
         // The deck reports the play a frame or two after it is asked for.
         let stopped = !deck.playing && elapsed > 1.0;
-        let late = elapsed > self.kind.seconds() / speed + GRACE_SECONDS;
+        let late = elapsed > (self.to - self.from) / speed + GRACE_SECONDS;
         if !ours || (past && elapsed > 0.2) || stopped || late {
             return Step {
                 actions: self.put_back(ours),
@@ -593,6 +791,9 @@ pub struct Round {
     pub clip: Option<Clip>,
     pub problem: Option<String>,
     pub dice: Dice,
+    /// *Finish the line*: the collection's timed words, gathered once a
+    /// round.
+    pub words: Option<HashMap<TrackId, Lines>>,
 }
 
 impl Default for Round {
@@ -605,6 +806,7 @@ impl Default for Round {
             clip: None,
             problem: None,
             dice: Dice::rolled(),
+            words: None,
         }
     }
 }
@@ -635,12 +837,28 @@ impl Round {
         } else {
             &self.settings.kinds[..]
         };
-        let kinds: Vec<Kind> = set.iter().copied().filter(|kind| can(*kind)).collect();
-        if kinds.is_empty() {
-            return None;
-        }
-        let kind = kinds[self.dice.below(kinds.len())];
-        let question = ask(kind, library, &self.asked, &mut self.dice)?;
+        let mut kinds: Vec<Kind> = set.iter().copied().filter(|kind| can(*kind)).collect();
+        // A kind drawn, and another if that one has nothing left to ask —
+        // *Finish the line* runs out of records with words long before the
+        // collection runs out of records.
+        let question = loop {
+            if kinds.is_empty() {
+                return None;
+            }
+            let kind = kinds.remove(self.dice.below(kinds.len()));
+            let asked = if kind == Kind::FinishTheLine {
+                // No words gathered is no question of this kind, not none
+                // at all.
+                self.words
+                    .as_ref()
+                    .and_then(|words| ask_line(library, words, &self.asked, &mut self.dice))
+            } else {
+                ask(kind, library, &self.asked, &mut self.dice)
+            };
+            if let Some(question) = asked {
+                break question;
+            }
+        };
         self.asked.push(question.record);
         self.revealed = false;
         self.question = Some(question);
@@ -654,6 +872,7 @@ impl Round {
         self.revealed = false;
         self.clip = None;
         self.problem = None;
+        self.words = None;
     }
 }
 
@@ -800,6 +1019,8 @@ mod tests {
             answers: Default::default(),
             right: 0,
             from: 60.0,
+            until: None,
+            prompt: None,
         }
     }
 
@@ -1053,6 +1274,149 @@ mod tests {
             round
                 .next_of(&library, |kind| kind != Kind::StemsIn)
                 .is_none()
+        );
+    }
+
+    fn lines(pairs: &[(f64, &str)]) -> Lines {
+        pairs
+            .iter()
+            .map(|(at, text)| (*at, (*text).to_owned()))
+            .collect()
+    }
+
+    /// Record 1's words — one line to ask, a gap, a line too short, a chorus
+    /// line sung twice — and three other records', one of which sings the
+    /// answer line too, written differently.
+    fn words() -> HashMap<TrackId, Lines> {
+        let id = |byte| TrackId::from_bytes([byte; 32]);
+        HashMap::from([
+            (
+                id(1),
+                lines(&[
+                    (10.0, "Under the moonlight we dance"),
+                    (14.0, "Never letting go of your hand tonight"),
+                    (18.0, ""),
+                    (30.0, "oh oh"),
+                    (32.0, "short one"),
+                    (36.0, ""),
+                    // A chorus line sung twice: the line after it is itself,
+                    // which no one could get wrong.
+                    (40.0, "Hold me close until the morning comes"),
+                    (44.0, "hold me close, until the morning comes"),
+                    (48.0, ""),
+                ]),
+            ),
+            (
+                id(2),
+                lines(&[
+                    (5.0, "Tu amor es mi canción de siempre"),
+                    (9.0, "Bailando bajo las estrellas hoy"),
+                ]),
+            ),
+            (
+                id(3),
+                lines(&[
+                    (5.0, "never letting go of your hand, tonight!"),
+                    (9.0, "The city lights are calling out my name"),
+                ]),
+            ),
+            (
+                id(4),
+                lines(&[(5.0, "We were young and we were free"), (9.0, "Dance away")]),
+            ),
+        ])
+    }
+
+    /// **Finish the line asks the line after the one shown**, the clip from
+    /// four seconds before the shown line to a breath before the asked one —
+    /// so the room never hears the answer — and three decoys of other
+    /// records' lines, none of them the answer written another way.
+    #[test]
+    fn finish_the_line_asks_the_line_after_the_one_shown() {
+        let library = library();
+        let words = words();
+        for seed in 0..20 {
+            let mut dice = Dice::new(seed);
+            let question = ask_line(&library[..1], &words, &[], &mut dice).expect("a question");
+            assert_eq!(question.kind, Kind::FinishTheLine);
+            assert_eq!(
+                question.prompt.as_deref(),
+                Some("Under the moonlight we dance")
+            );
+            assert_eq!(
+                question.answers[question.right],
+                "Never letting go of your hand tonight"
+            );
+            assert_eq!(question.from, 6.0);
+            assert_eq!(question.until, Some(13.85));
+            let clip = Clip::of(&question, 1, 48_000.0, FOUND);
+            assert_eq!((clip.from, clip.to), (6.0, 13.85));
+            let folded_answers: std::collections::BTreeSet<String> =
+                question.answers.iter().map(|a| folded(a)).collect();
+            assert_eq!(
+                folded_answers.len(),
+                4,
+                "seed {seed}: {:?}",
+                question.answers
+            );
+            assert!(
+                !question.answers.iter().any(|a| a.contains("moonlight")),
+                "the record's own line"
+            );
+            assert!(
+                !question
+                    .answers
+                    .iter()
+                    .any(|a| a.contains("canción") || a.contains("Bailando")),
+                "seed {seed}: a Spanish line beside English ones: {:?}",
+                question.answers
+            );
+        }
+    }
+
+    /// **A record with no line to ask, or a collection with too few other
+    /// lines, asks nothing of this kind** — and a round falls back to the
+    /// other kinds set rather than to nothing.
+    #[test]
+    fn without_lines_to_ask_another_kind_is_asked() {
+        let library = library();
+        let mut sparse = words();
+        sparse.retain(|id, _| id.as_bytes()[0] <= 2);
+        assert!(
+            ask_line(&library[..1], &sparse, &[], &mut Dice::new(1)).is_none(),
+            "two decoys only"
+        );
+        assert!(
+            ask_line(&library[3..4], &words(), &[], &mut Dice::new(1)).is_none(),
+            "one line, nothing after it"
+        );
+
+        let mut round = Round {
+            dice: Dice::new(9),
+            settings: Settings {
+                deck: 2,
+                kinds: vec![Kind::FinishTheLine, Kind::Backwards],
+                count: 15,
+            },
+            ..Round::default()
+        };
+        let kind = round.next(&library).expect("a question").kind;
+        assert_eq!(kind, Kind::Backwards, "no words gathered: the other kind");
+        round.words = Some(words());
+        let mut kinds = Vec::new();
+        while let Some(question) = round.next(&library) {
+            kinds.push(question.kind);
+        }
+        // Records 1 and 2 have a line to ask; the rest are asked backwards.
+        assert_eq!(
+            kinds.iter().filter(|k| **k == Kind::FinishTheLine).count(),
+            2,
+            "{kinds:?}"
+        );
+        assert_eq!(
+            kinds.len() + 1,
+            7,
+            "every titled record once, the first one included"
         );
     }
 }

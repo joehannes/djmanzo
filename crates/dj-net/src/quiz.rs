@@ -47,6 +47,8 @@ pub struct Asked {
     pub id: u64,
     pub answers: [String; 4],
     right: usize,
+    /// A line to finish, shown with the question.
+    pub prompt: Option<String>,
     /// Counted from one, of how many the round is.
     pub number: usize,
     pub of: usize,
@@ -178,8 +180,8 @@ impl QuizBook {
         &mut self,
         answers: [String; 4],
         right: usize,
-        number: usize,
-        of: usize,
+        (number, of): (usize, usize),
+        prompt: Option<String>,
         now: SystemTime,
     ) -> u64 {
         self.settle(now);
@@ -189,6 +191,7 @@ impl QuizBook {
             id: self.asked,
             answers,
             right: right.min(3),
+            prompt,
             number,
             of,
             opened: now,
@@ -373,7 +376,7 @@ mod tests {
     fn points_are_half_for_right_and_half_for_quick() {
         let mut book = QuizBook::new();
         named(&mut book, &["quick", "slow", "wrong", "late"]);
-        let id = book.ask(answers(), 2, 1, 10, at(0.0));
+        let id = book.ask(answers(), 2, (1, 10), None, at(0.0));
         assert_eq!(book.answer("quick", id, 2, at(0.0)), Answered::Taken);
         assert_eq!(book.answer("wrong", id, 1, at(1.0)), Answered::Taken);
         assert_eq!(
@@ -419,7 +422,7 @@ mod tests {
     fn showing_the_answer_closes_the_question() {
         let mut book = QuizBook::new();
         named(&mut book, &["a", "b"]);
-        let id = book.ask(answers(), 0, 1, 5, at(0.0));
+        let id = book.ask(answers(), 0, (1, 5), None, at(0.0));
         assert_eq!(book.answer("a", id, 0, at(2.0)), Answered::Taken);
         book.reveal(at(4.0));
         assert_eq!(book.answer("b", id, 0, at(4.5)), Answered::Closed);
@@ -439,12 +442,12 @@ mod tests {
     #[test]
     fn one_answer_each_and_only_to_the_open_question() {
         let mut book = QuizBook::new();
-        let first = book.ask(answers(), 0, 1, 5, at(0.0));
+        let first = book.ask(answers(), 0, (1, 5), None, at(0.0));
         assert_eq!(book.answer("a", first, 0, at(1.0)), Answered::Nameless);
         named(&mut book, &["a"]);
         assert_eq!(book.answer("a", first, 0, at(0.0)), Answered::Taken);
         assert_eq!(book.answer("a", first, 1, at(2.0)), Answered::Again);
-        let second = book.ask(answers(), 0, 2, 5, at(30.0));
+        let second = book.ask(answers(), 0, (2, 5), None, at(30.0));
         assert_eq!(book.answer("a", first, 0, at(31.0)), Answered::Closed);
         assert_eq!(
             book.answer("a", second, 4, at(31.0)),
@@ -484,7 +487,7 @@ mod tests {
         let phones: Vec<String> = (0..12).map(|n| format!("phone {n}")).collect();
         let names: Vec<&str> = phones.iter().map(String::as_str).collect();
         named(&mut book, &names);
-        let id = book.ask(answers(), 1, 1, 5, at(0.0));
+        let id = book.ask(answers(), 1, (1, 5), None, at(0.0));
         book.clip_over(at(0.0));
         for (n, phone) in phones.iter().enumerate() {
             book.answer(phone, id, 1, at(n as f64 * 0.5));
@@ -498,7 +501,7 @@ mod tests {
             "{board:?}"
         );
         assert!(!book.is_on() && book.question().is_none());
-        let again = book.ask(answers(), 0, 1, 5, at(60.0));
+        let again = book.ask(answers(), 0, (1, 5), None, at(60.0));
         assert!(again > id, "a new round's question is a new question");
         assert_eq!(book.points_of("phone 0"), 1000, "kept across rounds");
         book.clear();

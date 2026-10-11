@@ -528,6 +528,7 @@
     ["backwards", "Backwards"],
     ["chipmunk", "Chipmunk"],
     ["stems-in", "Stems in"],
+    ["finish-the-line", "Finish the line"],
   ];
 
   async function quizDo(done: Promise<Quiz>) {
@@ -905,6 +906,9 @@
           <strong>{quiz.question.words}</strong>
           {#if quiz.playing}<span class="hint" role="status">playing the clip</span>{/if}
         </p>
+        {#if quiz.question.prompt}
+          <p class="prompt" data-prompt>{quiz.question.prompt}…</p>
+        {/if}
         <ol class="answers" aria-label="Answers">
           {#each quiz.question.answers as answer, at (at)}
             <li data-right={quiz.question.right === at || undefined}>
@@ -1354,11 +1358,26 @@
     gap: 0.4rem 0.75rem;
   }
 
+  /* Five kinds do not fit one row of a narrow panel: the row wraps, and each
+     button keeps its words on one line. */
+  .quiz-row .choices {
+    flex-wrap: wrap;
+  }
+
+  .quiz-row .choices button {
+    white-space: nowrap;
+  }
+
   .quiz .asking {
     margin: 0;
     display: flex;
     gap: 0.5rem;
     align-items: baseline;
+  }
+
+  .quiz .prompt {
+    margin: 0;
+    font-style: italic;
   }
 
   .quiz .answers {

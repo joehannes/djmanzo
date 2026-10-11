@@ -340,6 +340,7 @@ export const ANSWERS: Record<string, unknown> = {
     ],
     right: null,
     number: 1,
+    prompt: null,
   },
   quiz_right: 1,
   quiz_screen: { on: false, question: null, leaders: [], join: null },

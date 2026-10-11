@@ -190,6 +190,8 @@ impl QuizSaid {
 pub struct PhoneQuestion {
     pub id: u64,
     pub answers: [String; 4],
+    /// A line to finish, shown above the answers.
+    pub prompt: Option<String>,
     pub number: usize,
     pub of: usize,
     /// Answers are still taken.
@@ -315,6 +317,11 @@ fn question_part(html: &mut String, question: &PhoneQuestion, w: &QuizWords) {
             .replace("{of}", &question.of.to_string()),
     );
     html.push_str("</p>\n");
+    if let Some(prompt) = &question.prompt {
+        html.push_str("<p class=\"prompt\">");
+        html.push_str(&escape(prompt));
+        html.push_str("…</p>\n");
+    }
     if let Some(right) = question.right {
         html.push_str("<p class=\"it-was\">");
         html.push_str(&w.it_was.replace("{letter}", LETTERS[right]));
@@ -386,6 +393,7 @@ pub(crate) const QUIZ_STYLE: &str = "\
  padding:.6rem .9rem;font-size:1.1rem;background:#1e2833;color:#e9edf2}
 .answers .letter{font-size:1.4rem;font-weight:700;color:#4f9dff;min-width:1.4rem}
 .number{color:#8b97a6;margin:.5rem 0 .25rem}
+.prompt{font-size:1.25rem;font-style:italic;margin:.25rem 0 .5rem}
 .chosen,.wait{font-size:1.15rem;color:#cfd8e3}
 .it-was{font-size:1.15rem}
 .it-was strong{display:block;color:#9fe6b4;margin-top:.2rem}
@@ -415,6 +423,7 @@ mod tests {
                 id: 7,
                 answers: ["Obsesión — Aventura", "B", "C", "<script>x()</script>"]
                     .map(str::to_owned),
+                prompt: Some("Under the <moon>light".to_owned()),
                 number: 3,
                 of: 10,
                 open: true,
@@ -445,6 +454,10 @@ mod tests {
         );
         assert!(!html.contains("<script"));
         assert!(html.contains("Question 3 of 10") && html.contains("812 points"));
+        assert!(
+            html.contains("<p class=\"prompt\">Under the &lt;moon&gt;light…</p>"),
+            "{html}"
+        );
         assert!(
             html.contains("http-equiv=\"refresh\""),
             "a player's page reloads"

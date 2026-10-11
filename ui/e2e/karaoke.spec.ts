@@ -446,10 +446,11 @@ test.describe("K7: a quiz made from the collection", () => {
     await quiz.getByRole("group", { name: "Quiz deck" }).getByRole("button", { name: "1", exact: true }).click();
     await quiz.getByRole("button", { name: "Chipmunk" }).click();
     await quiz.getByRole("button", { name: "Stems in" }).click();
+    await quiz.getByRole("button", { name: "Finish the line" }).click();
     expect((await quizCalls(page)).filter((c) => c.cmd === "quiz_set").at(-1)).toMatchObject({
       deck: 1,
       count: 5,
-      kinds: ["name-it", "backwards", "stems-in"],
+      kinds: ["name-it", "backwards", "stems-in", "finish-the-line"],
     });
     await expect(quiz.getByRole("button", { name: "Chipmunk" })).toHaveAttribute("aria-pressed", "false");
 
@@ -459,6 +460,7 @@ test.describe("K7: a quiz made from the collection", () => {
     const answers = quiz.getByRole("list", { name: "Answers" }).getByRole("listitem");
     await expect(answers).toHaveCount(4);
     await expect(answers.nth(1)).toContainText("BObsesión — Aventura");
+    await expect(quiz.locator("[data-prompt]"), "no line shown for a clip to name").toHaveCount(0);
     await expect(quiz.locator("[data-right]"), "the answer was shown before the reveal").toHaveCount(0);
 
     await quiz.getByRole("button", { name: "Show the answer" }).click();
@@ -589,5 +591,23 @@ test.describe("K7: a quiz made from the collection", () => {
       ((window as unknown as { __quiz: Held }).__quiz).phones.answered = 1;
     });
     await expect(quiz.locator("[data-phones]")).toHaveText("1 phone playing, 1 answered", { timeout: 4000 });
+  });
+
+  /** **Finish the line: the host sees the line shown, above the answers.** */
+  test("finish the line shows the host the line", async ({ page }) => {
+    await openSingers(page, {
+      quiz_question: {
+        kind: "finish-the-line",
+        words: "Finish the line",
+        answers: ["Never letting go of your hand tonight", "B line here", "C line here", "D line here"],
+        right: null,
+        number: 1,
+        prompt: "Under the moonlight we dance",
+      },
+    });
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await quiz.getByRole("button", { name: "Start the quiz" }).click();
+    await expect(quiz.locator("[data-prompt]")).toHaveText("Under the moonlight we dance…");
+    await expect(quiz).toContainText("Finish the line");
   });
 });

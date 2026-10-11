@@ -251,6 +251,7 @@ impl Doorman {
             question: quiz.question().map(|asked| PhoneQuestion {
                 id: asked.id,
                 answers: asked.answers.clone(),
+                prompt: asked.prompt.clone(),
                 number: asked.number,
                 of: asked.of,
                 open: asked.open_at(now),
@@ -986,7 +987,7 @@ mod tests {
         let answers =
             ["Obsesión — Aventura", "Suavemente — Elvis Crespo", "C", "D"].map(str::to_owned);
         let id = front
-            .quiz(|quiz| quiz.ask(answers, 1, 1, 5, SystemTime::now()))
+            .quiz(|quiz| quiz.ask(answers, 1, (1, 5), None, SystemTime::now()))
             .unwrap();
         let room = get(server.address(), "/");
         assert!(room.contains("href=\"/quiz\""));

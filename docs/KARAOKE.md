@@ -410,10 +410,10 @@ piece of this document lands among them.
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | shipped behind the words: djmanzo's own layers on the beat, the stems and the singers' microphones, picked in the Singers panel ([VISUALS.md](VISUALS.md)), MilkDrop among them, the DJ's own MilkDrop presets, the artist's photographs from Wikimedia Commons, credited, a look picked per record by the DJ's AI when turned on, and signed packs of looks and presets, checked before installing; packs made of the DJ's own presets, signed with their own key, and browsed from a community index |
 | Voice control | A2 | **K2** | waits on A2 |
 | N microphones, a chain each, a singers' monitor | M1 | **K3** | the chains, the engine, the input, the screen, the monitor, reconnecting and the chain behind a row built; a singer's own settings next — §6 below |
-| Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
-| Break music that leads into the next song | the planner | **K5** | outlined |
+| Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | built (§7) |
+| Break music that leads into the next song | the planner | **K5** | built (§8) |
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
-| A quiz made from the collection | K4, M6 | **K7** | designed (§10) |
+| A quiz made from the collection | K4, M6 | **K7** | built (§10) |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | outlined |
 | Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
 
@@ -1565,3 +1565,32 @@ separator on a sixty-second record: drums alone at 0:23, with bass at
 0:27, with the rest at 0:32, with the voice at 0:36, paused at 0:40 with
 the stems as they were. Not driven: the wait itself — the record's span
 was separated by the time the clip asked; the tests hold it.
+
+**Step 4b, *Finish the line* — built (11 October). K7 is complete.** A
+fifth kind (`Kind::FinishTheLine`, `quiz::ask_line`), for a record with
+timed words: the library's stored ones, else a `.lrc` beside the file
+(`own_words::sidecar`, a stat or two a record, so the whole collection
+can be read once a round — a record's own tags are not opened). The line
+shown is one the record sings for between one and a half and twelve
+seconds, followed by a different line of at least twelve characters — not
+a gap, not *oh oh*, not a chorus line sung twice. The clip starts four
+seconds before the shown line and stops a breath before the asked one
+begins, so the room hears the record arrive at the line and never the
+answer; the line is shown with the question on the phones, the singers'
+screen and the host's panel. The answers are the next line and three
+lines of other records', nearest in length, never the answer written
+another way. The drive found the decoys giving the answer away by
+language — an English question beside three Spanish lines — so the three
+are drawn from records sung in the asked record's tongue when the
+collection has three such lines (`same_tongue`: a tenth of the other
+record's words are the asked record's too, which the little words of one
+language make so and two languages almost never do), and only otherwise
+from the rest. A round draws another kind when one has nothing left to
+ask; a round of only this kind, in a collection without timed words,
+says so. Driven with `.lrc` files beside four records, two English, two
+Spanish: a Spanish line shown, the deck playing from four seconds before
+it and paused at 0:24 a breath before the asked line at 0:25, the three
+decoys Spanish, the line large on the singers' screen above the four
+answers. The drive also found the five kinds' buttons breaking their own
+words in a narrow panel (*Name / it*); they keep their words now and the
+row wraps.

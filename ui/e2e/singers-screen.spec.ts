@@ -332,6 +332,7 @@ test.describe("K7: the quiz on the singers' screen", () => {
     counts: null,
     playing: false,
     closes_in: 6.2,
+    prompt: null,
   };
   const QR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>';
 
@@ -423,6 +424,41 @@ test.describe("K7: the quiz on the singers' screen", () => {
     await quizScreen(page, { on: false, question: null, leaders: [], join: null });
     await expect(quiz).toHaveCount(0, { timeout: 5000 });
     await expect(page.locator(`${SCREEN} [data-line="now"]`)).toHaveText(/So\s+long\s+my\s+friend/);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** **Finish the line: the line just sung, above the lines to choose from.** */
+  test("finish the line shows the line just sung", async ({ page }) => {
+    await openShell(
+      page,
+      "/?panel=singers",
+      {},
+      {
+        singer_lyrics: WORDS,
+        karaoke_rotation: ROTATION,
+        quiz_screen: {
+          on: true,
+          question: {
+            ...QUESTION,
+            words: "Finish the line",
+            prompt: "Under the moonlight we dance",
+            answers: [
+              "Never letting go of your hand tonight",
+              "Tu amor es mi canción de siempre",
+              "The city lights are calling out my name",
+              "We were young and we were free",
+            ],
+          },
+          leaders: [],
+          join: null,
+        },
+      },
+    );
+    await singing(page, 14.5);
+    const quiz = page.locator(`${SCREEN} [data-quiz-screen]`);
+    await expect(quiz.locator("[data-quiz-prompt]")).toHaveText("Under the moonlight we dance…");
+    await expect(quiz).toContainText("Finish the line");
+    await expect(quiz.locator(".quiz-answers li")).toHaveCount(4);
     expect(errorsThrown(page)).toEqual([]);
   });
 });
