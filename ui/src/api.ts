@@ -4988,6 +4988,8 @@ export interface Sung {
   title: string;
   track: string | null;
   key: number;
+  /** K6: how they scored, 0 to 100, when they were scored. */
+  score?: number | null;
 }
 
 /** §107: the night's rotation, from `dj_app::karaoke`. */
@@ -5001,7 +5003,25 @@ export interface Rotation {
   line?: string;
   /** K5: *Bring them in*, when it can be pressed or is happening. */
   bring_in?: BringIn | null;
+  /** K6: each singer's score through the song being sung, by microphone. */
+  scores?: SingerScore[];
+  /** K6: tonight's best, highest first. */
+  best?: Sung[];
+  /** K6: the host has switched scoring off for the night. */
+  unscored?: boolean;
 }
+
+/** K6: one singer's score through the song being sung. */
+export interface SingerScore {
+  /** The microphone, 0-based. */
+  strip: number;
+  singer: string;
+  /** 0 to 100, or null until a sung part of the song has passed. */
+  percent: number | null;
+}
+
+/** K6: switch scoring on or off for the night. */
+export const karaokeScoring = (on: boolean) => invoke<Rotation>("karaoke_scoring", { on });
 
 /** K5: the mix that brings the next singer in, from `dj_app::commands`. */
 export interface BringIn {

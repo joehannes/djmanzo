@@ -299,6 +299,8 @@ pub struct AppState {
     automix: Arc<Mutex<crate::automix::Automix>>,
     /// §107: break music between singers.
     breaks: Mutex<crate::breaks::Held>,
+    /// K6: the song being scored and each singer's score through it.
+    scoring: Mutex<crate::score::Scoring>,
     /// K4: held across every read-change-write of the rotation's file, so
     /// names arriving from phones and the host's own changes cannot write
     /// over each other.
@@ -611,6 +613,7 @@ impl AppState {
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
+            scoring: Mutex::new(crate::score::Scoring::default()),
             karaoke_lock: Mutex::new(()),
             on_mics: Mutex::new(Vec::new()),
             interface_density: Mutex::new("Standard".to_owned()),
@@ -1595,6 +1598,12 @@ impl AppState {
             .and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default()
+    }
+
+    /// K6: the song being scored, and each singer's score through it.
+    #[must_use]
+    pub fn scoring(&self) -> &Mutex<crate::score::Scoring> {
+        &self.scoring
     }
 
     /// §107: break music, its settings and its machine.

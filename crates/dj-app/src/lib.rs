@@ -90,6 +90,7 @@ pub mod remembered;
 pub mod remote;
 pub mod replay;
 pub mod response;
+pub mod score;
 pub mod senses;
 pub mod session;
 pub mod setrec;
@@ -490,7 +491,11 @@ pub fn run() {
                 // K6: the singers' pitch, read off the audio thread.
                 {
                     let state: tauri::State<'_, AppState> = handle.state();
-                    crate::listen::spawn(state.registry());
+                    let scorer = handle.clone();
+                    crate::listen::spawn(state.registry(), move |heard| {
+                        let state: tauri::State<'_, AppState> = scorer.state();
+                        commands::score_heard(&state, heard);
+                    });
                 }
                 let pump = handle.clone();
                 let spawned = std::thread::Builder::new()
@@ -956,6 +961,7 @@ pub fn run() {
             commands::karaoke_line,
             commands::karaoke_bring_in,
             commands::vocal_line,
+            commands::karaoke_scoring,
             commands::sing_photos,
             commands::sing_photo_approve,
             commands::sing_photo_refuse,

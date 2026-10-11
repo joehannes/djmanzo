@@ -3056,6 +3056,10 @@ export async function openShell(
               }
               if (song) song.asks = null;
             }
+            // K6: scoring switched for the night, as `karaoke_scoring` keeps it.
+            if (cmd === "karaoke_scoring") {
+              (rotation as { unscored?: boolean }).unscored = !args.on;
+            }
             // K5: pressed, the mix is under way until a test says it is done;
             // with nothing to bring in from, Rust's refusal.
             if (cmd === "karaoke_bring_in") {

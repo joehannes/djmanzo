@@ -27,6 +27,7 @@
     karaokeLeave,
     karaokeLine,
     karaokeBringIn,
+    karaokeScoring,
     vocalLine,
     type VocalLine,
     karaokeMove,
@@ -368,6 +369,15 @@
     return () => clearInterval(timer);
   });
 
+  // While a song with a line can be scored, the scores are read again every
+  // two seconds — they change as it is sung.
+  const scoringLive = $derived(enabled && !!line?.scorable && !(rotation?.unscored ?? false));
+  $effect(() => {
+    if (!scoringLive) return;
+    const timer = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(timer);
+  });
+
   /** The line as an SVG path, broken where nobody sings, a semitone a unit. */
   function linePath(cents: (number | null)[]): { d: string; low: number; high: number } {
     const sung = cents.filter((c): c is number => c !== null);
@@ -516,6 +526,14 @@
           >
             <path d={drawn.d} />
           </svg>
+          {#if (rotation?.scores ?? []).length > 0}
+            <!-- K6: how each singer on a microphone is doing, as it goes. -->
+            <p class="scoring" data-scoring>
+              {#each rotation?.scores ?? [] as score (score.strip)}
+                <span>{score.singer} {score.percent === null ? "—" : `${Math.round(score.percent)}%`}</span>
+              {/each}
+            </p>
+          {/if}
         {:else if line}
           <p class="hint" data-unscored>
             Not scored: no single voice was found in this song's separated vocal.
@@ -533,6 +551,14 @@
           <button onclick={() => void change(karaokeRefuse(upNext.name))}>No thanks</button>
         </div>
       {/if}
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={!(rotation?.unscored ?? false)}
+          onchange={(event) => void change(karaokeScoring(event.currentTarget.checked))}
+        />
+        Score the singers
+      </label>
       <div class="key" role="group" aria-label="Key for {upNext.name}">
         <button
           aria-label="Lower the key"
@@ -1066,6 +1092,14 @@
   .done {
     border-color: var(--accent);
     font-weight: 600;
+  }
+
+  .scoring {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    margin: 0 0 0.3rem;
+    color: var(--accent);
   }
 
   .sung-line {

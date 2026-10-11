@@ -65,8 +65,12 @@ pub fn listen(rings: &mut [rtrb::Consumer<f32>], recent: &mut Vec<Vec<f32>>) -> 
 }
 
 /// Listen for as long as the application runs, publishing each strip's pitch
-/// into `registry`. A strip with no ring reads as not singing.
-pub fn spawn(registry: std::sync::Arc<dj_control::ParameterRegistry>) {
+/// into `registry` and handing every reading to `on_heard` — the scoring. A
+/// strip with no ring reads as not singing.
+pub fn spawn(
+    registry: std::sync::Arc<dj_control::ParameterRegistry>,
+    on_heard: impl Fn(&[Option<f32>]) + Send + 'static,
+) {
     let spawned = std::thread::Builder::new()
         .name("dj-listen".into())
         .spawn(move || {
@@ -79,6 +83,8 @@ pub fn spawn(registry: std::sync::Arc<dj_control::ParameterRegistry>) {
                 };
                 if heard.is_empty() {
                     recent.clear();
+                } else {
+                    on_heard(&heard);
                 }
                 for strip in 0..MAX_VOCAL_STRIPS {
                     #[allow(clippy::cast_possible_truncation)]

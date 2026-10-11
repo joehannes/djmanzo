@@ -96,6 +96,38 @@ test.describe("§107: the singers' screen", () => {
   });
 
   /**
+   * **K6: the scores while a song is sung, and tonight's best between
+   * songs** — under the words, from Rust's rotation; a singer not yet scored
+   * (no sung part passed) is not shown with a number.
+   */
+  test("shows the scores while singing and tonight's best between songs", async ({ page }) => {
+    const scored = {
+      ...ROTATION,
+      scores: [
+        { strip: 0, singer: "Ana", percent: 82.4 },
+        { strip: 1, singer: "Ben", percent: null },
+      ],
+      best: [
+        { singer: "Cleo", title: "Valerie", track: null, key: 0, score: 91.2 },
+        { singer: "Dan", title: "Dancing Queen", track: null, key: -2, score: 77 },
+      ],
+    };
+    await openShell(page, "/?panel=singers", {}, { singer_lyrics: WORDS, karaoke_rotation: scored });
+    await expect(page.locator(SCREEN)).toBeVisible();
+    // Between songs: tonight's best, highest first.
+    const best = page.locator(`${SCREEN} [data-best]`);
+    await expect(best).toBeVisible();
+    await expect(best.locator("li")).toHaveText(["91 Cleo — Valerie", "77 Dan — Dancing Queen"]);
+    await expect(page.locator(`${SCREEN} [data-scores]`)).toHaveCount(0);
+    // A song sung: the scores instead.
+    await singing(page, 14.5);
+    const scores = page.locator(`${SCREEN} [data-scores]`);
+    await expect(scores).toHaveText("Ana 82");
+    await expect(best).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **K4: the singer's approved photo, while they sing** — and not before:
    * the screen asks for the singer at the top of the rotation only while
    * their deck plays with its vocal down.

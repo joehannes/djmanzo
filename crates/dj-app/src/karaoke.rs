@@ -95,14 +95,20 @@ pub struct Singer {
 }
 
 /// Somebody sang something, in some key. The history keys are read from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sung {
     pub singer: String,
     pub title: String,
     #[serde(default)]
     pub track: Option<String>,
     pub key: i32,
+    /// K6: how they scored, 0 to 100, when they were scored.
+    #[serde(default)]
+    pub score: Option<f32>,
 }
+
+/// K6: how many of tonight's best the singers' screen shows.
+pub const BEST: usize = 5;
 
 /// The night's rotation: the singers in the order they will be called, and
 /// everything sung so far.
@@ -118,6 +124,14 @@ pub struct Rotation {
     /// — *Last orders at one*. Empty shows nothing.
     #[serde(default)]
     pub line: String,
+    /// K6: tonight's scored songs, as sung — what *Tonight's best* is drawn
+    /// from. Gone at *New night*, unlike the history.
+    #[serde(default)]
+    pub tonight: Vec<Sung>,
+    /// K6: the host has switched scoring off for the night. On again at *New
+    /// night*.
+    #[serde(default)]
+    pub unscored: bool,
 }
 
 /// K4: the longest line the host may put on the singers' screen, in
@@ -250,6 +264,7 @@ impl Rotation {
             title: song.title,
             track: song.track,
             key: song.key,
+            score: None,
         };
         self.history.push(sung.clone());
         self.singers.push(singer);
@@ -396,6 +411,30 @@ impl Rotation {
     pub fn clear(&mut self) {
         self.singers.clear();
         self.line.clear();
+        self.tonight.clear();
+        self.unscored = false;
+    }
+
+    /// K6: the song just sung scored `percent` — kept with it in the
+    /// history, and among tonight's. Answers whether there was a song to
+    /// keep it with.
+    pub fn scored(&mut self, percent: f32) -> bool {
+        let Some(last) = self.history.last_mut() else {
+            return false;
+        };
+        last.score = Some(percent.clamp(0.0, 100.0));
+        self.tonight.push(last.clone());
+        true
+    }
+
+    /// K6: tonight's best, highest first, at most [`BEST`] — the earlier of
+    /// two equal scores first, since they got there first.
+    #[must_use]
+    pub fn best(&self) -> Vec<Sung> {
+        let mut best = self.tonight.clone();
+        best.sort_by(|a, b| b.score.unwrap_or(0.0).total_cmp(&a.score.unwrap_or(0.0)));
+        best.truncate(BEST);
+        best
     }
 
     /// K4: the host's line on the singers' screen: whitespace folded to one
@@ -646,6 +685,51 @@ mod tests {
             assert!(rotation.ask(name, title, None, None, None));
         }
         rotation
+    }
+
+    /// **K6: a score is kept with the song it was for, and tonight's best
+    /// are tonight's.** Highest first, five at most, an equal score behind
+    /// the one that got there first; a song sung unscored is in the history
+    /// and not among the best; New night forgets the best and puts scoring
+    /// back on, and the history keeps the scores.
+    #[test]
+    fn scores_are_kept_and_tonights_best_are_tonights() {
+        let names = ["Ana", "Bo", "Cy", "Di", "Ed", "Fay", "Gus"];
+        let asks: Vec<(&str, &str)> = names.iter().map(|n| (*n, "Song")).collect();
+        let mut rotation = night(&asks);
+        let scores = [62.0, 91.5, 40.0, 91.5, 77.0, 55.0];
+        for score in scores {
+            rotation.sang();
+            assert!(rotation.scored(score));
+        }
+        rotation.sang();
+        assert_eq!(rotation.history.len(), 7);
+        assert_eq!(rotation.history[1].score, Some(91.5));
+        assert_eq!(
+            rotation.history[6].score, None,
+            "an unscored song was given a score"
+        );
+        let best: Vec<(String, f32)> = rotation
+            .best()
+            .into_iter()
+            .map(|sung| (sung.singer, sung.score.unwrap()))
+            .collect();
+        assert_eq!(
+            best,
+            [
+                ("Bo".to_owned(), 91.5),
+                ("Di".to_owned(), 91.5),
+                ("Ed".to_owned(), 77.0),
+                ("Ana".to_owned(), 62.0),
+                ("Fay".to_owned(), 55.0),
+            ]
+        );
+        rotation.unscored = true;
+        rotation.clear();
+        assert!(rotation.best().is_empty());
+        assert!(!rotation.unscored, "scoring stayed off into the next night");
+        assert_eq!(rotation.history[1].score, Some(91.5));
+        assert!(!Rotation::default().scored(50.0), "a score with no song");
     }
 
     fn calling(rotation: &Rotation) -> Vec<String> {

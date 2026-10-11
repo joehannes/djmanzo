@@ -327,6 +327,24 @@
     {#if rotation?.line}
       <p class="host-line" data-host-line>{rotation.line}</p>
     {/if}
+    {#if singer && (rotation?.scores ?? []).some((s) => s.percent !== null)}
+      <!-- K6: how the singing is going, small and under the words. -->
+      <p class="scores" data-scores>
+        {#each (rotation?.scores ?? []).filter((s) => s.percent !== null) as score (score.strip)}
+          <span>{score.singer} <strong>{Math.round(score.percent ?? 0)}</strong></span>
+        {/each}
+      </p>
+    {:else if !singer && (rotation?.best ?? []).length > 0}
+      <!-- K6: between songs, tonight's best. -->
+      <div class="best" data-best>
+        <p class="best-title">Tonight's best</p>
+        <ol>
+          {#each rotation?.best ?? [] as sung, i (i)}
+            <li><strong>{Math.round(sung.score ?? 0)}</strong> {sung.singer} — {sung.title}</li>
+          {/each}
+        </ol>
+      </div>
+    {/if}
   </div>
 
   {#if photo}
@@ -531,6 +549,30 @@
     margin: 0;
     font-size: 2.6vh;
     color: rgba(255, 255, 255, 0.9);
+  }
+
+  .scores {
+    margin: 0;
+    display: flex;
+    gap: 2vw;
+    font-size: 2.4vh;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .best-title {
+    margin: 0;
+    font-size: 2.6vh;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* The numbers inside the lines: the footer is centred, and a marker
+     outside a centred line lands at the screen's edge, far from its name. */
+  .best ol {
+    margin: 0.4vh 0 0;
+    padding: 0;
+    list-style-position: inside;
+    font-size: 2.4vh;
+    color: rgba(255, 255, 255, 0.8);
   }
 
   /* The singer's photo, in the corner under the words' height. */

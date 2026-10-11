@@ -15377,6 +15377,22 @@ pub struct RotationDto {
     pub line: String,
     /// K5: *Bring them in*, when it can be pressed or is happening.
     pub bring_in: Option<BringInDto>,
+    /// K6: each singer's score through the song being sung, by strip.
+    pub scores: Vec<ScoreDto>,
+    /// K6: tonight's best, highest first.
+    pub best: Vec<crate::karaoke::Sung>,
+    /// K6: the host has switched scoring off for the night.
+    pub unscored: bool,
+}
+
+/// K6: one singer's score through the song being sung.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ScoreDto {
+    /// The microphone, 0-based.
+    pub strip: u8,
+    pub singer: String,
+    /// 0 to 100, or `None` until a sung point of the line has passed.
+    pub percent: Option<f32>,
 }
 
 /// K5: bringing the next singer in, as the Singers panel offers it.
@@ -15397,6 +15413,9 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         lately: rotation.history.iter().rev().take(12).cloned().collect(),
         line: rotation.line.clone(),
         bring_in: None,
+        scores: Vec::new(),
+        best: rotation.best(),
+        unscored: rotation.unscored,
     }
 }
 
@@ -15413,7 +15432,98 @@ fn with_rotation(
         (changed, (rotation_dto(rotation), next))
     });
     dto.bring_in = next.and_then(|next| bringing_in(state, &next).ok());
+    if let Ok(scoring) = state.scoring().lock() {
+        dto.scores = scoring
+            .scores()
+            .into_iter()
+            .map(|(strip, singer, percent)| ScoreDto {
+                strip,
+                singer,
+                percent,
+            })
+            .collect();
+    }
     dto
+}
+
+/// K6: score what the listening just heard, one reading per strip, against
+/// the line of the up-next singer's song while its deck plays — each strip
+/// for the singer on it. A song not playing keeps its scores until *Sang*;
+/// a new song, a new key, or a strip's new singer starts afresh. Called by
+/// the listening thread twenty times a second; the rotation is read at most
+/// once a second.
+pub(crate) fn score_heard(state: &AppState, heard: &[Option<f32>]) {
+    let Ok(mut scoring) = state.scoring().lock() else {
+        return;
+    };
+    if scoring
+        .checked
+        .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(1))
+    {
+        let rotation = state.karaoke();
+        scoring.up_next = rotation
+            .up_next()
+            .filter(|_| !rotation.unscored)
+            .and_then(|(singer, song)| Some((singer.name.clone(), song.track.clone()?, song.key)));
+        scoring.checked = Some(std::time::Instant::now());
+    }
+    let Some((_, track, key)) = scoring.up_next.clone() else {
+        return;
+    };
+    let Some(deck) = automix_view(state).into_iter().find(|deck| {
+        deck.playing
+            && state
+                .deck_track_id(deck.id)
+                .is_some_and(|on| on.to_hex() == track)
+    }) else {
+        return;
+    };
+    if scoring.song.as_ref() != Some(&(track.clone(), key)) {
+        scoring.reset();
+        scoring.checked = Some(std::time::Instant::now());
+        scoring.song = Some((track.clone(), key));
+        scoring.line = dj_core::TrackId::from_hex(&track)
+            .and_then(|id| library(state).ok()?.vocal_line(&id).ok().flatten())
+            .filter(dj_library::vocal_line::VocalLine::scorable)
+            .map(|line| (Arc::new(line.cents), line.rate));
+    }
+    let Some((line, rate)) = scoring.line.clone() else {
+        return;
+    };
+    let at = deck.position / deck.sample_rate.max(1.0);
+    let on = lock(state.on_mics()).clone();
+    if scoring.strips.len() < heard.len() {
+        scoring.strips.resize_with(heard.len(), || None);
+    }
+    for (strip, pitch) in heard.iter().enumerate() {
+        let Some(singer) = on.get(strip).cloned().flatten().map(|on| on.singer) else {
+            // Taken off the microphone: the score so far stands.
+            continue;
+        };
+        let slot = &mut scoring.strips[strip];
+        match slot {
+            Some((who, score)) if *who == singer => score.hear(at, *pitch),
+            _ => {
+                let mut score = crate::score::Score::new(Arc::clone(&line), rate, key);
+                score.hear(at, *pitch);
+                *slot = Some((singer, score));
+            }
+        }
+    }
+}
+
+/// K6: switch scoring on or off for the night.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_scoring(state: State<'_, AppState>, on: bool) -> RotationDto {
+    if !on && let Ok(mut scoring) = state.scoring().lock() {
+        scoring.reset();
+    }
+    with_rotation(&state, |rotation| {
+        let changed = rotation.unscored == on;
+        rotation.unscored = !on;
+        changed
+    })
 }
 
 /// K5: the two decks *Bring them in* would mix between, for the singer up
@@ -15838,8 +15948,22 @@ pub fn karaoke_refuse(state: State<'_, AppState>, singer: String) -> RotationDto
 pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
     let mut sung = None;
     let mut called = false;
+    // K6: the score of the singer who sang, from the microphone they were on
+    // — nobody else's — and then the scores are done with.
+    let scores = state.scoring().lock().ok().map(|mut scoring| {
+        let kept = std::mem::take(&mut *scoring);
+        scoring.reset();
+        kept
+    });
     let dto = with_rotation(&state, |rotation| {
+        let singer = rotation.up_next().map(|(singer, _)| singer.name.clone());
         sung = rotation.sang();
+        if let Some(percent) = singer
+            .zip(scores.as_ref())
+            .and_then(|(singer, scores)| scores.score_of(&singer))
+        {
+            rotation.scored(percent);
+        }
         called = sung.is_some() && rotation.up_next().is_some();
         sung.is_some()
     });
@@ -15923,6 +16047,10 @@ pub(crate) fn new_night(state: &AppState) -> RotationDto {
         tracing::warn!(%error, "tonight's guests are still in the journal");
     }
     everybody_off_the_mics(state);
+    // K6: no song being scored.
+    if let Ok(mut scoring) = state.scoring().lock() {
+        scoring.reset();
+    }
     // K5: tonight's break records may all play again.
     if let Ok(mut held) = state.breaks().lock() {
         let settings = held

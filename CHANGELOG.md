@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Scored singing (K6).** While a singer sings into a microphone the rotation
+  put them on, djmanzo scores them against the line their song's voice
+  sings — an octave up or down counts, in the key the host set, a breath
+  late is not wrong. The running score is on the Singers panel and under the
+  words on the singers' screen; *Sang* keeps it, and between songs the
+  screen shows *Tonight's best*. *Score the singers* switches it off for the
+  night.
+
 - **The note on each microphone (K6).** djmanzo listens to every open
   singer's microphone — off the audio thread — and each row in Microphones
   shows the note it hears: what scored singing will compare with the song.

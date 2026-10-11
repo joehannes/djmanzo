@@ -353,6 +353,19 @@ test.describe("K6: the line a song's voice sings", () => {
     // A semitone a unit, the highest note at the top: −300 is 0, −1200 nine below.
     expect(d).toBe("M0 9.0L1 9.0M4 2.0L5 2.0L6 0.0");
 
+    // K6: the singers' scores as they go, and the host's switch.
+    await page.evaluate(() => {
+      const win = window as unknown as { __rotation: Record<string, unknown> };
+      win.__rotation.scores = [{ strip: 0, singer: "Ana", percent: 81.6 }];
+    });
+    await expect(up.locator("[data-scoring]")).toHaveText("Ana 82%", { timeout: 5000 });
+    const scoring = up.getByRole("checkbox", { name: "Score the singers" });
+    await expect(scoring).toBeChecked();
+    await scoring.uncheck();
+    const switched = (await calls(page)).filter((call) => call.cmd === "karaoke_scoring");
+    expect(switched.at(-1)).toMatchObject({ on: false });
+    await expect(scoring).not.toBeChecked();
+
     // A line with no single voice in it is said, not drawn.
     await page.evaluate(() => {
       const held = (window as unknown as { __vocalLine: { scorable: boolean; sung: number } }).__vocalLine;

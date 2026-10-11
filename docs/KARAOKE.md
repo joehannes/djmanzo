@@ -1232,9 +1232,12 @@ song plays:
 
 The score is per **strip**, so a duet is two scores; the singer is whoever
 the rotation put on that strip (K3's *on a microphone*). Held by tests over
-synthetic voices — a sine following the reference line scores near 100, the
-same an octave down the same, a semitone sharp throughout about half, a
-fifth off nothing, and a quarter-second late still near 100.
+synthetic voices — a voice on the line scores 100, an octave down the same,
+a semitone sharp throughout half, a tritone or a fifth off nothing, 150 ms
+late as on time, and a quarter of a second late loses only the start of
+each note. (This said *a quarter-second late still near 100* until the
+tests were written: with a 150 ms tolerance it cannot be, and the tests say
+what it is instead.)
 
 ### On the screen, and after
 
@@ -1314,3 +1317,26 @@ heard, and each Microphones row shows it as a note (*A3*, *E4 +20*). The
 null backend sings `DJMANZO_NULL_VOICE` into its first input. Driven: a
 looping voice, A3 for two seconds and E4 for two, opened on Mic 1 read
 *A3* and *E4* by turns on its row.
+
+**Step 3, the score — built (11 October).** `score::Score` settles each
+point of the line once the song is 150 ms past it, by the best of what was
+heard within 150 ms of it, folded to an octave, moved by the song's key and
+graded (50 cents a hit, 150 half); rests are not marked; a jump back of
+more than a second carries on from where the song now is. The listening
+thread hands every reading to `commands::score_heard`, which reads the
+rotation at most once a second, scores while the up-next singer's song
+plays on a deck — each strip for the singer on it, a new singer on a strip
+starting afresh, one taken off keeping what they had — and keeps nothing
+while it is not playing, so a finished song waits for *Sang*. *Sang* keeps
+the score of the singer who sang, from their own microphone and nobody
+else's (`Scoring::score_of`), with the song in the history and among
+tonight's (`Rotation::tonight`); *New night* forgets tonight's and puts
+scoring back on. The Singers panel has *Score the singers* and each
+singer's running score on the up-next row; the singers' screen shows the
+running scores below the words while a song is sung and *Tonight's best* —
+five, highest first — between songs. Driven with a song whose voice holds
+A3 and the null input singing: A3, Ana read *100%* on the panel and kept
+100 at *Sang*; B3, Bo read *0%* and kept 0; the singers' screen then read
+*Tonight's best: 1. 100 Ana, 2. 0 Bo*. The drive found the list's numbers
+at the screen's edge, away from their centred names — fixed, and nothing
+but looking at it would have seen it.
