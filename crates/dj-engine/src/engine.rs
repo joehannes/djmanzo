@@ -145,6 +145,9 @@ pub struct Engine {
     clap_bypass: bool,
     /// The master, on its way to a file. See [`Command::RecordStream`].
     record_stream: Option<rtrb::Producer<f32>>,
+    /// K9: one singer's song, on its way to a file. See
+    /// [`Command::PerformanceStream`].
+    performance: Option<(usize, rtrb::Producer<f32>)>,
     /// Samples the ring would not take since recording started.
     ///
     /// A full ring means the writer thread is behind — a slow disk, a machine
@@ -240,6 +243,7 @@ impl Engine {
             clap_scratch: vec![0.0; CLAP_MAX_FRAMES * CLAP_CHANNELS],
             clap_bypass: false,
             record_stream: None,
+            performance: None,
             dropped_samples: 0,
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
@@ -582,6 +586,15 @@ impl Engine {
                     };
                     self.dropped_samples = 0;
                     if let Some(previous) = previous {
+                        self.retire(Retired::Stream(previous));
+                    }
+                }
+                Command::PerformanceStream { strip, sink } => {
+                    let previous = match sink {
+                        Some(sink) => self.performance.replace((usize::from(strip), sink)),
+                        None => self.performance.take(),
+                    };
+                    if let Some((_, previous)) = previous {
                         self.retire(Retired::Stream(previous));
                     }
                 }
@@ -1933,6 +1946,22 @@ impl AudioCallback for Engine {
                     .as_ref()
                     .map_or(0.0, |vocals| vocals.voice(strip));
                 self.recorder.write(voice, voice);
+            }
+            // K9: one singer's song — their share of the PA over the records
+            // as they are here, before the talkover and the master. A ring the
+            // writer has fallen behind on loses the frame, never waits.
+            if let Some((strip, sink)) = self.performance.as_mut() {
+                let main = self
+                    .vocals
+                    .as_ref()
+                    .map_or([0.0; 2], |vocals| vocals.main_of(*strip));
+                let music_r = if layout.is_mono() {
+                    frame[main_l]
+                } else {
+                    frame[main_r]
+                };
+                let _ = sink.push(frame[main_l] + main[0]);
+                let _ = sink.push(music_r + main[1]);
             }
             // The music takes the lowest gain anything talking over it asks
             // for: the DJ's microphone or a strip set as the MC's.
@@ -5963,6 +5992,81 @@ mod mic_tests {
             ..singer
         };
         (singer, mc)
+    }
+
+    /// K9: **a performance is the singer and the music, and nothing else.**
+    /// With the singer on the first strip and the MC talking on the second,
+    /// the stream for the first carries the music at its own level — not the
+    /// dip the MC's talkover puts in the room — and the singer, and not the
+    /// MC. Stopped, the ring comes back through the retirement queue.
+    #[test]
+    fn a_performance_is_the_singer_over_the_music_and_nothing_else() {
+        const VOICE: f32 = 0.3;
+        let mut rig = rig();
+        rig.play_music(0.5);
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 2);
+        let (mut ring, consumer) = rtrb::RingBuffer::new(48_000 * 2 * 2);
+        assert!(vocals.set_input(Some(consumer)).is_none());
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, mc) = strips();
+        rig.send(Command::VocalStrip {
+            strip: 0,
+            settings: singer,
+        });
+        rig.send(Command::VocalStrip {
+            strip: 1,
+            settings: mc,
+        });
+        let sing = |ring: &mut rtrb::Producer<f32>, first: f32, second: f32, frames: usize| {
+            for _ in 0..frames {
+                ring.push(first).expect("ring full");
+                ring.push(second).expect("ring full");
+            }
+        };
+        let mut alone = 0.0;
+        for _ in 0..4 {
+            sing(&mut ring, 0.0, 0.0, 2_048);
+            alone = rig.render_peak(2_048);
+        }
+
+        let (sink, mut song) = rtrb::RingBuffer::<f32>::new(48_000 * 2);
+        rig.send(Command::PerformanceStream {
+            strip: 0,
+            sink: Some(sink),
+        });
+        for _ in 0..10 {
+            sing(&mut ring, VOICE, 0.4, 2_048);
+            rig.render_peak(2_048);
+            while song.pop().is_ok() {}
+        }
+        sing(&mut ring, VOICE, 0.4, 2_048);
+        rig.render_peak(2_048);
+        let mut left = Vec::new();
+        while let (Ok(l), Ok(_r)) = (song.pop(), song.pop()) {
+            left.push(l);
+        }
+        assert_eq!(left.len(), 2_048, "a frame a frame");
+        let recorded = left.iter().fold(0.0_f32, |peak, s| peak.max(s.abs()));
+        let centred = VOICE * std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            (recorded - (alone + centred)).abs() < 0.01,
+            "the song came out at {recorded}, not the music ({alone}) and the singer ({centred})"
+        );
+        // The MC's own voice would put it higher, and their talkover's dip
+        // lower: it is neither.
+
+        rig.send(Command::PerformanceStream {
+            strip: 0,
+            sink: None,
+        });
+        rig.render_peak(64);
+        let mut handed_back = false;
+        while let Ok(item) = rig.retired.pop() {
+            handed_back |= matches!(item, Retired::Stream(_));
+        }
+        assert!(handed_back, "the ring was dropped on the audio thread");
     }
 
     /// K3: **the singers join the master where the microphone does, and only

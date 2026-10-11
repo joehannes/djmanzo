@@ -54,7 +54,7 @@
       native_language: "",
       languages: [],
       notes: "",
-      consent: { keep: false, contact: false, voice: false, given: 0, wording: 0 },
+      consent: { keep: false, contact: false, voice: false, perform: false, given: 0, wording: 0 },
       since: 0,
       sang: [],
       take: null,
@@ -247,7 +247,7 @@
         {/each}
         {#if young}
           <p class="hint">
-            Under {book.consent_age}, contact and voice need a parent's agreement, which a booth cannot check.
+            Under {book.consent_age}, contact, voice and a recorded song need a parent's agreement, which a booth cannot check.
           </p>
         {:else if editing.consent.given > 0}
           <p class="hint">Answered {when(editing.consent.given)}.</p>
@@ -362,6 +362,7 @@
               {#if !guest.consent.keep}<span class="mark" title="Tonight only">tonight</span>{/if}
               {#if guest.consent.contact}<span class="mark" title="Agreed to be contacted">contact</span>{/if}
               {#if guest.consent.voice}<span class="mark" title="Agreed to their voice being used">voice</span>{/if}
+              {#if guest.consent.perform}<span class="mark" title="Agreed to their song being recorded for them">song</span>{/if}
             </span>
           </button>
         </li>

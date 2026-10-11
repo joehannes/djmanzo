@@ -128,6 +128,10 @@ pub struct Vocals {
     /// Each strip's voice in the last frame, before its space
     /// ([`StripFrame::voice`]): what a recording of the singer on it takes.
     voices: [f32; MOST_STRIPS],
+    /// K9: each strip's own share of the PA in the last frame — its voice
+    /// through its chain, echo and room, panned and sent — kept apart from
+    /// the others' for a recording of one singer's song.
+    mains: [[f32; 2]; MOST_STRIPS],
     /// K6: each strip's voice for the listening, once [`Self::listen`] has
     /// made the rings. Empty until then.
     taps: Vec<Tap>,
@@ -151,6 +155,7 @@ impl Vocals {
             input: None,
             starved: 0,
             voices: [0.0; MOST_STRIPS],
+            mains: [[0.0; 2]; MOST_STRIPS],
             taps: Vec::new(),
             unheard: 0,
             sample_rate,
@@ -199,6 +204,13 @@ impl Vocals {
     #[must_use]
     pub fn voice(&self, index: usize) -> f32 {
         self.voices.get(index).copied().unwrap_or(0.0)
+    }
+
+    /// K9: strip `index`'s own share of the PA in the last frame, left and
+    /// right — silence for a strip that is idle or not there.
+    #[must_use]
+    pub fn main_of(&self, index: usize) -> [f32; 2] {
+        self.mains.get(index).copied().unwrap_or([0.0; 2])
     }
 
     /// How many strips there are.
@@ -270,6 +282,9 @@ impl Vocals {
             let out = strip.process(sample);
             if let Some(voice) = self.voices.get_mut(index) {
                 *voice = out.voice;
+            }
+            if let Some(main) = self.mains.get_mut(index) {
+                *main = out.main;
             }
             for side in 0..2 {
                 frame.main[side] += out.main[side];

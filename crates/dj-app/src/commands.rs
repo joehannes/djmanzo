@@ -15462,6 +15462,18 @@ pub struct RotationDto {
     /// K6: the versus round's two teams and where each stands, while there
     /// is one.
     pub versus: Option<[crate::karaoke::Standing; 2]>,
+    /// K9: the singer up next agreed to their song being recorded.
+    pub may_record: bool,
+    /// K9: the song being recorded, while one is.
+    pub recording: Option<RecordingSongDto>,
+}
+
+/// K9: a singer's song being recorded for them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RecordingSongDto {
+    pub singer: String,
+    /// Seconds recorded so far.
+    pub seconds: f64,
 }
 
 /// K6: one singer's score through the song being sung.
@@ -15497,6 +15509,8 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         unscored: rotation.unscored,
         verdict: rotation.verdict,
         versus: rotation.standing(),
+        may_record: false,
+        recording: None,
     }
 }
 
@@ -15522,7 +15536,17 @@ fn with_rotation(
     {
         singer.range = journal.range(&singer.name);
     }
+    dto.may_record = dto
+        .up_next
+        .as_deref()
+        .is_some_and(|name| journal.may_record(name).is_some());
     drop(journal);
+    dto.recording = lock(state.performance())
+        .as_ref()
+        .map(|run| RecordingSongDto {
+            singer: run.singer.clone(),
+            seconds: run.recording.seconds(),
+        });
     if let Ok(scoring) = state.scoring().lock() {
         dto.scores = scoring
             .scores()
@@ -16382,6 +16406,9 @@ pub async fn karaoke_load(app: tauri::AppHandle, deck: u8) -> Result<RotationDto
 
 /// The body of [`karaoke_sang`], for the bus's `karaoke sang` too.
 pub(crate) fn sang_of(state: &AppState) -> RotationDto {
+    // K9: the song is over, and so is its recording — finished before the
+    // song goes on the singer's record, which carries the file with it.
+    record_song_stop(state);
     let mut sung = None;
     let mut called = false;
     // K6: the score of the singer who sang, from the microphone they were on
@@ -16436,6 +16463,7 @@ pub(crate) fn sang_of(state: &AppState) -> RotationDto {
                 place,
                 voice: None,
                 song: None,
+                recording: None,
             },
             now,
         );
@@ -23900,5 +23928,331 @@ mod karaoke_voice_tests {
         let refused = perform(&state, "karaoke load 1").expect_err("Bo's song has no record");
         assert!(refused.contains("Bo"), "{refused}");
         assert_eq!(sent(), Vec::<String>::new());
+    }
+}
+
+/// K9: start recording `singer`'s song for them — their strip's share of the
+/// PA over the records as the room hears them (docs/KARAOKE.md §12). Runs
+/// until *Sang*, *Stop*, or ten minutes.
+///
+/// # Errors
+/// A song is recorded already, they have not agreed to it, they are on no
+/// microphone, or the file or the engine would not take it.
+#[tauri::command]
+pub fn karaoke_record_song(
+    state: State<'_, AppState>,
+    singer: String,
+) -> Result<RotationDto, String> {
+    record_song_start(&state, &singer)?;
+    Ok(with_rotation(&state, |_| false))
+}
+
+/// K9: stop recording the song, keeping what was recorded.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_record_stop(state: State<'_, AppState>) -> RotationDto {
+    record_song_stop(&state);
+    with_rotation(&state, |_| false)
+}
+
+pub(crate) fn record_song_start(state: &AppState, singer: &str) -> Result<(), String> {
+    if lock(state.performance()).is_some() {
+        return Err("A song is being recorded already.".to_owned());
+    }
+    let mut journal = state.guests();
+    let id = journal
+        .may_record(singer)
+        .ok_or_else(|| format!("{singer} has not agreed to their song being recorded."))?;
+    let strip = lock(state.on_mics())
+        .iter()
+        .position(|on| {
+            on.as_ref()
+                .is_some_and(|on| on.singer.to_lowercase() == singer.trim().to_lowercase())
+        })
+        .ok_or_else(|| {
+            format!("Put {singer} on a microphone first: their song is recorded from it.")
+        })?;
+    let strip = u8::try_from(strip).map_err(|_| "no such microphone".to_owned())?;
+    let config = state
+        .config_dir()
+        .ok_or("There is no settings folder to keep the recording in yet.")?;
+    let dir = crate::guests::voices_path(&config);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = crate::performance::file_for(&id, now_seconds());
+    let path = dir.join(&file);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let rate = state
+        .registry()
+        .get(dj_core::ParamId::Global(
+            dj_core::param::GlobalParam::SampleRate,
+        ))
+        .max(1.0) as u32;
+    let (sink, samples) =
+        rtrb::RingBuffer::<f32>::new(crate::setrec::Recording::ring_capacity(rate));
+    let recording = crate::setrec::Recording::start(
+        &path,
+        rate,
+        samples,
+        std::sync::Arc::new(crate::setrec::RecordingState::default()),
+    )
+    .map_err(|e| e.to_string())?;
+    let given_up = |recording: crate::setrec::Recording, why: String| {
+        let _ = state
+            .bus()
+            .send_command(dj_engine::Command::PerformanceStream { strip, sink: None });
+        let _ = std::fs::remove_file(recording.finish());
+        Err(why)
+    };
+    if state
+        .bus()
+        .send_command(dj_engine::Command::PerformanceStream {
+            strip,
+            sink: Some(sink),
+        })
+        .is_err()
+    {
+        return given_up(
+            recording,
+            "The engine is not accepting commands.".to_owned(),
+        );
+    }
+    let unlink = match journal.attach_recording(&id, file.clone(), true) {
+        Ok(replaced) => replaced.into_iter().collect::<Vec<_>>(),
+        Err(why) => return given_up(recording, why),
+    };
+    if let Err(why) = state.set_guests(&journal, &unlink) {
+        return given_up(recording, why);
+    }
+    *lock(state.performance()) = Some(crate::performance::Run {
+        guest: id,
+        singer: singer.trim().to_owned(),
+        file,
+        recording,
+    });
+    Ok(())
+}
+
+/// K9: stop the song being recorded, if one is: the engine stops handing
+/// frames over, the file is finished, and it is deleted when the journal
+/// no longer holds it — a singer who took their agreement back while it
+/// ran. Answers the file kept.
+pub(crate) fn record_song_stop(state: &AppState) -> Option<String> {
+    let run = lock(state.performance()).take()?;
+    let _ = state
+        .bus()
+        .send_command(dj_engine::Command::PerformanceStream {
+            strip: 0,
+            sink: None,
+        });
+    let path = run.recording.finish();
+    if crate::performance::still_kept(&state.guests(), &run.file) {
+        Some(run.file)
+    } else {
+        let _ = std::fs::remove_file(path);
+        None
+    }
+}
+
+/// K9: a recording that has run its ten minutes, or whose disk gave up,
+/// is stopped. On the pump.
+pub(crate) fn tick_performance(state: &AppState) {
+    let over = lock(state.performance()).as_ref().is_some_and(|run| {
+        run.recording.seconds() >= crate::performance::MOST_SECONDS || run.recording.failed()
+    });
+    if over {
+        record_song_stop(state);
+    }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::{AppState, put_on_mic, record_song_start, sang_of, tick_performance};
+
+    /// **A song is recorded for ten minutes at most**: the pump stops a
+    /// recording that has run that long, and keeps it. At a hundred frames a
+    /// second, so ten minutes is small.
+    #[test]
+    fn a_recording_stops_at_ten_minutes() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        state.registry().set(
+            dj_core::ParamId::Global(dj_core::param::GlobalParam::SampleRate),
+            100.0,
+        );
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut journal = state.guests();
+        let guest = crate::guests::Guest {
+            name: "Ana".to_owned(),
+            consent: crate::guests::Consent {
+                perform: true,
+                ..crate::guests::Consent::default()
+            },
+            ..crate::guests::Guest::default()
+        };
+        journal.save(guest, 1).expect("written down");
+        state.set_guests(&journal, &[]).expect("kept");
+        put_on_mic(&state, 0, Some("Ana")).expect("on Mic 1");
+        record_song_start(&state, "Ana").expect("recording");
+        let mut sink = loop {
+            match queue.pop() {
+                Ok(dj_engine::Command::PerformanceStream {
+                    sink: Some(sink), ..
+                }) => break sink,
+                Ok(_) => {}
+                Err(_) => panic!("the engine was never asked to record"),
+            }
+        };
+        let seconds = |state: &AppState| {
+            super::lock(state.performance())
+                .as_ref()
+                .map(|run| run.recording.seconds())
+        };
+        let mut pushed = 0;
+        while pushed < 2 * 100 * 599 {
+            if sink.push(0.1).is_ok() {
+                pushed += 1;
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        while seconds(&state).is_some_and(|s| s < 598.9) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        tick_performance(&state);
+        assert!(seconds(&state).is_some(), "stopped before its ten minutes");
+        while pushed < 2 * 100 * 601 {
+            if sink.push(0.1).is_ok() {
+                pushed += 1;
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        while seconds(&state).is_some_and(|s| s < 600.0) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        tick_performance(&state);
+        assert_eq!(seconds(&state), None, "still recording after ten minutes");
+        assert!(
+            state.guests().guests[0].performing.is_some(),
+            "the ten minutes were not kept"
+        );
+    }
+
+    /// **K9: a song is recorded only for a singer who agreed, from the
+    /// microphone they are on; *Sang* puts the file on the song they sang,
+    /// with what the engine sent in it; and taking the agreement back deletes
+    /// every recording of them, one still running included.** The engine's
+    /// half of the ring is taken off the command queue and written to here,
+    /// as the audio thread would.
+    #[test]
+    fn a_song_is_recorded_for_a_singer_who_agreed_and_kept_with_the_song() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        state.registry().set(
+            dj_core::ParamId::Global(dj_core::param::GlobalParam::SampleRate),
+            8_000.0,
+        );
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let mut stream = move || {
+            let mut sinks = Vec::new();
+            while let Ok(command) = queue.pop() {
+                if let dj_engine::Command::PerformanceStream { strip, sink } = command {
+                    sinks.push((strip, sink));
+                }
+            }
+            sinks
+        };
+
+        let mut journal = state.guests();
+        for (name, perform) in [("Ana", true), ("Bo", false)] {
+            let guest = crate::guests::Guest {
+                name: name.to_owned(),
+                consent: crate::guests::Consent {
+                    keep: true,
+                    perform,
+                    ..crate::guests::Consent::default()
+                },
+                ..crate::guests::Guest::default()
+            };
+            journal.save(guest, 1).expect("written down");
+        }
+        state.set_guests(&journal, &[]).expect("kept");
+        let mut rotation = state.karaoke();
+        assert!(rotation.ask("Ana", "Valerie", None, None, None));
+        state.set_karaoke(&rotation);
+
+        let refused = record_song_start(&state, "Bo").expect_err("Bo did not agree");
+        assert!(refused.contains("agreed"), "{refused}");
+        let refused = record_song_start(&state, "Ana").expect_err("Ana is on no microphone");
+        assert!(refused.contains("microphone"), "{refused}");
+        assert!(stream().is_empty(), "the engine was asked to record");
+
+        put_on_mic(&state, 1, Some("Ana")).expect("on Mic 2");
+        record_song_start(&state, "Ana").expect("recording");
+        let mut sinks = stream();
+        assert_eq!(sinks.len(), 1);
+        let (strip, sink) = sinks.remove(0);
+        assert_eq!(strip, 1, "not Ana's microphone");
+        let mut sink = sink.expect("a ring to write to");
+        for _ in 0..8_000 {
+            sink.push(0.25).expect("room");
+            sink.push(-0.25).expect("room");
+        }
+        let file = state.guests().guests[0]
+            .performing
+            .clone()
+            .expect("the file on the song being sung");
+
+        sang_of(&state);
+        assert!(
+            matches!(stream().as_slice(), [(_, None)]),
+            "the engine was not stopped"
+        );
+        let ana = state.guests().guests[0].clone();
+        assert_eq!(ana.performing, None);
+        assert_eq!(
+            ana.sang.last().and_then(|song| song.recording.clone()),
+            Some(file.clone())
+        );
+        let path = crate::guests::voices_path(dir.path()).join(&file);
+        let bytes = std::fs::read(&path).expect("the recording");
+        assert_eq!(
+            bytes.len(),
+            44 + 8_000 * 2 * 2,
+            "a second of stereo, 16-bit"
+        );
+
+        // A second song begun, then the agreement taken back.
+        put_on_mic(&state, 1, Some("Ana")).expect("still on Mic 2");
+        std::thread::sleep(std::time::Duration::from_millis(1_100));
+        record_song_start(&state, "Ana").expect("recording again");
+        let running = state.guests().guests[0]
+            .performing
+            .clone()
+            .expect("running");
+        assert_ne!(running, file);
+        let mut journal = state.guests();
+        let mut ana = journal.guests[0].clone();
+        ana.consent.perform = false;
+        let saved = journal.save(ana, 2).expect("saved");
+        state.set_guests(&journal, &saved.unlink).expect("kept");
+        assert_eq!(
+            super::record_song_stop(&state),
+            None,
+            "kept against their word"
+        );
+        let folder = crate::guests::voices_path(dir.path());
+        assert!(
+            !folder.join(&file).exists(),
+            "the sung song's recording stayed"
+        );
+        assert!(
+            !folder.join(&running).exists(),
+            "the running recording stayed"
+        );
     }
 }

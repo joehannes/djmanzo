@@ -76,6 +76,7 @@ pub mod packindex;
 pub mod packs;
 pub mod parts;
 pub mod peersync;
+pub mod performance;
 pub mod persist;
 pub mod persona;
 pub mod phone_camera;
@@ -578,6 +579,8 @@ pub fn run() {
                         // K7's clips, on the same pump: started once their
                         // record is on the deck, put back once over.
                         crate::commands::tick_quiz(&state, now);
+                        // K9: a song recorded for ten minutes is stopped.
+                        crate::commands::tick_performance(&state);
                         if let Some(deck) = crate::commands::tick_breaks(&state, now) {
                             let handle = handle.clone();
                             std::thread::spawn(move || {
@@ -1040,6 +1043,8 @@ pub fn run() {
             commands::karaoke_range_cancel,
             commands::voice_state,
             commands::karaoke_load,
+            commands::karaoke_record_song,
+            commands::karaoke_record_stop,
             commands::voice_strip_set,
             commands::karaoke_fits,
             commands::karaoke_songs_for,

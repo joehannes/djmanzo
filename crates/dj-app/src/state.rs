@@ -305,6 +305,8 @@ pub struct AppState {
     range_take: Mutex<Option<crate::range::Take>>,
     /// A2: push-to-talk's take, and what the last came to.
     voice: Mutex<crate::voice::Voice>,
+    /// K9: a singer's song being recorded for them.
+    performance: Mutex<Option<crate::performance::Run>>,
     /// K6: the song being scored and each singer's score through it.
     scoring: Mutex<crate::score::Scoring>,
     /// K6: the room's applause being listened for, after the last *Sang*.
@@ -624,6 +626,7 @@ impl AppState {
             quiz: Mutex::new(crate::quiz::Round::default()),
             range_take: Mutex::new(None),
             voice: Mutex::new(crate::voice::Voice::default()),
+            performance: Mutex::new(None),
             scoring: Mutex::new(crate::score::Scoring::default()),
             applause: Mutex::new(None),
             karaoke_lock: Mutex::new(()),
@@ -1646,6 +1649,12 @@ impl AppState {
     #[must_use]
     pub fn voice(&self) -> &Mutex<crate::voice::Voice> {
         &self.voice
+    }
+
+    /// K9: the song being recorded, if one is.
+    #[must_use]
+    pub fn performance(&self) -> &Mutex<Option<crate::performance::Run>> {
+        &self.performance
     }
 
     /// §121: the density band the main window is wearing, by name.

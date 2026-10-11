@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A singer's song, recorded for them (K9).** A fourth question in the
+  guest book — *Record my song tonight and give it to me* — and, for a
+  singer who agreed, *Record their song* on the up-next row: their
+  microphone as the PA has it over the records as the room hears them,
+  without the MC or anyone else's microphone, until *Sang* (ten minutes at
+  most). The file goes on the song they sang in the guest book; taking the
+  agreement back deletes it.
+
 - **Karaoke by voice (K2).** With push-to-talk held: "karaoke on deck two",
   "a guide vocal on deck one", "vocal back", "next singer", "load the next
   singer on deck one", "bring them in" — and in Spanish, "pon el karaoke

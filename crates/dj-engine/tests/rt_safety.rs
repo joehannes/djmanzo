@@ -1498,6 +1498,49 @@ fn slicing_never_allocates() {
     );
 }
 
+/// K9: a singer's song streams out of the callback for a whole song, the
+/// ring full or not, and stopping hands the ring back.
+#[test]
+fn recording_a_performance_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    let (sink, _samples) = rtrb::RingBuffer::<f32>::new(4_096);
+    rig.commands
+        .push(Command::PerformanceStream {
+            strip: 0,
+            sink: Some(sink),
+        })
+        .ok();
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "a performance allocated {allocations} times"
+    );
+
+    rig.commands
+        .push(Command::PerformanceStream {
+            strip: 0,
+            sink: None,
+        })
+        .ok();
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(4);
+    });
+    assert_eq!(allocations, 0, "stopping allocated {allocations} times");
+    let mut handed_back = false;
+    while let Ok(item) = rig.retired.pop() {
+        if matches!(item, Retired::Stream(_)) {
+            handed_back = true;
+        }
+        std::mem::forget(item);
+    }
+    assert!(handed_back, "the ring was not handed back");
+}
+
 /// Recording the set streams the master out of the callback for hours.
 ///
 /// The push is per sample and the ring is shared with a writer thread, so this

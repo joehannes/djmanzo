@@ -676,3 +676,51 @@ test.describe("K8: a singer's range", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+test.describe("K9: a singer's song, recorded for them", () => {
+  const rotation = {
+    singers: [{ name: "Ana", songs: [{ title: "Valerie", track: null, path: "/music/valerie.mp3", key: 0 }], turns: 0 }],
+    up_next: "Ana",
+    lately: [],
+    may_record: true,
+  };
+
+  /**
+   * **Offered only for a singer who agreed, and said while it runs.** The
+   * agreement, the microphone and the file are Rust's and tested there
+   * (`performance_tests`); the panel offers *Record their song*, sends who,
+   * shows the length running, and stops it.
+   */
+  test("the host records the song of a singer who agreed, and stops it", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: rotation });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    await page.evaluate(() => {
+      const held = (window as unknown as { __rotation: Record<string, unknown> }).__rotation;
+      held.recording = { singer: "Ana", seconds: 65.4 };
+    });
+    await up.getByRole("button", { name: "Record their song" }).click();
+    await expect
+      .poll(async () => (await calls(page)).filter((call) => call.cmd === "karaoke_record_song"))
+      .toEqual([{ cmd: "karaoke_record_song", singer: "Ana" }]);
+    await expect(up.locator("[data-recording]")).toHaveText(/Recording Ana's song — 1:05/);
+
+    await page.evaluate(() => {
+      const held = (window as unknown as { __rotation: Record<string, unknown> }).__rotation;
+      held.recording = null;
+    });
+    await up.getByRole("button", { name: "Stop recording" }).click();
+    await expect
+      .poll(async () => (await calls(page)).filter((call) => call.cmd === "karaoke_record_stop").length)
+      .toBe(1);
+    await expect(up.locator("[data-recording]")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A singer who did not agree is not offered it. */
+  test("a singer who did not agree is not offered it", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: { ...rotation, may_record: false } });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    await expect(up).toContainText("Ana");
+    await expect(up.getByRole("button", { name: "Record their song" })).toHaveCount(0);
+  });
+});

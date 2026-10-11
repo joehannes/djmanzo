@@ -53,11 +53,11 @@ pub const CONSENT_AGE: u8 = 16;
 
 /// The version of the sentences in [`ASKS`]. Stamped on every consent, so a
 /// record says which wording its guest agreed to if the wording ever changes.
-pub const WORDING: u32 = 1;
+pub const WORDING: u32 = 2;
 
 /// The three questions, exactly as the guest is asked them: the interface
 /// shows these and nothing else, so what was agreed is what is written here.
-pub const ASKS: [(&str, &str); 3] = [
+pub const ASKS: [(&str, &str); 4] = [
     (
         "keep",
         "Keep my details after tonight, so the DJ remembers me next time.",
@@ -70,6 +70,9 @@ pub const ASKS: [(&str, &str); 3] = [
         "voice",
         "Record about fifteen seconds of my singing and use it with an AI music service to make a song for me.",
     ),
+    // K9: a whole song kept and handed back is not fifteen seconds for an
+    // AI service, so it is asked on its own (docs/KARAOKE.md §12).
+    ("perform", "Record my song tonight and give it to me."),
 ];
 
 /// What a guest agreed to, and when.
@@ -79,6 +82,8 @@ pub struct Consent {
     pub keep: bool,
     pub contact: bool,
     pub voice: bool,
+    /// K9: their song recorded and given to them.
+    pub perform: bool,
     /// When they answered, in seconds since 1970. Zero is never.
     pub given: i64,
     /// Which wording of [`ASKS`] they answered.
@@ -106,6 +111,9 @@ pub struct Performance {
     /// §123: the words written for a song of their own, and its style — only
     /// with their consent to a song being made for them.
     pub song: Option<dj_assistant::SongDraft>,
+    /// K9: the song as the room heard it, recorded for them — a file name in
+    /// the journal's folder, only with [`Consent::perform`].
+    pub recording: Option<String>,
 }
 
 /// A guest who sang.
@@ -138,6 +146,9 @@ pub struct Guest {
     /// A recording of their voice made while they are singing, before the
     /// song is marked as sung; it goes onto that song when it is.
     pub take: Option<String>,
+    /// K9: their song being recorded now, before it is marked as sung; it
+    /// goes onto that song when it is.
+    pub performing: Option<String>,
     /// K3: the microphone chain they sounded best through — the compressor
     /// and the room the host found for them — laid over a strip when they
     /// are put on one (docs/KARAOKE.md §6). Settings for a voice with a name
@@ -437,7 +448,9 @@ impl Journal {
         if guest.name.is_empty() {
             return Err(Refusal::NoName);
         }
-        if !guest.may_consent() && (guest.consent.contact || guest.consent.voice) {
+        if !guest.may_consent()
+            && (guest.consent.contact || guest.consent.voice || guest.consent.perform)
+        {
             return Err(Refusal::TooYoung);
         }
         if !valid_email(&guest.email) {
@@ -477,6 +490,7 @@ impl Journal {
         guest.sang = before.as_ref().map(|g| g.sang.clone()).unwrap_or_default();
         guest.since = before.as_ref().map_or(now, |g| g.since);
         guest.take = before.as_ref().and_then(|g| g.take.clone());
+        guest.performing = before.as_ref().and_then(|g| g.performing.clone());
         // Kept by the press that keeps it, never by the form — and not at
         // all once the guest is not to be kept.
         guest.microphone = before
@@ -495,6 +509,14 @@ impl Journal {
                 }
             }
             unlink.extend(guest.take.take());
+        }
+        if !guest.consent.perform {
+            for song in &mut guest.sang {
+                if let Some(file) = song.recording.take() {
+                    unlink.push(file);
+                }
+            }
+            unlink.extend(guest.performing.take());
         }
         if let Some(at) = existing {
             self.guests[at] = guest;
@@ -520,6 +542,9 @@ impl Journal {
             let mut song = song;
             if let Some(take) = guest.take.take() {
                 song.voice = Some(take);
+            }
+            if let Some(recording) = guest.performing.take() {
+                song.recording = Some(recording);
             }
             guest.sang.push(song);
             return guest.id.clone();
@@ -631,6 +656,48 @@ impl Journal {
         Ok(song.voice.replace(file))
     }
 
+    /// K9: keep a recording of a guest's song — on the song they are singing
+    /// now when they have not been marked as sung yet, else on the song they
+    /// sang last. Answers the recording it replaced, to delete.
+    ///
+    /// # Errors
+    /// A guest who is not there, has not agreed to it, or has sung nothing
+    /// and is not singing.
+    pub fn attach_recording(
+        &mut self,
+        id: &str,
+        file: String,
+        singing: bool,
+    ) -> Result<Option<String>, String> {
+        let guest = self
+            .guests
+            .iter_mut()
+            .find(|guest| guest.id == id)
+            .ok_or_else(|| Refusal::Unknown.to_string())?;
+        if !guest.consent.perform || !guest.may_consent() {
+            return Err(format!(
+                "{} has not agreed to their song being recorded",
+                guest.name
+            ));
+        }
+        if singing {
+            return Ok(guest.performing.replace(file));
+        }
+        let song = guest
+            .sang
+            .last_mut()
+            .ok_or_else(|| format!("{} has not sung yet", guest.name))?;
+        Ok(song.recording.replace(file))
+    }
+
+    /// K9: the guest a rotation's singer is, by name, when they agreed to
+    /// their song being recorded — their id.
+    #[must_use]
+    pub fn may_record(&self, name: &str) -> Option<String> {
+        let guest = &self.guests[self.named(name)?];
+        (guest.consent.perform && guest.may_consent()).then(|| guest.id.clone())
+    }
+
     /// §123: keep the song written for a guest on their last performance.
     ///
     /// # Errors
@@ -664,8 +731,9 @@ impl Journal {
             guest
                 .sang
                 .into_iter()
-                .filter_map(|song| song.voice)
+                .flat_map(|song| song.voice.into_iter().chain(song.recording))
                 .chain(guest.take)
+                .chain(guest.performing)
                 .collect(),
         )
     }
@@ -679,7 +747,9 @@ impl Journal {
                 return true;
             }
             unlink.extend(guest.sang.iter().filter_map(|song| song.voice.clone()));
+            unlink.extend(guest.sang.iter().filter_map(|song| song.recording.clone()));
             unlink.extend(guest.take.clone());
+            unlink.extend(guest.performing.clone());
             false
         });
         unlink
@@ -695,7 +765,7 @@ impl Journal {
     /// For the host's own records; the recordings stay files.
     #[must_use]
     pub fn export_table(&self) -> String {
-        const HEAD: [&str; 18] = [
+        const HEAD: [&str; 19] = [
             "name",
             "age",
             "email",
@@ -711,6 +781,7 @@ impl Journal {
             "keep",
             "contact",
             "voice",
+            "perform",
             "song",
             "when",
             "event",
@@ -747,6 +818,7 @@ impl Journal {
                     guest.consent.keep.to_string(),
                     guest.consent.contact.to_string(),
                     guest.consent.voice.to_string(),
+                    guest.consent.perform.to_string(),
                     song.map(|s| s.title.clone()).unwrap_or_default(),
                     song.map(|s| s.at.to_string()).unwrap_or_default(),
                     song.map(|s| s.event.clone()).unwrap_or_default(),
@@ -1199,6 +1271,55 @@ mod tests {
         kid.id = journal.guests[0].id.clone();
         assert!(journal.save(kid, 1).is_ok());
         assert_eq!(journal.guests.len(), 1);
+    }
+
+    /// **K9: a recorded song is a child's to refuse, not to agree to alone;
+    /// it goes onto the song sung; and a new night or a forgotten guest takes
+    /// it with them.**
+    #[test]
+    fn a_recorded_song_is_kept_only_where_it_was_agreed_to() {
+        let mut journal = Journal::default();
+        let mut kid = guest("Kid");
+        kid.age = Some(14);
+        kid.consent.perform = true;
+        assert_eq!(journal.save(kid, 1), Err(Refusal::TooYoung));
+
+        let mut ana = guest("Ana");
+        ana.consent.perform = true;
+        let ana = journal.save(ana, 1).expect("saved").id;
+        assert_eq!(journal.may_record("ana"), Some(ana.clone()));
+        let bo = journal.save(guest("Bo"), 1).expect("saved").id;
+        assert_eq!(journal.may_record("Bo"), None);
+        assert!(
+            journal
+                .attach_recording(&bo, "bo-song-1.wav".into(), true)
+                .is_err()
+        );
+
+        assert_eq!(
+            journal.attach_recording(&ana, "ana-song-1.wav".into(), true),
+            Ok(None)
+        );
+        journal.sang("Ana", song("Valerie"), 2);
+        let sung = &journal.get(&ana).expect("Ana").sang[0];
+        assert_eq!(sung.recording.as_deref(), Some("ana-song-1.wav"));
+        assert_eq!(journal.get(&ana).expect("Ana").performing, None);
+
+        assert_eq!(
+            journal.attach_recording(&ana, "ana-song-2.wav".into(), true),
+            Ok(None)
+        );
+        let mut night = journal.clone();
+        let mut gone = night.new_night();
+        gone.sort();
+        assert_eq!(
+            gone,
+            ["ana-song-1.wav", "ana-song-2.wav"],
+            "a tonight-only guest's songs"
+        );
+        let mut forgotten = journal.forget(&ana).expect("Ana");
+        forgotten.sort();
+        assert_eq!(forgotten, ["ana-song-1.wav", "ana-song-2.wav"]);
     }
 
     #[test]

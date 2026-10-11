@@ -11,6 +11,10 @@
     {
       "name": "voice",
       "sentence": "Record about fifteen seconds of my singing and use it with an AI music service to make a song for me."
+    },
+    {
+      "name": "perform",
+      "sentence": "Record my song tonight and give it to me."
     }
   ],
   "consent_age": 16

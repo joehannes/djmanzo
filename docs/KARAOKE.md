@@ -1827,6 +1827,23 @@ because djmanzo encodes no MP3 (LAME is GPL) — on the guest's record with
 their songs, given with their record when they ask for it, and sent by the
 DJ by hand: a WhatsApp link (A6) carries words, not a file.
 
+**Built (11 October 2026).** The fourth question is in the guest book
+(`guests::ASKS`, wording 2); a guest under sixteen cannot agree to it
+alone, as with contact and voice. `dj_vocal::Vocals::main_of` keeps each
+strip's share of the PA apart; `Command::PerformanceStream` streams it
+over the decks' sum, before the talkover and the master, through a ring
+that comes back through the retirement queue when it stops — and does not
+allocate, by `rt_safety`. *Record their song* on the up-next row for a
+singer who agreed; the file is on their record from the first frame
+(`Guest::performing`), *Sang* stops it and moves it onto the song
+(`Performance::recording`), the pump stops it at ten minutes, and taking
+the agreement back deletes every recording of them, the one running
+included. Driven: Ana ticked the fourth question in the panel, went on
+Mic 1, her song on deck 1, *Record their song* read *Recording Ana's song
+— 0:05*, and *Sang* left a 33-second stereo WAV on the song she sang. Not
+recorded with the decks going out separately, where there is no master
+loop to take them from.
+
 ### Pitch correction — second
 
 The score already reads the strip **before** its chain (K6's tap is the

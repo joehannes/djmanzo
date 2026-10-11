@@ -99,6 +99,8 @@ test.describe("§123: the karaoke journal", () => {
     await form.getByRole("spinbutton", { name: "Age" }).fill("14");
     await expect(form.getByRole("checkbox", { name: /Keep my email/ })).toBeDisabled();
     await expect(form.getByRole("checkbox", { name: /Record about fifteen seconds/ })).toBeDisabled();
+    // K9: nor their song recorded.
+    await expect(form.getByRole("checkbox", { name: /Record my song tonight/ })).toBeDisabled();
     await expect(form.getByRole("checkbox", { name: /Keep my details/ })).toBeEnabled();
     await expect(form.getByText(/need a parent's agreement/)).toBeVisible();
     await form.getByRole("spinbutton", { name: "Age" }).fill("16");

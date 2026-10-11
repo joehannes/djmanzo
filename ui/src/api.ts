@@ -5102,6 +5102,17 @@ export interface Rotation {
   verdict?: "singing" | "room";
   /** K6: the versus round's two teams and where each stands. */
   versus?: TeamStanding[] | null;
+  /** K9: the singer up next agreed to their song being recorded. */
+  may_record?: boolean;
+  /** K9: the song being recorded, while one is. */
+  recording?: RecordingSong | null;
+}
+
+/** K9: a singer's song being recorded for them. See `dj_app::commands::RecordingSongDto`. */
+export interface RecordingSong {
+  singer: string;
+  /** Seconds recorded so far. */
+  seconds: number;
 }
 
 /** K6: one team of a versus round, and where it stands. */
@@ -5182,12 +5193,18 @@ export const karaokeLeave = (singer: string) => invoke<Rotation>("karaoke_leave"
 export const karaokeKey = (singer: string, key: number) =>
   invoke<Rotation>("karaoke_key", { singer, key });
 export const karaokeClear = () => invoke<Rotation>("karaoke_clear");
+/** K9: record `singer`'s song for them, from the microphone they are on, until *Sang* or *Stop*. */
+export const karaokeRecordSong = (singer: string) => invoke<Rotation>("karaoke_record_song", { singer });
+/** K9: stop recording the song, keeping what was recorded. */
+export const karaokeRecordStop = () => invoke<Rotation>("karaoke_record_stop");
 
 /** §123: what a guest agreed to, and when. See `dj_app::guests::Consent`. */
 export interface GuestConsent {
   keep: boolean;
   contact: boolean;
   voice: boolean;
+  /** K9: their song recorded and given to them. */
+  perform: boolean;
   /** Seconds since 1970; zero is never. */
   given: number;
   wording: number;
@@ -5204,6 +5221,8 @@ export interface GuestSong {
   place: string;
   /** A recording of their voice, with their consent. */
   voice: string | null;
+  /** K9: the song as the room heard it, recorded for them — only with their agreement. */
+  recording?: string | null;
   /** The words written for a song of their own, with their consent. */
   song: SongDraft | null;
 }
@@ -5236,6 +5255,8 @@ export interface Guest {
   sang: GuestSong[];
   /** A recording made while they sing, put on the song once it is marked sung. */
   take: string | null;
+  /** K9: their song being recorded now, before it is marked as sung. */
+  performing?: string | null;
 }
 
 /** §123: the journal, and the questions a guest is asked, in Rust's words. */

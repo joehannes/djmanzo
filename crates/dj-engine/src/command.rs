@@ -98,6 +98,17 @@ pub enum Command {
     RecordStream {
         sink: Option<rtrb::Producer<f32>>,
     },
+    /// K9: stream one singer's song to a file — strip `strip`'s own share of
+    /// the PA over the records as the room hears them, before any talkover
+    /// and the master rack, interleaved left and right. `None` stops, and
+    /// whatever was there comes back through [`Retired::Stream`].
+    ///
+    /// Not the master: another singer's microphone and the MC's talkover are
+    /// not part of this singer's song.
+    PerformanceStream {
+        strip: u8,
+        sink: Option<rtrb::Producer<f32>>,
+    },
     /// Hand the recorder somewhere to put audio.
     ///
     /// Recording needs a buffer and the audio thread may not allocate one, so

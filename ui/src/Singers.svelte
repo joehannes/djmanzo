@@ -53,6 +53,8 @@
     karaokeTake,
     librarySearch,
     karaokeLoad,
+    karaokeRecordSong,
+    karaokeRecordStop,
     singPhotoApprove,
     singPhotoRefuse,
     singPhotos,
@@ -243,6 +245,23 @@
   let asking = $state<{ name: string } | null>(null);
 
   /** Every change comes back as the whole rotation, so the list is Rust's. */
+  /** K9: a recording's length as the host reads it: 1:05. */
+  function clock(seconds: number): string {
+    const whole = Math.floor(seconds);
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+  }
+
+  /**
+   * K9: while a song is being recorded, its length is read again every
+   * second, so the host can see it running.
+   */
+  const recordingNow = $derived(!!rotation?.recording);
+  $effect(() => {
+    if (!enabled || !recordingNow) return;
+    const timer = setInterval(() => void refresh(), 1000);
+    return () => clearInterval(timer);
+  });
+
   async function change(done: Promise<Rotation>) {
     error = "";
     try {
@@ -775,6 +794,18 @@
           >
         {/if}
         <button class="done" onclick={() => void change(karaokeSang())}>Sang</button>
+        {#if rotation?.recording}
+          <!-- K9: what is being recorded, and for how long; *Sang* stops it too. -->
+          <span class="recording" role="status" data-recording>
+            Recording {rotation.recording.singer}'s song — {clock(rotation.recording.seconds)}
+          </span>
+          <button onclick={() => void change(karaokeRecordStop())}>Stop recording</button>
+        {:else if rotation?.may_record}
+          <button
+            title="Recorded from their microphone over the record, until Sang — they agreed to it in the guest book"
+            onclick={() => void change(karaokeRecordSong(upNext.name))}>Record their song</button
+          >
+        {/if}
         <button
           title="Called and not here: to the bottom of the list, songs kept"
           onclick={() => void change(karaokeNotHere(upNext.name))}>Not here</button
