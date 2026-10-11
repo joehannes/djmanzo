@@ -122,9 +122,27 @@
       Listening on Mic {voice.strip + 1}, out of the PA — {voice.seconds.toFixed(1)} s
     {:else if voice?.last?.problem}
       <span class="problem">{voice.last.problem}</span>
+    {:else if voice?.hearing}
+      Making out the words…
+    {:else if voice?.said}
+      <!-- What was heard before what was done: a mishearing and a wrong
+           answer look the same until the words are shown. -->
+      <span class="heard" data-source={voice.said.source}>
+        {#if voice.said.heard}Heard “{voice.said.heard}”{/if}
+        {#if voice.said.actions.length > 0}
+          → <span class="done mono">{voice.said.actions.join(", ")}</span>
+          {#if voice.said.source === "model"}<span class="by">(your AI)</span>{/if}
+        {/if}
+      </span>
+      {#if voice.said.problem}
+        <span class="problem">{voice.said.problem}</span>
+      {/if}
+      {#each voice.said.undelivered as refused (refused)}
+        <span class="problem">Not done: {refused}</span>
+      {/each}
     {:else if voice?.last}
       Took {voice.last.seconds.toFixed(1)} s from Mic {voice.strip + 1},
-      {voice.last.voiced.toFixed(1)} s of it voice. Words are not made from it yet.
+      {voice.last.voiced.toFixed(1)} s of it voice.
     {:else if inputs === 0}
       Open the microphones under Microphones to speak commands.
     {/if}
@@ -181,5 +199,17 @@
 
   .problem {
     color: var(--warn);
+  }
+
+  .said .problem {
+    display: block;
+  }
+
+  .done {
+    color: var(--accent);
+  }
+
+  .by {
+    font-size: 0.9em;
   }
 </style>

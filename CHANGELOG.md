@@ -16,13 +16,21 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Spoken commands (A2).** What is said while push-to-talk is held is
+  heard by Whisper on this machine and done: *Heard “pon el dos” → deck 2
+  play*, the words first, so a mishearing shows as one. Commands djmanzo
+  knows — play, stop, kill the bass, in English or Spanish — need no AI and
+  no internet; anything else goes to the DJ's own AI when one is set up,
+  and with none nothing is guessed. A command for one deck must say which
+  deck. It hears with the Base model when it is downloaded (Singers, Words
+  in time).
+
 - **Push-to-talk (A2, first step).** Hold **B**, or *Hold to talk* on the
   assistant panel, and the microphone chosen under *Commands from* takes
   what the DJ says while it is out of the PA and the singers' monitor —
   the room does not hear "deck two, play". Let go and it is back as it was.
   A controller pad can be the button too: `voice listen_on` /
-  `voice listen_off`. What is said is not yet turned into words; the panel
-  shows how long was taken and how much of it was voice.
+  `voice listen_off`.
 
 - **A singer's range, kept (K8).** A range read for a guest who agreed to be
   kept goes on their record in the guest book and is there the next night,

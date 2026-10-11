@@ -249,8 +249,48 @@ it whichever way the press came — a key has nowhere else to say so. **A
 take ends by itself at eight seconds**, key down or not: driving it under
 Xvfb, a held key's key-up never arrived (HANDOFF, "a key held past the
 auto-repeat delay"), and a microphone left out of the PA all night is the
-failure this must never have. What a take holds is not yet transcribed;
-the panel says so.
+failure this must never have.
+
+**Step 2, as built (11 October 2026).** A take with voice in it goes to
+one worker thread (`commands::spawn_words`) and is heard by whisper.cpp
+(`whispercpp::command`: no word times, one segment, no context carried
+between takes, the language left to the model). The panel says *Making out
+the words…*, then *Heard “…” → deck 2 pause* — the words first. The local
+matcher answers first and needs no provider; only words it does not know go
+to the DJ's AI, through `ask` and its validation, and with none the words
+are shown and nothing is done. **A command for one deck must name it**:
+typed, "stop" is deck 1, but driving this, "stop the right one" came back
+"stop the ride" and stopped deck 1, so a spoken command whose deck the
+matcher assumed (`Match::deck_assumed`) is refused with *Which deck?*.
+
+What was measured, and on what. Whisper's host did answer here after all,
+so the models were run — on **synthetic speech** (espeak-ng, used only in
+the container to make test audio, never part of djmanzo), 4 threads, a
+take of 2–3 s:
+
+| | Tiny | Base | Small |
+|---|---|---|---|
+| seconds to hear a take, machine idle | 1.6–2.0 | 3.6–4.3 | 12.5–13 |
+| seconds with the app running beside it (Xvfb, software rendering) | 4–6 | 7.5–8.8 | 20–24 |
+| words heard right, of ten phrases | 0 | 4 | 4 |
+
+espeak's "deck" was heard as "back" by every model in every voice, and its
+Spanish as Italian, so the right-answers row says more about espeak than
+about a DJ. Base is the model commands are heard with when it is there
+(`Models::for_commands`): Tiny made out nothing, and a command is padded to
+whisper's thirty seconds, so Small costs about eight seconds on the machine
+the model table was measured on. Two settings were tried and left out:
+cutting the encoder's window to the take (`audio_ctx`) halved the time but
+wrote phrases twice ("Mech 2 Top Mech 2 Top") and lost Spanish the full
+window heard; a prompt of command words helped Small, and made Tiny write
+the prompt back — "pon el uno, para el dos" for "pon el dos", a command
+nobody gave. Driven in the app with Base, the null microphone saying "stop
+the right one": first *Heard “Stop the ride!” → deck 1 pause* (the reason
+for *Which deck?*), then, after it, *Heard “The right one. Stop.” → deck 2
+pause*, and deck 2 stopped — eight seconds after the key came up, on a
+machine also drawing the interface in software. That wait is the open
+question for a booth; how a real voice is heard is the other, and both are
+for a real booth to say.
 
 ---
 

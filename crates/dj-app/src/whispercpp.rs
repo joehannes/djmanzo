@@ -261,6 +261,21 @@ impl Models {
             .or_else(|| MODELS.iter().rev().find(|model| self.installed(model)))
     }
 
+    /// A2: the model a spoken command is heard with — Base when it is here,
+    /// else Tiny, else the lightest there is. A command is padded to
+    /// whisper's thirty seconds, so its cost is a model's per-minute figure
+    /// halved: about three seconds for Base, eight for Small. Tiny is the
+    /// quickest and, on synthetic speech, made out almost nothing Base did
+    /// (`docs/ASSISTANT.md` §4).
+    #[must_use]
+    pub fn for_commands(&self) -> Option<&'static Model> {
+        ["base", "tiny"]
+            .iter()
+            .filter_map(|id| model(id))
+            .chain(MODELS.iter())
+            .find(|model| self.installed(model))
+    }
+
     /// Remember `model` as the one to run.
     ///
     /// # Errors
@@ -896,6 +911,83 @@ pub fn listen(
     })
 }
 
+/// A2: the words of a spoken command — seconds long, sixteen-kilohertz
+/// mono — with the model at `path`, the language left to the model.
+///
+/// Not [`listen`]: a command needs no word times, so no token timestamps and
+/// no alignment heads, one segment, and no context carried from one take to
+/// the next. The encoder keeps whisper's own thirty-second window: cut to the
+/// take (`audio_ctx`) it was twice as fast and wrote phrases twice, and at
+/// two thirds of it still misheard Spanish the full window heard (measured
+/// on synthetic speech, `docs/ASSISTANT.md` §4). `prompt` steers the
+/// spelling.
+///
+/// # Errors
+/// As [`listen`].
+pub fn command(
+    path: &Path,
+    model: &Model,
+    audio: &[f32],
+    prompt: Option<&str>,
+    threads: usize,
+) -> Result<Heard, String> {
+    use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+    cpu_can_run()?;
+    whisper_rs::install_logging_hooks();
+    let began = std::time::Instant::now();
+    let path_text = path
+        .to_str()
+        .ok_or_else(|| format!("{} is not a path whisper.cpp can open", path.display()))?;
+    let whisper = WhisperContext::new_with_params(path_text, WhisperContextParameters::default())
+        .map_err(|e| format!("{} would not load: {e}", model.name))?;
+    let mut state = whisper
+        .create_state()
+        .map_err(|e| format!("{} would not start: {e}", model.name))?;
+    let load_seconds = began.elapsed().as_secs_f64();
+
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    params.set_n_threads(i32::try_from(threads.max(1)).unwrap_or(4));
+    params.set_language(Some("auto"));
+    params.set_single_segment(true);
+    params.set_no_context(true);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
+    params.set_print_special(false);
+    if let Some(prompt) = prompt.filter(|prompt| !prompt.trim().is_empty()) {
+        params.set_initial_prompt(prompt);
+    }
+    let began = std::time::Instant::now();
+    state
+        .full(params, audio)
+        .map_err(|e| format!("{} could not listen: {e}", model.name))?;
+    let listen_seconds = began.elapsed().as_secs_f64();
+    let text = state
+        .as_iter()
+        .map(|segment| {
+            segment
+                .to_str_lossy()
+                .map(|text| text.into_owned())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let language = whisper_rs::get_lang_str(state.full_lang_id_from_state())
+        .unwrap_or("en")
+        .to_owned();
+    Ok(Heard {
+        language,
+        segments: vec![Segment {
+            start: Some(0.0),
+            end: None,
+            text: text.trim().to_owned(),
+            words: Vec::new(),
+        }],
+        load_seconds,
+        listen_seconds,
+    })
+}
+
 /// The known words as Whisper's prompt: the start of them, which is as much
 /// as it reads (its prompt is at most half its context, about 220 tokens).
 #[must_use]
@@ -1330,5 +1422,77 @@ mod tests {
             heard.listen_seconds,
             heard.segments.len()
         );
+    }
+
+    /// **Commands are heard with Base when it is here, Tiny when only it is,
+    /// and the lightest of the rest otherwise.** Files of the right size
+    /// stand in for the models: that is what `installed` checks.
+    #[test]
+    fn commands_are_heard_with_base_first() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let models = Models {
+            root: dir.path().to_path_buf(),
+        };
+        let put = |id: &str| {
+            let model = model(id).expect("a model");
+            std::fs::File::create(models.path(model))
+                .and_then(|file| file.set_len(model.bytes))
+                .expect("a stand-in");
+        };
+        assert_eq!(models.for_commands(), None);
+        put("medium");
+        put("small");
+        assert_eq!(models.for_commands().map(|m| m.id), Some("small"));
+        put("tiny");
+        assert_eq!(models.for_commands().map(|m| m.id), Some("tiny"));
+        put("base");
+        assert_eq!(models.for_commands().map(|m| m.id), Some("base"));
+    }
+
+    /// **A2: a spoken command, on each model.** Ignored: it needs
+    /// models and a voice, which CI has neither of.
+    ///
+    /// ```text
+    /// DJMANZO_WHISPER_MODELS=<folder of ggml files> DJMANZO_WHISPER_SAID=<16 kHz mono WAVs, comma-separated> \
+    ///   cargo test -p dj-app --lib commands_are_heard -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "needs whisper.cpp models and a voice"]
+    fn commands_are_heard() {
+        let (Ok(folder), Ok(said)) = (
+            std::env::var("DJMANZO_WHISPER_MODELS"),
+            std::env::var("DJMANZO_WHISPER_SAID"),
+        ) else {
+            return;
+        };
+        let prompt = std::env::var("DJMANZO_WHISPER_PROMPT").ok();
+        for model in &MODELS {
+            let path = Path::new(&folder).join(model.file);
+            if !path.exists() {
+                continue;
+            }
+            for file in said.split(',') {
+                let bytes = std::fs::read(file).expect("read");
+                let audio: Vec<f32> = bytes[44..]
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| f32::from(i16::from_le_bytes(*pair)) / 32768.0)
+                    .collect();
+                let heard = command(&path, model, &audio, prompt.as_deref(), 4).expect("heard");
+                eprintln!(
+                    "{:>6} {:.2}+{:.2} s [{}] {:?}  <- {}",
+                    model.id,
+                    heard.load_seconds,
+                    heard.listen_seconds,
+                    heard.language,
+                    heard.segments[0].text,
+                    Path::new(file)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                );
+            }
+        }
     }
 }

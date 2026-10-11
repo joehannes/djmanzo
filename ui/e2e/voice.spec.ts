@@ -52,7 +52,7 @@ test.describe("A2: push-to-talk", () => {
     await hold.hover();
     await page.mouse.down();
     await expect.poll(() => dispatched(page)).toEqual(["voice listen_on"]);
-    await voice(page, { strip: 0, listening: true, seconds: 1.2, last: null });
+    await voice(page, { strip: 0, listening: true, seconds: 1.2, last: null, hearing: false, said: null });
     await expect(panel.getByText(/Listening on Mic 1, out of the PA/)).toContainText("1.2 s");
     await expect(panel.getByRole("button", { name: "Listening…" })).toHaveAttribute("aria-pressed", "true");
 
@@ -63,8 +63,57 @@ test.describe("A2: push-to-talk", () => {
       listening: false,
       seconds: 0,
       last: { seconds: 2.4, voiced: 1.8, problem: null },
+      hearing: false,
+      said: null,
     });
     await expect(panel.getByText(/Took 2\.4 s from Mic 1/)).toContainText("1.8 s of it voice");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A2 step 2: what was heard is shown before what was done** — a
+   * mishearing and a wrong answer look the same until the words are there.
+   */
+  test("the words heard come before what was done with them", async ({ page }) => {
+    const said = (over: Record<string, unknown>) => ({
+      strip: 0,
+      listening: false,
+      seconds: 0,
+      last: { seconds: 1.6, voiced: 1.1, problem: null },
+      hearing: false,
+      said: {
+        heard: "Pon el dos.",
+        language: "es",
+        actions: ["deck 2 play"],
+        undelivered: [],
+        reply: "Playing deck 2",
+        source: "local",
+        problem: null,
+        seconds: 0.8,
+        ...over,
+      },
+    });
+    const panel = await openAssistant(page, {
+      voice_state: { ...said({}), hearing: true, said: null },
+    });
+    await expect(panel.getByText("Making out the words…")).toBeVisible();
+
+    await voice(page, said({}));
+    const heard = panel.locator(".heard");
+    await expect(heard).toHaveText(/^Heard “Pon el dos\.” → deck 2 play\s*$/);
+    await expect(heard).toHaveAttribute("data-source", "local");
+
+    await voice(
+      page,
+      said({ heard: "Make it warmer.", source: "model", actions: ["deck 1 filter -0.3"], undelivered: ["make it golden"] }),
+    );
+    await expect(heard).toHaveText(/Heard “Make it warmer\.” → deck 1 filter -0\.3 \(your AI\)/);
+    await expect(panel.getByText("Not done: make it golden")).toBeVisible();
+
+    const nothing = "Not a command djmanzo knows by itself, and no AI is set up to ask: nothing was done.";
+    await voice(page, said({ heard: "Make it warmer.", source: "none", actions: [], problem: nothing }));
+    await expect(heard).toHaveText("Heard “Make it warmer.”");
+    await expect(panel.getByText(nothing)).toBeVisible();
     expect(errorsThrown(page)).toEqual([]);
   });
 
@@ -72,7 +121,14 @@ test.describe("A2: push-to-talk", () => {
   test("a take with nothing in it says why", async ({ page }) => {
     const said = "Nothing was heard on Mic 1: hold the key while speaking, close to the microphone.";
     const panel = await openAssistant(page, {
-      voice_state: { strip: 0, listening: false, seconds: 0, last: { seconds: 1, voiced: 0, problem: said } },
+      voice_state: {
+        strip: 0,
+        listening: false,
+        seconds: 0,
+        last: { seconds: 1, voiced: 0, problem: said },
+        hearing: false,
+        said: null,
+      },
     });
     await expect(panel.getByText(said)).toBeVisible();
   });

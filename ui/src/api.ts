@@ -4969,6 +4969,24 @@ export interface VoiceEnded {
   problem: string | null;
 }
 
+/** A2: what a take was heard to say, and what was done. See `dj_app::voice::Said`. */
+export interface Said {
+  /** The words, as whisper.cpp wrote them. */
+  heard: string;
+  language: string | null;
+  /** Actions done, in order. */
+  actions: string[];
+  /** Actions understood and refused, each with why. */
+  undelivered: string[];
+  reply: string;
+  /** `local` without a model, `model` when the DJ's AI answered, `none` when nothing did. */
+  source: "local" | "model" | "none";
+  /** Why nothing was done, when nothing was. */
+  problem: string | null;
+  /** Loading the model and listening, in seconds. */
+  seconds: number | null;
+}
+
 /** A2: push-to-talk. See `dj_app::commands::VoiceDto`. */
 export interface VoiceState {
   /** The strip spoken commands come from, from 0. */
@@ -4977,6 +4995,9 @@ export interface VoiceState {
   /** Seconds taken so far. */
   seconds: number;
   last: VoiceEnded | null;
+  /** Whether the last take is being turned into words. */
+  hearing: boolean;
+  said: Said | null;
 }
 
 export const voiceState = () => invoke<VoiceState>("voice_state");

@@ -1358,6 +1358,17 @@ There is **no audio device, no microphone, no camera and no phone**. The tests
 prove pitch, timing, level, and that the audio thread never allocates. They
 cannot prove any of it *sounds* right, and nothing here should claim otherwise.
 
+**Speech can be made and heard here, synthetically.** On 11 October
+whisper.cpp's models downloaded from their pinned Hugging Face commit
+(checksums matched), and `apt-get install espeak-ng` gave a speech
+synthesiser — GPL, so a container tool for making test audio and never
+anything djmanzo uses or ships. `espeak-ng -w say.wav "..."` feeds
+`DJMANZO_NULL_VOICE`; resampled to 16 kHz with ffmpeg it feeds A2's ignored
+`commands_are_heard` test. espeak's "deck" is heard as "back" by every model
+and its Spanish as Italian, so it measures the pipeline, not how a person
+is heard. Whisper's times also double while the app runs beside it: stop
+the app before measuring.
+
 The [ADR-0004](adr/0004-waveform-rendering-strategy.md) rendering gate is still
 open for the same reason: the benchmark needs a real Xubuntu machine with a
 GPU. Under Xvfb there is no accelerated compositing to measure, and the

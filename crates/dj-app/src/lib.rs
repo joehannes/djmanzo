@@ -504,6 +504,14 @@ pub fn run() {
                         commands::voice_heard(&state, &heard.fresh);
                     });
                 }
+                // A2: and what a spoken command says, on a thread of its own.
+                {
+                    let state: tauri::State<'_, AppState> = handle.state();
+                    let words = commands::spawn_words(handle.clone());
+                    if let Ok(mut voice) = state.voice().lock() {
+                        voice.to_words = Some(words);
+                    }
+                }
                 let pump = handle.clone();
                 let spawned = std::thread::Builder::new()
                     .name("dj-sing-pump".into())

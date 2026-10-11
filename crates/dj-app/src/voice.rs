@@ -10,6 +10,7 @@
 //! as it was, and the take is what is transcribed.
 
 use dj_vocal::StripSettings;
+use serde::Serialize;
 
 /// The rate a take is at: the tap's, whisper's.
 pub const RATE: u32 = dj_vocal::LISTEN_RATE;
@@ -139,12 +140,84 @@ impl Ended {
     }
 }
 
-/// The DJ's voice commands: a take while one is held, and what the last came
-/// to. Which strip they come from is kept on disk (`voice.json`).
+/// What a take was heard to say, and what was done about it — shown in that
+/// order, so a DJ sees "pon el dos" before "deck 2 play" and can tell a
+/// mishearing from a wrong answer.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Said {
+    /// The words, as whisper.cpp wrote them.
+    pub heard: String,
+    /// The language it heard, when it says.
+    pub language: Option<String>,
+    /// Actions done, in order, as the bus wrote them.
+    pub actions: Vec<String>,
+    /// Actions understood and refused, each with why.
+    pub undelivered: Vec<String>,
+    /// What djmanzo says back.
+    pub reply: String,
+    /// `local` when understood without a model, `model` when the DJ's AI
+    /// provider answered, `none` when nothing did.
+    pub source: &'static str,
+    /// Why nothing was done, when nothing was.
+    pub problem: Option<String>,
+    /// Loading the model and listening, in seconds.
+    pub seconds: Option<f64>,
+}
+
+impl Said {
+    /// Nothing done, and why.
+    #[must_use]
+    pub fn refused(heard: &str, why: impl Into<String>) -> Self {
+        Self {
+            heard: heard.to_owned(),
+            language: None,
+            actions: Vec::new(),
+            undelivered: Vec::new(),
+            reply: String::new(),
+            source: "none",
+            problem: Some(why.into()),
+            seconds: None,
+        }
+    }
+}
+
+/// The words of a transcription as a command is matched on: what whisper
+/// adds that nobody said — `[BLANK_AUDIO]`, `(music)`, `*laughs*` — taken
+/// out, and the punctuation it writes ("Deck two, play.") made spaces, since
+/// the matcher reads whole words.
+#[must_use]
+pub fn spoken(heard: &str) -> String {
+    let mut words = String::with_capacity(heard.len());
+    let mut aside: Option<char> = None;
+    for c in heard.chars() {
+        match (aside, c) {
+            (None, '[') => aside = Some(']'),
+            (None, '(') => aside = Some(')'),
+            (None, '*') => aside = Some('*'),
+            (Some(close), c) if c == close => {
+                aside = None;
+                words.push(' ');
+            }
+            (Some(_), _) => {}
+            (None, c) if c.is_alphanumeric() || c == '\'' || c == '-' => words.push(c),
+            (None, _) => words.push(' '),
+        }
+    }
+    words.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The DJ's voice commands: a take while one is held, what the last came
+/// to, and what it was heard to say. Which strip they come from is kept on
+/// disk (`voice.json`).
 #[derive(Debug, Clone, Default)]
 pub struct Voice {
     pub take: Option<Take>,
     pub last: Option<Ended>,
+    /// Whether the last take is being turned into words.
+    pub hearing: bool,
+    pub said: Option<Said>,
+    /// Where a take goes to be heard: the words' worker, once it runs.
+    pub to_words: Option<std::sync::mpsc::Sender<Vec<f32>>>,
 }
 
 #[cfg(test)]
@@ -234,6 +307,20 @@ mod tests {
             .checked_sub(std::time::Duration::from_secs_f64(MOST_SECONDS + 1.5))
             .expect("the clock has run that long");
         assert!(take.run_out());
+    }
+
+    /// **What whisper adds is not a command, and its punctuation is not part
+    /// of one.**
+    #[test]
+    fn whispers_asides_and_punctuation_are_not_words() {
+        assert_eq!(spoken(" Deck two, play."), "Deck two play");
+        assert_eq!(spoken("¡Pon el dos!"), "Pon el dos");
+        assert_eq!(spoken("[BLANK_AUDIO]"), "");
+        assert_eq!(
+            spoken("(music) kill the bass *laughs* on deck 1"),
+            "kill the bass on deck 1"
+        );
+        assert_eq!(spoken("¿Qué?  Don't  stop"), "Qué Don't stop");
     }
 
     /// **Silence is not a command**: a take of hiss is not transcribed, and

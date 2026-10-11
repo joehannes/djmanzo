@@ -690,7 +690,7 @@ export const ANSWERS: Record<string, unknown> = {
   // K3: the singers' microphones, closed, as Rust answers (`vocals.json`).
   vocals_state: vocals.closed,
   // A2: push-to-talk, nothing held and nothing taken yet.
-  voice_state: { strip: 0, listening: false, seconds: 0, last: null },
+  voice_state: { strip: 0, listening: false, seconds: 0, last: null, hearing: false, said: null },
   // Not a command: what `vocals_state` answers once the inputs are open.
   vocals_opened: vocals.open,
   secrets_persist: true,

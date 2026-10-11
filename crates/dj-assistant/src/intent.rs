@@ -36,6 +36,11 @@ pub struct Match {
     pub actions: Vec<String>,
     /// What to say back, if anything.
     pub reply: String,
+    /// Whether a deck the actions need was taken as the rule's default
+    /// rather than named — "stop" alone is deck 1. Fine typed; a spoken
+    /// command whose deck word was misheard ("stop the ride") would stop
+    /// the wrong record, so A2 asks for the deck instead.
+    pub deck_assumed: bool,
 }
 
 /// Try to understand `text` without a model.
@@ -57,6 +62,11 @@ pub fn match_local(text: &str) -> Option<Match> {
         if !rule.phrases.iter().any(|p| contains_phrase(&lower, p)) {
             continue;
         }
+        let deck_assumed = deck.is_none()
+            && rule
+                .actions
+                .iter()
+                .any(|template| template.contains("{deck}"));
         let deck = deck.unwrap_or(rule.default_deck);
         let actions: Vec<String> = rule
             .actions
@@ -74,6 +84,7 @@ pub fn match_local(text: &str) -> Option<Match> {
         return Some(Match {
             actions,
             reply: rule.reply.replace("{deck}", &deck.to_string()),
+            deck_assumed,
         });
     }
     None
@@ -290,6 +301,16 @@ mod tests {
     fn deck_numbers_are_read_as_words_too() {
         assert_eq!(actions("play deck two"), ["deck 2 play"]);
         assert_eq!(actions("play deck three"), ["deck 3 play"]);
+    }
+
+    /// **A deck taken by default says so**; one named, or a command for no
+    /// deck, does not.
+    #[test]
+    fn a_deck_taken_by_default_says_so() {
+        let assumed = |text| match_local(text).expect("understood").deck_assumed;
+        assert!(assumed("stop the ride"));
+        assert!(!assumed("stop the right one"));
+        assert!(!assumed("para el deck 1"));
     }
 
     /// The commands actually shouted at one in the morning.

@@ -23160,6 +23160,10 @@ pub struct VoiceDto {
     pub seconds: f64,
     /// What the last take came to.
     pub last: Option<VoiceEndedDto>,
+    /// Whether the last take is being turned into words.
+    pub hearing: bool,
+    /// What it was heard to say, and what was done.
+    pub said: Option<crate::voice::Said>,
 }
 
 fn voice_dto(state: &AppState) -> VoiceDto {
@@ -23174,6 +23178,8 @@ fn voice_dto(state: &AppState) -> VoiceDto {
             voiced: ended.voiced,
             problem: ended.problem.clone(),
         }),
+        hearing: voice.hearing,
+        said: voice.said.clone(),
     }
 }
 
@@ -23231,6 +23237,7 @@ fn voice_listen_on(state: &AppState) -> Result<(), String> {
         }
         voice.take = Some(crate::voice::Take::new(strip));
         voice.last = None;
+        voice.said = None;
     }
     // After the take is in place, so `as_played` holds it out.
     send_vocal_strip(state, strip, played)
@@ -23243,8 +23250,18 @@ fn voice_listen_off(state: &AppState) -> Result<(), String> {
         return Ok(());
     };
     let strip = take.strip;
-    let ended = crate::voice::Ended::of(take);
-    lock(state.voice()).last = Some(ended);
+    let mut ended = crate::voice::Ended::of(take);
+    {
+        let mut voice = lock(state.voice());
+        // To be heard, when there is voice in it and something to hear it.
+        if ended.problem.is_none()
+            && let Some(words) = voice.to_words.as_ref()
+            && words.send(std::mem::take(&mut ended.samples)).is_ok()
+        {
+            voice.hearing = true;
+        }
+        voice.last = Some(ended);
+    }
     let played = played_vocal_settings(state)
         .get(strip)
         .copied()
@@ -23271,7 +23288,168 @@ pub(crate) fn voice_heard(state: &AppState, fresh: &[Vec<f32>]) {
 
 #[cfg(test)]
 mod voice_tests {
-    use super::{AppState, perform, set_vocal_strip, voice_dto, voice_heard};
+    use super::{AppState, act_on_words, perform, set_vocal_strip, voice_dto, voice_heard};
+    use crate::assistant::AnswerDto;
+
+    /// A state whose engine queue is read back: the actions it was sent.
+    fn listening_state() -> (AppState, impl FnMut() -> Vec<String>) {
+        let state = AppState::new(true);
+        let (producer, mut queue) = rtrb::RingBuffer::new(256);
+        state.bus().reconnect(producer);
+        let sent = move || {
+            let mut sent = Vec::new();
+            while let Ok(command) = queue.pop() {
+                if let dj_engine::Command::Action(action) = command {
+                    sent.push(action.to_string());
+                }
+            }
+            sent
+        };
+        (state, sent)
+    }
+
+    /// **A2 step 2: words djmanzo knows are done with no AI at all**, in
+    /// either language, as whisper writes them — punctuation and asides
+    /// included — and the provider is not asked. A command for one deck that
+    /// does not name it is not done: driving this, "stop the right one" came
+    /// back "stop the ride", and stopped deck 1.
+    #[test]
+    fn known_words_are_done_without_a_model() {
+        let (state, mut sent) = listening_state();
+        let asked = std::cell::Cell::new(0);
+        let ask = |_: &str| -> Result<AnswerDto, String> {
+            asked.set(asked.get() + 1);
+            Err("not to be asked".to_owned())
+        };
+        let said = act_on_words(
+            &state,
+            " Deck two, play.",
+            Some("en".to_owned()),
+            Some(&ask),
+        );
+        assert_eq!(said.actions, vec!["deck 2 play".to_owned()]);
+        assert_eq!((said.source, said.problem.as_deref()), ("local", None));
+        assert_eq!(said.heard, "Deck two, play.");
+        assert_eq!(
+            sent(),
+            vec!["deck 2 play".to_owned()],
+            "the engine was not told"
+        );
+
+        let said = act_on_words(
+            &state,
+            "¡Para el uno! [BLANK_AUDIO]",
+            Some("es".to_owned()),
+            None,
+        );
+        assert_eq!(said.actions, vec!["deck 1 pause".to_owned()]);
+        assert_eq!(sent(), vec!["deck 1 pause".to_owned()]);
+        let said = act_on_words(&state, "Stop the ride!", Some("en".to_owned()), Some(&ask));
+        assert_eq!(said.actions, Vec::<String>::new());
+        assert!(
+            said.problem
+                .as_deref()
+                .is_some_and(|why| why.contains("Which deck")),
+            "{said:?}"
+        );
+        assert_eq!(
+            sent(),
+            Vec::<String>::new(),
+            "a deck nobody named was stopped"
+        );
+        assert_eq!(asked.get(), 0, "a model was asked what the matcher knew");
+    }
+
+    /// **What the engine will not take is said, not dropped**: a command
+    /// understood and refused shows as not done, with why.
+    #[test]
+    fn a_command_the_engine_refuses_is_said() {
+        let state = AppState::new(true);
+        let (producer, _queue) = rtrb::RingBuffer::new(1);
+        state.bus().reconnect(producer);
+        perform(&state, "deck 1 play").expect("the queue's one place");
+        let said = act_on_words(&state, "Deck two, play.", None, None);
+        assert_eq!(said.actions, Vec::<String>::new());
+        assert_eq!(said.undelivered.len(), 1, "{said:?}");
+        assert!(
+            said.undelivered[0].starts_with("deck 2 play — "),
+            "{said:?}"
+        );
+    }
+
+    /// **Words it does not know go to the DJ's AI when there is one — the
+    /// matcher's cleaned words, what it did and what it refused shown — and
+    /// with none, nothing is guessed.** Nothing heard is said so.
+    #[test]
+    fn unknown_words_go_to_the_ai_or_nowhere() {
+        let (state, mut sent) = listening_state();
+        let unknown = "Make it feel like a sunset.";
+        let said = act_on_words(&state, unknown, None, None);
+        assert_eq!((said.source, said.actions.len()), ("none", 0));
+        assert!(
+            said.problem
+                .as_deref()
+                .is_some_and(|why| why.contains("no AI")),
+            "{said:?}"
+        );
+        assert_eq!(sent(), Vec::<String>::new());
+
+        let asked = std::cell::RefCell::new(Vec::new());
+        let ask = |words: &str| -> Result<AnswerDto, String> {
+            asked.borrow_mut().push(words.to_owned());
+            Ok(AnswerDto {
+                reply: "Warmer.".to_owned(),
+                actions: vec!["deck 1 filter -0.3".to_owned()],
+                rejected: vec!["make it golden".to_owned()],
+                source: "model",
+                cost_usd: None,
+                undelivered: Vec::new(),
+            })
+        };
+        let said = act_on_words(&state, unknown, None, Some(&ask));
+        assert_eq!(asked.borrow().as_slice(), ["Make it feel like a sunset"]);
+        assert_eq!(said.source, "model");
+        assert_eq!(said.actions, vec!["deck 1 filter -0.3".to_owned()]);
+        assert_eq!(said.undelivered, vec!["make it golden".to_owned()]);
+        assert_eq!(said.reply, "Warmer.");
+
+        let said = act_on_words(&state, " [BLANK_AUDIO] ", None, Some(&ask));
+        assert!(said.problem.is_some());
+        assert_eq!(asked.borrow().len(), 1, "silence went to the model");
+    }
+
+    /// **A take with voice in it goes to be heard; one without does not.**
+    #[test]
+    fn a_take_with_voice_goes_to_be_heard() {
+        let (state, _sent) = listening_state();
+        state.registry().set(
+            dj_core::ParamId::Global(dj_core::param::GlobalParam::VocalInputs),
+            1.0,
+        );
+        let dir = tempfile::tempdir().expect("a folder");
+        state.set_config_dir(dir.path().to_path_buf());
+        let open = dj_vocal::StripSettings {
+            open: true,
+            ..dj_vocal::StripSettings::default()
+        };
+        set_vocal_strip(&state, 0, open).expect("kept and sent");
+        let (to_words, takes) = std::sync::mpsc::channel();
+        state.voice().lock().expect("voice").to_words = Some(to_words);
+
+        perform(&state, "voice listen_on").expect("held");
+        voice_heard(&state, &[tone(1.0, 0.3)]);
+        perform(&state, "voice listen_off").expect("let go");
+        let heard = takes.try_recv().expect("the take went to be heard");
+        assert_eq!(heard.len(), crate::voice::RATE as usize);
+        assert!(voice_dto(&state).hearing);
+
+        state.voice().lock().expect("voice").hearing = false;
+        perform(&state, "voice listen_on").expect("held");
+        voice_heard(&state, &[tone(1.0, 0.0001)]);
+        perform(&state, "voice listen_off").expect("let go");
+        assert!(takes.try_recv().is_err(), "silence went to be heard");
+        assert!(!voice_dto(&state).hearing);
+    }
 
     fn tone(seconds: f64, level: f32) -> Vec<f32> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -23396,5 +23574,157 @@ mod voice_tests {
         let refused = perform(&state, "voice listen_on").expect_err("Mic 2 is closed");
         assert!(refused.contains("Mic 2"), "{refused}");
         assert_eq!(sent(), Vec::new());
+    }
+}
+
+/// A2: the DJ's AI, asked about words the matcher does not know.
+pub(crate) type AskModel<'a> = dyn Fn(&str) -> Result<crate::assistant::AnswerDto, String> + 'a;
+
+/// A2: what to do with the words of a take (docs/ASSISTANT.md §4) — the
+/// local matcher first, always, with no provider needed; words it does not
+/// know to `ask_model`, the DJ's AI provider when there is one, through the
+/// same validation as a typed question; with none, the words shown and
+/// nothing guessed. What is understood is done as the DJ's own doing.
+pub(crate) fn act_on_words(
+    state: &AppState,
+    heard: &str,
+    language: Option<String>,
+    ask_model: Option<&AskModel<'_>>,
+) -> crate::voice::Said {
+    let words = crate::voice::spoken(heard);
+    let heard = heard.trim();
+    if words.is_empty() {
+        return crate::voice::Said::refused(heard, "No words were made out in it.");
+    }
+    let said = |actions, undelivered, reply, source| crate::voice::Said {
+        heard: heard.to_owned(),
+        language: language.clone(),
+        actions,
+        undelivered,
+        reply,
+        source,
+        problem: None,
+        seconds: None,
+    };
+    if let Some(found) = dj_assistant::intent::match_local(&words) {
+        // Typed, "stop" is deck 1. Spoken, the deck word is the one most
+        // easily misheard — "stop the right one" came back "stop the ride"
+        // and stopped deck 1 — so a command for one deck names it.
+        if found.deck_assumed {
+            return crate::voice::Said {
+                language: language.clone(),
+                ..crate::voice::Said::refused(
+                    heard,
+                    "Which deck? Say it with the command — “deck two, stop”: nothing was done.",
+                )
+            };
+        }
+        let mut done = Vec::new();
+        let mut undelivered = Vec::new();
+        for action in found.actions {
+            match perform_by(state, &action, dj_control::By::Hand) {
+                Ok(()) => done.push(action),
+                Err(why) => undelivered.push(format!("{action} — {why}")),
+            }
+        }
+        return said(done, undelivered, found.reply, "local");
+    }
+    let Some(ask_model) = ask_model else {
+        return crate::voice::Said {
+            language: language.clone(),
+            ..crate::voice::Said::refused(
+                heard,
+                "Not a command djmanzo knows by itself, and no AI is set up to ask: nothing was done.",
+            )
+        };
+    };
+    match ask_model(&words) {
+        Ok(answer) => said(
+            answer.actions,
+            answer
+                .undelivered
+                .into_iter()
+                .chain(answer.rejected)
+                .collect(),
+            answer.reply,
+            "model",
+        ),
+        Err(why) => crate::voice::Said {
+            language: language.clone(),
+            ..crate::voice::Said::refused(heard, why)
+        },
+    }
+}
+
+/// A2: the words' worker — each take sent to it heard by whisper.cpp with
+/// the model `Models::for_commands` picks (every one hears Spanish and
+/// English), the language left to the model, then acted on. One thread for the life of the application: a take
+/// arriving while another is heard waits its turn.
+pub fn spawn_words(app: tauri::AppHandle) -> std::sync::mpsc::Sender<Vec<f32>> {
+    let (send, takes) = std::sync::mpsc::channel::<Vec<f32>>();
+    let spawned = std::thread::Builder::new()
+        .name("dj-voice-words".into())
+        .spawn(move || {
+            use tauri::Manager;
+            while let Ok(samples) = takes.recv() {
+                let state: State<'_, AppState> = app.state();
+                let said = hear_take(&app, &state, &samples);
+                let mut voice = lock(state.voice());
+                voice.hearing = false;
+                voice.said = Some(said);
+            }
+        });
+    if let Err(error) = spawned {
+        tracing::warn!(%error, "spoken commands will not be heard");
+    }
+    send
+}
+
+fn hear_take(app: &tauri::AppHandle, state: &AppState, samples: &[f32]) -> crate::voice::Said {
+    let models = match word_models(app) {
+        Ok(models) => models,
+        Err(why) => return crate::voice::Said::refused("", why),
+    };
+    let Some(model) = models.for_commands() else {
+        return crate::voice::Said::refused(
+            "",
+            "No Whisper model is downloaded to hear it with: download Base under Singers, Words in time.",
+        );
+    };
+    let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    // No prompt: given the words commands are made of, the tiny model wrote
+    // the prompt back for a command it did not make out — "pon el uno, para
+    // el dos" for "pon el dos" — which is a command nobody gave.
+    let heard = match crate::whispercpp::command(&models.path(model), model, samples, None, threads)
+    {
+        Ok(heard) => heard,
+        Err(why) => return crate::voice::Said::refused("", why),
+    };
+    let text = heard
+        .segments
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    tracing::info!(
+        model = model.id,
+        load = heard.load_seconds,
+        listen = heard.listen_seconds,
+        %text,
+        "a spoken command"
+    );
+    let ask = |words: &str| {
+        use tauri::Manager;
+        tauri::async_runtime::block_on(crate::assistant::ask(
+            app.clone(),
+            app.state(),
+            words.to_owned(),
+        ))
+    };
+    let provider = state.assistant_selection().is_some();
+    let ask: Option<&AskModel<'_>> = provider.then_some(&ask);
+    crate::voice::Said {
+        seconds: Some(heard.load_seconds + heard.listen_seconds),
+        ..act_on_words(state, &text, Some(heard.language), ask)
     }
 }
