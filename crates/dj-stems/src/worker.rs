@@ -51,6 +51,9 @@ const QUEUED_CHUNKS: usize = 4;
 #[derive(Debug)]
 pub struct SeparationWorker {
     sender: Option<SyncSender<SeparationJob>>,
+    /// The separator's name, as the cache keys its work. `None` when there
+    /// is none and nothing is separated.
+    separator: Option<String>,
 }
 
 impl SeparationWorker {
@@ -61,6 +64,7 @@ impl SeparationWorker {
     /// only difference a DJ sees is the name and the quality.
     pub fn new(separator: Arc<dyn Separator>, cache: Arc<StemCache>) -> Self {
         let (sender, receiver) = mpsc::sync_channel(QUEUED_CHUNKS);
+        let name = separator.name().to_owned();
 
         thread::Builder::new()
             .name("dj-stems-worker".into())
@@ -71,14 +75,26 @@ impl SeparationWorker {
 
         Self {
             sender: Some(sender),
+            separator: Some(name),
         }
+    }
+
+    /// The name of the separator doing the work, as its cache keys it — what
+    /// anything derived from its stems is kept under, so a better separator's
+    /// answer replaces a worse one's. `None` when nothing is separated.
+    #[must_use]
+    pub fn separator(&self) -> Option<&str> {
+        self.separator.as_deref()
     }
 
     /// Create a no-op worker for environments where the stems engine is
     /// unavailable (missing model file, no AVX2 support for the prebuilt ORT
     /// binary, etc.).  All `process_chunk` calls are silently dropped.
     pub fn unavailable() -> Self {
-        Self { sender: None }
+        Self {
+            sender: None,
+            separator: None,
+        }
     }
 
     /// Enqueue a chunk of audio for separation, waiting if the worker is behind.

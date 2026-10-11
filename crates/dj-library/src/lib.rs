@@ -41,6 +41,7 @@ pub mod steer;
 pub mod store;
 pub mod suggest;
 pub mod tags;
+pub mod vocal_line;
 
 pub use playlist::{Note, PlayRecord, Playlist, PlaylistKind};
 pub use record::{

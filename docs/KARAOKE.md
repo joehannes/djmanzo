@@ -1278,3 +1278,22 @@ tonight without §123's consent.
 Each held by tests over synthetic voices and driven with a synthetic
 singer fed into a strip through the null backend's inputs — this container
 has no microphone, so nothing here can say how a real voice scores.
+
+**Step 1, the reference — built (11 October).** `melody::line` reads twenty
+points a second in cents above A4 (440 Hz), with a floor at about −50 dBFS
+so the separator's bleed between phrases is a rest and not the bassline.
+Once every chunk of a record that has words has been separated, the
+separation's own thread reads the line from the vocal stem (the first of
+the four; a record with any chunk still missing has no vocal yet, not a
+vocal with a hole) and keeps it in `vocal_lines` under the separator's
+name; a stall of a minute with nothing new gives up until the next load.
+A line sung for less than a twentieth of the record (`LEAST_SUNG`) is a
+separator that found no single voice and cannot score anyone. The Singers
+panel draws the up-next song's line, broken at its rests — or says *Not
+scored: this song has not been separated yet*, or *no single voice was
+found in this song's separated vocal* — and asks again every five seconds
+until it arrives. Driven: a synthetic tune in A minor over a kick read as
+88 % sung (it rests for two half-bars in sixteen), C4 at −900 cents and E4
+at −500 within its vibrato, and was drawn; the K5 test song — chords and a
+kick, no tune — read as 0.08 % sung, which is what made *no single voice*
+a thing the panel says rather than an empty box it draws.

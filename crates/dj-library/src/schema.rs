@@ -135,6 +135,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 20,
         sql: MIGRATION_20,
     },
+    Migration {
+        version: 21,
+        sql: MIGRATION_21,
+    },
 ];
 
 /// The initial schema.
@@ -896,6 +900,22 @@ const MIGRATION_20: &str = r#"
 ALTER TABLE history ADD COLUMN chosen TEXT;
 "#;
 
+/// K6: the line a record's voice sings, read from its separated vocal stem —
+/// two bytes a point, twenty points a second; see `dj_library::vocal_line`.
+/// The separator is kept with it, so a better separator's line replaces a
+/// worse one's rather than the worse one being trusted for ever.
+const MIGRATION_21: &str = r#"
+CREATE TABLE vocal_lines (
+    track_id  TEXT    PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    separator TEXT    NOT NULL,
+    rate      REAL    NOT NULL,
+    cents     BLOB    NOT NULL,
+    -- How much of the record is sung, zero to one.
+    sung      REAL    NOT NULL,
+    made_at   INTEGER NOT NULL
+);
+"#;
+
 const MIGRATION_17: &str = r#"
 -- Search finds a record by the name the browser shows it under.
 --
@@ -1124,6 +1144,7 @@ mod tests {
             "notes",
             "lyrics",
             "melodies",
+            "vocal_lines",
             "track_functions",
             "kept_pairs",
             "nights",

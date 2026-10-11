@@ -949,6 +949,7 @@ pub fn run() {
             commands::karaoke_take,
             commands::karaoke_line,
             commands::karaoke_bring_in,
+            commands::vocal_line,
             commands::sing_photos,
             commands::sing_photo_approve,
             commands::sing_photo_refuse,

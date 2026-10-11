@@ -5012,6 +5012,22 @@ export interface BringIn {
 }
 
 export const karaokeRotation = () => invoke<Rotation>("karaoke_rotation");
+/** K6: the line a record's voice sings, from `dj_app::commands::VocalLineDto`. */
+export interface VocalLine {
+  /** Points a second. */
+  rate: number;
+  /** Per point, cents above A4, or null where nobody sings. */
+  cents: (number | null)[];
+  separator: string;
+  /** How much of the record is sung, zero to one. */
+  sung: number;
+  /** Whether enough is sung to score a singer against. */
+  scorable: boolean;
+}
+
+/** K6: a record's sung line, or null when it has never been separated. */
+export const vocalLine = (track: string) => invoke<VocalLine | null>("vocal_line", { track });
+
 /** K5: mix from what the room hears into the next singer's song, once. */
 export const karaokeBringIn = () => invoke<Rotation>("karaoke_bring_in");
 export const karaokeLine = (text: string) => invoke<Rotation>("karaoke_line", { text });

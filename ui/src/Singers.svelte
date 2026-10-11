@@ -27,6 +27,8 @@
     karaokeLeave,
     karaokeLine,
     karaokeBringIn,
+    vocalLine,
+    type VocalLine,
     karaokeMove,
     karaokeNotHere,
     karaokeRefuse,
@@ -323,6 +325,65 @@
     }
     // K5: the song on a deck is what *Bring them in* waits for.
     await refresh();
+    // K6: and loading separates it, which is what reads its line.
+    lineAsked += 1;
+  }
+
+  /**
+   * K6: the line the up-next song's voice sings, read from its separated
+   * vocal — what a singer will be scored against. Asked again when the song
+   * changes or is loaded, since loading is what separates it.
+   */
+  let line = $state<VocalLine | null | undefined>(undefined);
+  const lineTrack = $derived(
+    rotation?.singers.find((s) => s.name === rotation?.up_next)?.songs[0]?.track ?? null,
+  );
+  let lineAsked = $state(0);
+  $effect(() => {
+    const track = lineTrack;
+    void lineAsked;
+    if (!enabled || !track) {
+      line = undefined;
+      return;
+    }
+    let live = true;
+    vocalLine(track)
+      .then((found) => {
+        if (live) line = found;
+      })
+      .catch(() => {
+        if (live) line = undefined;
+      });
+    return () => {
+      live = false;
+    };
+  });
+
+  // Not read yet: separation takes its time after a load, so it is asked
+  // again every few seconds until it arrives.
+  const lineWaiting = $derived(enabled && lineTrack !== null && line === null);
+  $effect(() => {
+    if (!lineWaiting) return;
+    const timer = setInterval(() => (lineAsked += 1), 5000);
+    return () => clearInterval(timer);
+  });
+
+  /** The line as an SVG path, broken where nobody sings, a semitone a unit. */
+  function linePath(cents: (number | null)[]): { d: string; low: number; high: number } {
+    const sung = cents.filter((c): c is number => c !== null);
+    const low = Math.min(...sung);
+    const high = Math.max(...sung);
+    let d = "";
+    let drawing = false;
+    cents.forEach((c, i) => {
+      if (c === null) {
+        drawing = false;
+        return;
+      }
+      d += `${drawing ? "L" : "M"}${i} ${((high - c) / 100).toFixed(1)}`;
+      drawing = true;
+    });
+    return { d, low, high };
   }
 
   /**
@@ -442,6 +503,29 @@
         {#if upNext.from_phone}<span class="badge" title="Put their own name down from their phone">phone</span>{/if}
       </p>
       <p class="what">{next.title}</p>
+      {#if next.track && line !== undefined}
+        <!-- K6: the line the song's voice sings — what a singer is scored against. -->
+        {#if line && line.scorable}
+          {@const drawn = linePath(line.cents)}
+          <svg
+            class="sung-line"
+            role="img"
+            aria-label="The line {next.title}'s voice sings"
+            viewBox="0 -1 {line.cents.length} {(drawn.high - drawn.low) / 100 + 2}"
+            preserveAspectRatio="none"
+          >
+            <path d={drawn.d} />
+          </svg>
+        {:else if line}
+          <p class="hint" data-unscored>
+            Not scored: no single voice was found in this song's separated vocal.
+          </p>
+        {:else}
+          <p class="hint" data-unscored>
+            Not scored: this song has not been separated yet — loading it on a deck separates it.
+          </p>
+        {/if}
+      {/if}
       {#if asked(next)}
         <div class="asks" role="group" aria-label="What {upNext.name} asks for" data-asks>
           <span>{asked(next)}</span>
@@ -982,6 +1066,20 @@
   .done {
     border-color: var(--accent);
     font-weight: 600;
+  }
+
+  .sung-line {
+    display: block;
+    width: 100%;
+    height: 2.2rem;
+    margin: 0.2rem 0 0.3rem;
+  }
+
+  .sung-line path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
   }
 
   .bring {

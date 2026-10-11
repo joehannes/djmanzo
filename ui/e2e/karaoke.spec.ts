@@ -312,3 +312,56 @@ test.describe("K5: bringing a singer in", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+test.describe("K6: the line a song's voice sings", () => {
+  const rotation = {
+    singers: [
+      {
+        name: "Ana",
+        songs: [{ title: "Song in A minor", track: "aa".repeat(32), path: "/music/song.wav", key: 0 }],
+        turns: 0,
+      },
+    ],
+    up_next: "Ana",
+    lately: [],
+  };
+
+  /**
+   * **Not separated, it says it cannot be scored, and asks again until the
+   * line arrives** — then draws it, broken where nobody sings.
+   */
+  test("a song not yet separated says so, then its line is drawn when it arrives", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: rotation });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    await expect(up.getByText(/Not scored: this song has not been separated yet/)).toBeVisible();
+
+    await page.evaluate(() => {
+      (window as unknown as { __vocalLine: unknown }).__vocalLine = {
+        rate: 20,
+        separator: "built-in",
+        cents: [-1200, -1200, null, null, -500, -500, -300],
+        sung: 5 / 7,
+        scorable: true,
+      };
+    });
+    const drawn = up.getByRole("img", { name: "The line Song in A minor's voice sings" });
+    await expect(drawn).toBeVisible({ timeout: 8000 });
+    await expect(up.getByText(/Not scored/)).toHaveCount(0);
+    // Two phrases, so two strokes: the rest is not drawn across.
+    const d = await drawn.locator("path").getAttribute("d");
+    expect(d?.match(/M/g)).toHaveLength(2);
+    // A semitone a unit, the highest note at the top: −300 is 0, −1200 nine below.
+    expect(d).toBe("M0 9.0L1 9.0M4 2.0L5 2.0L6 0.0");
+
+    // A line with no single voice in it is said, not drawn.
+    await page.evaluate(() => {
+      const held = (window as unknown as { __vocalLine: { scorable: boolean; sung: number } }).__vocalLine;
+      held.scorable = false;
+      held.sung = 0.001;
+    });
+    await page.locator(SINGERS).getByRole("button", { name: "Load on 1" }).click();
+    await expect(up.getByText("Not scored: no single voice was found in this song's separated vocal.")).toBeVisible();
+    await expect(drawn).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

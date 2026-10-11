@@ -2707,6 +2707,12 @@ export async function openShell(
           // §107: break music. Recorded like the rotation; a change is kept
           // and echoed, and where it has got to is whatever the test put in
           // `__breaks` -- the machine is Rust's and tested there.
+          // K6: a record's sung line, as the test holds it in `__vocalLine`
+          // (null — never separated — until a test gives it one).
+          if (cmd === "vocal_line") {
+            ((win.__lineAsks ??= []) as unknown[]).push(args.track);
+            return Promise.resolve(structuredClone((win.__vocalLine ?? answers.vocal_line ?? null) as unknown));
+          }
           if (cmd === "karaoke_breaks" || cmd === "karaoke_breaks_set") {
             ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
             const held = (win.__breaks ??= structuredClone(answers.karaoke_breaks)) as Record<string, unknown>;

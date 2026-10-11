@@ -294,8 +294,46 @@ pub fn contour(samples: &[f32], sample_rate: u32) -> Contour {
 /// the contour: the vocal much of the time, the bassline some of the time.
 #[must_use]
 pub fn pitches(samples: &[f32], sample_rate: u32) -> Vec<Option<f32>> {
+    pitches_every(samples, sample_rate, RATE, 0.0)
+}
+
+/// K6: points a second of a sung line.
+///
+/// Twenty, twice the contour's: a sung note is rarely shorter than 150 ms,
+/// and scoring a singer against the line wants its onsets to 50 ms, where
+/// the hum search only wants its shape.
+pub const LINE_RATE: f64 = 20.0;
+
+/// K6: the quietest a frame of a sung line may be and still be singing — a
+/// mean square of the original over the frame, about −50 dBFS.
+///
+/// A separated vocal stem is never silent between phrases: the separator
+/// leaves a little of everything else in it, and a quiet bass note there is
+/// a perfect period YIN reads with full confidence. Without a floor the line
+/// between two verses is the bassline, and a singer resting would be marked
+/// down for not singing it.
+pub const LINE_FLOOR: f32 = 1e-5;
+
+/// K6: the line a voice sings, [`LINE_RATE`] points a second — each the
+/// pitch in **cents above A4 (440 Hz)**, or `None` where nobody sings.
+///
+/// Absolute rather than centred on its own median like [`contour`]: a
+/// singer is scored against the notes, not the shape. Meant for a
+/// separated vocal stem, where the voice is what is left; on a whole mix it
+/// is the strongest periodic thing in the band, as everywhere in this
+/// module.
+#[must_use]
+pub fn line(samples: &[f32], sample_rate: u32) -> Vec<Option<f32>> {
+    pitches_every(samples, sample_rate, LINE_RATE, LINE_FLOOR)
+        .into_iter()
+        .map(|hz| hz.map(|hz| 1200.0 * (hz / 440.0).log2()))
+        .collect()
+}
+
+/// Pitches `rate` times a second, refusing frames quieter than `floor`.
+fn pitches_every(samples: &[f32], sample_rate: u32, rate: f64, floor: f32) -> Vec<Option<f32>> {
     let work = resample(samples, sample_rate);
-    let hop = (WORK_RATE as f64 / RATE).round() as usize;
+    let hop = (WORK_RATE as f64 / rate).round() as usize;
     // Long enough for two of the lowest period, which is what YIN needs to see
     // a fundamental at all, plus room for the difference function's tail.
     let window = (2.5 * WORK_RATE as f32 / LOWEST_HZ) as usize;
@@ -306,8 +344,10 @@ pub fn pitches(samples: &[f32], sample_rate: u32) -> Vec<Option<f32>> {
     let mut at = 0usize;
     while at + window <= work.samples.len() {
         let frame = &work.samples[at..at + window];
+        let energy = &work.energy[at..at + window];
+        let loud = floor <= 0.0 || energy.iter().sum::<f32>() / window as f32 >= floor;
         hertz.push(
-            in_band(frame, &work.energy[at..at + window])
+            (loud && in_band(frame, energy))
                 .then(|| yin(frame, shortest, longest))
                 .flatten(),
         );
@@ -590,6 +630,37 @@ mod tests {
 
     fn silence(seconds: f32) -> Vec<f32> {
         vec![0.0; (seconds * SR as f32) as usize]
+    }
+
+    /// **K6: a sung line is the notes, in cents above A4, twenty a second**
+    /// — and a rest is a rest. A3 then E4 read as −1200 and −500 within a
+    /// tenth of a semitone; the half second of silence between is nobody
+    /// singing; and a separator's bleed, the same note at −60 dBFS, is not
+    /// singing either.
+    #[test]
+    fn a_sung_line_is_the_notes_in_cents_and_rests_where_nobody_sings() {
+        let mut sung = melody(&[0], 1.0);
+        sung.extend(silence(0.5));
+        sung.extend(melody(&[7], 1.0));
+        let points = line(&sung, SR);
+        let rate = LINE_RATE as usize;
+        assert!(
+            (points.len() as i64 - (2.5 * LINE_RATE) as i64).abs() <= 2,
+            "{}",
+            points.len()
+        );
+        let near = |at: usize, cents: f32| points[at].is_some_and(|c| (c - cents).abs() < 10.0);
+        assert!(near(rate / 2, -1200.0), "A3 read as {:?}", points[rate / 2]);
+        assert!(near(rate * 2, -500.0), "E4 read as {:?}", points[rate * 2]);
+        assert_eq!(points[rate + rate / 4], None, "the rest was sung");
+
+        let bleed: Vec<f32> = melody(&[0], 1.0).iter().map(|s| s * 0.001).collect();
+        assert!(
+            line(&bleed, SR).iter().all(Option::is_none),
+            "the bleed was sung"
+        );
+        // The hum search keeps hearing it: the floor is the line's alone.
+        assert!(pitches(&bleed, SR).iter().any(Option::is_some));
     }
 
     /// **§116: the pitches are the notes played, not only their shape.** A

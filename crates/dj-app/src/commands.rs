@@ -1772,6 +1772,112 @@ fn feed_chunks(
     }
 }
 
+/// K6: how long a separation may go without a chunk arriving before the
+/// line its voice sings is given up on — the deck was emptied, or the
+/// separator stopped. The record's next load tries again.
+const VOCAL_LINE_STALL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// K6: a separated record's vocal stem, mono, frame by frame — `None` while
+/// any frame of it has still to arrive. A line read from part of a record
+/// would score a singer against silence where the rest should be.
+pub(crate) fn separated_vocal(table: &dj_decode::StemTable, frames: usize) -> Option<Vec<f32>> {
+    (0..frames)
+        .map(|index| table.frame(index).map(|frame| (frame[0] + frame[1]) * 0.5))
+        .collect()
+}
+
+/// K6: keep the line a record's voice sings, read from its separated vocal
+/// stem once every chunk has arrived (`docs/KARAOKE.md` §9) — only for a
+/// record that has words, and only where the line kept is not already this
+/// separator's. Waits on the separation's own thread, and gives up after
+/// [`VOCAL_LINE_STALL`] with nothing new.
+fn keep_vocal_line(
+    library: &crate::library::LibraryHandle,
+    track: dj_core::TrackId,
+    stems: &dj_decode::StemBuffer,
+    frames: usize,
+    sample_rate: u32,
+    separator: &str,
+) {
+    let Ok(db) = library.get() else { return };
+    let words = db
+        .words_for(track)
+        .ok()
+        .flatten()
+        .is_some_and(|words| words.found && !words.instrumental);
+    let kept = db
+        .vocal_line(&track)
+        .ok()
+        .flatten()
+        .is_some_and(|line| line.separator == separator);
+    if !words || kept {
+        return;
+    }
+    let mut arrived = 0;
+    let mut since = std::time::Instant::now();
+    let vocal = loop {
+        let table = stems.load();
+        if let Some(vocal) = separated_vocal(&table, frames) {
+            break vocal;
+        }
+        let now = table.len();
+        if now != arrived {
+            arrived = now;
+            since = std::time::Instant::now();
+        } else if since.elapsed() > VOCAL_LINE_STALL {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    };
+    let line = dj_library::vocal_line::VocalLine {
+        separator: separator.to_owned(),
+        rate: dj_analysis::melody::LINE_RATE,
+        cents: dj_analysis::melody::line(&vocal, sample_rate),
+    };
+    if let Err(error) = db.remember_vocal_line(&track, &line) {
+        tracing::warn!(%error, "the line the record's voice sings could not be kept");
+    }
+}
+
+/// K6: the line a record's voice sings, as the Singers panel draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct VocalLineDto {
+    /// Points a second.
+    pub rate: f64,
+    /// Per point, cents above A4, or none where nobody sings.
+    pub cents: Vec<Option<f32>>,
+    /// Which separator's vocal stem it was read from.
+    pub separator: String,
+    /// How much of the record is sung, zero to one.
+    pub sung: f32,
+    /// Whether enough of it is sung to score a singer against: a separator
+    /// that found no single voice leaves a line of a few stray points.
+    pub scorable: bool,
+}
+
+/// K6: the line a record's voice sings, if it has been read — `None` for a
+/// record never separated, which cannot be scored.
+///
+/// # Errors
+/// A track that is not a track, or a library that cannot be read.
+#[tauri::command]
+pub fn vocal_line(
+    state: State<'_, AppState>,
+    track: String,
+) -> Result<Option<VocalLineDto>, String> {
+    let id = dj_core::TrackId::from_hex(&track).ok_or("not a track")?;
+    let line = library(&state)?
+        .vocal_line(&id)
+        .map_err(|error| error.to_string())?;
+    Ok(line.map(|line| VocalLineDto {
+        rate: line.rate,
+        sung: line.sung(),
+        scorable: line.scorable(),
+        cents: line.cents,
+        separator: line.separator,
+    }))
+}
+
 /// Decode a file and put it on a deck.
 ///
 /// Decoding is slow -- minutes of audio, plus a content hash -- so it runs on a
@@ -2070,6 +2176,7 @@ pub fn put_on_deck(
     let audio = Arc::clone(&buffer);
     let lock_clone = buffer.stems_lock();
     let registry = state.registry();
+    let line_library = state.library();
     std::thread::spawn(move || {
         // Ten seconds of stereo audio per chunk, at the rate this track was
         // actually decoded at -- the previous constant 44_100 made a chunk
@@ -2140,6 +2247,18 @@ pub fn put_on_deck(
                 );
             },
         );
+        // K6: every chunk asked for, the line its voice sings once the last
+        // of them arrives — for a record with words, under this separator.
+        if let Some(separator) = stems_worker.separator() {
+            keep_vocal_line(
+                &line_library,
+                track_id,
+                &lock_clone,
+                total_frames,
+                sample_rate.get(),
+                separator,
+            );
+        }
     });
 
     // Analysis runs *after* the track is playable, on its own worker.
@@ -5420,6 +5539,55 @@ mod tests {
         assert!(
             !free(&state),
             "a hand on the fader did not take it, which is the half §87 is for"
+        );
+    }
+
+    /// **K6: the line is read from the vocal stem, and only from all of it.**
+    /// The vocal is the first of the four stems; a drum stem full of noise
+    /// beside it is not heard, and a record with a chunk still to come has
+    /// no vocal yet rather than a vocal with a hole in it.
+    #[test]
+    fn the_vocal_is_the_first_stem_and_only_once_it_has_all_arrived() {
+        const RATE: u32 = 48_000;
+        let frames = RATE as usize;
+        let chunk = |from: usize| -> dj_decode::StemChunk {
+            (from..from + frames)
+                .map(|n| {
+                    let t = n as f32 / RATE as f32;
+                    let voice = 0.5 * (std::f32::consts::TAU * 220.0 * t).sin();
+                    let noise = ((n * 7919) % 1000) as f32 / 500.0 - 1.0;
+                    let mut frame = [0.0; dj_decode::STEM_COUNT * dj_decode::CHANNELS];
+                    frame[0] = voice;
+                    frame[1] = voice;
+                    frame[2] = noise;
+                    frame[3] = -noise;
+                    frame
+                })
+                .collect::<Vec<_>>()
+                .into()
+        };
+        let half = dj_decode::StemTable::new(frames)
+            .with_chunk(0, chunk(0))
+            .expect("a first chunk");
+        assert_eq!(
+            separated_vocal(&half, 2 * frames),
+            None,
+            "a hole read as a vocal"
+        );
+        let whole = half.with_chunk(1, chunk(frames)).expect("a second chunk");
+        let vocal = separated_vocal(&whole, 2 * frames).expect("all of it");
+        assert_eq!(vocal.len(), 2 * frames);
+        let line = dj_analysis::melody::line(&vocal, RATE);
+        let sung: Vec<f32> = line.iter().flatten().copied().collect();
+        assert!(
+            sung.len() > line.len() * 9 / 10,
+            "{} of {} sung",
+            sung.len(),
+            line.len()
+        );
+        assert!(
+            sung.iter().all(|cents| (cents + 1200.0).abs() < 10.0),
+            "{sung:?}"
         );
     }
 

@@ -2109,6 +2109,26 @@ impl Library {
         self.with(|conn| Ok(crate::melody::remember(conn, track, contour)?))
     }
 
+    /// K6: keep the line a record's voice sings.
+    ///
+    /// # Errors
+    /// When the write fails.
+    pub fn remember_vocal_line(
+        &self,
+        track: &TrackId,
+        line: &crate::vocal_line::VocalLine,
+    ) -> Result<()> {
+        self.with(|conn| Ok(crate::vocal_line::remember(conn, track, line)?))
+    }
+
+    /// K6: the line a record's voice sings, if one has been kept.
+    ///
+    /// # Errors
+    /// When the read fails.
+    pub fn vocal_line(&self, track: &TrackId) -> Result<Option<crate::vocal_line::VocalLine>> {
+        self.with(|conn| Ok(crate::vocal_line::stored(conn, track)?))
+    }
+
     /// How many records have a contour, and how many there are.
     ///
     /// # Errors

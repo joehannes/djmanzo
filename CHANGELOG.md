@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The line a song's voice sings (K6).** Once a record that has words has
+  been separated, djmanzo reads the line its separated vocal sings and keeps
+  it — what scored singing will score a singer against. The Singers panel
+  draws it for the song up next, or says why that song cannot be scored yet.
+
 - **Mix out of each song (K5).** A switch in break music, off by default:
   the break record comes in under the last phrase of each song at the
   break level, chosen to lead out of that song and into the next singer's,
