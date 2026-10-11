@@ -209,6 +209,20 @@ no internet. Only words the matcher does not know go to the DJ's provider,
 when there is one, and through the same validation as typed ones
 (ADR-0005); with none, the words are shown and nothing guessed.
 
+**The wake phrase — the licence, read (11 October 2026).**
+openWakeWord's own page: the code is Apache-2.0, and *"all of the included
+pre-trained models are licensed under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International"* licence, because
+of the training data. Non-commercial is out under ADR-0002, as LAME was,
+so its models are out; training our own needs data whose licence is as
+unknown as theirs. And one thing the design below did not see: a wake
+phrase is heard on an *open* microphone — the tap is silence while a strip
+is closed — so on the DJ's own strip the room would hear "hola DJ, pon el
+dos" through the PA, which push-to-talk exists to prevent. A wake phrase
+needs a microphone of its own that is not in the PA, and that is the
+DJ's to set up before it is worth building. Not built; push-to-talk
+stands.
+
 **The wake phrase, later, and only with a model whose licence ADR-0002
 admits.** openWakeWord's code is Apache-2.0, but the models it ships are,
 as far as this design knows, under a non-commercial licence; that is to be

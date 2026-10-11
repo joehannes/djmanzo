@@ -321,6 +321,50 @@ special path.
 A **singer queue** rounds it out: names and songs, add by voice, shown on both
 screens, so the room can see who is next.
 
+### K2's voice control, as it is built
+
+*Designed 11 October 2026, before any code, once A2's push-to-talk and
+words were built (`docs/ASSISTANT.md` §4).* What the host says goes through
+A2 like any other command — held key, Whisper, the local matcher first, the
+DJ's AI only for words it does not know — so this is two things: the
+**phrases** the matcher knows, in English and Spanish, and the **verbs**
+the rotation was missing on the bus.
+
+**The singer's voice in the record**, per deck, as the Singers panel's
+*As recorded · Guide · Out* already sets it (`deck N voice`):
+
+| Said | Done |
+|---|---|
+| "karaoke on deck two", "pon el karaoke en el dos", "vocal out", "quita la voz" | `deck 2 voice 0` |
+| "guide vocal", "bring the vocal back a bit", "voz guía", "un poco de voz" | `deck 2 voice 0.25` |
+| "vocal back", "as recorded", "karaoke off", "devuelve la voz" | `deck 2 voice 1` |
+
+These come before the transport phrases in the matcher: "pon el karaoke"
+holds "pon", which is *play*. And like every spoken command for one deck
+they name the deck, or A2 asks *Which deck?*.
+
+**The rotation**, which today is only buttons — so three verbs join the
+action vocabulary, meant by the application as `safe` and push-to-talk
+are, and therefore also a controller pad's and a script's:
+
+| Verb | The panel's | Said |
+|---|---|---|
+| `karaoke load <deck>` | *Load on N*: the up-next singer's song on deck N, in their key, with the voice they asked for | "load the next singer on deck one", "carga al siguiente en el uno" |
+| `karaoke bring_in` | *Bring them in* | "bring them in", "bring in the next singer", "que entre", "tráelo" |
+| `karaoke sang` | *Sang* | "next singer", "siguiente cantante", "ya cantó" |
+
+*Load on N* moves from the interface into Rust to be a verb — the same
+`load deck N <id>`, key and voice, in that order — and the panel's button
+sends the verb, so there is one way to do it. The DJ's AI is offered all
+three in its vocabulary; it was always able to send `deck N voice`.
+
+**Not built.** *Restart the verse*: djmanzo does not know where a verse
+starts — the timed words know lines, not verses, and a phrase jump would
+land somewhere that sounds like a guess. The singer queue by voice ("add
+Ana, Dancing Queen"): a name heard by Whisper in a loud room is the one
+thing most likely to come out wrong, and the phones (K4) already let
+singers type their own.
+
 ### The guest book (§123)
 
 Every singer the rotation marks as having sung is written into a **karaoke
