@@ -217,4 +217,41 @@ test.describe("§107: break music between singers", () => {
     await expect(decks).toHaveText(["1", "2"]);
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **K5: what a record was chosen for is said, in the rail's words**, and
+   * the switch that chooses is the host's: off is sent, and kept.
+   */
+  test("says which song a break record leads into, and the choosing can be switched off", async ({ page }) => {
+    await openSingers(page, { karaoke_breaks: breaks.chosen });
+    const row = page.locator(SINGERS).getByRole("region", { name: "Break music" });
+    const chosen = row.getByLabel("Chosen for");
+    const said = breaks.chosen.chosen!;
+    await expect(chosen).toHaveText(`${said.title} for ${said.singer}'s ${said.song}${said.why}`);
+    await expect(chosen.locator(".why")).toHaveText("+2 BPM · 11B");
+    await expect(row.getByRole("status")).toHaveText("Playing");
+
+    const lead = row.getByRole("checkbox", { name: "Lead into the next song" });
+    await expect(lead).toBeChecked();
+    await lead.uncheck();
+    const sets = (await calls(page)).filter((call) => call.cmd === "karaoke_breaks_set");
+    expect(sets.at(-1)).toMatchObject({ on: true, deck: 2, playlist: 7, lead: false });
+    await expect(lead).not.toBeChecked();
+
+    // Leading out of the song just sung, when nobody is waiting.
+    await page.evaluate((after) => {
+      (window as unknown as { __breaks: unknown }).__breaks = after;
+    }, { ...breaks.chosen, chosen: { ...said, after: true } });
+    await expect(chosen).toContainText(`${said.title} after ${said.singer}'s`, { timeout: 5000 });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A switched-off break music claims no choice. */
+  test("break music switched off says nothing was chosen", async ({ page }) => {
+    await openSingers(page, { karaoke_breaks: { ...breaks.chosen, on: false } });
+    const row = page.locator(SINGERS).getByRole("region", { name: "Break music" });
+    await expect(row.getByRole("checkbox", { name: "Lead into the next song" })).toBeVisible();
+    await expect(row.getByLabel("Chosen for")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

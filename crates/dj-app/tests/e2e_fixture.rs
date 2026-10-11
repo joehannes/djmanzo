@@ -1969,8 +1969,26 @@ fn the_browser_fixture_has_break_music() {
         playlist: Some(7),
         level: 0.7,
         next: 3,
+        ..Settings::default()
     };
     let playing = breaks_view(&on, Phase::Playing, None, lists());
+    // K5: a record chosen for the next singer's song, with the rail's words.
+    let mut chosen = playing.clone();
+    chosen.chosen = Some(dj_app::breaks::Chosen {
+        title: "Lovely Day".to_owned(),
+        singer: "Ana".to_owned(),
+        song: "Dancing Queen".to_owned(),
+        after: false,
+        why: dj_app::commands::summarise_reasons(&[
+            dj_library::suggest::Reason::TempoFits {
+                from: 98.0,
+                to: 100.0,
+            },
+            dj_library::suggest::Reason::SameKey(
+                dj_core::MusicalKey::new(11, dj_core::Mode::Major).expect("a key"),
+            ),
+        ]),
+    });
     let nothing = breaks_view(
         &Settings {
             playlist: None,
@@ -1984,6 +2002,7 @@ fn the_browser_fixture_has_break_music() {
         "off": off,
         "playing": playing,
         "no_playlist": nothing,
+        "chosen": chosen,
     });
     let text = serde_json::to_string_pretty(&fixture).expect("break music serialises");
 

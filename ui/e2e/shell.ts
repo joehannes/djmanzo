@@ -2711,7 +2711,13 @@ export async function openShell(
             ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
             const held = (win.__breaks ??= structuredClone(answers.karaoke_breaks)) as Record<string, unknown>;
             if (cmd === "karaoke_breaks_set") {
-              Object.assign(held, { on: args.on, deck: args.deck, playlist: args.playlist, level: args.level });
+              Object.assign(held, {
+                on: args.on,
+                deck: args.deck,
+                playlist: args.playlist,
+                level: args.level,
+                lead: args.lead,
+              });
             }
             return Promise.resolve(structuredClone(held));
           }

@@ -1114,3 +1114,16 @@ microphone, which djmanzo cannot.
 
 Each is held by tests on the machine and the ranking, and driven in the
 running application with a rotation, a break playlist and the decks.
+
+**Step 1, chosen for the next song — built (11 October).**
+`MusicalKey::transposed` moves a key by semitones round the wheel, checked
+against the names of the chromatic scale in both rings.
+`breaks::Settings::choose` ranks the playlist as above — the move from each
+record into the song as sung, summed over the songs given, *Hold*, played
+records waiting, an unanalysed one last, ties in the walk's order — and
+keeps `played` with the settings, forgotten at *New night* and with a new
+playlist. `load_break` gives it the next singer's song, or the last one sung
+when nobody is waiting, or nothing. The Singers panel has *Lead into the
+next song*, on, and under the phase what the record on the deck was chosen
+for, in the rail's own line: *break-3-match for Ana's Song in A minor −2 BPM
+· 8A · level*; *after*, leading out.

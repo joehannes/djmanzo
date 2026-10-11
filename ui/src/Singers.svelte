@@ -364,12 +364,12 @@
     return () => clearInterval(timer);
   });
 
-  async function setBreaks(change: Partial<Pick<Breaks, "on" | "deck" | "playlist" | "level">>) {
+  async function setBreaks(change: Partial<Pick<Breaks, "on" | "deck" | "playlist" | "level" | "lead">>) {
     if (!breaks) return;
     const next = { ...breaks, ...change };
     error = "";
     try {
-      breaks = await karaokeBreaksSet(next.on, next.deck, next.playlist, next.level, deckCount);
+      breaks = await karaokeBreaksSet(next.on, next.deck, next.playlist, next.level, deckCount, next.lead);
     } catch (e) {
       error = String(e);
     }
@@ -534,6 +534,18 @@
             >
           {/each}
         </div>
+        <!--
+          K5: the record that leads into the next singer's song, ranked by
+          the Next rail's own scorer, rather than the next in the playlist.
+        -->
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={breaks.lead}
+            onchange={(event) => void setBreaks({ lead: event.currentTarget.checked })}
+          />
+          Lead into the next song
+        </label>
       </div>
       {#if breaks.on}
         {#if breakDeckHidden}
@@ -544,6 +556,16 @@
           <p class="problem" role="status">{breaks.problem}</p>
         {:else}
           <p class="phase" role="status">{BREAK_PHASES[breaks.phase]}</p>
+        {/if}
+        {#if breaks.chosen && !breakDeckHidden}
+          <!-- K5: what the record was chosen for, in the rail's words. -->
+          <p class="chosen" role="note" aria-label="Chosen for">
+            <span class="title">{breaks.chosen.title}</span>
+            {breaks.chosen.after ? "after" : "for"}
+            {breaks.chosen.singer}'s <span class="title">{breaks.chosen.song}</span>{#if breaks.chosen.why}<span
+                class="why mono">{breaks.chosen.why}</span
+              >{/if}
+          </p>
         {/if}
       {/if}
     </section>
@@ -848,6 +870,21 @@
   .breaks .problem {
     color: var(--warn);
     margin: 0;
+  }
+
+  .breaks .chosen {
+    margin: 0;
+    color: var(--text-dim);
+  }
+
+  .breaks .chosen .title {
+    color: var(--text);
+    font-style: italic;
+  }
+
+  .breaks .chosen .why {
+    margin-left: 0.5rem;
+    font-size: 0.85em;
   }
 
   .up {

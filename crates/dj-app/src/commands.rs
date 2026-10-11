@@ -11283,7 +11283,7 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
 /// analyser measures integrated LUFS; a 1-to-10 energy scale would be a
 /// invented unit dressed as a measurement. See the module docs of
 /// `dj_library::suggest`.
-pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
+pub fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     use dj_library::suggest::Reason;
 
     /// Where each reason sits on the line, regardless of the order the scorer
@@ -15482,6 +15482,14 @@ pub(crate) fn new_night(state: &AppState) -> RotationDto {
         tracing::warn!(%error, "tonight's guests are still in the journal");
     }
     everybody_off_the_mics(state);
+    // K5: tonight's break records may all play again.
+    if let Ok(mut held) = state.breaks().lock() {
+        let settings = held
+            .settings
+            .get_or_insert_with(|| state.read_break_settings());
+        settings.played.clear();
+        state.write_break_settings(settings);
+    }
     // K4: every name phones put down tonight forgotten too — first, so none
     // is taken into the rotation on its way to being cleared.
     state
@@ -16266,6 +16274,10 @@ pub struct BreaksDto {
     pub problem: Option<String>,
     /// The playlists it can play from: lists, not folders or smart folders.
     pub playlists: Vec<BreakPlaylistDto>,
+    /// K5: choose the record that leads into the next singer's song.
+    pub lead: bool,
+    /// K5: what the record on the deck was chosen for, and why.
+    pub chosen: Option<crate::breaks::Chosen>,
 }
 
 /// One playlist break music could play from.
@@ -16278,7 +16290,7 @@ pub struct BreakPlaylistDto {
 
 fn breaks_dto(state: &AppState) -> BreaksDto {
     use crate::breaks::Phase;
-    let (settings, phase, problem) = match state.breaks().lock() {
+    let (settings, phase, problem, chosen) = match state.breaks().lock() {
         Ok(mut held) => {
             let settings = held
                 .settings
@@ -16297,13 +16309,20 @@ fn breaks_dto(state: &AppState) -> BreaksDto {
                     settings.deck
                 )
             });
+            // Said only while that record is on the deck: a choice for a
+            // record the host has ejected is a reason for nothing.
+            let chosen = held
+                .chosen
+                .clone()
+                .filter(|_| held.machine.ours().is_some() && theirs.is_none());
             (
                 settings,
                 held.machine.phase(),
                 held.problem.clone().or(blocked),
+                chosen,
             )
         }
-        Err(_) => (crate::breaks::Settings::default(), Phase::Off, None),
+        Err(_) => (crate::breaks::Settings::default(), Phase::Off, None, None),
     };
     let playlists: Vec<BreakPlaylistDto> = library(state)
         .ok()
@@ -16317,7 +16336,9 @@ fn breaks_dto(state: &AppState) -> BreaksDto {
             tracks: p.track_count,
         })
         .collect();
-    breaks_view(&settings, phase, problem, playlists)
+    let mut dto = breaks_view(&settings, phase, problem, playlists);
+    dto.chosen = chosen.filter(|_| settings.on);
+    dto
 }
 
 /// §107: break music as the surface draws it, from what is set, where the
@@ -16356,6 +16377,8 @@ pub fn breaks_view(
         },
         problem,
         playlists,
+        lead: settings.lead,
+        chosen: None,
     }
 }
 
@@ -16379,6 +16402,9 @@ pub fn karaoke_breaks_set(
     playlist: Option<i64>,
     level: f32,
     decks: u8,
+    // K5's switch. Absent from a caller that does not know it, and then kept
+    // as it was.
+    lead: Option<bool>,
 ) -> Result<BreaksDto, String> {
     if deck == 0 || deck > decks.min(state.deck_count() as u8) {
         return Err(format!("deck {deck} is not on screen"));
@@ -16399,11 +16425,18 @@ pub fn karaoke_breaks_set(
             deck,
             playlist,
             level,
-            // A different playlist starts from its top.
+            // A different playlist starts from its top, with nothing of it
+            // played.
             next: if playlist == before.playlist {
                 before.next
             } else {
                 0
+            },
+            lead: lead.unwrap_or(before.lead),
+            played: if playlist == before.playlist {
+                before.played
+            } else {
+                Vec::new()
             },
         };
         state.write_break_settings(&settings);
@@ -16460,6 +16493,11 @@ pub fn tick_breaks(state: &AppState, now: f64) -> Option<dj_core::DeckId> {
 }
 
 /// §107: put the next break record on `deck`. Off the pump.
+///
+/// K5: which record is [`crate::breaks::Settings::choose`]'s — the one that
+/// leads best into the song of the singer up next, or out of the song just
+/// sung when nobody is waiting, or the playlist's next when neither has a
+/// record that has been analysed.
 pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
     let settings = match state.breaks().lock() {
         Ok(mut held) => held
@@ -16476,11 +16514,16 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
     let Some(playlist) = settings.playlist else {
         return;
     };
-    let entries = match library(state).and_then(|db| {
-        db.playlist_tracks(playlist)
-            .map_err(|error| error.to_string())
-    }) {
-        Ok(entries) => entries,
+    let db = match library(state) {
+        Ok(db) => db,
+        Err(error) => {
+            return say(format!(
+                "The break music playlist could not be read: {error}"
+            ));
+        }
+    };
+    let entries: Vec<dj_library::LibraryTrack> = match db.playlist_tracks(playlist) {
+        Ok(entries) => entries.into_iter().map(|(_, track)| track).collect(),
         Err(error) => {
             return say(format!(
                 "The break music playlist could not be read: {error}"
@@ -16490,16 +16533,64 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
     if entries.is_empty() {
         return say("The break music playlist is empty.".to_owned());
     }
-    let at = settings.next % entries.len();
-    let track = &entries[at].1;
+
+    // What it leads towards: the next song, or the last one sung.
+    let rotation = state.karaoke();
+    let find = |hex: Option<&str>| {
+        hex.and_then(dj_core::TrackId::from_hex)
+            .and_then(|id| db.track(id).ok().flatten())
+    };
+    let next = rotation.up_next().and_then(|(singer, song)| {
+        Some((
+            singer.name.clone(),
+            song.title.clone(),
+            find(song.track.as_deref())?,
+            song.key,
+            false,
+        ))
+    });
+    let last = rotation.history.last().and_then(|sung| {
+        Some((
+            sung.singer.clone(),
+            sung.title.clone(),
+            find(sung.track.as_deref())?,
+            sung.key,
+            true,
+        ))
+    });
+    let song = [next, last]
+        .into_iter()
+        .flatten()
+        .find(|(_, _, track, key, _)| crate::breaks::Towards { track, key: *key }.analysed());
+    let towards: Vec<crate::breaks::Towards<'_>> = song
+        .iter()
+        .map(|(_, _, track, key, _)| crate::breaks::Towards { track, key: *key })
+        .collect();
+
     // Moved on whether or not this one reads: a file that will not load must
     // not be the only thing break music ever tries.
-    if let Ok(mut held) = state.breaks().lock()
-        && let Some(kept) = held.settings.as_mut()
-    {
-        kept.next = (at + 1) % entries.len();
-        state.write_break_settings(kept);
-    }
+    let choice = match state.breaks().lock() {
+        Ok(mut held) => {
+            let Some(kept) = held.settings.as_mut() else {
+                return;
+            };
+            let choice = kept.choose(&entries, &towards);
+            state.write_break_settings(kept);
+            choice
+        }
+        Err(_) => return,
+    };
+    let Some(choice) = choice else { return };
+    let track = &entries[choice.at];
+    let chosen = song
+        .filter(|_| !choice.reasons.is_empty())
+        .map(|(singer, title, _, _, after)| crate::breaks::Chosen {
+            title: track.display_title(),
+            singer,
+            song: title,
+            after,
+            why: summarise_reasons(&choice.reasons),
+        });
     let loaded = decode_file(&track.path)
         .map_err(|error| error.to_string())
         .and_then(|decoded| put_on_deck(state, deck, decoded));
@@ -16508,6 +16599,7 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
             if let Ok(mut held) = state.breaks().lock() {
                 held.machine.loaded(dto.id);
                 held.problem = None;
+                held.chosen = chosen;
             }
         }
         Err(error) => say(format!(

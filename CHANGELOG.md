@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Break music leads into the next singer's song (K5).** With *Lead into
+  the next song* on — the default — break music no longer plays its
+  playlist in order: it plays the record that leads best into the song of
+  the singer up next, as the Next rail would rank the pair, in the key the
+  host set for the singer. No record plays twice in a night while others
+  are left. With nobody waiting it leads out of the song just sung. The
+  Singers panel says what the record was chosen for, and why.
 - **Singers put their own names down (K4).** With *From phones* switched on
   in the Singers panel, the room's request page gains *Sing*: a guest types
   their name, finds their song in the songbook — your records that have

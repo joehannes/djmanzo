@@ -320,6 +320,24 @@ impl MusicalKey {
         }
     }
 
+    /// The key this one becomes moved by `semitones`, up or down.
+    ///
+    /// K5 ranks break music against a karaoke song *as it will be sung*, and a
+    /// host who takes a song two semitones down for a singer has changed its
+    /// key. On the Camelot wheel a semitone is seven hours round — a fifth is
+    /// one, and seven fifths are a semitone and some octaves — and the ring,
+    /// major or minor, never changes.
+    #[must_use]
+    pub fn transposed(self, semitones: i32) -> Self {
+        let from = i32::from(self.hour - 1);
+        let hour = (from + 7 * semitones).rem_euclid(12);
+        Self {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            hour: hour as u8 + 1,
+            mode: self.mode,
+        }
+    }
+
     /// Keys that mix cleanly with this one: the same key, its neighbours on the
     /// wheel, and its relative major/minor.
     #[must_use]
@@ -444,6 +462,40 @@ mod tests {
 
     fn rate() -> SampleRate {
         SampleRate::new(48_000).unwrap()
+    }
+
+    /// **A semitone is the next note, in every key and both rings.** Checked
+    /// against the names, round the chromatic scale, rather than against the
+    /// wheel arithmetic the method is written in — the arithmetic restated
+    /// would agree with itself whatever it got wrong.
+    #[test]
+    fn transposing_walks_the_chromatic_scale() {
+        const MAJOR: [&str; 12] = [
+            "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+        ];
+        const MINOR: [&str; 12] = [
+            "Cm", "Dbm", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "Abm", "Am", "Bbm", "Bm",
+        ];
+        for (mode, names) in [(Mode::Major, MAJOR), (Mode::Minor, MINOR)] {
+            for hour in 1..=12 {
+                let key = MusicalKey::new(hour, mode).unwrap();
+                let at = names.iter().position(|n| *n == key.standard()).unwrap();
+                for semitones in -14..=14 {
+                    let moved = key.transposed(semitones);
+                    let wanted = names[(at as i32 + semitones).rem_euclid(12) as usize];
+                    assert_eq!(
+                        moved.standard(),
+                        wanted,
+                        "{} moved {semitones}",
+                        key.standard()
+                    );
+                    assert_eq!(moved.mode(), mode, "a transposition changed the ring");
+                }
+            }
+        }
+        let a_minor = MusicalKey::new(8, Mode::Minor).unwrap();
+        assert_eq!(a_minor.transposed(0), a_minor);
+        assert_eq!(a_minor.transposed(12), a_minor);
     }
 
     #[test]

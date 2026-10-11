@@ -5213,6 +5213,22 @@ export interface Breaks {
   /** What stops it, in words, when something does. */
   problem: string | null;
   playlists: BreakPlaylist[];
+  /** K5: choose the record that leads into the next singer's song. */
+  lead: boolean;
+  /** K5: what the record on the deck was chosen for, and why. */
+  chosen: BreakChoice | null;
+}
+
+/** K5: a break record chosen for a song, from `dj_app::breaks::Chosen`. */
+export interface BreakChoice {
+  /** The break record. */
+  title: string;
+  singer: string;
+  song: string;
+  /** Leads out of the song just sung, nobody waiting; else into the next. */
+  after: boolean;
+  /** The scorer's reasons, as the Next rail writes them. */
+  why: string;
 }
 
 export const karaokeBreaks = () => invoke<Breaks>("karaoke_breaks");
@@ -5222,7 +5238,8 @@ export const karaokeBreaksSet = (
   playlist: number | null,
   level: number,
   decks: number,
-) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks });
+  lead: boolean,
+) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead });
 
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for
