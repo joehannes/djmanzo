@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.41.0 — Singers from the room, and break music that leads into their song
+
 - **Bring them in (K5).** With the next singer's song on a deck and break
   music — or your own record — playing, *Bring them in* on the up-next row
   mixes from what the room hears into the song at the next phrase. The
