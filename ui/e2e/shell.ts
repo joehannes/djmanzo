@@ -2756,6 +2756,12 @@ export async function openShell(
           if (cmd === "karaoke_range_take") {
             return Promise.resolve(structuredClone((win.__rangeTake ?? null) as unknown));
           }
+          // K8: how matches fit a singer, and songs for them — the test's
+          // answers; the arithmetic is `dj_app::range`'s.
+          if (cmd === "karaoke_fits" || cmd === "karaoke_songs_for") {
+            ((win.__rangeCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
+            return Promise.resolve(structuredClone((answers[cmd] ?? []) as unknown));
+          }
           if (cmd === "karaoke_range_cancel") {
             ((win.__rangeCalls ??= []) as unknown[]).push({ cmd });
             win.__rangeTake = null;

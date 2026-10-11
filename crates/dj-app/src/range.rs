@@ -161,6 +161,62 @@ pub fn offer(singer: Range, song: Range) -> Option<Offer> {
     })
 }
 
+/// How one record fits a singer, as the panel marks it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "fit", content = "key", rename_all = "kebab-case")]
+pub enum Fit {
+    AsRecorded,
+    Key(i32),
+    Stretch(i32),
+    /// No key up to [`FURTHEST`] fits: the song is wider than the singer,
+    /// or too far from them.
+    No,
+    /// The record has no range: never separated, or no single voice found.
+    Unknown,
+}
+
+/// How a record with range `song` — `None` for none known — fits `singer`.
+#[must_use]
+pub fn fit(singer: Range, song: Option<Range>) -> Fit {
+    let Some(song) = song else {
+        return Fit::Unknown;
+    };
+    match offer(singer, song) {
+        Some(Offer::AsRecorded) => Fit::AsRecorded,
+        Some(Offer::Key(key)) => Fit::Key(key),
+        Some(Offer::Stretch(key)) => Fit::Stretch(key),
+        None => Fit::No,
+    }
+}
+
+/// The songs among `songs` to offer `singer`, at most `most`: those that
+/// fit as recorded or within [`STRETCH`], the smallest change first, then
+/// the most room, each with the key it is offered in.
+#[must_use]
+pub fn songs_for<T: Clone>(singer: Range, songs: &[(T, Range)], most: usize) -> Vec<(T, Offer)> {
+    let mut fitting: Vec<(T, Offer, f32)> = songs
+        .iter()
+        .filter_map(|(song, range)| {
+            let offered = offer(singer, *range)?;
+            if matches!(offered, Offer::Stretch(_)) {
+                return None;
+            }
+            Some((song.clone(), offered, margin(singer, *range, offered.key())))
+        })
+        .collect();
+    fitting.sort_by(|a, b| {
+        a.1.key()
+            .abs()
+            .cmp(&b.1.key().abs())
+            .then(b.2.total_cmp(&a.2))
+    });
+    fitting.truncate(most);
+    fitting
+        .into_iter()
+        .map(|(song, offered, _)| (song, offered))
+        .collect()
+}
+
 /// A singer's range being read from their strip.
 #[derive(Debug, Clone)]
 pub struct Take {
@@ -393,5 +449,50 @@ mod tests {
         quiet.hear(&[Some(note(0))], 1.0);
         assert_eq!(quiet.hear(&[None], 20.0), None);
         assert!(matches!(quiet.result, Some(Err(ref why)) if why.contains("Bo")));
+    }
+
+    /// **A record is marked as it fits: as recorded, a key, a stretch, not
+    /// at all, or unknown without a range.**
+    #[test]
+    fn a_record_is_marked_as_it_fits() {
+        let singer = baritone();
+        let at = |low: i32, high: i32| Range {
+            low: note(low),
+            high: note(high),
+        };
+        assert_eq!(fit(singer, Some(at(-20, -8))), Fit::AsRecorded);
+        assert_eq!(fit(singer, Some(at(-17, -2))), Fit::Key(-3));
+        assert_eq!(fit(singer, None), Fit::Unknown);
+        assert_eq!(fit(singer, Some(at(-30, 0))), Fit::No);
+        let narrow = at(-12, -7);
+        assert_eq!(fit(narrow, Some(at(-17, -12))), Fit::Stretch(5));
+    }
+
+    /// **Songs for a singer: those that fit, as recorded first, then the
+    /// smallest key change, then the most room — never a stretch.**
+    #[test]
+    fn songs_for_a_singer_fit_them_closest_first() {
+        let singer = baritone();
+        let at = |low: i32, high: i32| Range {
+            low: note(low),
+            high: note(high),
+        };
+        let songs = [
+            ("down three", at(-17, -2)),
+            ("snug", at(-23, -6)),
+            ("roomy", at(-18, -10)),
+            ("too wide", at(-30, 0)),
+            ("down one", at(-15, -4)),
+        ];
+        let offered = songs_for(singer, &songs, 10);
+        let names: Vec<&str> = offered.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["roomy", "snug", "down one", "down three"]);
+        assert_eq!(offered[2].1, Offer::Key(-1));
+        assert_eq!(songs_for(singer, &songs, 2).len(), 2);
+        let narrow = at(-12, -7);
+        assert!(
+            songs_for(narrow, &[("five up", at(-17, -12))], 10).is_empty(),
+            "a stretch is not offered"
+        );
     }
 }

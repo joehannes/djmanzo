@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Songs that fit a singer (K8).** Once a singer's range is read, the songs
+  found for them in the collection say how each fits — as recorded, a key
+  change, a stretch, or out of their range — and choosing one sets its key.
+  *Songs for them* offers up to ten records that fit, as recorded first.
+
 - **A singer's range (K8).** Put a singer on a microphone and press *Find
   their range*: twenty seconds of them sliding from their lowest note to
   their highest, and djmanzo says their range in notes — *A#2 – D#4, an

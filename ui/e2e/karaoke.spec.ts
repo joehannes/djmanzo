@@ -630,4 +630,48 @@ test.describe("K8: a singer's range", () => {
     await expect(up.locator("[data-range]")).toHaveText("A2 – E4, an octave and a fifth");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **K8 step 2: a song chosen for a singer with a range is marked with how
+   * it fits, and its key comes with it**; *Songs for them* asks for a fitting
+   * record in its key.
+   */
+  test("a song for a singer with a range is marked, and asked for in its key", async ({ page }) => {
+    const song = (title: string) => [{ title, track: null, path: null, key: 0 }];
+    await openSingers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: song("Valerie"), turns: 0, range: { low: -2400, high: -500 } }],
+        up_next: "Ana",
+        lately: [],
+      },
+      karaoke_fits: [{ fit: "key", key: -2 }, { fit: "no" }, { fit: "unknown" }],
+      karaoke_songs_for: [
+        {
+          track: "b".repeat(64),
+          path: "/music/obsesion.flac",
+          title: "Obsesión",
+          artist: "Aventura",
+          offer: { fit: "as-recorded" },
+        },
+      ],
+    });
+    const singers = page.locator(SINGERS);
+    await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ana");
+    await singers.getByRole("textbox", { name: "Song" }).fill("Bach");
+    const first = singers.getByRole("list", { name: "Songs in your collection" }).getByRole("button").first();
+    await expect(first).toContainText("fits -2");
+    await first.click();
+    await singers.getByRole("button", { name: "Add", exact: true }).click();
+    const asked = (await calls(page)).filter((call) => call.cmd === "karaoke_ask").at(-1);
+    expect(asked?.key, "the key its fit offered").toBe(-2);
+
+    await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ana");
+    await singers.getByRole("button", { name: "Songs for Ana" }).click();
+    const offered = singers.getByRole("region", { name: "Songs for Ana" }).getByRole("button");
+    await expect(offered).toHaveText(/Aventura – Obsesión\s*fits as recorded/);
+    await offered.click();
+    const again = (await calls(page)).filter((call) => call.cmd === "karaoke_ask").at(-1);
+    expect(again).toMatchObject({ singer: "Ana", track: "b".repeat(64), key: 0 });
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

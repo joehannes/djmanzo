@@ -28,6 +28,10 @@
     karaokeLeave,
     karaokeLine,
     karaokeBringIn,
+    karaokeFits,
+    karaokeSongsFor,
+    type RangeFit,
+    type SongFor,
     karaokeScoring,
     karaokeVerdict,
     karaokeVersus,
@@ -288,7 +292,10 @@
     }
     searchTimer = setTimeout(() => {
       void librarySearch(text)
-        .then((found) => (matches = (found ?? []).slice(0, 5)))
+        .then((found) => {
+          matches = (found ?? []).slice(0, 5);
+          void markFits();
+        })
         .catch(() => (matches = []));
     }, 250);
     return () => clearTimeout(searchTimer);
@@ -298,10 +305,83 @@
     return track.artist ? `${track.artist} – ${track.title}` : track.title;
   }
 
-  function pick(track: LibraryTrack) {
+  /**
+   * K8: how each match fits the singer being typed, when their range has
+   * been read — empty otherwise, and nothing is marked.
+   */
+  let fits = $state<RangeFit[]>([]);
+  async function markFits() {
+    const name = singer.trim();
+    const known = rotation?.singers.find((s) => s.name.toLowerCase() === name.toLowerCase())?.range;
+    if (!name || !known || matches.length === 0) {
+      fits = [];
+      return;
+    }
+    fits = await karaokeFits(
+      name,
+      matches.map((m) => m.id),
+    ).catch(() => []);
+  }
+
+  // The singer may be typed after the song: marked again for whoever it is.
+  $effect(() => {
+    void singer;
+    if (matches.length > 0) void markFits();
+  });
+
+  /** K8: a fit in the host's words. */
+  function fitWords(fit: RangeFit | undefined): string {
+    if (!fit) return "";
+    switch (fit.fit) {
+      case "as-recorded":
+        return "fits as recorded";
+      case "key":
+        return `fits ${signed(fit.key)}`;
+      case "stretch":
+        return `a stretch at ${signed(fit.key)}`;
+      case "no":
+        return "out of their range";
+      default:
+        return "";
+    }
+  }
+
+  /** K8: the key a fit offers — none for a stretch or no fit. */
+  function offeredKey(fit: RangeFit | undefined): number | null {
+    if (fit?.fit === "as-recorded") return 0;
+    if (fit?.fit === "key") return fit.key;
+    return null;
+  }
+
+  /** K8: the key the picked song is offered in, if its fit offered one. */
+  let pickedKey = $state<number | null>(null);
+
+  function pick(track: LibraryTrack, at: number) {
     picked = track;
+    pickedKey = offeredKey(fits[at]);
     song = label(track);
     matches = [];
+    fits = [];
+  }
+
+  /** K8: *Songs for them* — records that fit the singer being typed. */
+  let songsFor = $state<SongFor[] | null>(null);
+  const typedRange = $derived(
+    rotation?.singers.find((s) => s.name.toLowerCase() === singer.trim().toLowerCase())?.range ?? null,
+  );
+  async function suggest() {
+    error = "";
+    try {
+      songsFor = await karaokeSongsFor(singer.trim());
+    } catch (e) {
+      error = String(e);
+    }
+  }
+  async function askFor(found: SongFor) {
+    const name = singer.trim();
+    const title = found.artist ? `${found.artist} – ${found.title}` : found.title;
+    await change(karaokeAsk(name, title, found.track, found.path, offeredKey(found.offer)));
+    if (!error) songsFor = null;
   }
 
   async function add() {
@@ -309,11 +389,15 @@
     const title = song.trim();
     if (!name || !title) return;
     const chosen = picked && label(picked) === title ? picked : null;
-    await change(karaokeAsk(name, title, chosen?.id ?? null, chosen?.path ?? null, null));
+    // K8: the key its fit offered — a starting key the host can still change.
+    const key = chosen ? pickedKey : null;
+    await change(karaokeAsk(name, title, chosen?.id ?? null, chosen?.path ?? null, key));
     if (!error) {
       singer = "";
       song = "";
       picked = null;
+      pickedKey = null;
+      songsFor = null;
     }
   }
 
@@ -1029,16 +1113,43 @@
       />
       {#if matches.length > 0}
         <ul class="matches" aria-label="Songs in your collection">
-          {#each matches as track (track.id)}
+          {#each matches as track, at (track.id)}
             <li>
-              <button type="button" onclick={() => pick(track)}>{label(track)}</button>
+              <button type="button" onclick={() => pick(track, at)}
+                >{label(track)}{#if fitWords(fits[at])}<span class="fit" data-fit={fits[at]?.fit}
+                    >{fitWords(fits[at])}</span
+                  >{/if}</button
+              >
             </li>
           {/each}
         </ul>
       {/if}
     </div>
     <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
+    {#if typedRange}
+      <button type="button" class="quiet" onclick={() => void suggest()}>Songs for {singer.trim()}</button>
+    {/if}
   </form>
+  {#if songsFor}
+    <!-- K8: records that fit the singer, as recorded first. -->
+    <section class="songs-for" aria-label="Songs for {singer.trim()}">
+      {#if songsFor.length === 0}
+        <p class="hint">Nothing separated in the collection fits {singer.trim()} yet.</p>
+      {:else}
+        <ul>
+          {#each songsFor as found (found.track)}
+            <li>
+              <button type="button" onclick={() => void askFor(found)}
+                >{found.artist ? `${found.artist} – ${found.title}` : found.title}<span class="fit"
+                  >{fitWords(found.offer)}</span
+                ></button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  {/if}
 
   <!--
     K4: a line of the host's own under the words on the singers' screen.
@@ -1557,6 +1668,26 @@
 
   .song-box input {
     width: 100%;
+  }
+
+  .fit {
+    margin-left: 0.5rem;
+    font-size: 0.85em;
+    color: var(--text-dim);
+  }
+
+  .songs-for ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .songs-for button {
+    width: 100%;
+    text-align: left;
   }
 
   .matches {

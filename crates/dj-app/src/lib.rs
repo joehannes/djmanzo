@@ -1027,6 +1027,8 @@ pub fn run() {
             commands::karaoke_range_start,
             commands::karaoke_range_take,
             commands::karaoke_range_cancel,
+            commands::karaoke_fits,
+            commands::karaoke_songs_for,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::list_events,

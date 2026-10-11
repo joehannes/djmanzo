@@ -4959,6 +4959,26 @@ export const karaokeRangeStart = (singer: string) => invoke<RangeTake | null>("k
 export const karaokeRangeTake = () => invoke<RangeTake | null>("karaoke_range_take");
 export const karaokeRangeCancel = () => invoke<void>("karaoke_range_cancel");
 
+/** K8: how a song is offered to a singer, from `dj_app::range::Offer`. */
+export type RangeOffer = { fit: "as-recorded" } | { fit: "key"; key: number } | { fit: "stretch"; key: number };
+
+/** K8: how a record fits a singer, from `dj_app::range::Fit`. */
+export type RangeFit = RangeOffer | { fit: "no" } | { fit: "unknown" };
+
+/** K8: a record offered to a singer, from `dj_app::commands::SongForDto`. */
+export interface SongFor {
+  track: string;
+  path: string;
+  title: string;
+  artist: string | null;
+  offer: RangeOffer;
+}
+
+/** How each of `tracks` fits `singer`; empty when no range of theirs is read. */
+export const karaokeFits = (singer: string, tracks: string[]) =>
+  invoke<RangeFit[]>("karaoke_fits", { singer, tracks });
+export const karaokeSongsFor = (singer: string) => invoke<SongFor[]>("karaoke_songs_for", { singer });
+
 /** K4: what phones may do on the room's page (docs/KARAOKE.md §7). */
 export interface SingRules {
   /** Whether phones may put names down now. */

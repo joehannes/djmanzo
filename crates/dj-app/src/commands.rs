@@ -15861,6 +15861,98 @@ pub fn karaoke_range_cancel(state: State<'_, AppState>) {
     }
 }
 
+/// K8: the range of the rotation's singer `name`, if one has been read.
+fn singer_range(state: &AppState, name: &str) -> Option<crate::range::Range> {
+    state
+        .karaoke()
+        .singers
+        .iter()
+        .find(|singer| singer.name.to_lowercase() == name.trim().to_lowercase())?
+        .range
+}
+
+/// K8: a record's range, from its vocal line — `None` for none known.
+fn record_range(db: &dj_library::Library, track: dj_core::TrackId) -> Option<crate::range::Range> {
+    crate::range::of_line(&db.vocal_line(&track).ok().flatten()?)
+}
+
+/// K8: how each of `tracks` fits `singer` — as recorded, in a key, a
+/// stretch, not at all, or unknown — in order; nothing when the singer has
+/// no range read (docs/KARAOKE.md §11).
+///
+/// # Errors
+/// No library.
+#[tauri::command]
+pub fn karaoke_fits(
+    state: State<'_, AppState>,
+    singer: String,
+    tracks: Vec<String>,
+) -> Result<Vec<crate::range::Fit>, String> {
+    let Some(range) = singer_range(&state, &singer) else {
+        return Ok(Vec::new());
+    };
+    let db = library(&state)?;
+    Ok(tracks
+        .iter()
+        .map(|hex| {
+            let song = dj_core::TrackId::from_hex(hex).and_then(|id| record_range(&db, id));
+            crate::range::fit(range, song)
+        })
+        .collect())
+}
+
+/// K8: a record offered to a singer.
+#[derive(Debug, Clone, Serialize)]
+pub struct SongForDto {
+    pub track: String,
+    pub path: String,
+    pub title: String,
+    pub artist: Option<String>,
+    /// The key it is offered in.
+    pub offer: crate::range::Offer,
+}
+
+/// K8: *Songs for them* — up to ten records from the collection that fit
+/// `singer`, as recorded first. Read off the interface's thread: every
+/// record's vocal line is asked for.
+///
+/// # Errors
+/// No library, or the singer has no range read.
+#[tauri::command]
+pub async fn karaoke_songs_for(
+    app: tauri::AppHandle,
+    singer: String,
+) -> Result<Vec<SongForDto>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state: State<'_, AppState> = app.state();
+        let range = singer_range(&state, &singer)
+            .ok_or_else(|| format!("{singer}'s range has not been read yet."))?;
+        let db = library(&state)?;
+        let tracks = db.all_tracks(usize::MAX >> 1).map_err(|e| e.to_string())?;
+        let ranged: Vec<(usize, crate::range::Range)> = tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(at, track)| Some((at, record_range(&db, track.id)?)))
+            .collect();
+        Ok(crate::range::songs_for(range, &ranged, 10)
+            .into_iter()
+            .map(|(at, offer)| {
+                let track = &tracks[at];
+                SongForDto {
+                    track: track.id.to_hex(),
+                    path: track.path.to_string_lossy().into_owned(),
+                    title: track.display_title(),
+                    artist: track.tags.artist.clone(),
+                    offer,
+                }
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// K8: one reading of every strip, for the range take if one runs; the
 /// range, once read, onto the singer's place in tonight's rotation. On the
 /// listening thread.

@@ -1718,3 +1718,19 @@ keeps 10th to 90th, where the trimmed tail really is the one high note.
 The drive also found the range reaching the rotation unseen by the panel,
 which only re-reads the rotation on its own changes; the Microphones
 section tells it to once a take has read a range.
+
+**Step 2, the suggestions — built (11 October).** Typing a song for a
+singer whose range has been read, each match from the collection is
+marked with how it fits (`commands::karaoke_fits`, `range::fit`): *fits as
+recorded*, *fits -2*, *a stretch at +5*, *out of their range*, or nothing
+for a record never separated. Choosing a match that fits sets the song's
+key to the change offered — a starting key, which the host can still
+move. Beside *Add*, *Songs for them* lists up to ten records that fit
+(`karaoke_songs_for`, `range::songs_for`, read off the interface's
+thread): as recorded first, then the smallest change, then the most room,
+never a stretch; one press asks for the song in its key. Driven in K6's
+home with Ana's range read from the sliding voice (A#2 – D#4): the
+synthetic tune, which sings about A3 to E4, marked *fits -1* — as
+recorded its top is a semitone above her, an octave down its bottom a
+semitone below — and *Songs for Ana* offered *held-a3* as recorded, then
+*sung-tune* at -1; pressing it put Ana up next with *sung-tune* in key -1.
