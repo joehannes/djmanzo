@@ -327,6 +327,18 @@
     {#if rotation?.line}
       <p class="host-line" data-host-line>{rotation.line}</p>
     {/if}
+    {#if rotation?.versus}
+      <!-- K6: the round, two bars. -->
+      <div class="versus" data-versus>
+        {#each rotation.versus as team (team.name)}
+          <div class="team">
+            <span class="name">{team.name}</span>
+            <span class="bar"><span class="fill" style:width="{team.mean ?? 0}%"></span></span>
+            <strong>{team.mean === null ? "—" : Math.round(team.mean)}</strong>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if singer && (rotation?.scores ?? []).some((s) => s.percent !== null)}
       <!-- K6: how the singing is going, small and under the words. -->
       <p class="scores" data-scores>
@@ -549,6 +561,36 @@
     margin: 0;
     font-size: 2.6vh;
     color: rgba(255, 255, 255, 0.9);
+  }
+
+  .versus {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6vh;
+    width: min(60vw, 60vh * 1.6);
+    margin: 0 auto;
+    font-size: 2.4vh;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .versus .team {
+    display: grid;
+    grid-template-columns: 12vw 1fr 5vh;
+    align-items: center;
+    gap: 1vw;
+  }
+
+  .versus .bar {
+    height: 1.2vh;
+    border-radius: 0.6vh;
+    background: rgba(255, 255, 255, 0.15);
+    overflow: hidden;
+  }
+
+  .versus .fill {
+    display: block;
+    height: 100%;
+    background: var(--stem-vocal);
   }
 
   .scores {

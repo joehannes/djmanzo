@@ -1340,3 +1340,22 @@ A3 and the null input singing: A3, Ana read *100%* on the panel and kept
 *Tonight's best: 1. 100 Ana, 2. 0 Bo*. The drive found the list's numbers
 at the screen's edge, away from their centred names — fixed, and nothing
 but looking at it would have seen it.
+
+**Step 4, versus and the room's verdict — built (11 October). K6 is
+complete.** Every song sung now goes into tonight's list, and after each
+*Sang* the room's loudness — the room surface's own microphone reading,
+never a singer's strip — is listened to for eight seconds
+(`score::Applause`); the loudest of it is kept with the song, and a window
+nobody was listening in keeps nothing rather than a silence. The host
+chooses what decides tonight's best — *the singing* or *the room*
+(`Rotation::verdict`); by the room, the night's best-received song is a
+hundred and the rest a share of it (`Rotation::marks`), so the ranking is
+the room's and the numbers stay on one scale. A versus round is two named
+teams (24 characters, a singer on one only) counted from the next song
+sung; each team stands at the mean of its singers' marks by the verdict
+(`Rotation::standing`), shown in the Singers panel and as two bars on the
+singers' screen above *Tonight's best*. *New night* ends the round and puts
+the verdict back to the singing. Driven: two teams set up and started in
+the panel, kept by Rust from tonight's third song, and drawn as two bars
+in WebKitGTK. Not driven: applause from a real room — the room surface's
+microphone is WebKitGTK's mock here, so the number would be the mock's.

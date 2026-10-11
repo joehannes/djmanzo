@@ -28,6 +28,8 @@
     karaokeLine,
     karaokeBringIn,
     karaokeScoring,
+    karaokeVerdict,
+    karaokeVersus,
     vocalLine,
     type VocalLine,
     karaokeMove,
@@ -378,6 +380,21 @@
     return () => clearInterval(timer);
   });
 
+  /**
+   * K6: a versus round being set up — two team names and which team each
+   * singer is on. Sent when the host starts it; Rust keeps the round.
+   */
+  let teamNames = $state(["Team A", "Team B"]);
+  let sides = $state<Record<string, 0 | 1 | null>>({});
+  async function startVersus() {
+    const names = (rotation?.singers ?? []).map((s) => s.name);
+    const teams = [0, 1].map((side) => ({
+      name: teamNames[side],
+      singers: names.filter((name) => sides[name] === side),
+    }));
+    await change(karaokeVersus(teams));
+  }
+
   /** The line as an SVG path, broken where nobody sings, a semitone a unit. */
   function linePath(cents: (number | null)[]): { d: string; low: number; high: number } {
     const sung = cents.filter((c): c is number => c !== null);
@@ -559,6 +576,18 @@
         />
         Score the singers
       </label>
+      <div class="choices" role="group" aria-label="What decides tonight's best">
+        <span>decided by</span>
+        <button
+          aria-pressed={(rotation?.verdict ?? "singing") === "singing"}
+          onclick={() => void change(karaokeVerdict("singing"))}>the singing</button
+        >
+        <button
+          aria-pressed={rotation?.verdict === "room"}
+          title="The room's applause in the eight seconds after Sang, heard by the room's microphone"
+          onclick={() => void change(karaokeVerdict("room"))}>the room</button
+        >
+      </div>
       <div class="key" role="group" aria-label="Key for {upNext.name}">
         <button
           aria-label="Lower the key"
@@ -736,6 +765,50 @@
               >{/if}
           </p>
         {/if}
+      {/if}
+    </section>
+  {/if}
+
+  {#if rotation && rotation.singers.length > 1}
+    <!-- K6: two teams, scored by tonight's verdict, from the next song. -->
+    <section class="versus" aria-label="Versus">
+      {#if rotation.versus}
+        <ul class="standing">
+          {#each rotation.versus as team (team.name)}
+            <li>
+              <strong>{team.name}</strong>
+              {team.mean === null ? "—" : Math.round(team.mean)}
+              <span class="hint">{team.songs} {team.songs === 1 ? "song" : "songs"}: {team.singers.join(", ")}</span>
+            </li>
+          {/each}
+        </ul>
+        <button onclick={() => void change(karaokeVersus(null))}>End the round</button>
+      {:else}
+        <div class="teams">
+          {#each [0, 1] as side (side)}
+            <input aria-label="Team {side + 1}'s name" maxlength="24" bind:value={teamNames[side]} />
+          {/each}
+        </div>
+        <ul class="sides">
+          {#each rotation.singers as person (person.name)}
+            <li>
+              <span>{person.name}</span>
+              <div class="choices" role="group" aria-label="{person.name}'s team">
+                {#each [0, 1] as side (side)}
+                  <button
+                    aria-pressed={sides[person.name] === side}
+                    onclick={() => (sides[person.name] = sides[person.name] === side ? null : (side as 0 | 1))}
+                    >{teamNames[side]}</button
+                  >
+                {/each}
+              </div>
+            </li>
+          {/each}
+        </ul>
+        <button
+          disabled={![0, 1].every((side) => Object.values(sides).includes(side as 0 | 1))}
+          onclick={() => void startVersus()}>Start the round</button
+        >
       {/if}
     </section>
   {/if}
@@ -1092,6 +1165,40 @@
   .done {
     border-color: var(--accent);
     font-weight: 600;
+  }
+
+  .versus {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+
+  .versus .teams {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .versus .teams input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .versus ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .versus .sides li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
   }
 
   .scoring {

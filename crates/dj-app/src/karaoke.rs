@@ -105,10 +105,53 @@ pub struct Sung {
     /// K6: how they scored, 0 to 100, when they were scored.
     #[serde(default)]
     pub score: Option<f32>,
+    /// K6: the loudest the room got in the eight seconds after, 0 to 1, when
+    /// the room was being listened to.
+    #[serde(default)]
+    pub applause: Option<f32>,
+}
+
+/// K6: what decides tonight's best — the singing, scored against the line,
+/// or the room, by its applause.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Verdict {
+    #[default]
+    Singing,
+    Room,
+}
+
+/// K6: a versus round — two teams, and where in tonight's songs it began.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Versus {
+    pub teams: [Team; 2],
+    /// Tonight's songs before this are not the round's.
+    pub from: usize,
+}
+
+/// K6: one team of a versus round.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Team {
+    pub name: String,
+    pub singers: Vec<String>,
+}
+
+/// K6: a team's standing in the round: the mean of its singers' songs, and
+/// how many songs that is.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Standing {
+    pub name: String,
+    pub singers: Vec<String>,
+    pub mean: Option<f32>,
+    pub songs: usize,
 }
 
 /// K6: how many of tonight's best the singers' screen shows.
 pub const BEST: usize = 5;
+
+/// K6: the longest a versus team's name may be, in characters: it is read
+/// across a room, over a bar.
+pub const LONGEST_TEAM: usize = 24;
 
 /// The night's rotation: the singers in the order they will be called, and
 /// everything sung so far.
@@ -124,10 +167,17 @@ pub struct Rotation {
     /// — *Last orders at one*. Empty shows nothing.
     #[serde(default)]
     pub line: String,
-    /// K6: tonight's scored songs, as sung — what *Tonight's best* is drawn
-    /// from. Gone at *New night*, unlike the history.
+    /// K6: tonight's songs, as sung, with their scores and applause — what
+    /// *Tonight's best* and a versus round are drawn from. Gone at *New
+    /// night*, unlike the history.
     #[serde(default)]
     pub tonight: Vec<Sung>,
+    /// K6: what decides tonight's best. The singing, until the host says.
+    #[serde(default)]
+    pub verdict: Verdict,
+    /// K6: a versus round, while there is one.
+    #[serde(default)]
+    pub versus: Option<Versus>,
     /// K6: the host has switched scoring off for the night. On again at *New
     /// night*.
     #[serde(default)]
@@ -265,8 +315,10 @@ impl Rotation {
             track: song.track,
             key: song.key,
             score: None,
+            applause: None,
         };
         self.history.push(sung.clone());
+        self.tonight.push(sung.clone());
         self.singers.push(singer);
         Some(sung)
     }
@@ -413,28 +465,121 @@ impl Rotation {
         self.line.clear();
         self.tonight.clear();
         self.unscored = false;
+        self.verdict = Verdict::Singing;
+        self.versus = None;
     }
 
     /// K6: the song just sung scored `percent` — kept with it in the
     /// history, and among tonight's. Answers whether there was a song to
     /// keep it with.
     pub fn scored(&mut self, percent: f32) -> bool {
+        let score = Some(percent.clamp(0.0, 100.0));
         let Some(last) = self.history.last_mut() else {
             return false;
         };
-        last.score = Some(percent.clamp(0.0, 100.0));
-        self.tonight.push(last.clone());
+        last.score = score;
+        if let Some(tonight) = self.tonight.last_mut() {
+            tonight.score = score;
+        }
         true
     }
 
-    /// K6: tonight's best, highest first, at most [`BEST`] — the earlier of
-    /// two equal scores first, since they got there first.
+    /// K6: the room's applause after tonight's song at `index`, the loudest
+    /// it got, 0 to 1. Answers whether there was such a song.
+    pub fn applauded(&mut self, index: usize, loudness: f32) -> bool {
+        let Some(sung) = self.tonight.get_mut(index) else {
+            return false;
+        };
+        sung.applause = Some(loudness.clamp(0.0, 1.0));
+        true
+    }
+
+    /// K6: tonight's songs as the verdict marks them, 0 to 100: the singing's
+    /// score, or the room's applause as a share of the night's loudest — so
+    /// the night's best-received song is a hundred, and the rest as near to
+    /// it as the room made them. `None` for a song the verdict has nothing on.
+    #[must_use]
+    pub fn marks(&self) -> Vec<Option<f32>> {
+        match self.verdict {
+            Verdict::Singing => self.tonight.iter().map(|sung| sung.score).collect(),
+            Verdict::Room => {
+                let loudest = self
+                    .tonight
+                    .iter()
+                    .filter_map(|sung| sung.applause)
+                    .fold(0.0f32, f32::max);
+                self.tonight
+                    .iter()
+                    .map(|sung| {
+                        sung.applause
+                            .filter(|_| loudest > 0.0)
+                            .map(|a| 100.0 * a / loudest)
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// K6: tonight's best by the verdict, highest first, at most [`BEST`] —
+    /// each carrying its mark as its score; the earlier of two equal marks
+    /// first, since it got there first. A song the verdict has nothing on is
+    /// not among them.
     #[must_use]
     pub fn best(&self) -> Vec<Sung> {
-        let mut best = self.tonight.clone();
+        let mut best: Vec<Sung> = self
+            .tonight
+            .iter()
+            .zip(self.marks())
+            .filter_map(|(sung, mark)| {
+                mark.map(|mark| Sung {
+                    score: Some(mark),
+                    ..sung.clone()
+                })
+            })
+            .collect();
         best.sort_by(|a, b| b.score.unwrap_or(0.0).total_cmp(&a.score.unwrap_or(0.0)));
         best.truncate(BEST);
         best
+    }
+
+    /// K6: start a versus round between two teams, from the next song sung.
+    pub fn start_versus(&mut self, teams: [Team; 2]) {
+        self.versus = Some(Versus {
+            teams,
+            from: self.tonight.len(),
+        });
+    }
+
+    /// K6: the round's standing: each team's mean mark over the songs its
+    /// singers have sung since the round began, by the verdict.
+    #[must_use]
+    pub fn standing(&self) -> Option<[Standing; 2]> {
+        let versus = self.versus.as_ref()?;
+        let marks = self.marks();
+        let team = |team: &Team| {
+            let theirs: Vec<f32> = self
+                .tonight
+                .iter()
+                .zip(&marks)
+                .skip(versus.from)
+                .filter(|(sung, _)| {
+                    team.singers
+                        .iter()
+                        .any(|name| crate::guests::same_name(name, &sung.singer))
+                })
+                .filter_map(|(_, mark)| *mark)
+                .collect();
+            #[allow(clippy::cast_precision_loss)]
+            let mean =
+                (!theirs.is_empty()).then(|| theirs.iter().sum::<f32>() / theirs.len() as f32);
+            Standing {
+                name: team.name.clone(),
+                singers: team.singers.clone(),
+                mean,
+                songs: theirs.len(),
+            }
+        };
+        Some([team(&versus.teams[0]), team(&versus.teams[1])])
     }
 
     /// K4: the host's line on the singers' screen: whitespace folded to one
@@ -730,6 +875,70 @@ mod tests {
         assert!(!rotation.unscored, "scoring stayed off into the next night");
         assert_eq!(rotation.history[1].score, Some(91.5));
         assert!(!Rotation::default().scored(50.0), "a score with no song");
+    }
+
+    /// **K6: the room's verdict, and a versus round.** By the room, the
+    /// best-received song is a hundred and the rest a share of it; a song
+    /// with no applause heard is not ranked. A round counts only songs sung
+    /// since it began, each team the mean of its singers' marks — and the
+    /// verdict decides those too.
+    #[test]
+    fn the_rooms_verdict_and_a_versus_round() {
+        let mut rotation = night(&[("Ana", "A"), ("Bo", "B"), ("Cy", "C"), ("Di", "D")]);
+        rotation.sang();
+        rotation.scored(90.0);
+        rotation.start_versus([
+            Team {
+                name: "Reds".to_owned(),
+                singers: vec!["Bo".to_owned(), "cy".to_owned()],
+            },
+            Team {
+                name: "Blues".to_owned(),
+                singers: vec!["Ana".to_owned(), "Di".to_owned()],
+            },
+        ]);
+        for score in [60.0, 80.0, 70.0] {
+            rotation.sang();
+            rotation.scored(score);
+        }
+        assert!(rotation.applauded(1, 0.4));
+        assert!(rotation.applauded(2, 0.8));
+        assert!(rotation.applauded(3, 0.2));
+        assert!(!rotation.applauded(9, 0.5));
+
+        let standing = rotation.standing().unwrap();
+        assert_eq!(
+            (standing[0].mean, standing[0].songs),
+            (Some(70.0), 2),
+            "Bo and Cy"
+        );
+        assert_eq!(
+            (standing[1].mean, standing[1].songs),
+            (Some(70.0), 1),
+            "Di only: Ana sang before"
+        );
+
+        rotation.verdict = Verdict::Room;
+        let best: Vec<(String, f32)> = rotation
+            .best()
+            .into_iter()
+            .map(|sung| (sung.singer, sung.score.unwrap()))
+            .collect();
+        assert_eq!(
+            best,
+            [
+                ("Cy".to_owned(), 100.0),
+                ("Bo".to_owned(), 50.0),
+                ("Di".to_owned(), 25.0)
+            ]
+        );
+        let standing = rotation.standing().unwrap();
+        assert_eq!(standing[0].mean, Some(75.0));
+        assert_eq!(standing[1].mean, Some(25.0));
+
+        rotation.clear();
+        assert_eq!(rotation.verdict, Verdict::Singing);
+        assert!(rotation.standing().is_none());
     }
 
     fn calling(rotation: &Rotation) -> Vec<String> {

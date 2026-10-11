@@ -127,6 +127,22 @@ test.describe("§107: the singers' screen", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /** **K6: a versus round's two bars**, each team's mean as Rust stands it. */
+  test("shows a versus round as two bars", async ({ page }) => {
+    const round = {
+      ...ROTATION,
+      versus: [
+        { name: "Reds", singers: ["Ana"], mean: 72.6, songs: 2 },
+        { name: "Blues", singers: ["Ben"], mean: null, songs: 0 },
+      ],
+    };
+    await openShell(page, "/?panel=singers", {}, { singer_lyrics: WORDS, karaoke_rotation: round });
+    const versus = page.locator(`${SCREEN} [data-versus]`);
+    await expect(versus.locator(".team")).toHaveText([/Reds\s*73/, /Blues\s*—/]);
+    await expect(versus.locator(".fill").first()).toHaveAttribute("style", /width: 72.6%/);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /**
    * **K4: the singer's approved photo, while they sing** — and not before:
    * the screen asks for the singer at the top of the rotation only while

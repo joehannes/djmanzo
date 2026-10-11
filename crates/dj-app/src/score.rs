@@ -89,6 +89,44 @@ impl Scoring {
     }
 }
 
+/// K6: how long after *Sang* the room's applause is listened to, in seconds.
+pub const APPLAUSE_SECONDS: f64 = 8.0;
+
+/// K6: listening for the room's applause after tonight's song at `index` —
+/// the loudest the room microphone gets in [`APPLAUSE_SECONDS`]. The room
+/// microphone, never a singer's strip: the applause is the room's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Applause {
+    /// The song it is for, in tonight's songs.
+    pub index: usize,
+    started: f64,
+    loudest: Option<f32>,
+}
+
+impl Applause {
+    /// Begin listening at `now`, in seconds on any steady clock.
+    #[must_use]
+    pub const fn new(index: usize, now: f64) -> Self {
+        Self {
+            index,
+            started: now,
+            loudest: None,
+        }
+    }
+
+    /// A reading of the room's loudness at `now`. Inside the window it is
+    /// taken; the first reading after it closes the window and answers with
+    /// the loudest heard — `Some(None)` when nothing was heard in it, which
+    /// is a room not being listened to, not a silent one.
+    pub fn heard(&mut self, now: f64, loudness: f32) -> Option<Option<f32>> {
+        if now - self.started > APPLAUSE_SECONDS {
+            return Some(self.loudest);
+        }
+        self.loudest = Some(self.loudest.map_or(loudness, |was| was.max(loudness)));
+        None
+    }
+}
+
 /// What one heard pitch is worth against one point of the line.
 #[must_use]
 pub fn grade(heard: f32, line: f32) -> f32 {
@@ -318,6 +356,24 @@ mod tests {
         assert!((scoring.score_of("ana").unwrap() - 50.0).abs() < 0.1);
         assert!(scoring.score_of("Bo").unwrap() > 99.9);
         assert_eq!(scoring.score_of("Cy"), None);
+    }
+
+    /// **K6: the applause is the loudest of the eight seconds after.** The
+    /// room's readings inside the window are taken, the first one after
+    /// closes it and is not counted; a window nothing was heard in says so.
+    #[test]
+    fn the_applause_is_the_loudest_of_the_eight_seconds_after() {
+        let mut applause = Applause::new(3, 100.0);
+        assert_eq!(applause.heard(101.0, 0.4), None);
+        assert_eq!(applause.heard(104.0, 0.9), None);
+        assert_eq!(applause.heard(107.5, 0.6), None);
+        assert_eq!(
+            applause.heard(109.0, 1.0),
+            Some(Some(0.9)),
+            "the closing reading counted"
+        );
+        let mut unheard = Applause::new(0, 0.0);
+        assert_eq!(unheard.heard(20.0, 0.8), Some(None));
     }
 
     /// **A restart starts again from where the song is**, rather than

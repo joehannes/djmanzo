@@ -3056,6 +3056,17 @@ export async function openShell(
               }
               if (song) song.asks = null;
             }
+            // K6: the verdict and a versus round, kept as sent; the standing is
+            // whatever the test put in `__rotation.versus`.
+            if (cmd === "karaoke_verdict") {
+              (rotation as { verdict?: string }).verdict = String(args.verdict);
+            }
+            if (cmd === "karaoke_versus") {
+              const teams = args.teams as { name: string; singers: string[] }[] | null;
+              (rotation as { versus?: unknown }).versus = teams
+                ? teams.map((t) => ({ ...t, mean: null, songs: 0 }))
+                : null;
+            }
             // K6: scoring switched for the night, as `karaoke_scoring` keeps it.
             if (cmd === "karaoke_scoring") {
               (rotation as { unscored?: boolean }).unscored = !args.on;

@@ -378,3 +378,52 @@ test.describe("K6: the line a song's voice sings", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+test.describe("K6: versus, and the room's verdict", () => {
+  const song = (title: string) => [{ title, track: null, path: null, key: 0 }];
+  const rotation = {
+    singers: [
+      { name: "Ana", songs: song("Valerie"), turns: 0 },
+      { name: "Bo", songs: song("Jolene"), turns: 0 },
+      { name: "Cy", songs: song("Respect"), turns: 0 },
+    ],
+    up_next: "Ana",
+    lately: [],
+  };
+
+  /**
+   * **The host decides what decides, and names two teams.** The verdict is
+   * sent as pressed; a round starts only with a singer on each side, sends
+   * the teams as set up, shows where each stands, and ends on a press.
+   */
+  test("the verdict is the host's, and a versus round is set up, shown and ended", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: rotation });
+    const singers = page.locator(SINGERS);
+    const verdict = singers.getByRole("group", { name: "What decides tonight's best" });
+    await expect(verdict.getByRole("button", { name: "the singing" })).toHaveAttribute("aria-pressed", "true");
+    await verdict.getByRole("button", { name: "the room" }).click();
+    await expect(verdict.getByRole("button", { name: "the room" })).toHaveAttribute("aria-pressed", "true");
+    expect((await calls(page)).filter((c) => c.cmd === "karaoke_verdict").at(-1)).toMatchObject({ verdict: "room" });
+
+    const versus = singers.getByRole("region", { name: "Versus" });
+    await versus.getByRole("textbox", { name: "Team 1's name" }).fill("Reds");
+    await versus.getByRole("textbox", { name: "Team 2's name" }).fill("Blues");
+    const start = versus.getByRole("button", { name: "Start the round" });
+    await versus.getByRole("group", { name: "Ana's team" }).getByRole("button", { name: "Reds" }).click();
+    await expect(start).toBeDisabled();
+    await versus.getByRole("group", { name: "Bo's team" }).getByRole("button", { name: "Blues" }).click();
+    await versus.getByRole("group", { name: "Cy's team" }).getByRole("button", { name: "Reds" }).click();
+    await start.click();
+    expect((await calls(page)).filter((c) => c.cmd === "karaoke_versus").at(-1)).toMatchObject({
+      teams: [
+        { name: "Reds", singers: ["Ana", "Cy"] },
+        { name: "Blues", singers: ["Bo"] },
+      ],
+    });
+    await expect(versus.getByRole("listitem")).toHaveText([/Reds\s+—\s+0 songs: Ana, Cy/, /Blues\s+—\s+0 songs: Bo/]);
+    await versus.getByRole("button", { name: "End the round" }).click();
+    expect((await calls(page)).filter((c) => c.cmd === "karaoke_versus").at(-1)).toMatchObject({ teams: null });
+    await expect(start).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

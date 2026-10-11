@@ -15383,6 +15383,11 @@ pub struct RotationDto {
     pub best: Vec<crate::karaoke::Sung>,
     /// K6: the host has switched scoring off for the night.
     pub unscored: bool,
+    /// K6: what decides tonight's best: `singing` or `room`.
+    pub verdict: crate::karaoke::Verdict,
+    /// K6: the versus round's two teams and where each stands, while there
+    /// is one.
+    pub versus: Option<[crate::karaoke::Standing; 2]>,
 }
 
 /// K6: one singer's score through the song being sung.
@@ -15416,6 +15421,8 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         scores: Vec::new(),
         best: rotation.best(),
         unscored: rotation.unscored,
+        verdict: rotation.verdict,
+        versus: rotation.standing(),
     }
 }
 
@@ -15510,6 +15517,74 @@ pub(crate) fn score_heard(state: &AppState, heard: &[Option<f32>]) {
             }
         }
     }
+}
+
+/// K6: what decides tonight's best — `singing` or `room`.
+///
+/// # Errors
+/// A verdict that is neither.
+#[tauri::command]
+pub fn karaoke_verdict(state: State<'_, AppState>, verdict: String) -> Result<RotationDto, String> {
+    let verdict = match verdict.as_str() {
+        "singing" => crate::karaoke::Verdict::Singing,
+        "room" => crate::karaoke::Verdict::Room,
+        other => return Err(format!("no verdict called {other}")),
+    };
+    Ok(with_rotation(&state, |rotation| {
+        let changed = rotation.verdict != verdict;
+        rotation.verdict = verdict;
+        changed
+    }))
+}
+
+/// K6: one team, as the Singers panel names it.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TeamIn {
+    pub name: String,
+    pub singers: Vec<String>,
+}
+
+/// K6: start a versus round between two teams, from the next song sung —
+/// or end it, with no teams.
+///
+/// # Errors
+/// Anything but two teams, a team with no name, or a singer on both.
+#[tauri::command]
+pub fn karaoke_versus(
+    state: State<'_, AppState>,
+    teams: Option<Vec<TeamIn>>,
+) -> Result<RotationDto, String> {
+    let Some(teams) = teams else {
+        return Ok(with_rotation(&state, |rotation| {
+            rotation.versus.take().is_some()
+        }));
+    };
+    let [first, second]: [TeamIn; 2] = teams
+        .try_into()
+        .map_err(|_| "a versus round is two teams".to_owned())?;
+    let team = |team: TeamIn| -> Result<crate::karaoke::Team, String> {
+        let name = team.name.split_whitespace().collect::<Vec<_>>().join(" ");
+        if name.is_empty() {
+            return Err("each team needs a name".to_owned());
+        }
+        Ok(crate::karaoke::Team {
+            name: name.chars().take(crate::karaoke::LONGEST_TEAM).collect(),
+            singers: team.singers,
+        })
+    };
+    let teams = [team(first)?, team(second)?];
+    if let Some(both) = teams[0].singers.iter().find(|a| {
+        teams[1]
+            .singers
+            .iter()
+            .any(|b| crate::guests::same_name(a, b))
+    }) {
+        return Err(format!("{both} is on both teams"));
+    }
+    Ok(with_rotation(&state, |rotation| {
+        rotation.start_versus(teams);
+        true
+    }))
 }
 
 /// K6: switch scoring on or off for the night.
@@ -15963,6 +16038,15 @@ pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
             .and_then(|(singer, scores)| scores.score_of(&singer))
         {
             rotation.scored(percent);
+        }
+        // K6: and the room's applause for it, listened for from now.
+        if sung.is_some()
+            && let Ok(mut applause) = state.applause().lock()
+        {
+            *applause = Some(crate::score::Applause::new(
+                rotation.tonight.len().saturating_sub(1),
+                crate::library::now_seconds() as f64,
+            ));
         }
         called = sung.is_some() && rotation.up_next().is_some();
         sung.is_some()
@@ -19536,6 +19620,20 @@ pub fn room_saw(
         .lock()
         .map_err(|_| "the room's readings are poisoned")?
         .saw(reading, phase);
+
+    // K6: the applause after the last song, if it is being listened for.
+    if let Some(loudness) = loudness {
+        let closed = state.applause().lock().ok().and_then(|mut slot| {
+            let heard = slot
+                .as_mut()?
+                .heard(crate::library::now_seconds() as f64, loudness)?;
+            let index = slot.take()?.index;
+            Some((index, heard))
+        });
+        if let Some((index, Some(loudest))) = closed {
+            let _ = with_rotation(&state, |rotation| rotation.applauded(index, loudest));
+        }
+    }
     Ok(())
 }
 

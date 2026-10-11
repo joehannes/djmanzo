@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Versus, and the room's verdict (K6).** Name two teams in the Singers
+  panel and start a round: each team stands at the mean of its singers'
+  songs from then on, shown as two bars on the singers' screen. Choose
+  whether tonight's best is decided by the singing or by the room — the
+  applause the room's microphone hears in the eight seconds after *Sang*.
+
 - **Scored singing (K6).** While a singer sings into a microphone the rotation
   put them on, djmanzo scores them against the line their song's voice
   sings — an octave up or down counts, in the key the host set, a breath

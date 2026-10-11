@@ -5009,7 +5009,26 @@ export interface Rotation {
   best?: Sung[];
   /** K6: the host has switched scoring off for the night. */
   unscored?: boolean;
+  /** K6: what decides tonight's best. */
+  verdict?: "singing" | "room";
+  /** K6: the versus round's two teams and where each stands. */
+  versus?: TeamStanding[] | null;
 }
+
+/** K6: one team of a versus round, and where it stands. */
+export interface TeamStanding {
+  name: string;
+  singers: string[];
+  /** The mean of its singers' marks this round, 0 to 100. */
+  mean: number | null;
+  songs: number;
+}
+
+/** K6: what decides tonight's best. */
+export const karaokeVerdict = (verdict: "singing" | "room") => invoke<Rotation>("karaoke_verdict", { verdict });
+/** K6: start a versus round between two teams, or end it with null. */
+export const karaokeVersus = (teams: { name: string; singers: string[] }[] | null) =>
+  invoke<Rotation>("karaoke_versus", { teams });
 
 /** K6: one singer's score through the song being sung. */
 export interface SingerScore {

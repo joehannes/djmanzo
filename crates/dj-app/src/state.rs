@@ -301,6 +301,8 @@ pub struct AppState {
     breaks: Mutex<crate::breaks::Held>,
     /// K6: the song being scored and each singer's score through it.
     scoring: Mutex<crate::score::Scoring>,
+    /// K6: the room's applause being listened for, after the last *Sang*.
+    applause: Mutex<Option<crate::score::Applause>>,
     /// K4: held across every read-change-write of the rotation's file, so
     /// names arriving from phones and the host's own changes cannot write
     /// over each other.
@@ -614,6 +616,7 @@ impl AppState {
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
             scoring: Mutex::new(crate::score::Scoring::default()),
+            applause: Mutex::new(None),
             karaoke_lock: Mutex::new(()),
             on_mics: Mutex::new(Vec::new()),
             interface_density: Mutex::new("Standard".to_owned()),
@@ -1604,6 +1607,12 @@ impl AppState {
     #[must_use]
     pub fn scoring(&self) -> &Mutex<crate::score::Scoring> {
         &self.scoring
+    }
+
+    /// K6: the room's applause being listened for, after the last *Sang*.
+    #[must_use]
+    pub fn applause(&self) -> &Mutex<Option<crate::score::Applause>> {
+        &self.applause
     }
 
     /// §107: break music, its settings and its machine.
