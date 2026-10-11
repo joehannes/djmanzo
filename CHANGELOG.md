@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A quiz made from the collection (K7).** *Quiz* in the Singers panel
+  asks questions about the DJ's own records: a ten-second clip from a third
+  of the way in to name, played as recorded, backwards, or as a chipmunk —
+  half as fast again with keylock off. Four answers each, the record and
+  three of its neighbours — its own genre family within a tenth of its
+  tempo — so a bachata question is not answered by three techno titles.
+  The host chooses the deck, the kinds and the round's length, asks each
+  question, plays it again, and shows the answer; after every clip the deck
+  is put back as it was found.
+
 - **Versus, and the room's verdict (K6).** Name two teams in the Singers
   panel and start a round: each team stands at the mean of its singers'
   songs from then on, shown as two bars on the singers' screen. Choose

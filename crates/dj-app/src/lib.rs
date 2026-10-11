@@ -84,6 +84,7 @@ pub mod plugins;
 pub mod practice;
 pub mod presets;
 pub mod profile;
+pub mod quiz;
 pub mod rackcapture;
 pub mod regress;
 pub mod remembered;
@@ -560,6 +561,9 @@ pub fn run() {
                         let now = std::time::Instant::now()
                             .duration_since(*START)
                             .as_secs_f64();
+                        // K7's clips, on the same pump: started once their
+                        // record is on the deck, put back once over.
+                        crate::commands::tick_quiz(&state, now);
                         if let Some(deck) = crate::commands::tick_breaks(&state, now) {
                             let handle = handle.clone();
                             std::thread::spawn(move || {
@@ -1010,6 +1014,12 @@ pub fn run() {
             commands::word_timing_run,
             commands::karaoke_breaks,
             commands::karaoke_breaks_set,
+            commands::quiz,
+            commands::quiz_set,
+            commands::quiz_next,
+            commands::quiz_again,
+            commands::quiz_reveal,
+            commands::quiz_end,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::list_events,

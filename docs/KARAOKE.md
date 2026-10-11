@@ -1455,3 +1455,34 @@ make up. Music from outside the collection. Prizes.
 Held by tests of each rule over a small library of known records, over a
 real socket for the phones, and driven with a phone-sized browser against
 the running application, as K4 was.
+
+**Step 1, the questions — built (11 October).** `quiz::ask` draws a record
+not asked yet that has a title, an artist and at least thirty seconds, and
+`quiz::decoys` its three neighbours: ranked same family first, then within
+a tenth of the tempo, then by tempo, one of each title. The three are drawn
+from the closest tier when it holds three, so a slow bachata never stands
+beside a bachata at 128 while three nearer ones are left, and only short of
+that from the six nearest. The clip starts a third of the way in, back to
+the phrase boundary there when the record has one, and early enough to fit
+(`quiz::clip_from`). `quiz::Clip` plays it through the ordinary vocabulary
+— `sync_off` if the deck was synced, `keylock_off` and `pitch 0.5` for a
+chipmunk, else `pitch 0`, the seek, `reverse_on` for backwards from the
+clip's end, `play` — once the snapshot pump sees the record on the deck,
+and on the pump puts the deck back when the clip is past its end (its
+start, backwards), stopped, gone, or five seconds past how long it should
+take: paused, then its reverse, pitch fader, keylock and sync as found. A
+record that is no longer the quiz's is not paused. The deck is refused
+while it plays the host's record, holds the next singer's song, or is
+break music's. The Singers panel's *Quiz* sets the count (five, ten,
+fifteen), the deck and the kinds — the last one cannot be switched off —
+and has *Start the quiz*, *Next question*, *Play it again*, *Show the
+answer* and *End the quiz*; the right answer is not sent to the panel until
+it is shown, because the panel may be on a screen the room sees. Driven
+with five tagged records: deck 2 playing was refused in words; on deck 1, a
+backwards clip played from 0:30 to 0:19 of a sixty-second record and the
+deck paused with reverse off; a chipmunk played at +50 % with keylock off
+and was put back at 0 % with keylock on, as found. The drive found two
+things: quick presses on the round's settings each built on the panel's
+stale copy and undid the one before (now kept before sending), and a
+refusal stayed on screen after the host chose another deck (now cleared by
+any change to the settings).

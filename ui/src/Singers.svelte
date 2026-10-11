@@ -32,6 +32,14 @@
     karaokeVersus,
     vocalLine,
     type VocalLine,
+    quiz as readQuiz,
+    quizAgain,
+    quizEnd,
+    quizNext,
+    quizReveal,
+    quizSet,
+    type Quiz,
+    type QuizKind,
     karaokeMove,
     karaokeNotHere,
     karaokeRefuse,
@@ -507,6 +515,57 @@
   );
   const waiting = $derived((rotation?.singers ?? []).filter((s) => s.songs.length > 0));
 
+  /**
+   * K7: a quiz made from the collection — `dj_app::quiz` makes the questions
+   * and plays each clip on its deck; this sets a round and asks the next
+   * question when the host says so. Nothing advances on its own: a room
+   * needs the host's timing.
+   */
+  let quiz = $state<Quiz | null>(null);
+  const LETTERS = ["A", "B", "C", "D"] as const;
+  const QUIZ_KINDS: [QuizKind, string][] = [
+    ["name-it", "Name it"],
+    ["backwards", "Backwards"],
+    ["chipmunk", "Chipmunk"],
+  ];
+
+  async function quizDo(done: Promise<Quiz>) {
+    error = "";
+    try {
+      quiz = await done;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  function setQuiz(change: Partial<Pick<Quiz, "deck" | "kinds" | "count">>) {
+    if (!quiz) return;
+    // Kept before it is sent, so a second press before the answer builds on
+    // the first rather than undoing it.
+    const next = { ...quiz, ...change };
+    quiz = next;
+    void quizDo(quizSet(next.deck, next.kinds, next.count, deckCount));
+  }
+
+  function toggleKind(kind: QuizKind) {
+    if (!quiz) return;
+    const kinds = quiz.kinds.includes(kind) ? quiz.kinds.filter((k) => k !== kind) : [...quiz.kinds, kind];
+    if (kinds.length > 0) setQuiz({ kinds });
+  }
+
+  $effect(() => {
+    if (!enabled) return;
+    void quizDo(readQuiz());
+  });
+
+  // While a clip plays, asked again so the line under it says when it is over.
+  const quizPlaying = $derived(quiz?.playing ?? false);
+  $effect(() => {
+    if (!enabled || !quizPlaying) return;
+    const timer = setInterval(() => void quizDo(readQuiz()), 1000);
+    return () => clearInterval(timer);
+  });
+
   function signed(key: number): string {
     return key > 0 ? `+${key}` : `${key}`;
   }
@@ -810,6 +869,65 @@
           onclick={() => void startVersus()}>Start the round</button
         >
       {/if}
+    </section>
+  {/if}
+
+  {#if quiz}
+    <!--
+      K7: a quiz between singers, made by rules from the collection. Each
+      clip plays on the quiz's deck and the deck is put back after it.
+    -->
+    <section class="quiz" aria-label="Quiz" data-quiz>
+      <div class="quiz-row">
+        <div class="choices" role="group" aria-label="Quiz questions a round">
+          {#each quiz.counts as count (count)}
+            <button aria-pressed={quiz.count === count} onclick={() => setQuiz({ count })}>{count}</button>
+          {/each}
+          <span>questions</span>
+        </div>
+        <div class="choices" role="group" aria-label="Quiz deck">
+          <span>on deck</span>
+          {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
+            <button aria-pressed={quiz.deck === deck} onclick={() => setQuiz({ deck })}>{deck}</button>
+          {/each}
+        </div>
+        <div class="choices" role="group" aria-label="Quiz kinds">
+          {#each QUIZ_KINDS as [kind, words] (kind)}
+            <button aria-pressed={quiz.kinds.includes(kind)} onclick={() => toggleKind(kind)}>{words}</button>
+          {/each}
+        </div>
+      </div>
+      {#if quiz.question}
+        <p class="asking">
+          <span class="mono">{quiz.question.number}/{quiz.count}</span>
+          <strong>{quiz.question.words}</strong>
+          {#if quiz.playing}<span class="hint" role="status">playing the clip</span>{/if}
+        </p>
+        <ol class="answers" aria-label="Answers">
+          {#each quiz.question.answers as answer, at (at)}
+            <li data-right={quiz.question.right === at || undefined}>
+              <span class="letter mono">{LETTERS[at]}</span>{answer}
+            </li>
+          {/each}
+        </ol>
+      {/if}
+      {#if quiz.problem}
+        <p class="problem" role="status">{quiz.problem}</p>
+      {:else if quiz.quiet}
+        <p class="problem" role="status">Deck {quiz.deck}'s fader is down: the room will not hear the clip.</p>
+      {/if}
+      <div class="quiz-row">
+        <button disabled={quiz.asked >= quiz.count} onclick={() => void quizDo(quizNext())}
+          >{quiz.question ? "Next question" : "Start the quiz"}</button
+        >
+        {#if quiz.question}
+          <button onclick={() => void quizDo(quizAgain())}>Play it again</button>
+          <button disabled={quiz.question.right !== null} onclick={() => void quizDo(quizReveal())}
+            >Show the answer</button
+          >
+          <button onclick={() => void quizDo(quizEnd())}>End the quiz</button>
+        {/if}
+      </div>
     </section>
   {/if}
 
@@ -1199,6 +1317,53 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+
+  .quiz {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+
+  .quiz-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+  }
+
+  .quiz .asking {
+    margin: 0;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .quiz .answers {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .quiz .answers .letter {
+    display: inline-block;
+    width: 1.4rem;
+    color: var(--text-dim);
+  }
+
+  .quiz .answers li[data-right] {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .quiz .problem {
+    color: var(--warn);
+    margin: 0;
   }
 
   .scoring {

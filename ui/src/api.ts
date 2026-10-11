@@ -5315,6 +5315,47 @@ export const karaokeBreaksSet = (
   mixOut: boolean,
 ) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks, lead, mixOut });
 
+/** K7: a kind of quiz question, from `dj_app::quiz::Kind`. */
+export type QuizKind = "name-it" | "backwards" | "chipmunk";
+
+/** K7: the open question, from `dj_app::commands::QuizQuestionDto`. */
+export interface QuizQuestion {
+  kind: QuizKind;
+  /** What the screen calls the kind. */
+  words: string;
+  /** *Title — Artist*, A to D. */
+  answers: [string, string, string, string];
+  /** Which is right, once revealed; null until then. */
+  right: number | null;
+  /** Counted from one. */
+  number: number;
+}
+
+/** K7: the quiz, from `dj_app::commands::QuizDto`. */
+export interface Quiz {
+  /** The deck the clips play on, counted from one. */
+  deck: number;
+  kinds: QuizKind[];
+  count: number;
+  counts: number[];
+  /** How many of the round's questions have been asked. */
+  asked: number;
+  question: QuizQuestion | null;
+  /** A clip is being put on its deck or playing. */
+  playing: boolean;
+  problem: string | null;
+  /** The quiz deck's fader is down. */
+  quiet: boolean;
+}
+
+export const quiz = () => invoke<Quiz>("quiz");
+export const quizSet = (deck: number, kinds: QuizKind[], count: number, decks: number) =>
+  invoke<Quiz>("quiz_set", { deck, kinds, count, decks });
+export const quizNext = () => invoke<Quiz>("quiz_next");
+export const quizAgain = () => invoke<Quiz>("quiz_again");
+export const quizReveal = () => invoke<Quiz>("quiz_reveal");
+export const quizEnd = () => invoke<Quiz>("quiz_end");
+
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for
  * it. From `dj_app::activity`.

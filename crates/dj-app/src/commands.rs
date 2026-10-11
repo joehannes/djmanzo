@@ -17391,6 +17391,381 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
     }
 }
 
+/// K7: a quiz question as the host's panel draws it. Which answer is right
+/// is left out until it is revealed: the panel is on a screen a room can see.
+#[derive(Debug, Clone, Serialize)]
+pub struct QuizQuestionDto {
+    pub kind: crate::quiz::Kind,
+    /// What the screen calls the kind.
+    pub words: &'static str,
+    pub answers: [String; 4],
+    pub right: Option<usize>,
+    /// Counted from one.
+    pub number: usize,
+}
+
+/// K7: the quiz as the host's panel draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct QuizDto {
+    /// Counted from one.
+    pub deck: u8,
+    pub kinds: Vec<crate::quiz::Kind>,
+    pub count: usize,
+    pub counts: Vec<usize>,
+    /// How many questions of the round have been asked.
+    pub asked: usize,
+    pub question: Option<QuizQuestionDto>,
+    /// A clip is on its deck, being put there or playing.
+    pub playing: bool,
+    pub problem: Option<String>,
+    /// The quiz deck's fader is down: a clip would play to nobody.
+    pub quiet: bool,
+}
+
+fn quiz_dto(state: &AppState) -> QuizDto {
+    use dj_core::param::DeckParam;
+    let Ok(round) = state.quiz().lock() else {
+        return quiz_view(&crate::quiz::Round::default(), false);
+    };
+    let quiet = dj_core::DeckId::from_human(round.settings.deck)
+        .filter(|deck| deck.index() < state.deck_count())
+        .is_some_and(|deck| {
+            state
+                .registry()
+                .get(dj_core::ParamId::Deck(deck, DeckParam::Volume))
+                < 0.05
+        });
+    quiz_view(&round, quiet)
+}
+
+/// K7: a round as the panel draws it.
+#[must_use]
+pub fn quiz_view(round: &crate::quiz::Round, quiet: bool) -> QuizDto {
+    QuizDto {
+        deck: round.settings.deck,
+        kinds: round.settings.kinds.clone(),
+        count: round.settings.count,
+        counts: crate::quiz::COUNTS.to_vec(),
+        asked: round.asked.len(),
+        question: round.question.as_ref().map(|q| QuizQuestionDto {
+            kind: q.kind,
+            words: q.kind.words(),
+            answers: q.answers.clone(),
+            right: round.revealed.then_some(q.right),
+            number: round.asked.len(),
+        }),
+        playing: round.clip.is_some(),
+        problem: round.problem.clone(),
+        quiet,
+    }
+}
+
+#[cfg(test)]
+mod quiz_view_tests {
+    use super::quiz_view;
+
+    /// **The right answer is not sent before it is shown**: the host's
+    /// panel may be on a screen the room can see.
+    #[test]
+    fn the_answer_is_withheld_until_revealed() {
+        let mut round = crate::quiz::Round::default();
+        round.asked.push(dj_core::TrackId::from_bytes([1; 32]));
+        round.question = Some(crate::quiz::Question {
+            kind: crate::quiz::Kind::Chipmunk,
+            record: dj_core::TrackId::from_bytes([1; 32]),
+            path: std::path::PathBuf::new(),
+            answers: Default::default(),
+            right: 2,
+            from: 0.0,
+        });
+        let hidden = quiz_view(&round, false).question.expect("a question");
+        assert_eq!(hidden.right, None);
+        assert_eq!((hidden.number, hidden.words), (1, "Chipmunk"));
+        round.revealed = true;
+        assert_eq!(quiz_view(&round, false).question.unwrap().right, Some(2));
+    }
+}
+
+/// K7: the quiz, as it is set and where the round has got to.
+#[tauri::command]
+#[must_use]
+pub fn quiz(state: State<'_, AppState>) -> QuizDto {
+    quiz_dto(&state)
+}
+
+/// K7: set the quiz — its deck, the kinds asked, and how many questions a
+/// round is.
+///
+/// # Errors
+/// A deck that is not on screen, no kind, or a count that is not offered.
+#[tauri::command]
+pub fn quiz_set(
+    state: State<'_, AppState>,
+    deck: u8,
+    kinds: Vec<crate::quiz::Kind>,
+    count: usize,
+    decks: u8,
+) -> Result<QuizDto, String> {
+    if deck == 0 || deck > decks.min(state.deck_count() as u8) {
+        return Err(format!("deck {deck} is not on screen"));
+    }
+    if kinds.is_empty() {
+        return Err("choose at least one kind of question".to_owned());
+    }
+    if !crate::quiz::COUNTS.contains(&count) {
+        return Err(format!("a round is not {count} questions"));
+    }
+    if let Ok(mut round) = state.quiz().lock() {
+        if round.clip.is_some() && round.settings.deck != deck {
+            return Err("a clip is playing: wait for it before changing the deck".to_owned());
+        }
+        round.settings = crate::quiz::Settings { deck, kinds, count };
+        // What stopped the last question was about how it was set.
+        round.problem = None;
+    }
+    Ok(quiz_dto(&state))
+}
+
+/// K7: why the quiz may not play on `deck`, if it may not: a deck that is
+/// playing the host's record, holds the next singer's song, or is break
+/// music's.
+fn quiz_deck_refused(state: &AppState, deck: u8, ours: Option<dj_core::TrackId>) -> Option<String> {
+    let Some(id) = dj_core::DeckId::from_human(deck).filter(|d| d.index() < state.deck_count())
+    else {
+        return Some(format!("Deck {deck} is not on screen."));
+    };
+    let on_it = state.deck_track_id(id);
+    let playing = automix_view(state).iter().any(|d| d.id == id && d.playing);
+    if playing && (on_it.is_none() || on_it != ours) {
+        return Some(format!(
+            "Deck {deck} is playing. The quiz plays on a deck nobody is using: choose another, or stop it."
+        ));
+    }
+    let singers = state
+        .karaoke()
+        .up_next()
+        .and_then(|(_, song)| song.track.clone())
+        .and_then(|hex| dj_core::TrackId::from_hex(&hex));
+    if singers.is_some() && singers == on_it {
+        return Some(format!(
+            "Deck {deck} has the next singer's song on it. Choose another deck for the quiz."
+        ));
+    }
+    let breaks = state
+        .breaks()
+        .lock()
+        .ok()
+        .and_then(|held| held.settings.clone())
+        .filter(|settings| settings.on && settings.deck == deck);
+    if breaks.is_some() {
+        return Some(format!(
+            "Break music plays on deck {deck}. Choose another deck for the quiz."
+        ));
+    }
+    None
+}
+
+/// K7: how the quiz finds `deck`, to put it back so.
+fn quiz_found(state: &AppState, deck: u8) -> crate::quiz::Found {
+    use dj_core::param::DeckParam;
+    let registry = state.registry();
+    let get = |p| {
+        dj_core::DeckId::from_human(deck)
+            .map_or(0.0, |id| registry.get(dj_core::ParamId::Deck(id, p)))
+    };
+    crate::quiz::Found {
+        pitch: f64::from(get(DeckParam::Pitch)),
+        keylock: get(DeckParam::Keylock) >= 0.5,
+        reversed: get(DeckParam::Reversed) >= 0.5,
+        synced: get(DeckParam::Synced) >= 0.5,
+    }
+}
+
+/// K7: the clip on its deck put back, if one is — before another is asked,
+/// or the round ends. Answers how the deck was found, which is still how it
+/// should be left: the registry may not have caught up with the putting
+/// back yet.
+fn quiz_put_back(state: &AppState) -> Option<crate::quiz::Found> {
+    let clip = state.quiz().lock().ok()?.clip.take()?;
+    let ours = dj_core::DeckId::from_human(clip.deck).and_then(|deck| state.deck_track_id(deck))
+        == Some(clip.record);
+    perform_quiz(state, &clip.put_back(ours));
+    Some(clip.found)
+}
+
+fn perform_quiz(state: &AppState, actions: &[String]) {
+    for action in actions {
+        // The machine's, like break music's: a seek nobody's hand made.
+        if let Err(error) = perform_by(state, action, dj_control::By::Machine) {
+            tracing::warn!(%error, %action, "quiz action refused");
+        }
+    }
+}
+
+/// K7: put the open question's record on the quiz's deck, if it is not on
+/// it already, and leave the clip for the pump to start once it is there.
+fn quiz_play(state: &AppState, found: crate::quiz::Found) -> Result<(), String> {
+    let (question, deck) = {
+        let round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
+        let question = round
+            .question
+            .clone()
+            .ok_or("there is no question to play")?;
+        (question, round.settings.deck)
+    };
+    let id = dj_core::DeckId::from_human(deck).ok_or("that deck is not on screen")?;
+    let record = library(state)?
+        .track(question.record)
+        .map_err(|e| e.to_string())?
+        .ok_or("that record is not in the collection any more")?;
+    if state.deck_track_id(id) != Some(question.record) {
+        let decoded = decode_file(&record.path)
+            .map_err(|error| format!("{} could not be read: {error}", record.display_title()))?;
+        put_on_deck(state, id, decoded)?;
+    }
+    let clip = crate::quiz::Clip::of(&question, deck, record.sample_rate.as_f64(), found);
+    if let Ok(mut round) = state.quiz().lock() {
+        round.clip = Some(clip);
+    }
+    Ok(())
+}
+
+/// K7: *Next question* — the clip of the last one put back, a record not
+/// asked yet drawn with its three decoys, and its clip put on the deck.
+/// Read and decoded off the interface's thread.
+///
+/// # Errors
+/// The round is over, the deck may not be used, or the collection has no
+/// record left that can be asked about.
+#[tauri::command]
+pub async fn quiz_next(app: tauri::AppHandle) -> Result<QuizDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state: State<'_, AppState> = app.state();
+        let result = quiz_next_on(&state);
+        if let Ok(mut round) = state.quiz().lock() {
+            round.problem = result.err();
+        }
+        quiz_dto(&state)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+fn quiz_next_on(state: &AppState) -> Result<(), String> {
+    let (deck, over, ours) = {
+        let round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
+        (
+            round.settings.deck,
+            round.over(),
+            round.clip.as_ref().map(|clip| clip.record),
+        )
+    };
+    if over {
+        return Err(
+            "That was the round's last question. End the round to start another.".to_owned(),
+        );
+    }
+    if let Some(refused) = quiz_deck_refused(state, deck, ours) {
+        return Err(refused);
+    }
+    let found = quiz_put_back(state).unwrap_or_else(|| quiz_found(state, deck));
+    let tracks = library(state)?
+        .all_tracks(usize::MAX >> 1)
+        .map_err(|e| e.to_string())?;
+    {
+        let mut round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
+        if round.next(&tracks).is_none() {
+            round.question = None;
+            return Err(
+                "No record is left to ask about: a question needs a record with a title and an \
+                 artist, at least thirty seconds long, and three others to stand beside it."
+                    .to_owned(),
+            );
+        }
+    }
+    quiz_play(state, found)
+}
+
+/// K7: the open question's clip again, from its start.
+///
+/// # Errors
+/// No question is open, or the deck may not be used.
+#[tauri::command]
+pub async fn quiz_again(app: tauri::AppHandle) -> Result<QuizDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state: State<'_, AppState> = app.state();
+        let (deck, record) = {
+            let round = state.quiz().lock().map_err(|_| "the quiz is unavailable")?;
+            let record = round
+                .question
+                .as_ref()
+                .map(|q| q.record)
+                .ok_or("there is no question to play again")?;
+            (round.settings.deck, record)
+        };
+        if let Some(refused) = quiz_deck_refused(&state, deck, Some(record)) {
+            return Err(refused);
+        }
+        let found = quiz_put_back(&state).unwrap_or_else(|| quiz_found(&state, deck));
+        quiz_play(&state, found)?;
+        Ok(quiz_dto(&state))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// K7: the open question's answer shown.
+#[tauri::command]
+#[must_use]
+pub fn quiz_reveal(state: State<'_, AppState>) -> QuizDto {
+    if let Ok(mut round) = state.quiz().lock() {
+        round.revealed = round.question.is_some();
+    }
+    quiz_dto(&state)
+}
+
+/// K7: the round over — its clip put back, its questions forgotten.
+#[tauri::command]
+#[must_use]
+pub fn quiz_end(state: State<'_, AppState>) -> QuizDto {
+    quiz_put_back(&state);
+    if let Ok(mut round) = state.quiz().lock() {
+        round.end();
+    }
+    quiz_dto(&state)
+}
+
+/// K7: one step of the quiz's clip, on the snapshot pump: started once its
+/// record is on the deck, the deck put back once it is over.
+pub fn tick_quiz(state: &AppState, now: f64) {
+    let actions = {
+        let Ok(mut round) = state.quiz().lock() else {
+            return;
+        };
+        let Some(clip) = round.clip.as_mut() else {
+            return;
+        };
+        let Some(id) = dj_core::DeckId::from_human(clip.deck) else {
+            round.clip = None;
+            return;
+        };
+        let view = automix_view(state).into_iter().find(|d| d.id == id);
+        let deck = crate::quiz::DeckView {
+            track: state.deck_track_id(id),
+            playing: view.as_ref().is_some_and(|d| d.playing),
+            position: view.as_ref().map_or(0.0, |d| d.position / d.sample_rate),
+        };
+        let step = clip.step(&deck, now);
+        if step.done {
+            round.clip = None;
+        }
+        step.actions
+    };
+    perform_quiz(state, &actions);
+}
+
 /// §107: the words for the record on a deck, for the singers' screen.
 ///
 /// The record's own words first — its tags, or a `.lrc` beside it, read from

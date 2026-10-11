@@ -299,6 +299,8 @@ pub struct AppState {
     automix: Arc<Mutex<crate::automix::Automix>>,
     /// §107: break music between singers.
     breaks: Mutex<crate::breaks::Held>,
+    /// K7: the quiz's round, its open question and its clip.
+    quiz: Mutex<crate::quiz::Round>,
     /// K6: the song being scored and each singer's score through it.
     scoring: Mutex<crate::score::Scoring>,
     /// K6: the room's applause being listened for, after the last *Sang*.
@@ -615,6 +617,7 @@ impl AppState {
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             breaks: Mutex::new(crate::breaks::Held::default()),
+            quiz: Mutex::new(crate::quiz::Round::default()),
             scoring: Mutex::new(crate::score::Scoring::default()),
             applause: Mutex::new(None),
             karaoke_lock: Mutex::new(()),
@@ -1619,6 +1622,12 @@ impl AppState {
     #[must_use]
     pub fn breaks(&self) -> &Mutex<crate::breaks::Held> {
         &self.breaks
+    }
+
+    /// K7: the quiz.
+    #[must_use]
+    pub fn quiz(&self) -> &Mutex<crate::quiz::Round> {
+        &self.quiz
     }
 
     /// §121: the density band the main window is wearing, by name.

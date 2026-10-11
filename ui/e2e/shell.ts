@@ -314,6 +314,33 @@ export const ANSWERS: Record<string, unknown> = {
   crowd_compare: crowd.compare,
   // §107: break music off, as a fresh install has it.
   karaoke_breaks: breaks.off,
+  // K7: no round yet, set as a fresh install has it; a question, should one
+  // be asked, as `dj_app::commands::quiz_view` writes it — the answer
+  // withheld until it is revealed.
+  quiz: {
+    deck: 2,
+    kinds: ["name-it", "backwards", "chipmunk"],
+    count: 10,
+    counts: [5, 10, 15],
+    asked: 0,
+    question: null,
+    playing: false,
+    problem: null,
+    quiet: false,
+  },
+  quiz_question: {
+    kind: "backwards",
+    words: "Backwards",
+    answers: [
+      "Propuesta Indecente — Romeo Santos",
+      "Obsesión — Aventura",
+      "Darte un Beso — Prince Royce",
+      "Eres Mía — Romeo Santos",
+    ],
+    right: null,
+    number: 1,
+  },
+  quiz_right: 1,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -2712,6 +2739,28 @@ export async function openShell(
           if (cmd === "vocal_line") {
             ((win.__lineAsks ??= []) as unknown[]).push(args.track);
             return Promise.resolve(structuredClone((win.__vocalLine ?? answers.vocal_line ?? null) as unknown));
+          }
+          // K7: the quiz. Recorded like the rotation; the questions and
+          // their clips are Rust's and tested there, so a question asked is
+          // the test's `quiz_question`, and its answer `quiz_right`.
+          if (cmd.startsWith("quiz")) {
+            ((win.__quizCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
+            type Held = { asked: number; question: Record<string, unknown> | null } & Record<string, unknown>;
+            const held = (win.__quiz ??= structuredClone(answers.quiz)) as Held;
+            if (cmd === "quiz_set") {
+              Object.assign(held, { deck: args.deck, kinds: args.kinds, count: args.count });
+            } else if (cmd === "quiz_next") {
+              held.asked += 1;
+              held.question = { ...structuredClone(answers.quiz_question as object), number: held.asked, right: null };
+              held.playing = true;
+            } else if (cmd === "quiz_again") {
+              held.playing = true;
+            } else if (cmd === "quiz_reveal" && held.question) {
+              held.question.right = answers.quiz_right;
+            } else if (cmd === "quiz_end") {
+              Object.assign(held, { asked: 0, question: null, playing: false });
+            }
+            return Promise.resolve(structuredClone(held));
           }
           if (cmd === "karaoke_breaks" || cmd === "karaoke_breaks_set") {
             ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });

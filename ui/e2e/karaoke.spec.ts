@@ -427,3 +427,93 @@ test.describe("K6: versus, and the room's verdict", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+test.describe("K7: a quiz made from the collection", () => {
+  const quizCalls = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __quizCalls?: Record<string, unknown>[] }).__quizCalls ?? []);
+
+  /**
+   * **A round is set, asked, revealed and ended by the host's presses.**
+   * The answer is not shown before the reveal, since the panel is on a
+   * screen the room can see.
+   */
+  test("the host sets a round, asks, reveals and ends it", async ({ page }) => {
+    await openSingers(page);
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await expect(quiz).toBeVisible();
+
+    await quiz.getByRole("group", { name: "Quiz questions a round" }).getByRole("button", { name: "5", exact: true }).click();
+    await quiz.getByRole("group", { name: "Quiz deck" }).getByRole("button", { name: "1", exact: true }).click();
+    await quiz.getByRole("button", { name: "Chipmunk" }).click();
+    expect((await quizCalls(page)).filter((c) => c.cmd === "quiz_set").at(-1)).toMatchObject({
+      deck: 1,
+      count: 5,
+      kinds: ["name-it", "backwards"],
+    });
+    await expect(quiz.getByRole("button", { name: "Chipmunk" })).toHaveAttribute("aria-pressed", "false");
+
+    await quiz.getByRole("button", { name: "Start the quiz" }).click();
+    await expect(quiz).toContainText("1/5");
+    await expect(quiz).toContainText("Backwards");
+    const answers = quiz.getByRole("list", { name: "Answers" }).getByRole("listitem");
+    await expect(answers).toHaveCount(4);
+    await expect(answers.nth(1)).toContainText("BObsesión — Aventura");
+    await expect(quiz.locator("[data-right]"), "the answer was shown before the reveal").toHaveCount(0);
+
+    await quiz.getByRole("button", { name: "Show the answer" }).click();
+    await expect(quiz.locator("[data-right]")).toHaveText("BObsesión — Aventura");
+    await expect(quiz.getByRole("button", { name: "Show the answer" })).toBeDisabled();
+
+    await quiz.getByRole("button", { name: "Play it again" }).click();
+    await quiz.getByRole("button", { name: "Next question" }).click();
+    await expect(quiz).toContainText("2/5");
+    await expect(quiz.locator("[data-right]")).toHaveCount(0);
+
+    await quiz.getByRole("button", { name: "End the quiz" }).click();
+    await expect(quiz.getByRole("button", { name: "Start the quiz" })).toBeVisible();
+    expect((await quizCalls(page)).map((c) => c.cmd)).toEqual(
+      expect.arrayContaining(["quiz_next", "quiz_again", "quiz_reveal", "quiz_end"]),
+    );
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** The last kind cannot be switched off: a round of no kind asks nothing. */
+  test("the last kind stays on", async ({ page }) => {
+    await openSingers(page, {
+      quiz: {
+        deck: 2,
+        kinds: ["chipmunk"],
+        count: 10,
+        counts: [5, 10, 15],
+        asked: 0,
+        question: null,
+        playing: false,
+        problem: null,
+        quiet: false,
+      },
+    });
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await quiz.getByRole("button", { name: "Chipmunk" }).click();
+    expect((await quizCalls(page)).filter((c) => c.cmd === "quiz_set")).toEqual([]);
+    await expect(quiz.getByRole("button", { name: "Chipmunk" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  /** What stops a question is said, and so is a fader left down. */
+  test("says what stops a question, and a fader left down", async ({ page }) => {
+    await openSingers(page, {
+      quiz: {
+        deck: 3,
+        kinds: ["name-it"],
+        count: 10,
+        counts: [5, 10, 15],
+        asked: 0,
+        question: null,
+        playing: false,
+        problem: null,
+        quiet: true,
+      },
+    });
+    const quiz = page.locator(SINGERS).getByRole("region", { name: "Quiz" });
+    await expect(quiz.getByRole("status")).toHaveText("Deck 3's fader is down: the room will not hear the clip.");
+  });
+});
