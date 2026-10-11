@@ -1006,6 +1006,7 @@ impl AppState {
             start_frame: transition.plan.start_frame,
             length_beats: transition.plan.length_beats,
             style: transition.plan.style,
+            keep_incoming: transition.brings_in(),
         });
         if let Ok(mut automix) = self.automix.lock() {
             automix.hold(held);

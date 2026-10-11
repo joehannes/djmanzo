@@ -5423,6 +5423,73 @@ mod tests {
         );
     }
 
+    /// **K5: Bring them in mixes from what the room hears into the song.**
+    /// Break music's deck when it is playing, else whatever is; never the
+    /// song's own deck; and it says why when it cannot — the song on no deck,
+    /// already playing, or nothing to mix from.
+    #[test]
+    fn bringing_a_singer_in_finds_the_two_decks() {
+        use dj_core::param::DeckParam;
+        let state = AppState::new(true);
+        let deck = |n| dj_core::DeckId::from_human(n).expect("a deck");
+        let song = dj_core::TrackId::from_bytes([9; 32]);
+        let set = |n, param, value| {
+            state
+                .registry()
+                .set(dj_core::ParamId::Deck(deck(n), param), value);
+        };
+        let next = ("Ana".to_owned(), Some(song.to_hex()), -2);
+        let decks = |state: &AppState| bringing_in(state, &next);
+
+        assert_eq!(
+            decks(&state),
+            Err("Put Ana's song on a deck first.".to_owned())
+        );
+        state.set_deck_track(
+            deck(2),
+            crate::state::LoadedTrackInfo {
+                title: "Song".to_owned(),
+                artist: None,
+                id: song,
+                chosen: dj_library::Chosen::Dj,
+            },
+        );
+        set(2, DeckParam::Loaded, 1.0);
+        assert!(
+            decks(&state).is_err_and(|why| why.starts_with("Nothing is playing")),
+            "with nothing playing to the room"
+        );
+        for n in [1, 4] {
+            set(n, DeckParam::Loaded, 1.0);
+            set(n, DeckParam::Playing, 1.0);
+        }
+        let mixing = |from, to| {
+            Ok(BringInDto {
+                from,
+                to,
+                bringing: false,
+            })
+        };
+        assert_eq!(decks(&state), mixing(1, 2));
+        if let Ok(mut held) = state.breaks().lock() {
+            held.settings = Some(crate::breaks::Settings {
+                deck: 4,
+                ..crate::breaks::Settings::default()
+            });
+        }
+        assert_eq!(decks(&state), mixing(4, 2), "break music's deck first");
+        set(2, DeckParam::Playing, 1.0);
+        assert_eq!(
+            decks(&state),
+            Err("Ana's song is already playing.".to_owned())
+        );
+        let written = ("Bo".to_owned(), None, 0);
+        assert_eq!(
+            bringing_in(&state, &written),
+            Err("Bo's song has no record to bring in.".to_owned())
+        );
+    }
+
     /// **The automix counts a record's beats at the record's rate.** Its
     /// playhead is in the record's frames, so a 44.1 kHz record measured at a
     /// 48 kHz output's rate makes every beat — and every mix and break-music
@@ -14115,6 +14182,8 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
                 length: f64::from(get(DeckParam::LengthFrames)),
                 bpm: (bpm > 1.0).then_some(bpm),
                 sample_rate: if own > 0.0 { own } else { sample_rate },
+                volume: get(DeckParam::Volume),
+                pitch: f64::from(get(DeckParam::Pitch)),
             }
         })
         .collect()
@@ -15138,6 +15207,19 @@ pub struct RotationDto {
     pub lately: Vec<crate::karaoke::Sung>,
     /// K4: the host's line on the singers' screen.
     pub line: String,
+    /// K5: *Bring them in*, when it can be pressed or is happening.
+    pub bring_in: Option<BringInDto>,
+}
+
+/// K5: bringing the next singer in, as the Singers panel offers it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BringInDto {
+    /// The deck playing to the room, which the mix leaves.
+    pub from: u8,
+    /// The deck the singer's song is on.
+    pub to: u8,
+    /// True from the press until the mix is done.
+    pub bringing: bool,
 }
 
 fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
@@ -15146,6 +15228,7 @@ fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
         up_next: rotation.up_next().map(|(singer, _)| singer.name.clone()),
         lately: rotation.history.iter().rev().take(12).cloned().collect(),
         line: rotation.line.clone(),
+        bring_in: None,
     }
 }
 
@@ -15154,7 +15237,154 @@ fn with_rotation(
     state: &AppState,
     change: impl FnOnce(&mut crate::karaoke::Rotation) -> bool,
 ) -> RotationDto {
-    state.change_karaoke(|rotation| (change(rotation), rotation_dto(rotation)))
+    let (mut dto, next) = state.change_karaoke(|rotation| {
+        let changed = change(rotation);
+        let next = rotation
+            .up_next()
+            .map(|(singer, song)| (singer.name.clone(), song.track.clone(), song.key));
+        (changed, (rotation_dto(rotation), next))
+    });
+    dto.bring_in = next.and_then(|next| bringing_in(state, &next).ok());
+    dto
+}
+
+/// K5: the two decks *Bring them in* would mix between, for the singer up
+/// next — `(name, the song's record, its semitones)` — or why it cannot, in
+/// the host's words.
+fn bringing_in(
+    state: &AppState,
+    (name, track, _): &(String, Option<String>, i32),
+) -> Result<BringInDto, String> {
+    let Some(track) = track else {
+        return Err(format!("{name}'s song has no record to bring in."));
+    };
+    let decks = automix_view(state);
+    let on = |id: dj_core::DeckId| {
+        state
+            .deck_track_id(id)
+            .is_some_and(|loaded| loaded.to_hex() == *track)
+    };
+    let Some(song) = decks.iter().find(|d| d.loaded && on(d.id)) else {
+        return Err(format!("Put {name}'s song on a deck first."));
+    };
+    // Waiting for its phrase, the mix is the held one; running, the held
+    // one is spent and the automix says which decks it is between.
+    let (once, decks_of) = state
+        .automix()
+        .lock()
+        .map(|mix| {
+            let held = mix.held().map(|held| (held.outgoing, held.incoming));
+            (mix.is_performing_once(), mix.mixing().or(held))
+        })
+        .unwrap_or((false, None));
+    if once && let Some((from, _)) = decks_of.filter(|(_, to)| *to == song.id) {
+        return Ok(BringInDto {
+            from: from.human_number(),
+            to: song.id.human_number(),
+            bringing: true,
+        });
+    }
+    if song.playing {
+        return Err(format!("{name}'s song is already playing."));
+    }
+    // What the room hears: break music's deck when it is playing, else any
+    // other deck that is.
+    let break_deck = state
+        .breaks()
+        .lock()
+        .ok()
+        .and_then(|held| held.settings.as_ref().map(|s| s.deck));
+    let playing = |d: &&crate::automix::DeckView| d.playing && d.loaded && d.id != song.id;
+    let from = decks
+        .iter()
+        .filter(playing)
+        .find(|d| Some(d.id.human_number()) == break_deck)
+        .or_else(|| decks.iter().find(playing));
+    let Some(from) = from else {
+        return Err(format!(
+            "Nothing is playing to bring {name} in from: press play on the song."
+        ));
+    };
+    Ok(BringInDto {
+        from: from.id.human_number(),
+        to: song.id.human_number(),
+        bringing: false,
+    })
+}
+
+/// K5: the mix that brings the next singer in — the record playing to the
+/// room into their song, at the next phrase, the song as it will be sung.
+fn bring_in_between(
+    state: &AppState,
+    from: dj_core::DeckId,
+    to: dj_core::DeckId,
+    semitones: i32,
+) -> Result<Option<crate::transition::Transition>, String> {
+    use dj_library::suggest::{Playing, Trajectory, score};
+
+    let db = library(state)?;
+    let Some(out_track) = current_track(state, from).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(in_track) = current_track(state, to).and_then(|id| db.track(id).ok().flatten()) else {
+        return Ok(None);
+    };
+    let Some(outgoing) = outgoing_of(state, from, &out_track) else {
+        return Ok(None);
+    };
+    let incoming = crate::plan::Incoming {
+        bpm: in_track.analysis.bpm.unwrap_or(outgoing.bpm),
+        phrase: phrase_of(&in_track),
+        key: in_track.analysis.key().map(|key| key.transposed(semitones)),
+    };
+    let confidence = score(&Playing::of(&out_track), Trajectory::Hold, &in_track).confidence();
+    Ok(crate::transition::Transition::plan_soonest(
+        (from, to),
+        (out_track.id, in_track.id),
+        outgoing,
+        incoming,
+        confidence,
+        usual_style(state),
+    ))
+}
+
+/// K5: *Bring them in*. Plans the mix from the record playing to the room
+/// into the next singer's song at the next phrase, holds it as the
+/// transition — drawn on the waveforms like any other — and has the
+/// automix perform it once, the song keeping its own tempo. Break music
+/// stands aside until it is done.
+///
+/// # Errors
+/// Why it cannot, in the host's words: nobody up next, the song on no deck
+/// or already playing, nothing playing to mix from, or too little of that
+/// record left.
+#[tauri::command]
+pub fn karaoke_bring_in(state: State<'_, AppState>) -> Result<RotationDto, String> {
+    let next = state
+        .karaoke()
+        .up_next()
+        .map(|(singer, song)| (singer.name.clone(), song.track.clone(), song.key))
+        .ok_or("Nobody is up next.")?;
+    let decks = bringing_in(&state, &next)?;
+    if decks.bringing {
+        return Ok(with_rotation(&state, |_| false));
+    }
+    let (from, to) = (
+        dj_core::DeckId::from_human(decks.from).ok_or("no such deck")?,
+        dj_core::DeckId::from_human(decks.to).ok_or("no such deck")?,
+    );
+    let transition = bring_in_between(&state, from, to, next.2)?.ok_or_else(|| {
+        format!(
+            "Not enough of the record on deck {} is left to mix {} in from.",
+            decks.from, next.0
+        )
+    })?;
+    state.arm_transition(transition);
+    if let Ok(mut mix) = state.automix().lock() {
+        mix.perform_once();
+    }
+    Ok(with_rotation(&state, |_| false))
 }
 
 /// §107: the singer rotation.
@@ -16334,10 +16564,13 @@ fn breaks_dto(state: &AppState) -> BreaksDto {
             });
             // Said only while that record is on the deck: a choice for a
             // record the host has ejected is a reason for nothing.
+            let on_deck = dj_core::DeckId::from_human(settings.deck)
+                .and_then(|deck| state.deck_track_id(deck))
+                .map(dj_core::TrackId::to_hex);
             let chosen = held
                 .chosen
                 .clone()
-                .filter(|_| held.machine.ours().is_some() && theirs.is_none());
+                .filter(|_| on_deck.is_some() && on_deck.as_deref() == held.machine.ours());
             (
                 settings,
                 held.machine.phase(),
@@ -16493,6 +16726,17 @@ fn break_view(state: &AppState) -> Vec<crate::breaks::DeckView> {
 /// record is wanted on; the caller loads it off the pump, because reading a
 /// whole file there would stop the interface for as long as it takes.
 pub fn tick_breaks(state: &AppState, now: f64) -> Option<dj_core::DeckId> {
+    // K5: while a singer is being brought in, the mix — break deck and all —
+    // is the automix's. Break music waits, and takes its deck back after:
+    // the record it played ejected, its fader given back where the host had
+    // it.
+    if state
+        .automix()
+        .lock()
+        .is_ok_and(|mix| mix.is_performing_once())
+    {
+        return None;
+    }
     let plan = {
         let mut held = state.breaks().lock().ok()?;
         let settings = held

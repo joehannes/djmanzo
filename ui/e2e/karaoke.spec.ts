@@ -255,3 +255,51 @@ test.describe("§107: break music between singers", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+test.describe("K5: bringing a singer in", () => {
+  const rotation = (bring_in: { from: number; to: number; bringing: boolean } | null) => ({
+    singers: [
+      {
+        name: "Ana",
+        songs: [{ title: "Song in A minor", track: "aa".repeat(32), path: "/music/song.wav", key: -2 }],
+        turns: 0,
+      },
+    ],
+    up_next: "Ana",
+    lately: [],
+    bring_in,
+  });
+
+  /**
+   * **Offered when Rust says there is something to bring them in from, sent
+   * once, and said until it is done.** The decks are Rust's to choose; the
+   * row says which, and the button cannot be pressed twice.
+   */
+  test("bring them in is offered, sent, and says it is under way", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: rotation({ from: 2, to: 1, bringing: false }) });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    const bring = up.getByRole("button", { name: "Bring them in" });
+    await expect(bring).toHaveAttribute("title", "Mix deck 2 into Ana's song on deck 1 at the next phrase");
+    await bring.click();
+    const pressed = up.getByRole("button", { name: "Bringing Ana in from deck 2…" });
+    await expect(pressed).toBeDisabled();
+    const sent = (await calls(page)).filter((call) => call.cmd === "karaoke_bring_in");
+    expect(sent).toHaveLength(1);
+
+    // Done: Rust stops offering it, and the row follows without a press.
+    await page.evaluate(() => {
+      (window as unknown as { __rotation: { bring_in: null } }).__rotation.bring_in = null;
+    });
+    await expect(pressed).toHaveCount(0, { timeout: 5000 });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** Nothing to bring them in from: no button, rather than one that fails. */
+  test("no song on a deck offers nothing to press", async ({ page }) => {
+    await openSingers(page, { karaoke_rotation: rotation(null) });
+    const up = page.locator(SINGERS).getByRole("region", { name: "Up next" });
+    await expect(up.getByRole("button", { name: "Sang" })).toBeVisible();
+    await expect(up.getByRole("button", { name: /Bring/ })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

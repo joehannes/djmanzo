@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Bring them in (K5).** With the next singer's song on a deck and break
+  music — or your own record — playing, *Bring them in* on the up-next row
+  mixes from what the room hears into the song at the next phrase. The
+  song keeps its own tempo: the record going out is synced to it, never
+  the reverse. The automix performs that one mix and nothing else, on or
+  off, and break music takes its deck back afterwards.
+- **An automix mix fades the outgoing record from where its fader was**,
+  rather than jumping it to full on the mix's first beat.
 - **A record's times are its own.** A deck's playhead and length count the
   record's frames, and they were turned into seconds at the output's rate:
   a 44.1 kHz record on a 48 kHz output read about 8% short on the deck, and

@@ -93,6 +93,11 @@ pub struct Transition {
     /// which had changed since would silently give the DJ a different answer
     /// from the one they threw away.
     usual: Option<TransitionStyle>,
+    /// K5: a singer brought in — planned as soon as it can be
+    /// ([`plan::soonest`]) rather than as late, so a replan asks the same
+    /// question again, and performed with the incoming record keeping its
+    /// tempo.
+    bring_in: bool,
 }
 
 impl Transition {
@@ -138,7 +143,43 @@ impl Transition {
             outgoing,
             incoming,
             usual,
+            bring_in: false,
         })
+    }
+
+    /// K5: plan the mix into a record as soon as it can be, and hold it —
+    /// a singer brought in at the next phrase rather than at the end of the
+    /// break record. See [`plan::soonest`].
+    #[must_use]
+    pub fn plan_soonest(
+        decks: (DeckId, DeckId),
+        tracks: (TrackId, TrackId),
+        outgoing: Outgoing,
+        incoming: Incoming,
+        confidence: f64,
+        usual: Option<TransitionStyle>,
+    ) -> Option<Self> {
+        let plan = plan::soonest(&outgoing, &incoming, usual)?;
+        Some(Self {
+            outgoing_deck: decks.0,
+            incoming_deck: decks.1,
+            outgoing_track: tracks.0,
+            incoming_track: tracks.1,
+            plan,
+            confidence: confidence.clamp(0.0, 1.0),
+            edited: false,
+            outgoing,
+            incoming,
+            usual,
+            bring_in: true,
+        })
+    }
+
+    /// K5: whether this brings a singer in — planned soon, and the incoming
+    /// record keeping its tempo.
+    #[must_use]
+    pub const fn brings_in(&self) -> bool {
+        self.bring_in
     }
 
     /// The record going out, as it was when the transition was armed.
@@ -248,7 +289,12 @@ impl Transition {
     /// undo a DJ's adjustment at whatever moment it next recalculated, which
     /// is the behaviour §45 exists to forbid.
     pub fn replan(&mut self) {
-        if let Some(plan) = plan::plan_as(&self.outgoing, &self.incoming, self.usual) {
+        let planned = if self.bring_in {
+            plan::soonest(&self.outgoing, &self.incoming, self.usual)
+        } else {
+            plan::plan_as(&self.outgoing, &self.incoming, self.usual)
+        };
+        if let Some(plan) = planned {
             self.plan = plan;
             self.edited = false;
         }
@@ -641,6 +687,32 @@ mod tests {
 
         assert_eq!(transition.plan, planned);
         assert!(!transition.edited);
+    }
+
+    /// **K5: a mix planned soon replans soon.** Replanning asks the question
+    /// the transition was armed with again; a bring-in that replanned to the
+    /// end of the break record would leave the singer standing there.
+    #[test]
+    fn a_soon_transition_replans_soon() {
+        let late = armed();
+        let mut soon = Transition::plan_soonest(
+            (deck(1), deck(2)),
+            (track(1), track(2)),
+            *late.outgoing(),
+            *late.incoming(),
+            0.8,
+            None,
+        )
+        .expect("mixable");
+        assert_eq!(
+            soon.plan.start_beat, 112,
+            "100 in: 108 at the earliest, then the phrase"
+        );
+        assert!(late.plan.start_beat > soon.plan.start_beat);
+        let planned = soon.plan.clone();
+        soon.move_start(16);
+        soon.replan();
+        assert_eq!(soon.plan, planned);
     }
 
     /// A transition knows when the records it describes have gone.

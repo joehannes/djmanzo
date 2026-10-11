@@ -228,6 +228,65 @@ pub fn plan_as(out: &Outgoing, into: &Incoming, usual: Option<TransitionStyle>) 
     evaluate(out, into, start_beat, length, style)
 }
 
+/// How far ahead of the playhead [`soonest`] starts a mix, in beats.
+///
+/// Two bars: the press is a human's, and a mix planned to start on the beat
+/// that is already passing would start late or not at all.
+pub const SOONEST_LEAD: f64 = 8.0;
+
+/// The lengths [`soonest`] proposes, longest first. Shorter than [`plan`]'s:
+/// a singer is standing at the microphone, and nobody is dancing a long
+/// blend into a karaoke intro.
+const SOONEST_LENGTHS: [u32; 2] = [16, 8];
+
+/// K5: plan the mix into a record **as soon as it can be**, rather than as
+/// late — the next phrase boundary at least [`SOONEST_LEAD`] beats ahead
+/// that leaves room for the whole mix and the tail margin.
+///
+/// [`plan`] answers *where would this record be left*: the last boundary
+/// before its end. Bringing a singer in is the other question — the singer
+/// is waiting — and the record going out is break music that nobody minds
+/// leaving early. The style is chosen exactly as [`plan`] chooses it, so a
+/// key clash is still an echo and a tempo that will not ride is still a
+/// cut.
+///
+/// `None` when the record going out has no tempo or not enough of itself
+/// left for even the shortest mix.
+#[must_use]
+pub fn soonest(out: &Outgoing, into: &Incoming, usual: Option<TransitionStyle>) -> Option<Plan> {
+    let beat_frames = beat_frames(out.bpm, out.sample_rate)?;
+    let total_beats = (out.length - out.grid_anchor) / beat_frames;
+    let current = (out.position - out.grid_anchor) / beat_frames;
+    if !total_beats.is_finite() || !current.is_finite() {
+        return None;
+    }
+    let tempos_match = ratio_within(out.bpm, into.bpm, TEMPO_TOLERANCE);
+    let keys_match = relation(out, into).is_none_or(KeyRelation::mixes);
+    let style = choose_style(tempos_match, keys_match, usual);
+
+    #[allow(clippy::cast_possible_truncation)]
+    let earliest = (current + SOONEST_LEAD).ceil() as i64;
+    // The next phrase boundary from there, or the next bar where the record
+    // has no phrase structure.
+    let start_beat = match out.phrase {
+        Some(phrase) => {
+            let within = i64::from(phrase.beat_within(earliest));
+            if within == 0 {
+                earliest
+            } else {
+                earliest + i64::from(phrase.beats) - within
+            }
+        }
+        None => earliest + (4 - earliest.rem_euclid(4)) % 4,
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let room = total_beats - start_beat as f64 - TAIL_MARGIN;
+    let length = SOONEST_LENGTHS
+        .into_iter()
+        .find(|&l| f64::from(l) <= room)?;
+    evaluate(out, into, start_beat, length, style)
+}
+
 /// The stretch of a record in which a mix out of it can begin.
 ///
 /// §25's `mix-out` layer — *where this record could be left, structurally*.
@@ -630,6 +689,68 @@ mod tests {
             phrase: Phrase::new(16, 0),
             key: k,
         }
+    }
+
+    /// **K5: soon, not late — the next phrase at least two bars ahead.** The
+    /// same records [`plan`] would leave near the end are left at the next
+    /// boundary the press can make, with a length a waiting singer can bear.
+    #[test]
+    fn soonest_is_the_next_phrase_two_bars_ahead() {
+        let into = incoming(BPM, Some(key(8, Mode::Minor)));
+        let at = |beats_in: f64, total: f64| {
+            soonest(&outgoing(beats_in, total), &into, None).map(|p| (p.start_beat, p.length_beats))
+        };
+        // 20 in: 28 is the earliest a press can make, 32 the phrase after it.
+        assert_eq!(at(20.0, 256.0), Some((32, 16)));
+        // Two bars before a boundary is that boundary.
+        assert_eq!(at(8.0, 256.0), Some((16, 16)));
+        // Seven beats before one is not: the next.
+        assert_eq!(at(9.0, 256.0), Some((32, 16)));
+        let late = plan(&outgoing(20.0, 256.0), &into).unwrap().start_beat;
+        assert!(
+            late > 128,
+            "plan() leaves a record late; this test needs it to ({late})"
+        );
+        // Room: a shorter mix where the longer will not fit before the tail,
+        // and none where neither will.
+        assert_eq!(at(20.0, 60.0), Some((32, 16)));
+        assert_eq!(at(20.0, 50.0), Some((32, 8)));
+        assert_eq!(at(20.0, 45.0), None);
+    }
+
+    /// Where the record has no phrase structure, the next bar line.
+    #[test]
+    fn soonest_without_phrases_starts_on_a_bar() {
+        let into = incoming(BPM, Some(key(8, Mode::Minor)));
+        let at = |beats_in: f64| {
+            let out = Outgoing {
+                phrase: None,
+                ..outgoing(beats_in, 256.0)
+            };
+            soonest(&out, &into, None).unwrap().start_beat
+        };
+        assert_eq!(at(20.0), 28);
+        assert_eq!(at(21.0), 32);
+        assert_eq!(at(22.5), 32);
+    }
+
+    /// The style is the music's, as [`plan`] chooses it: a key that fights is
+    /// an echo, a tempo that will not ride is a cut.
+    #[test]
+    fn soonest_chooses_the_style_as_the_planner_does() {
+        let style = |into: Incoming| soonest(&outgoing(20.0, 256.0), &into, None).unwrap().style;
+        assert_eq!(
+            style(incoming(BPM, Some(key(8, Mode::Minor)))),
+            TransitionStyle::Blend
+        );
+        assert_eq!(
+            style(incoming(BPM, Some(key(2, Mode::Minor)))),
+            TransitionStyle::Echo
+        );
+        assert_eq!(
+            style(incoming(90.0, Some(key(8, Mode::Minor)))),
+            TransitionStyle::Cut
+        );
     }
 
     /// **The mix starts on a phrase boundary.**

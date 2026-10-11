@@ -3049,6 +3049,13 @@ export async function openShell(
               }
               if (song) song.asks = null;
             }
+            // K5: pressed, the mix is under way until a test says it is done;
+            // with nothing to bring in from, Rust's refusal.
+            if (cmd === "karaoke_bring_in") {
+              const bring = (rotation as { bring_in?: { bringing: boolean } | null }).bring_in;
+              if (!bring) return Promise.reject(new Error("Put the song on a deck first."));
+              bring.bringing = true;
+            }
             rotation.up_next = upNext();
             return Promise.resolve(structuredClone(rotation));
           }

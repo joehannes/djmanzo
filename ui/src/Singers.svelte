@@ -26,6 +26,7 @@
     karaokeKey,
     karaokeLeave,
     karaokeLine,
+    karaokeBringIn,
     karaokeMove,
     karaokeNotHere,
     karaokeRefuse,
@@ -320,7 +321,20 @@
     } catch (e) {
       error = String(e);
     }
+    // K5: the song on a deck is what *Bring them in* waits for.
+    await refresh();
   }
+
+  /**
+   * K5: while a singer is being brought in, the row follows the mix until
+   * it is done — the rotation is read again every two seconds.
+   */
+  const bringing = $derived(rotation?.bring_in?.bringing ?? false);
+  $effect(() => {
+    if (!enabled || !bringing) return;
+    const timer = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(timer);
+  });
 
   /**
    * One place up in calling order: in front of the waiting singer before
@@ -360,7 +374,12 @@
   const breaksOn = $derived(breaks?.on ?? false);
   $effect(() => {
     if (!enabled || !breaksOn) return;
-    const timer = setInterval(() => void refreshBreaks(), 2000);
+    // The rotation too: what break music plays decides whether a singer
+    // can be brought in from it.
+    const timer = setInterval(() => {
+      void refreshBreaks();
+      void refresh();
+    }, 2000);
     return () => clearInterval(timer);
   });
 
@@ -439,6 +458,23 @@
         {:else}
           <span class="hint">Not found in the collection yet — search for it below.</span>
           <BuyLinks title={next.title} karaoke />
+        {/if}
+        {#if rotation?.bring_in}
+          <!--
+            K5: from what the room hears into the song at the next phrase,
+            the song keeping its tempo. Once pressed, it says so until the
+            mix is done.
+          -->
+          <button
+            class="bring"
+            disabled={rotation.bring_in.bringing}
+            title="Mix deck {rotation.bring_in.from} into {upNext.name}'s song on deck {rotation.bring_in
+              .to} at the next phrase"
+            onclick={() => void change(karaokeBringIn())}
+            >{rotation.bring_in.bringing
+              ? `Bringing ${upNext.name} in from deck ${rotation.bring_in.from}…`
+              : "Bring them in"}</button
+          >
         {/if}
         <button class="done" onclick={() => void change(karaokeSang())}>Sang</button>
         <button
@@ -922,6 +958,12 @@
 
   .done {
     border-color: var(--accent);
+    font-weight: 600;
+  }
+
+  .bring {
+    border-color: var(--accent);
+    color: var(--accent);
     font-weight: 600;
   }
 

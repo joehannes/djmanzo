@@ -1127,3 +1127,24 @@ when nobody is waiting, or nothing. The Singers panel has *Lead into the
 next song*, on, and under the phase what the record on the deck was chosen
 for, in the rail's own line: *break-3-match for Ana's Song in A minor −2 BPM
 · 8A · level*; *after*, leading out.
+
+**Step 2, bringing them in — built (11 October).** `plan::soonest` answers
+the bring-in's question: the next phrase boundary at least eight beats
+ahead (the next bar where a record has no phrases), a 16- or 8-beat mix
+that leaves the tail margin, the style chosen exactly as `plan` chooses
+it; `Transition::plan_soonest` holds it, and a replan asks the same
+question again. *Bring them in* on the up-next row appears once the
+song is on a deck, paused, and something else is playing — break music's
+deck first — and says why when pressed too late (*Not enough of the record
+on deck 2 is left to mix Ana in from*). Pressed, the transition is armed
+and the automix performs it **once** (`Automix::perform_once`) whether or
+not it is on: the song plays, *then* the record going out is synced to
+it, so the song keeps its tempo; the record fades from where its fader
+was, not from full — which corrects every automix mix, since a DJ's
+outgoing fader below full used to jump up as the mix began; at the end the
+record is unsynced, given back its own pitch and ejected, and the automix
+stands as it was. A one-shot that stops fitting the decks, or whose mix is
+cleared, is dropped rather than turned into an end-of-file mix of the
+automix's own. Break music stands aside while it runs and takes its deck
+back after, the fader where the host had it. The row reads *Bringing Ana
+in from deck 2…* until the mix is done.

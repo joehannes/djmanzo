@@ -152,6 +152,8 @@ impl Side {
             length: if self.loaded { self.length } else { 0.0 },
             bpm: Some(self.bpm),
             sample_rate: self.sample_rate,
+            volume: 1.0,
+            pitch: 0.0,
         }
     }
 
@@ -262,6 +264,7 @@ pub fn rehearse(
         start_frame: transition.plan.start_frame,
         length_beats: transition.plan.length_beats,
         style: transition.plan.style,
+        keep_incoming: transition.brings_in(),
     }));
     let views: Vec<DeckView> = side.iter().map(|s| s.view()).collect();
     let opening = automix.apply(AutomixChange::SetEnabled(true), &views);

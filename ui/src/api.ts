@@ -4997,9 +4997,23 @@ export interface Rotation {
   lately: Sung[];
   /** K4: the host's line on the singers' screen. Empty shows nothing. */
   line?: string;
+  /** K5: *Bring them in*, when it can be pressed or is happening. */
+  bring_in?: BringIn | null;
+}
+
+/** K5: the mix that brings the next singer in, from `dj_app::commands`. */
+export interface BringIn {
+  /** The deck playing to the room. */
+  from: number;
+  /** The deck the singer's song is on. */
+  to: number;
+  /** From the press until the mix is done. */
+  bringing: boolean;
 }
 
 export const karaokeRotation = () => invoke<Rotation>("karaoke_rotation");
+/** K5: mix from what the room hears into the next singer's song, once. */
+export const karaokeBringIn = () => invoke<Rotation>("karaoke_bring_in");
 export const karaokeLine = (text: string) => invoke<Rotation>("karaoke_line", { text });
 export const karaokeAsk = (
   singer: string,
