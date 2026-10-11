@@ -231,7 +231,7 @@ fn read_request(
 ) -> std::io::Result<Result<Incoming, Reply>> {
     let mut buffer = Vec::with_capacity(2048);
     let mut chunk = [0u8; 2048];
-    let (head, method, target, length, range) = loop {
+    let (head, method, target, length, range, content_type) = loop {
         if Instant::now() > deadline {
             return Err(std::io::ErrorKind::TimedOut.into());
         }
@@ -251,9 +251,13 @@ fn read_request(
                 };
                 let mut length = 0usize;
                 let mut range = None;
+                let mut content_type = None;
                 for header in request.headers.iter() {
                     if header.name.eq_ignore_ascii_case("range") {
                         range = std::str::from_utf8(header.value).ok().map(str::to_owned);
+                    }
+                    if header.name.eq_ignore_ascii_case("content-type") {
+                        content_type = std::str::from_utf8(header.value).ok().map(str::to_owned);
                     }
                     if header.name.eq_ignore_ascii_case("transfer-encoding") {
                         // Chunked bodies are where request smuggling lives,
@@ -274,7 +278,7 @@ fn read_request(
                     return Ok(Err(Reply::text(413, "too much")));
                 }
                 let target = request.path.unwrap_or("/").to_owned();
-                break (head, method, target, length, range);
+                break (head, method, target, length, range, content_type);
             }
             Ok(httparse::Status::Partial) if buffer.len() < MOST_HEAD => {}
             Ok(httparse::Status::Partial) | Err(httparse::Error::TooManyHeaders) => {
@@ -306,6 +310,7 @@ fn read_request(
         body,
         from: Some(peer.ip()),
         range,
+        content_type,
     }))
 }
 

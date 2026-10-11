@@ -30,7 +30,7 @@ const phones = (page: Page) => page.getByRole("region", { name: "Singers from ph
 test.describe("K4: singers from the room", () => {
   test("the host opens sign-ups and chooses how songs are chosen", async ({ page }) => {
     await singers(page, {
-      sing_rules: { open: false, songs_each: 1, songbook: true, key: false, guide: false, songs: 42, serving: false },
+      sing_rules: { open: false, songs_each: 1, songbook: true, key: false, guide: false, photos: false, songs: 42, serving: false },
     });
     const section = phones(page);
     const open = section.getByRole("checkbox", { name: "Singers put their names down from their phones" });
@@ -97,6 +97,44 @@ test.describe("K4: singers from the room", () => {
     await expect(order.getByRole("listitem").filter({ hasText: "Carla" }).getByText("phone")).toHaveCount(0);
     // Open, served: nothing to warn about.
     await expect(phones(page).getByRole("status")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **K4: a photo is shown only once the host shows it**, and refusing or
+   * taking one down is the end of it.
+   */
+  test("photos from phones wait for the host", async ({ page }) => {
+    const url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4EaABAAMkAUEdGZ/EAAAAAElFTkSuQmCC";
+    await singers(page, {
+      sing_rules: { open: true, songs_each: 1, songbook: true, key: false, guide: false, photos: true, songs: 3, serving: true },
+      sing_photos: [
+        { id: 1, name: "Ana", approved: false, url },
+        { id: 2, name: "Bob", approved: true, url },
+        { id: 3, name: "Cleo", approved: false, url },
+      ],
+    });
+    const list = page.getByRole("list", { name: "Photos from phones" });
+    await expect(list.getByRole("img", { name: "Ana's photo" })).toBeVisible();
+    const ana = list.getByRole("listitem").filter({ hasText: "Ana" });
+    const bob = list.getByRole("listitem").filter({ hasText: "Bob" });
+    await expect(bob).toContainText("on the screen while they sing");
+    await expect(ana).not.toContainText("on the screen");
+    await ana.getByRole("button", { name: "Show it" }).click();
+    await expect(ana).toContainText("on the screen while they sing");
+    await bob.getByRole("button", { name: "Take it down" }).click();
+    await list.getByRole("listitem").filter({ hasText: "Cleo" }).getByRole("button", { name: "Refuse" }).click();
+    await expect(list.getByRole("listitem")).toHaveCount(1);
+    expect(
+      await page.evaluate(() => (window as unknown as { __photoCalls?: unknown[] }).__photoCalls ?? []),
+    ).toEqual([
+      { cmd: "sing_photo_approve", id: 1 },
+      { cmd: "sing_photo_refuse", id: 2 },
+      { cmd: "sing_photo_refuse", id: 3 },
+    ]);
+    await phones(page).getByRole("checkbox", { name: "May send a photo" }).uncheck();
+    expect(await calls(page)).toEqual([{ photos: false }]);
+    await expect(list).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
   });
 

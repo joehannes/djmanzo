@@ -16,6 +16,7 @@ pub mod overlay;
 pub mod page;
 pub mod peer;
 pub mod phone;
+pub mod photo;
 pub mod room;
 pub mod secure;
 pub mod server;

@@ -62,6 +62,10 @@ symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
 # test vectors: both pass decoding to stereo, and this one was 30-60 times
 # faster on CELT. See docs/VIDEO.md and dj_decode::opus.
 rusty-opus = "1.0.1"
+# K4: a guest's photo, decoded and drawn again so nothing the file carried
+# besides the picture reaches the screen. MIT OR Apache-2.0; only JPEG
+# (zune-jpeg: MIT/Apache/Zlib) and PNG (png: MIT/Apache, already here).
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 # Keylock. MIT, which is why it is here and Rubber Band is not -- see
 # docs/adr/0002-clean-room-permissive-licensing.md. Builds the upstream C++
 # through `cc` and generates bindings with `bindgen`, so a C++ compiler and

@@ -17,9 +17,9 @@
 //! from the room cannot reach the audio path because there is no path from
 //! here to it, rather than because something checks.
 
-use crate::page::{self, Line, Said, Sang, SingView, View, Words};
+use crate::page::{self, Line, PhotoSaid, Said, Sang, SingView, View, Words};
 use crate::room::{Ask, RequestBook, Standing};
-use crate::stage::{Proposal, Signed, Stage, Voice};
+use crate::stage::{Posed, Proposal, Signed, Stage, Voice};
 use crate::web::{Handler, Incoming, Method, Reply};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -258,6 +258,8 @@ impl Doorman {
                     chosen_key: request.param("key").and_then(|k| k.parse().ok()),
                     guide: rules.guide,
                     chosen_voice: request.param("voice").and_then(Voice::by_tag),
+                    photos: rules.photos,
+                    photo: stage.photo_of_phone(phone).map(|photo| photo.approved),
                 })
             })
             .flatten()
@@ -293,6 +295,22 @@ impl Doorman {
             format!("&name={}", urlencoding::encode(name.trim()))
         };
         Reply::see_other(format!("/?sang={}{again}#sing", Sang::Signed(signed).tag()))
+    }
+
+    /// K4: a photo of this phone's singer, drawn again before it is kept
+    /// ([`crate::photo::redraw`]): the bytes as sent never reach the book.
+    fn photo(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let said = match request.part("photo").map(crate::photo::redraw) {
+            None | Some(Err(crate::photo::Refused::NotAPicture)) => PhotoSaid::NotAPicture,
+            Some(Err(crate::photo::Refused::TooLarge)) => PhotoSaid::TooLarge,
+            Some(Ok(jpeg)) => match self.front.stage(|stage| stage.photo(&phone, jpeg)) {
+                Some(Posed::Added) => PhotoSaid::Sent,
+                Some(Posed::Full) => PhotoSaid::TooLarge,
+                _ => PhotoSaid::Closed,
+            },
+        };
+        Reply::see_other(format!("/?sang={}#sing", Sang::Photo(said).tag()))
     }
 
     /// K4: the singer up next says they are ready.
@@ -335,12 +353,22 @@ impl Doorman {
 }
 
 impl Handler for Doorman {
+    /// K4: a photo is the one thing larger than a form, and only at `/photo`.
+    fn most_body(&self, path: &str) -> usize {
+        if path == "/photo" {
+            crate::photo::MOST_PHOTO + crate::web::MOST_BODY
+        } else {
+            crate::web::MOST_BODY
+        }
+    }
+
     fn handle(&self, request: &Incoming) -> Reply {
         match (request.method, request.path.as_str()) {
             (Method::Get, "/") => self.show(request),
             (Method::Post, "/request") => self.take(request),
             (Method::Post, "/sing") => self.sing(request),
             (Method::Post, "/ready") => self.ready(request),
+            (Method::Post, "/photo") => self.photo(request),
             _ => Reply::not_found(),
         }
     }
@@ -742,6 +770,106 @@ mod tests {
                 voice: Some(crate::stage::Voice::Guide),
             }
         );
+    }
+
+    fn multipart(address: SocketAddr, file: &[u8]) -> String {
+        let mut body = b"--K4\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"me.png\"\r\nContent-Type: image/png\r\n\r\n".to_vec();
+        body.extend_from_slice(file);
+        body.extend_from_slice(b"\r\n--K4--\r\n");
+        let mut stream = std::net::TcpStream::connect(address).expect("connect");
+        use std::io::{Read, Write};
+        stream
+            .write_all(
+                format!(
+                    "POST /photo HTTP/1.1\r\nHost: x\r\nContent-Type: multipart/form-data; boundary=K4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("head");
+        stream.write_all(&body).expect("body");
+        let mut got = String::new();
+        let _ = stream.read_to_string(&mut got);
+        got
+    }
+
+    /// **A guest's photo reaches the host drawn again, never as sent**, over
+    /// a real socket and a form with a file in it — far past the size of a
+    /// form; and only from a phone with a singer down, where the host takes
+    /// photos, and only if it is a picture.
+    #[test]
+    fn a_guests_photo_reaches_the_host_drawn_again() {
+        let (server, front) = serving();
+        singing(&front);
+        // Noise, which a PNG cannot squeeze: a photo-sized body.
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let picture = image::RgbImage::from_fn(1600, 900, |_, _| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let [r, g, b, ..] = seed.to_le_bytes();
+            image::Rgb([r, g, b])
+        });
+        let mut png = Vec::new();
+        image::ImageEncoder::write_image(
+            image::codecs::png::PngEncoder::new(&mut png),
+            picture.as_raw(),
+            1600,
+            900,
+            image::ExtendedColorType::Rgb8,
+        )
+        .unwrap();
+        assert!(png.len() > crate::web::MOST_BODY, "larger than any form");
+
+        let shut = multipart(server.address(), &png);
+        assert!(
+            shut.to_lowercase().contains("location: /?sang=nophotos"),
+            "{shut}"
+        );
+
+        let token = first_token(&get(server.address(), "/?name=Ana&q=suave"));
+        post_to(
+            server.address(),
+            "/sing",
+            &format!("name=Ana&song={}", urlencoding::encode(&token)),
+        );
+        front.stage(|s| {
+            s.set_rules(crate::stage::Rules {
+                open: true,
+                photos: true,
+                ..crate::stage::Rules::default()
+            });
+        });
+        let page = get(server.address(), "/");
+        assert!(page.contains("enctype=\"multipart/form-data\""), "{page}");
+        assert!(
+            page.contains("if the DJ approves it"),
+            "said before the button: {page}"
+        );
+
+        let not = multipart(server.address(), b"<script>alert(1)</script>");
+        assert!(
+            not.to_lowercase().contains("location: /?sang=notphoto"),
+            "{not}"
+        );
+        let sent = multipart(server.address(), &png);
+        assert!(
+            sent.to_lowercase().contains("location: /?sang=photo#sing"),
+            "{sent}"
+        );
+
+        let kept = front.stage(|s| s.photos().to_vec()).unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].name, "Ana");
+        assert!(!kept[0].approved);
+        assert_eq!(
+            &kept[0].jpeg[..2],
+            &[0xFF, 0xD8],
+            "a JPEG drawn again, not the PNG sent"
+        );
+        let size = image::load_from_memory(&kept[0].jpeg).unwrap();
+        assert_eq!((size.width(), size.height()), (1280, 720));
+        assert!(get(server.address(), "/").contains("Your photo is waiting for the DJ."));
     }
 
     /// **A refusal keeps the name**, so it need not be typed again.

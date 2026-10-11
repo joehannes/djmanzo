@@ -2919,6 +2919,23 @@ export async function openShell(
             if (cmd === "guests_export") return Promise.resolve(null);
             return Promise.resolve(structuredClone(held));
           }
+          // K4: photos from phones, as `dj_net::stage::Stage` keeps them.
+          if (cmd === "sing_photos" || cmd === "sing_photo_approve" || cmd === "sing_photo_refuse") {
+            const photos = (win.__photos ??= structuredClone(answers.sing_photos ?? [])) as {
+              id: number;
+              approved: boolean;
+            }[];
+            if (cmd !== "sing_photos") ((win.__photoCalls ??= []) as unknown[]).push({ cmd, id: args.id });
+            if (cmd === "sing_photo_approve") {
+              const found = photos.find((p) => p.id === args.id);
+              if (found) found.approved = true;
+            }
+            if (cmd === "sing_photo_refuse") {
+              const at = photos.findIndex((p) => p.id === args.id);
+              if (at >= 0) photos.splice(at, 1);
+            }
+            return Promise.resolve(structuredClone(photos));
+          }
           // K4: the host's switches for singers from phones.
           if (cmd === "sing_rules" || cmd === "sing_rules_set") {
             const rules = (win.__singRules ??= structuredClone(
@@ -2931,6 +2948,7 @@ export async function openShell(
               if (args.songbook !== undefined) rules.songbook = args.songbook;
               if (args.key !== undefined) rules.key = args.key;
               if (args.guide !== undefined) rules.guide = args.guide;
+              if (args.photos !== undefined) rules.photos = args.photos;
             }
             return Promise.resolve(structuredClone(rules));
           }

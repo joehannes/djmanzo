@@ -96,6 +96,25 @@ test.describe("§107: the singers' screen", () => {
   });
 
   /**
+   * **K4: the singer's approved photo, while they sing** — and not before:
+   * the screen asks for the singer at the top of the rotation only while
+   * their deck plays with its vocal down.
+   */
+  test("shows the singer's approved photo while they sing", async ({ page }) => {
+    const url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4EaABAAMkAUEdGZ/EAAAAAElFTkSuQmCC";
+    await openShell(page, "/?panel=singers", {}, {
+      singer_lyrics: WORDS,
+      karaoke_rotation: ROTATION,
+      singer_photo: url,
+    });
+    await expect(page.locator(SCREEN)).toBeVisible();
+    await expect(page.locator(`${SCREEN} [data-singer-photo]`)).toHaveCount(0);
+    await singing(page, 14.5);
+    await expect(page.locator(`${SCREEN} [data-singer-photo]`)).toHaveAttribute("src", url);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The load-bearing one: the line being sung, wiped as it is sung, the
    * next under it, from the deck the singer is on.** Deck 1 is playing too,
    * with its vocal in: the screen must follow deck 2, where the vocal is out.

@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+image.workspace = true
 dj-core.workspace = true
 dj-control.workspace = true
 serde.workspace = true

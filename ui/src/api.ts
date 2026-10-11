@@ -4945,6 +4945,8 @@ export interface SingRules {
   key: boolean;
   /** Whether a phone may propose the guide vocal. */
   guide: boolean;
+  /** Whether a phone may send a photo of its singer. */
+  photos: boolean;
   /** Records in the songbook: those with words. */
   songs: number;
   /** Whether the room's page is being served at all. */
@@ -4958,7 +4960,23 @@ export const singRulesSet = (change: {
   songbook?: boolean;
   key?: boolean;
   guide?: boolean;
+  photos?: boolean;
 }) => invoke<SingRules>("sing_rules_set", change);
+
+/** K4: a photo a phone sent, drawn again; shown only once approved. */
+export interface SingPhoto {
+  id: number;
+  name: string;
+  approved: boolean;
+  /** A `data:` URL of the photo as drawn again. */
+  url: string;
+}
+
+export const singPhotos = () => invoke<SingPhoto[]>("sing_photos");
+export const singPhotoApprove = (id: number) => invoke<SingPhoto[]>("sing_photo_approve", { id });
+export const singPhotoRefuse = (id: number) => invoke<SingPhoto[]>("sing_photo_refuse", { id });
+/** K4: the approved photo of `name`, for the singers' screen. */
+export const singerPhoto = (name: string) => invoke<string | null>("singer_photo", { name });
 export const karaokeTake = (singer: string) => invoke<Rotation>("karaoke_take", { singer });
 export const karaokeRefuse = (singer: string) => invoke<Rotation>("karaoke_refuse", { singer });
 

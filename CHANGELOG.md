@@ -31,6 +31,12 @@ Versioning follows semver, with one project-specific convention:
 - **More on the singers' screen (K4).** Under the next singer, the two after
   them by name; a line of your own (*On the singers' screen* in the Singers
   panel — *Last orders at one*); and your logo in the corner.
+- **A singer's photo, while they sing (K4).** Where you allow it, a guest
+  sends a photo from the request page. djmanzo redraws it — turned the way
+  the phone was held, at a screen's size, with nothing kept of where or
+  when it was taken — and lists it for you. Once you *Show it*, it is on the
+  singers' screen while they sing. Kept in memory only; *New night* forgets
+  it.
 
 ## v0.40.0 — Packs to make and share, and records in Opus
 

@@ -4465,7 +4465,22 @@ mod tests {
                 Some(dj_net::stage::Place::Waiting(0))
             );
 
+            front.stage(|s| {
+                s.set_rules(dj_net::stage::Rules {
+                    open: true,
+                    photos: true,
+                    ..dj_net::stage::Rules::default()
+                });
+                s.photo("phone-a", vec![0xFF, 0xD8]);
+            });
+            assert_eq!(front.stage(|s| s.photos().len()).unwrap(), 1);
+
             new_night(&state);
+            assert_eq!(
+                front.stage(|s| s.photos().len()).unwrap(),
+                0,
+                "tonight's photos gone"
+            );
             assert_eq!(
                 front
                     .stage(|s| s.name_of("phone-a").map(str::to_owned))
@@ -15152,6 +15167,8 @@ pub struct SingRulesDto {
     pub key: bool,
     /// Whether a phone may propose the guide vocal.
     pub guide: bool,
+    /// Whether a phone may send a photo of its singer.
+    pub photos: bool,
     /// Records in the songbook: those with words.
     pub songs: usize,
     /// Whether the room's page is being served at all.
@@ -15174,6 +15191,7 @@ fn sing_rules_dto(state: &AppState) -> SingRulesDto {
         songbook: rules.songbook,
         key: rules.key,
         guide: rules.guide,
+        photos: rules.photos,
         songs,
         serving: audience.status().running,
     }
@@ -15229,6 +15247,7 @@ pub fn sing_rules_set(
     songbook: Option<bool>,
     key: Option<bool>,
     guide: Option<bool>,
+    photos: Option<bool>,
 ) -> SingRulesDto {
     refresh_songbook(&state);
     state.audience().front().stage(|stage| {
@@ -15239,6 +15258,7 @@ pub fn sing_rules_set(
             songbook: songbook.unwrap_or(rules.songbook),
             key: key.unwrap_or(rules.key),
             guide: guide.unwrap_or(rules.guide),
+            photos: photos.unwrap_or(rules.photos),
         });
     });
     sing_rules_dto(&state)
@@ -15268,6 +15288,84 @@ pub fn karaoke_ask(
     } else {
         Err("a request needs a singer's name and a song".to_owned())
     }
+}
+
+/// K4: a photo a phone sent, as the host sees it.
+#[derive(Debug, Clone, Serialize)]
+pub struct SingPhotoDto {
+    pub id: u64,
+    pub name: String,
+    pub approved: bool,
+    /// The photo as drawn again, as a `data:` URL: never the bytes as sent.
+    pub url: String,
+}
+
+fn photo_url(jpeg: &[u8]) -> String {
+    use base64::Engine as _;
+    format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(jpeg)
+    )
+}
+
+/// K4: every photo phones sent tonight, waiting and approved.
+#[tauri::command]
+#[must_use]
+pub fn sing_photos(state: State<'_, AppState>) -> Vec<SingPhotoDto> {
+    state
+        .audience()
+        .front()
+        .stage(|stage| {
+            stage
+                .photos()
+                .iter()
+                .map(|photo| SingPhotoDto {
+                    id: photo.id,
+                    name: photo.name.clone(),
+                    approved: photo.approved,
+                    url: photo_url(&photo.jpeg),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// K4: the host approves a photo for the screen.
+#[tauri::command]
+#[must_use]
+pub fn sing_photo_approve(state: State<'_, AppState>, id: u64) -> Vec<SingPhotoDto> {
+    state
+        .audience()
+        .front()
+        .stage(|stage| stage.approve_photo(id));
+    sing_photos(state)
+}
+
+/// K4: the host refuses a photo, or takes an approved one down: it is gone.
+#[tauri::command]
+#[must_use]
+pub fn sing_photo_refuse(state: State<'_, AppState>, id: u64) -> Vec<SingPhotoDto> {
+    state
+        .audience()
+        .front()
+        .stage(|stage| stage.refuse_photo(id));
+    sing_photos(state)
+}
+
+/// K4: the singers' screen asks for the approved photo of the singer
+/// singing. Never one waiting for the host.
+#[tauri::command]
+#[must_use]
+pub fn singer_photo(state: State<'_, AppState>, name: String) -> Option<String> {
+    state
+        .audience()
+        .front()
+        .stage(|stage| {
+            stage
+                .approved_photo(&name)
+                .map(|photo| photo_url(&photo.jpeg))
+        })
+        .flatten()
 }
 
 /// K4: the host's line on the singers' screen; empty takes it away.

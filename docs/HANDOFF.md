@@ -1375,6 +1375,13 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   which is why controller mappings exist for Pioneer only. The owner supplies
   vendor MIDI tables when they can. Do not re-litigate this.
 - **Work happens on `main`.** No pull request unless one is asked for.
+- **An interface mutant that leaves a name unused does not build.**
+  `svelte-check` refuses an unused import or variable, `npm run build` then
+  stops before `vite build`, and the browser tests run against the last
+  bundle and pass — a mutant that proved nothing. Replacing the only call
+  of an imported function does it; so does taking the one use of a
+  `$derived` away. Mutate a value instead (`approve(-1)`, `x || cond`), and
+  read "✓ built" before reading the tests.
 - **A container can come back bare.** On 10 October the session resumed in a
   new one: no `target/`, no `ui/node_modules`, none of the GTK/WebKit
   headers, no Xvfb. Install CI's own list (`ci.yml`, "Install Linux build

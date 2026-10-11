@@ -36,6 +36,7 @@
     karaokeRotation,
     logoUrl,
     onBrandLogo,
+    singerPhoto,
     lookChosen,
     looksCatalogue,
     singerBackdrop,
@@ -194,6 +195,40 @@
   /** K4: the two after that, by name only — their songs are theirs to announce. */
   const then = $derived(queue.slice(1, 3).map((s) => s.name));
 
+  /**
+   * K4: who is singing — the top of the rotation while the singer's deck
+   * plays with its vocal down — and their photo, if the host approved one.
+   */
+  const singer = $derived.by(() => {
+    const waiting = (rotation?.singers ?? []).filter((s) => s.songs.length > 0);
+    const singing = deck?.playing && (deck.voice ?? 1) < 0.99;
+    return singing ? (waiting[0]?.name ?? null) : null;
+  });
+  let photo = $state<string | null>(null);
+  $effect(() => {
+    const name = singer;
+    if (!name) {
+      photo = null;
+      return;
+    }
+    let alive = true;
+    const ask = async () => {
+      while (alive) {
+        try {
+          const url = await singerPhoto(name);
+          if (alive && url !== photo) photo = url;
+        } catch {
+          // No photo is a screen as it was.
+        }
+        await new Promise((r) => setTimeout(r, 3_000));
+      }
+    };
+    void ask();
+    return () => {
+      alive = false;
+    };
+  });
+
   /** K4: the DJ's logo, when there is one; asked again when it changes. */
   let logo = $state<number | null>(null);
   $effect(() => {
@@ -293,6 +328,10 @@
       <p class="host-line" data-host-line>{rotation.line}</p>
     {/if}
   </div>
+
+  {#if photo}
+    <img class="singer-photo" src={photo} alt="" data-singer-photo />
+  {/if}
 
   {#if logo !== null}
     <img class="logo" src={logoUrl(logo)} alt="" data-logo onerror={() => (logo = null)} />
@@ -492,6 +531,18 @@
     margin: 0;
     font-size: 2.6vh;
     color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* The singer's photo, in the corner under the words' height. */
+  .screen > .singer-photo {
+    position: absolute;
+    left: 3vw;
+    bottom: 3vh;
+    max-height: 22vh;
+    max-width: 22vw;
+    object-fit: cover;
+    border-radius: 1vh;
+    box-shadow: 0 0 2vh rgba(0, 0, 0, 0.6);
   }
 
   /* In the corner, above nothing: the words are in the middle. */

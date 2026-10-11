@@ -44,6 +44,8 @@ pub struct Rules {
     pub key: bool,
     /// Whether a phone may propose what is done with the record's singer.
     pub guide: bool,
+    /// Whether a phone may send a photo of its singer, shown once approved.
+    pub photos: bool,
 }
 
 impl Default for Rules {
@@ -54,8 +56,32 @@ impl Default for Rules {
             songbook: true,
             key: false,
             guide: false,
+            photos: false,
         }
     }
+}
+
+/// The most photos one night keeps, each already drawn at a screen's size.
+pub const MOST_PHOTOS: usize = 60;
+
+/// A singer's photo, drawn again (`crate::photo::redraw`), waiting for the
+/// host or approved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Photo {
+    pub id: u64,
+    pub name: String,
+    pub jpeg: std::sync::Arc<Vec<u8>>,
+    pub approved: bool,
+}
+
+/// What became of a photo sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Posed {
+    Added,
+    /// The host does not take photos, or this phone has no singer down.
+    Closed,
+    /// [`MOST_PHOTOS`] tonight.
+    Full,
 }
 
 /// The most a proposed key may move, either way: the rotation's own bound
@@ -209,6 +235,9 @@ pub struct Stage {
     /// Names whose phone pressed *I'm ready*, not yet taken.
     ready: Vec<String>,
     taken: usize,
+    /// One per singer, in the order sent.
+    photos: Vec<Photo>,
+    next_photo: u64,
 }
 
 impl Default for Stage {
@@ -236,6 +265,8 @@ impl Stage {
             singers: Vec::new(),
             ready: Vec::new(),
             taken: 0,
+            photos: Vec::new(),
+            next_photo: 1,
         }
     }
 
@@ -482,9 +513,69 @@ impl Stage {
         self.singers = singers;
     }
 
-    /// A new night: every name, sign-up and readiness forgotten. The
+    /// A photo of `phone`'s singer, already drawn again. A singer has one: a
+    /// new one takes the old one's place, and waits for the host again.
+    pub fn photo(&mut self, phone: &str, jpeg: Vec<u8>) -> Posed {
+        let Some(name) = self.names.get(phone).cloned().filter(|_| self.rules.photos) else {
+            return Posed::Closed;
+        };
+        self.photos.retain(|photo| !same(&photo.name, &name));
+        if self.photos.len() >= MOST_PHOTOS {
+            return Posed::Full;
+        }
+        self.photos.push(Photo {
+            id: self.next_photo,
+            name,
+            jpeg: std::sync::Arc::new(jpeg),
+            approved: false,
+        });
+        self.next_photo += 1;
+        Posed::Added
+    }
+
+    /// Every photo kept, waiting and approved, in the order sent.
+    #[must_use]
+    pub fn photos(&self) -> &[Photo] {
+        &self.photos
+    }
+
+    /// `phone`'s singer's photo, if they sent one.
+    #[must_use]
+    pub fn photo_of_phone(&self, phone: &str) -> Option<&Photo> {
+        let name = self.names.get(phone)?;
+        self.photos.iter().find(|photo| same(&photo.name, name))
+    }
+
+    /// The approved photo of `name`, the only kind the screen shows.
+    #[must_use]
+    pub fn approved_photo(&self, name: &str) -> Option<&Photo> {
+        self.photos
+            .iter()
+            .find(|photo| photo.approved && same(&photo.name, name))
+    }
+
+    /// The host approves a photo for the screen.
+    pub fn approve_photo(&mut self, id: u64) -> bool {
+        self.photos
+            .iter_mut()
+            .find(|photo| photo.id == id)
+            .is_some_and(|photo| {
+                photo.approved = true;
+                true
+            })
+    }
+
+    /// The host refuses a photo, or takes an approved one down: it is gone.
+    pub fn refuse_photo(&mut self, id: u64) -> bool {
+        let before = self.photos.len();
+        self.photos.retain(|photo| photo.id != id);
+        self.photos.len() != before
+    }
+
+    /// A new night: every name, sign-up, readiness and photo forgotten. The
     /// songbook and the host's rules stay.
     pub fn new_night(&mut self) {
+        self.photos.clear();
         self.waiting.clear();
         self.names.clear();
         self.order.clear();
@@ -798,6 +889,72 @@ mod tests {
         assert_eq!(stage.take().1, vec!["Bob".to_owned()], "once");
         stage.set_order(vec![("Ana".into(), 1)], vec!["Ana".into(), "Bob".into()]);
         assert_eq!(stage.place("b"), Some(Place::Sung));
+    }
+
+    /// **A photo is a singer's, waits for the host, and only an approved one
+    /// is for the screen; a new night forgets them all.**
+    #[test]
+    fn a_photo_waits_for_the_host_and_goes_with_the_night() {
+        let mut stage = open_stage();
+        let t = token(&stage, "obsesion");
+        assert_eq!(
+            stage.photo("a", vec![1]),
+            Posed::Closed,
+            "no singer, no photo"
+        );
+        stage.sign("a", "Ana", Some(&t), None, now());
+        assert_eq!(
+            stage.photo("a", vec![1]),
+            Posed::Closed,
+            "not taken unless allowed"
+        );
+        stage.set_rules(Rules {
+            open: true,
+            photos: true,
+            ..Rules::default()
+        });
+        assert_eq!(stage.photo("a", vec![1]), Posed::Added);
+        assert_eq!(stage.approved_photo("ana"), None, "waiting, not shown");
+        let id = stage.photo_of_phone("a").unwrap().id;
+        assert!(stage.approve_photo(id));
+        assert_eq!(stage.approved_photo("ANA").unwrap().jpeg.as_slice(), &[1]);
+        // A new one takes its place and waits again.
+        assert_eq!(stage.photo("a", vec![2]), Posed::Added);
+        assert_eq!(stage.photos().len(), 1);
+        assert_eq!(stage.approved_photo("Ana"), None);
+        let id = stage.photo_of_phone("a").unwrap().id;
+        assert!(stage.refuse_photo(id));
+        assert!(stage.photos().is_empty());
+        stage.photo("a", vec![3]);
+        stage.new_night();
+        assert!(stage.photos().is_empty());
+    }
+
+    #[test]
+    fn a_nights_photos_are_bounded() {
+        let mut stage = open_stage();
+        stage.set_rules(Rules {
+            open: true,
+            photos: true,
+            songbook: false,
+            ..Rules::default()
+        });
+        for n in 0..=MOST_PHOTOS {
+            let phone = format!("phone-{n}");
+            assert_eq!(
+                stage.sign(&phone, &format!("Singer {n}"), None, Some("a song"), now()),
+                Signed::Added
+            );
+            let posed = stage.photo(&phone, vec![0]);
+            assert_eq!(
+                posed,
+                if n < MOST_PHOTOS {
+                    Posed::Added
+                } else {
+                    Posed::Full
+                }
+            );
+        }
     }
 
     #[test]

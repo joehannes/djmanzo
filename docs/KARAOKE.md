@@ -990,3 +990,21 @@ screen* — one line, eighty characters at most, whitespace folded, kept with
 the rotation (`Rotation::line`) and gone at *New night*. The DJ's logo, from
 `brand.rs`, sits in the top right corner, beside the song's name and away
 from the words, and follows a new logo without a restart.
+
+**Step 4, photos — built (11 October). K4 is complete.** *May send a
+photo*, off. Where on, a phone with a singer down sees *A photo of you*,
+says what happens to it before the button, and sends one JPEG or PNG
+(`POST /photo`, a form with a file). The request server takes more than its
+64 KB only where a handler says so for one path (`Handler::most_body`) —
+here 8 MB — and only four such bodies at once across the server, so a room
+sending photos together cannot hold the memory of a room. `dj_net::photo`
+decodes it within limits (12,000 pixels a side, a file claiming more
+refused before its pixels are read), turns it as the phone was held — the
+EXIF orientation is applied before the EXIF is thrown away, or every
+portrait would lie on its side — draws it at 1280 on the long side and
+writes a new JPEG with nothing in it but the picture. The bytes as sent
+never reach the book. One photo per singer, a new one waiting again, sixty
+a night, in memory only. The host's Singers panel lists them — *Show it*,
+*Refuse*, and once shown *Take it down* — and the singers' screen asks for
+the approved photo of the singer singing, and draws it in the bottom left
+corner while they sing, never before. *New night* forgets them all.

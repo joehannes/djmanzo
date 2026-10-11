@@ -386,6 +386,17 @@ pub struct SingWords {
     pub voice_out: &'static str,
     /// Under the choices: they are asked for, not set.
     pub proposals: &'static str,
+    pub photo_heading: &'static str,
+    pub photo_label: &'static str,
+    /// Before the button: what happens to it, said before it is sent.
+    pub photo_note: &'static str,
+    pub photo_send: &'static str,
+    pub photo_waiting: &'static str,
+    pub photo_shown: &'static str,
+    pub photo_sent: &'static str,
+    pub photo_not: &'static str,
+    pub photo_big: &'static str,
+    pub photo_shut: &'static str,
 }
 
 impl SingWords {
@@ -432,6 +443,16 @@ impl SingWords {
             voice_guide: "Quietly, as a guide",
             voice_out: "Taken out",
             proposals: "The DJ sees what you ask for and decides.",
+            photo_heading: "A photo of you",
+            photo_label: "Choose a photo",
+            photo_note: "Shown on the screen in this room tonight, while you sing, if the DJ approves it. Not kept after tonight.",
+            photo_send: "Send the photo",
+            photo_waiting: "Your photo is waiting for the DJ.",
+            photo_shown: "The DJ approved your photo.",
+            photo_sent: "Photo received. The DJ will look at it.",
+            photo_not: "That is not a photo we can show.",
+            photo_big: "That photo is too large.",
+            photo_shut: "Photos are not being taken now.",
         }
     }
 
@@ -478,6 +499,16 @@ impl SingWords {
             voice_guide: "Suave, como guía",
             voice_out: "Quitada",
             proposals: "El DJ ve lo que pides y decide.",
+            photo_heading: "Una foto tuya",
+            photo_label: "Elige una foto",
+            photo_note: "Se muestra en la pantalla de este local esta noche, mientras cantas, si el DJ la aprueba. No se guarda después de esta noche.",
+            photo_send: "Enviar la foto",
+            photo_waiting: "Tu foto espera al DJ.",
+            photo_shown: "El DJ aprobó tu foto.",
+            photo_sent: "Foto recibida. El DJ la verá.",
+            photo_not: "Eso no es una foto que podamos mostrar.",
+            photo_big: "Esa foto es demasiado grande.",
+            photo_shut: "Ahora no se aceptan fotos.",
         }
     }
 
@@ -496,10 +527,20 @@ impl SingWords {
 pub enum Sang {
     Signed(Signed),
     Ready,
+    Photo(PhotoSaid),
+}
+
+/// K4: what became of a photo, as the page says it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhotoSaid {
+    Sent,
+    NotAPicture,
+    TooLarge,
+    Closed,
 }
 
 impl Sang {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 16] = [
         Self::Signed(Signed::Added),
         Self::Signed(Signed::Closed),
         Self::Signed(Signed::NoName),
@@ -512,6 +553,10 @@ impl Sang {
         Self::Signed(Signed::TooMany),
         Self::Signed(Signed::Full),
         Self::Ready,
+        Self::Photo(PhotoSaid::Sent),
+        Self::Photo(PhotoSaid::NotAPicture),
+        Self::Photo(PhotoSaid::TooLarge),
+        Self::Photo(PhotoSaid::Closed),
     ];
 
     #[must_use]
@@ -529,6 +574,10 @@ impl Sang {
             Self::Signed(Signed::TooMany) => "enough",
             Self::Signed(Signed::Full) => "full",
             Self::Ready => "ready",
+            Self::Photo(PhotoSaid::Sent) => "photo",
+            Self::Photo(PhotoSaid::NotAPicture) => "notphoto",
+            Self::Photo(PhotoSaid::TooLarge) => "bigphoto",
+            Self::Photo(PhotoSaid::Closed) => "nophotos",
         }
     }
 
@@ -538,7 +587,10 @@ impl Sang {
     }
 
     fn is_good(self) -> bool {
-        matches!(self, Self::Signed(Signed::Added) | Self::Ready)
+        matches!(
+            self,
+            Self::Signed(Signed::Added) | Self::Ready | Self::Photo(PhotoSaid::Sent)
+        )
     }
 
     fn sentence(self, w: &SingWords) -> &'static str {
@@ -555,6 +607,10 @@ impl Sang {
             Self::Signed(Signed::TooMany) => w.too_many,
             Self::Signed(Signed::Full) => w.full,
             Self::Ready => w.ready_said,
+            Self::Photo(PhotoSaid::Sent) => w.photo_sent,
+            Self::Photo(PhotoSaid::NotAPicture) => w.photo_not,
+            Self::Photo(PhotoSaid::TooLarge) => w.photo_big,
+            Self::Photo(PhotoSaid::Closed) => w.photo_shut,
         }
     }
 }
@@ -583,6 +639,10 @@ pub struct SingView {
     /// Whether the record's singer may be, and what was chosen.
     pub guide: bool,
     pub chosen_voice: Option<Voice>,
+    /// Whether this phone's singer may send a photo.
+    pub photos: bool,
+    /// This phone's singer's photo: waiting (false) or approved (true).
+    pub photo: Option<bool>,
 }
 
 fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
@@ -614,6 +674,9 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
             );
             html.push_str(w.ready);
             html.push_str("</button></form>\n");
+        }
+        if sing.photos {
+            photo_part(html, sing, w);
         }
     }
     let may_choose = sing.open && (sing.name.is_none() || sing.more);
@@ -697,6 +760,33 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
         html.push_str("</button>\n</form>\n");
     }
     html.push_str("</section>\n");
+}
+
+/// K4: a photo of the singer — what happens to it said before the button.
+fn photo_part(html: &mut String, sing: &SingView, w: &SingWords) {
+    html.push_str("<h3>");
+    html.push_str(w.photo_heading);
+    html.push_str("</h3>\n");
+    match sing.photo {
+        Some(true) => {
+            html.push_str("<p class=\"photo-state\">");
+            html.push_str(w.photo_shown);
+            html.push_str("</p>\n");
+        }
+        Some(false) => {
+            html.push_str("<p class=\"photo-state\">");
+            html.push_str(w.photo_waiting);
+            html.push_str("</p>\n");
+        }
+        None => {}
+    }
+    html.push_str("<form method=\"post\" action=\"/photo\" enctype=\"multipart/form-data\">\n<label for=\"photo\">");
+    html.push_str(w.photo_label);
+    html.push_str("</label>\n<input id=\"photo\" name=\"photo\" type=\"file\" accept=\"image/jpeg,image/png\" required>\n<p class=\"asks\">");
+    html.push_str(w.photo_note);
+    html.push_str("</p>\n<button type=\"submit\">");
+    html.push_str(w.photo_send);
+    html.push_str("</button>\n</form>\n");
 }
 
 /// K4: the key and the record's singer, where the host lets a phone ask.
@@ -845,6 +935,8 @@ button:active{background:#3d86e0}
 select{width:100%;padding:.75rem .8rem;border-radius:.6rem;border:1px solid #2b333d;
  background:#141920;color:#e9edf2;font-size:1.05rem}
 .sing p.asks{margin:.5rem 0 0;color:#8b97a6;font-size:.9rem}
+.photo-state{margin:0 0 .5rem;color:#9fe6b4}
+input[type=file]{padding:.6rem;font-size:.95rem}
 ";
 
 #[cfg(test)]

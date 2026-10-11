@@ -41,6 +41,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// each holding one open.
 pub const MOST_BODY: usize = 64 * 1024;
 
+/// The most bodies past [`MOST_BODY`] read at once, across every handler.
+///
+/// A handler may take more for one path ([`Handler::most_body`] — K4's
+/// photos), and each request has its own thread, so without this a room of
+/// phones sending photos together would each hold several megabytes at once.
+/// Four at a time; a fifth is refused, and the phone can send again.
+pub const MOST_LARGE_AT_ONCE: usize = 4;
+
+static LARGE_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// One of the [`MOST_LARGE_AT_ONCE`] places, given back when dropped.
+struct LargeSlot;
+
+impl LargeSlot {
+    fn take() -> Option<Self> {
+        let before = LARGE_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+        if before >= MOST_LARGE_AT_ONCE {
+            LARGE_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Self)
+    }
+}
+
+impl Drop for LargeSlot {
+    fn drop(&mut self) {
+        LARGE_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// What a request is asking to do.
 ///
 /// Only the two verbs the served pages use. Everything else is refused rather
@@ -74,6 +104,9 @@ pub struct Incoming {
     /// The `Range` header, as sent: what to read of something served in
     /// parts (§122's pictures, which a `<video>` seeks in).
     pub range: Option<String>,
+    /// The `Content-Type` header, as sent: where a form sent as
+    /// `multipart/form-data` says how its parts are divided.
+    pub content_type: Option<String>,
 }
 
 impl Incoming {
@@ -108,6 +141,58 @@ impl Incoming {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v)
     }
+
+    /// One part of a body sent as `multipart/form-data` — a form with a file
+    /// in it — by the name its form gave it: the part's own bytes, as sent.
+    /// `None` for any other body, or a part not there.
+    #[must_use]
+    pub fn part(&self, name: &str) -> Option<&[u8]> {
+        let boundary = self
+            .content_type
+            .as_deref()?
+            .split(';')
+            .map(str::trim)
+            .find_map(|p| p.strip_prefix("boundary="))?
+            .trim_matches('"');
+        if boundary.is_empty() {
+            return None;
+        }
+        let delimiter = format!("--{boundary}");
+        let mut rest = self.body.as_slice();
+        loop {
+            let at = find(rest, delimiter.as_bytes())?;
+            rest = &rest[at + delimiter.len()..];
+            // The closing delimiter is followed by "--".
+            if rest.starts_with(b"--") {
+                return None;
+            }
+            let rest_after_line = rest.strip_prefix(b"\r\n")?;
+            let head_end = find(rest_after_line, b"\r\n\r\n")?;
+            let head = std::str::from_utf8(&rest_after_line[..head_end]).ok()?;
+            let content = &rest_after_line[head_end + 4..];
+            let end = find(content, format!("\r\n{delimiter}").as_bytes())?;
+            let named = head.lines().any(|line| {
+                line.to_ascii_lowercase()
+                    .starts_with("content-disposition:")
+                    && line
+                        .split(';')
+                        .map(str::trim)
+                        .any(|p| p == format!("name=\"{name}\""))
+            });
+            if named {
+                return Some(&content[..end]);
+            }
+            rest = &content[end..];
+        }
+    }
+}
+
+/// Where `needle` first starts in `haystack`.
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// What to send back.
@@ -177,6 +262,12 @@ impl Reply {
 /// across connection threads.
 pub trait Handler: Send + Sync + 'static {
     fn handle(&self, request: &Incoming) -> Reply;
+
+    /// The largest body this handler takes for `path`: [`MOST_BODY`] unless
+    /// it says otherwise, and only for the paths it names.
+    fn most_body(&self, _path: &str) -> usize {
+        MOST_BODY
+    }
 }
 
 impl<F> Handler for F
@@ -284,7 +375,7 @@ fn accept_loop(server: &tiny_http::Server, handler: &Arc<dyn Handler>, stop: &At
 }
 
 fn serve(mut request: tiny_http::Request, handler: &Arc<dyn Handler>) {
-    let Some(parsed) = read(&mut request) else {
+    let Some(parsed) = read(&mut request, handler.as_ref()) else {
         // Refused before the handler sees it: an unsupported verb, or a body
         // past the limit. Neither is worth an application's attention.
         let _ = request.respond(reply_of(&Reply::text(
@@ -302,7 +393,7 @@ fn serve(mut request: tiny_http::Request, handler: &Arc<dyn Handler>) {
 }
 
 /// Turn a library request into ours, or refuse it.
-fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
+fn read(request: &mut tiny_http::Request, handler: &dyn Handler) -> Option<Incoming> {
     let method = match request.method() {
         tiny_http::Method::Get => Method::Get,
         tiny_http::Method::Post => Method::Post,
@@ -314,16 +405,24 @@ fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
 
     let mut body = Vec::new();
     if method == Method::Post {
+        let most = handler.most_body(&path).max(MOST_BODY);
         // A declared length past the cap is refused without reading it: the
         // point of a limit is not to read the thing first.
-        if request.body_length().unwrap_or(0) > MOST_BODY {
+        let declared = request.body_length().unwrap_or(0);
+        if declared > most {
             return None;
         }
+        // Past the ordinary cap, one of a few places at once.
+        let _slot = if declared > MOST_BODY || most > MOST_BODY {
+            Some(LargeSlot::take()?)
+        } else {
+            None
+        };
         use std::io::Read as _;
         // Capped again while reading, because the declared length and the
         // actual body are two different claims.
-        let mut limited = request.as_reader().take(MOST_BODY as u64 + 1);
-        if limited.read_to_end(&mut body).is_err() || body.len() > MOST_BODY {
+        let mut limited = request.as_reader().take(most as u64 + 1);
+        if limited.read_to_end(&mut body).is_err() || body.len() > most {
             return None;
         }
     }
@@ -333,6 +432,11 @@ fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
         .iter()
         .find(|h| h.field.equiv("Range"))
         .map(|h| h.value.as_str().to_owned());
+    let content_type = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Content-Type"))
+        .map(|h| h.value.as_str().to_owned());
     Some(Incoming {
         method,
         path,
@@ -340,6 +444,7 @@ fn read(request: &mut tiny_http::Request) -> Option<Incoming> {
         body,
         from: request.remote_addr().map(SocketAddr::ip),
         range,
+        content_type,
     })
 }
 
@@ -739,6 +844,94 @@ mod tests {
             ),
         );
         assert!(got.contains("Obsesión de Aventura"), "{got}");
+    }
+
+    /// **A handler may take more for one path, and only that path — and only
+    /// a few such bodies at once.** K4's photos: two hundred kilobytes is
+    /// taken at `/photo`, refused at `/request`; with every large place held,
+    /// it is refused at `/photo` too, and taken again when one is given back.
+    /// One test, because the places are counted across the whole server.
+    #[test]
+    fn a_large_body_is_taken_only_where_asked_and_a_few_at_a_time() {
+        struct Photos;
+        impl Handler for Photos {
+            fn handle(&self, r: &Incoming) -> Reply {
+                Reply::text(200, format!("got {}", r.body.len()))
+            }
+            fn most_body(&self, path: &str) -> usize {
+                if path == "/photo" {
+                    1024 * 1024
+                } else {
+                    MOST_BODY
+                }
+            }
+        }
+        let server = serving(Photos);
+        let post = |path: &str| {
+            let body = "x".repeat(200 * 1024);
+            try_talk(
+                server.address(),
+                &format!(
+                    "POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                ),
+            )
+            .unwrap_or_default()
+        };
+        assert!(post("/photo").contains("got 204800"), "taken where asked");
+        assert!(
+            post("/request").starts_with("HTTP/1.1 413"),
+            "refused elsewhere"
+        );
+
+        let held: Vec<LargeSlot> = std::iter::from_fn(LargeSlot::take)
+            .take(MOST_LARGE_AT_ONCE)
+            .collect();
+        assert_eq!(held.len(), MOST_LARGE_AT_ONCE);
+        assert!(
+            post("/photo").starts_with("HTTP/1.1 413"),
+            "every place held"
+        );
+        drop(held);
+        assert!(post("/photo").contains("got 204800"), "a place given back");
+    }
+
+    /// **A file in a form is read out of its parts byte for byte**, whatever
+    /// the bytes — a line break or a dash inside a photo is not the end of it.
+    #[test]
+    fn a_files_part_is_read_from_a_multipart_form() {
+        let photo: Vec<u8> = [
+            &[0xff, 0xd8, 0x00][..],
+            b"\r\n--not-the-end\r\n",
+            &[0xff, 0xd9],
+        ]
+        .concat();
+        let mut body = Vec::new();
+        body.extend_from_slice(
+            b"--XyZ\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nAna\r\n",
+        );
+        body.extend_from_slice(
+            b"--XyZ\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"me.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n",
+        );
+        body.extend_from_slice(&photo);
+        body.extend_from_slice(b"\r\n--XyZ--\r\n");
+        let incoming = Incoming {
+            method: Method::Post,
+            path: "/photo".into(),
+            query: Vec::new(),
+            body,
+            from: None,
+            range: None,
+            content_type: Some("multipart/form-data; boundary=XyZ".into()),
+        };
+        assert_eq!(incoming.part("photo"), Some(photo.as_slice()));
+        assert_eq!(incoming.part("name"), Some(&b"Ana"[..]));
+        assert_eq!(incoming.part("nothing"), None);
+        let plain = Incoming {
+            content_type: Some("application/x-www-form-urlencoded".into()),
+            ..incoming
+        };
+        assert_eq!(plain.part("photo"), None);
     }
 
     /// **A body that is not text at all is no fields, not a crash.**

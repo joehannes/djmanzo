@@ -609,6 +609,7 @@ mod tests {
             body: body.as_bytes().to_vec(),
             from: Some(from.parse().unwrap()),
             range: None,
+            content_type: None,
         }
     }
 

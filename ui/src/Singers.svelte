@@ -34,6 +34,9 @@
     karaokeTake,
     librarySearch,
     loadTrack,
+    singPhotoApprove,
+    singPhotoRefuse,
+    singPhotos,
     singRules,
     singRulesSet,
     lookChoose,
@@ -46,6 +49,7 @@
     type LibraryTrack,
     type Look,
     type Rotation,
+    type SingPhoto,
     type SingRules,
     type SingerRequest,
     type VoiceTag,
@@ -126,10 +130,24 @@
    * the host's switches; the names themselves arrive in the rotation.
    */
   let phones = $state<SingRules | null>(null);
+  /** K4: photos phones sent, for the host to show or refuse. */
+  let photos = $state<SingPhoto[]>([]);
   function readPhones() {
     void singRules()
-      .then((rules) => (phones = rules))
+      .then((rules) => {
+        phones = rules;
+        if (rules.photos) return singPhotos().then((all) => (photos = all));
+        photos = [];
+      })
       .catch(() => {});
+  }
+  async function photo(change: Promise<SingPhoto[]>) {
+    error = "";
+    try {
+      photos = await change;
+    } catch (e) {
+      error = String(e);
+    }
   }
   $effect(() => {
     if (!enabled) return;
@@ -152,6 +170,7 @@
     songbook?: boolean;
     key?: boolean;
     guide?: boolean;
+    photos?: boolean;
   }) {
     error = "";
     try {
@@ -674,7 +693,36 @@
           />
           May ask for the guide vocal
         </label>
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={phones.photos}
+            onchange={(event) => void setPhones({ photos: event.currentTarget.checked })}
+          />
+          May send a photo
+        </label>
       </div>
+      {#if phones.photos && photos.length > 0}
+        <!--
+          K4: a photo is on the singers' screen only once shown here, and
+          only while its singer sings. Redrawn on arrival; gone at New night.
+        -->
+        <ul class="photos" aria-label="Photos from phones" data-photos>
+          {#each photos as sent (sent.id)}
+            <li data-approved={sent.approved}>
+              <img src={sent.url} alt="{sent.name}'s photo" />
+              <span class="name">{sent.name}</span>
+              {#if sent.approved}
+                <span class="hint">on the screen while they sing</span>
+                <button onclick={() => void photo(singPhotoRefuse(sent.id))}>Take it down</button>
+              {:else}
+                <button onclick={() => void photo(singPhotoApprove(sent.id))}>Show it</button>
+                <button onclick={() => void photo(singPhotoRefuse(sent.id))}>Refuse</button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <p class="hint" data-songbook>
         {#if phones.songbook}
           {phones.songs === 1 ? "1 record" : `${phones.songs} records`} with words in the songbook.
@@ -1006,5 +1054,25 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+  }
+  .photos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .photos li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .photos img {
+    width: 4.5rem;
+    height: 4.5rem;
+    object-fit: cover;
+    border-radius: 0.3rem;
   }
 </style>
