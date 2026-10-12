@@ -174,6 +174,13 @@
       void ask(() => transitionAdjust({ endFrame: frame }));
       return;
     }
+    // §26's stem region, the last of its nine: where a blend's bass handover
+    // is done. A position, on the end's terms — `Transition::swap_at` turns
+    // it into whole beats into the mix.
+    if (label === "bass") {
+      void ask(() => transitionAdjust({ swapFrame: frame }));
+      return;
+    }
     if (label !== "mix in") return;
     const beatFrames = (mix.end_frame - mix.start_frame) / mix.length_beats;
     if (!Number.isFinite(beatFrames) || beatFrames <= 0) return;
@@ -318,8 +325,16 @@
                     // and a handle that does nothing is worse than no handle.
                     draggable: mix.armed,
                   },
+                  // §26's stem region: where the bass handover is done, for a
+                  // style that hands the lows over, on the same terms again.
+                  ...(mix.swap_frame != null
+                    ? [{ frame: mix.swap_frame, label: "bass", draggable: mix.armed, low: true }]
+                    : []),
                 ]
               : []}
+            region={index === 0 && mix.swap_frame != null
+              ? { from: mix.start_frame, to: mix.swap_frame, label: "bass handover" }
+              : null}
             onMoveMark={(label, frame) => dragged(mix, label, frame)}
           />
         </div>

@@ -9695,6 +9695,10 @@ pub struct TransitionDto {
     /// roundings and a division by zero waiting for an empty deck.
     pub start_frame: f64,
     pub end_frame: f64,
+    /// §26's stem region: where a blend's bass handover is done, in frames
+    /// on the outgoing record — the region's handle; `None` for a style that
+    /// hands nothing over.
+    pub swap_frame: Option<f64>,
     pub length_beats: u32,
     /// The style's own name, as the automix panel already spells it.
     pub style: String,
@@ -9826,6 +9830,7 @@ fn describe_transition(
         end_seconds: transition.end_seconds(),
         start_frame: transition.plan.start_frame,
         end_frame: transition.plan.end_frame,
+        swap_frame: transition.swap_frame(),
         length_beats: transition.plan.length_beats,
         style: transition.plan.style.as_str().to_owned(),
         bpm_delta: transition.plan.bpm_delta,
@@ -9931,6 +9936,9 @@ pub fn transition_adjust(
     // that is what a waveform knows -- `Transition::end_at` turns it into
     // beats, where the tempo and the start already are.
     end_frame: Option<f64>,
+    // §26's stem region: where the DJ dropped the bass handover's handle, in
+    // frames on the outgoing record (`Transition::swap_at`).
+    swap_frame: Option<f64>,
 ) -> Result<Option<TransitionDto>, String> {
     let style = match style.as_deref() {
         Some(word) => Some(
@@ -9954,6 +9962,11 @@ pub fn transition_adjust(
         }
         if let Some(style) = style {
             transition.set_style(style);
+        }
+        // Last: a restyle forgets the handover, and a press that chose a
+        // blend and placed its handover means the handover it placed.
+        if let Some(frame) = swap_frame {
+            transition.swap_at(frame);
         }
         transition.clone()
     });

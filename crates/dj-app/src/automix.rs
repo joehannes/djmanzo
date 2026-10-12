@@ -171,6 +171,9 @@ struct Running {
     /// §68's argument, in one field: one object drives the mix, so every part
     /// of it agrees about what the mix is.
     style: TransitionStyle,
+    /// The EQ plan the mix performs: the style's, with a held mix's bass
+    /// handover where the DJ moved it (§26).
+    eq: shape::Eq,
 }
 
 /// The mix djmanzo is holding, as the automix needs it.
@@ -203,6 +206,10 @@ pub struct Held {
     /// singer rehearsed at the record's own speed — and the outgoing one is
     /// synced to it once it plays, the reverse of an ordinary mix.
     pub keep_incoming: bool,
+    /// §26's stem region: how far through the mix a blend's bass handover is
+    /// done, as the transition says it (`Transition::shape`); `None` leaves
+    /// it to the style's own.
+    pub swap_by: Option<f64>,
 }
 
 /// The automix.
@@ -503,6 +510,10 @@ impl Automix {
             self.held = None;
         });
         let style = held.map_or(self.style, |held| held.style);
+        let eq = match (shape::shape(style).eq, held.and_then(|held| held.swap_by)) {
+            (shape::Eq::HandOverLows { .. }, Some(done_by)) => shape::Eq::HandOverLows { done_by },
+            (eq, _) => eq,
+        };
         let keep_incoming = held
             .is_some_and(|held| held.keep_incoming)
             .then_some(outgoing.pitch);
@@ -542,6 +553,7 @@ impl Automix {
             from: outgoing.position as u64,
             span: span as u64,
             style,
+            eq,
         };
 
         if !shape.overlaps {
@@ -609,7 +621,7 @@ impl Automix {
             arrive,
             from,
             span,
-            style,
+            eq,
             ..
         } = running;
         let Some(out) = view(decks, outgoing) else {
@@ -637,7 +649,6 @@ impl Automix {
         // in for the first tick of the one style that exists to take it out.
         //
         // The EQ range is 0..=4 with 1.0 as unity, so a cut is toward zero.
-        let eq = shape::shape(style).eq;
         if eq != shape::Eq::Flat {
             let swap = eq.swap_at(progress) as f32;
             plan.deck(outgoing, DeckAction::SetEqLow(1.0 - swap));
@@ -833,6 +844,7 @@ mod tests {
             length_beats: beats,
             style,
             keep_incoming: false,
+            swap_by: None,
         }
     }
 
@@ -1052,6 +1064,7 @@ mod tests {
             length_beats: 16,
             style: TransitionStyle::Blend,
             keep_incoming: false,
+            swap_by: None,
         }));
         assert_eq!(
             mix.tick(&[playing(1, 30.0), loaded_idle(2), loaded_idle(3)]),
@@ -1297,6 +1310,44 @@ mod tests {
             "the incoming bass was not cut at the top of the blend: {:?}",
             text(&first)
         );
+    }
+
+    /// **§26: the held mix's bass handover is the one performed.** A blend
+    /// whose handover the DJ moved to a quarter of the way through has the
+    /// outgoing lows all the way out by then — where the style's own, at
+    /// half, would have them only half out — and a fade, given a handover,
+    /// still touches no EQ.
+    #[test]
+    fn the_held_bass_handover_is_the_one_performed() {
+        let outgoing_low = |swap_by: Option<f64>, style: TransitionStyle| {
+            let mut mix = on(style);
+            mix.hold(Some(Held {
+                swap_by,
+                ..held_at(30.0, 16, style)
+            }));
+            mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+            assert!(mix.is_mixing(), "the transition never opened");
+            // Sixteen beats at 120 BPM is eight seconds: 2.4 s in is 30 %.
+            let plan = mix.tick(&[playing(1, 32.4), loaded_idle(2)]);
+            plan.actions.iter().find_map(|a| match a {
+                Action::Deck {
+                    deck,
+                    action: DeckAction::SetEqLow(gain),
+                } if deck.human_number() == 1 => Some(*gain),
+                _ => None,
+            })
+        };
+        let moved = outgoing_low(Some(0.25), TransitionStyle::Blend).expect("an EQ move");
+        assert!(
+            moved.abs() < 1e-6,
+            "the moved handover left {moved} of the lows"
+        );
+        let own = outgoing_low(None, TransitionStyle::Blend).expect("an EQ move");
+        assert!(
+            (own - 0.4).abs() < 1e-3,
+            "the style's own handover left {own}"
+        );
+        assert_eq!(outgoing_low(Some(0.25), TransitionStyle::Fade), None);
     }
 
     /// A cut has no overlap: the outgoing deck stops on the tick the incoming

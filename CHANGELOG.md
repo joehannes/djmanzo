@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A blend's bass handover, on the waveform (§26).** In the Pair view a
+  held blend draws where the outgoing bass comes out as a band from the mix
+  point, its end a *bass* handle: drag it and the handover happens there,
+  in whole beats — the automix performs the mix as drawn. The last of
+  §26's nine things a DJ can grab.
+
 - **A night's actions on its line (§119).** Every night's session log is
   now kept beside its reactions, as a set file that opens and replays like
   any other, and the Crowd panel's line draws the DJ's gestures above the

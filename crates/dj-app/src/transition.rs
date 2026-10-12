@@ -98,6 +98,10 @@ pub struct Transition {
     /// question again, and performed with the incoming record keeping its
     /// tempo.
     bring_in: bool,
+    /// §26's stem region: how many beats into the mix a blend's bass
+    /// handover is done, when the DJ has moved it. `None` is the style's own
+    /// (`shape::Eq::HandOverLows`). See [`Self::swap_at`].
+    swap_beats: Option<u32>,
 }
 
 impl Transition {
@@ -144,6 +148,7 @@ impl Transition {
             incoming,
             usual,
             bring_in: false,
+            swap_beats: None,
         })
     }
 
@@ -172,6 +177,7 @@ impl Transition {
             incoming,
             usual,
             bring_in: true,
+            swap_beats: None,
         })
     }
 
@@ -205,7 +211,79 @@ impl Transition {
     /// leave the stem, EQ and FX plans describing the previous one.
     #[must_use]
     pub fn shape(&self) -> crate::shape::Shape {
-        crate::shape::shape(self.plan.style)
+        let shape = crate::shape::shape(self.plan.style);
+        match (shape.eq, self.swap_beats) {
+            (crate::shape::Eq::HandOverLows { .. }, Some(beats)) => crate::shape::Shape {
+                eq: crate::shape::Eq::HandOverLows {
+                    done_by: f64::from(beats.min(self.plan.length_beats))
+                        / f64::from(self.plan.length_beats.max(1)),
+                },
+                ..shape
+            },
+            _ => shape,
+        }
+    }
+
+    /// §26's stem region: how many beats into the mix the bass handover is
+    /// done — the DJ's, or the style's own — and `None` for a style that
+    /// hands nothing over.
+    #[must_use]
+    pub fn swap_beats(&self) -> Option<u32> {
+        match self.shape().eq {
+            crate::shape::Eq::HandOverLows { done_by } => {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let beats = (done_by * f64::from(self.plan.length_beats)).round() as u32;
+                Some(beats.clamp(1, self.plan.length_beats.max(1)))
+            }
+            crate::shape::Eq::Flat => None,
+        }
+    }
+
+    /// Where the bass handover is done, in frames on the outgoing record —
+    /// where the region's handle is drawn. See [`Self::swap_beats`].
+    #[must_use]
+    pub fn swap_frame(&self) -> Option<f64> {
+        self.swap_beats()
+            .map(|beats| self.plan.start_frame + f64::from(beats) * self.beat_frames())
+    }
+
+    /// The mix as the automix holds it (§68): these decks, from here, this
+    /// long, this way — and the bass handover where this transition has it.
+    #[must_use]
+    pub fn held(&self) -> crate::automix::Held {
+        crate::automix::Held {
+            outgoing: self.outgoing_deck,
+            incoming: self.incoming_deck,
+            start_frame: self.plan.start_frame,
+            length_beats: self.plan.length_beats,
+            style: self.plan.style,
+            keep_incoming: self.bring_in,
+            swap_by: match self.shape().eq {
+                crate::shape::Eq::HandOverLows { done_by } => Some(done_by),
+                crate::shape::Eq::Flat => None,
+            },
+        }
+    }
+
+    /// Have the bass handover done at this frame on the outgoing record.
+    ///
+    /// §26's *stem region*, the last of its nine, under the contract the
+    /// other handles are under: the waveform reports a **position**, and this
+    /// turns it into whole beats into the mix — clamped to between one beat
+    /// and the whole length, so a handover cannot be done before it starts
+    /// or after the mix is. A style that hands nothing over, or a position
+    /// that is not a number, changes nothing.
+    pub fn swap_at(&mut self, frame: f64) {
+        if !frame.is_finite() || self.swap_beats().is_none() {
+            return;
+        }
+        let beats = (frame - self.plan.start_frame) / self.beat_frames();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let beats = beats
+            .round()
+            .clamp(1.0, f64::from(self.plan.length_beats.max(1))) as u32;
+        self.swap_beats = Some(beats);
+        self.edited = true;
     }
 
     /// Where the mix starts, in seconds into the outgoing record.
@@ -280,6 +358,9 @@ impl Transition {
     /// suggest and is entitled to do it; the reasons still say the tempos
     /// clash, which is the honest arrangement — report, do not veto.
     pub fn set_style(&mut self, style: TransitionStyle) {
+        // A fade has no handover to keep, and a blend chosen again starts
+        // from the style's own.
+        self.swap_beats = None;
         self.set_geometry(self.plan.start_beat, self.plan.length_beats, style);
     }
 
@@ -297,6 +378,7 @@ impl Transition {
         if let Some(plan) = planned {
             self.plan = plan;
             self.edited = false;
+            self.swap_beats = None;
         }
     }
 
@@ -579,6 +661,100 @@ mod tests {
             "dragging the end moved the start, which is a slide rather than a resize"
         );
         assert!((transition.plan.end_frame - (start + 24.0 * beat())).abs() < 1.0);
+    }
+
+    /// **§26's stem region: a blend's bass handover is placed where the
+    /// handle is dropped** — in whole beats into the mix, never before its
+    /// first beat nor after its last, carried to the automix as the mix it
+    /// performs; kept through a nudge, forgotten by a restyle, and nothing
+    /// at all on a style that hands nothing over.
+    #[test]
+    fn a_blends_bass_handover_is_placed_where_it_is_dropped() {
+        use crate::shape::Eq;
+        let mut transition = armed();
+        transition.set_style(TransitionStyle::Blend);
+        transition.set_length(16);
+        let start = transition.plan.start_frame;
+        assert_eq!(
+            transition.swap_beats(),
+            Some(8),
+            "the style's own is halfway"
+        );
+        assert!((transition.swap_frame().expect("a handle") - (start + 8.0 * beat())).abs() < 1.0);
+
+        transition.swap_at(start + 11.6 * beat());
+        assert_eq!(transition.swap_beats(), Some(12));
+        assert_eq!(transition.shape().eq, Eq::HandOverLows { done_by: 0.75 });
+        assert_eq!(
+            transition.held().swap_by,
+            Some(0.75),
+            "the automix would perform another mix"
+        );
+        assert!(transition.edited);
+
+        transition.swap_at(start - 30.0 * beat());
+        assert_eq!(
+            transition.swap_beats(),
+            Some(1),
+            "a handover done before it began"
+        );
+        assert_eq!(
+            transition.shape().eq,
+            Eq::HandOverLows {
+                done_by: 1.0 / 16.0
+            }
+        );
+        transition.swap_at(start + 400.0 * beat());
+        assert_eq!(
+            transition.swap_beats(),
+            Some(16),
+            "a handover done after the mix"
+        );
+        transition.swap_at(f64::NAN);
+        assert_eq!(transition.swap_beats(), Some(16));
+        // Kept as dropped — at the mix's last beat — so a longer mix has it
+        // there, not at its own new end.
+        transition.set_length(32);
+        assert_eq!(
+            transition.swap_beats(),
+            Some(16),
+            "a drop past the end was kept past it"
+        );
+        transition.set_length(16);
+
+        transition.swap_at(start + 4.0 * beat());
+        transition.set_length(32);
+        assert_eq!(
+            transition.swap_beats(),
+            Some(4),
+            "a longer mix moved the handover"
+        );
+        transition.swap_at(start + 20.0 * beat());
+        assert_eq!(transition.swap_beats(), Some(20));
+        transition.set_length(8);
+        assert_eq!(
+            transition.swap_beats(),
+            Some(8),
+            "a handover past a shortened mix"
+        );
+        assert_eq!(
+            transition.shape().eq,
+            Eq::HandOverLows { done_by: 1.0 },
+            "a handover past the end of the mix it is performed in"
+        );
+
+        transition.set_style(TransitionStyle::Fade);
+        assert_eq!(transition.swap_beats(), None, "a fade has no handover");
+        assert_eq!(transition.held().swap_by, None);
+        transition.swap_at(start + 1.0 * beat());
+        assert_eq!(transition.shape().eq, Eq::Flat, "a fade was given one");
+        transition.set_style(TransitionStyle::Blend);
+        transition.set_length(16);
+        assert_eq!(
+            transition.swap_beats(),
+            Some(8),
+            "a restyle kept the old handover"
+        );
     }
 
     /// A drop between two beats is a whole beat, because a mix is counted in

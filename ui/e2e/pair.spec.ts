@@ -212,6 +212,48 @@ test.describe("the pair view", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **§26's stem region, the last of its nine: a blend's bass handover.**
+   * Drawn from the mix point to where the handover is done, its end a handle
+   * once djmanzo holds the mix; a drag sends a position and what comes back
+   * is drawn — the region follows, the mix's own start and end stay where
+   * they were — and a style that hands nothing over has neither.
+   */
+  test("a blend's bass handover is a region whose end can be dragged", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    const region = page.locator(`${PAIR} [data-region="bass handover"]`);
+    await expect(region).toBeVisible();
+    await expect(page.getByRole("slider", { name: /^bass/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const bass = page.getByRole("slider", { name: /^bass/ });
+    const start = page.getByRole("slider", { name: /mix in/ });
+    const end = page.getByRole("slider", { name: /^out/ });
+    await expect(bass).toHaveAttribute("aria-valuenow", "7171500");
+    const before = {
+      start: await start.getAttribute("aria-valuenow"),
+      end: await end.getAttribute("aria-valuenow"),
+      width: (await region.boundingBox())!.width,
+    };
+
+    const box = (await bass.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+
+    await expect.poll(async () => Number(await bass.getAttribute("aria-valuenow"))).toBeGreaterThan(7_171_500);
+    await expect.poll(async () => (await region.boundingBox())!.width).toBeGreaterThan(before.width);
+    expect(await start.getAttribute("aria-valuenow"), "the handover moved the mix").toBe(before.start);
+    expect(await end.getAttribute("aria-valuenow"), "the handover moved the mix").toBe(before.end);
+
+    await page.locator(`${PAIR} button`, { hasText: /^fade$/ }).click();
+    await expect(bass).toHaveCount(0);
+    await expect(region).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** And the same handle answers the keyboard, because a mouse is not the only hand. */
   test("the mix point moves with the arrow keys", async ({ page }) => {
     await pairOpen(page);

@@ -1088,6 +1088,8 @@ export const ANSWERS: Record<string, unknown> = {
     end_seconds: 170.3,
     start_frame: 6_830_000,
     end_frame: 7_513_000,
+    // §26: a blend's bass handover, done halfway by the style's own.
+    swap_frame: 7_171_500,
     length_beats: 32,
     style: "blend",
     bpm_delta: 3,
@@ -3562,8 +3564,26 @@ export async function openShell(
                       ),
                     )
                   : ((args.lengthBeats ?? held.length_beats) as number);
+              // §26's stem region, as `Transition::swap_at` keeps it: whole
+              // beats into the mix, one at least and the length at most; the
+              // style's own (half) until moved; forgotten by a restyle.
+              const restyledNow = args.style !== undefined && args.style !== held.style;
+              let swapBeats: number | null =
+                restyled !== "blend"
+                  ? null
+                  : held.swap_moved && !restyledNow
+                    ? (held.swap_moved as number)
+                    : Math.round(length / 2);
+              let swapMoved = restyledNow ? 0 : ((held.swap_moved ?? 0) as number);
+              if (args.swapFrame !== undefined && swapBeats !== null) {
+                swapBeats = Math.round((Number(args.swapFrame) - startFrame) / beatFrames);
+                swapMoved = swapBeats;
+              }
+              if (swapBeats !== null) swapBeats = Math.min(length, Math.max(1, swapBeats));
               win.__transition = {
                 ...held,
+                swap_moved: swapMoved,
+                swap_frame: swapBeats === null ? null : startFrame + swapBeats * beatFrames,
                 length_beats: length,
                 style: restyled,
                 shape:

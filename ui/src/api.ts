@@ -2428,6 +2428,8 @@ export interface Transition {
    */
   start_frame: number;
   end_frame: number;
+  /** §26: where a blend's bass handover is done, in frames; `null` for a style that hands nothing over. */
+  swap_frame?: number | null;
   length_beats: number;
   style: string;
   /** Incoming tempo minus outgoing, signed. */
@@ -3337,6 +3339,12 @@ export const transitionAdjust = (change: {
    * loop edges are under.
    */
   endFrame?: number;
+  /**
+   * §26's *stem region*: where a blend's bass handover handle was dropped, in
+   * frames on the outgoing record — `Transition::swap_at` turns it into whole
+   * beats into the mix, on the same contract as the end above.
+   */
+  swapFrame?: number;
 }) => invoke<Transition | null>("transition_adjust", change);
 
 /** Throw the adjustments away and ask the planner again. */

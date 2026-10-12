@@ -40,6 +40,7 @@
     height = 96,
     framesPerPixel = 256,
     marks = [],
+    region = null,
     onMoveMark,
     onMoveCue,
     onMoveLoopEdge,
@@ -57,7 +58,13 @@
      * seconds converts before it gets here, because the sample rate is a
      * property of the record and this component knows nothing about records.
      */
-    marks?: { frame: number; label: string; draggable?: boolean }[];
+    marks?: { frame: number; label: string; draggable?: boolean; low?: boolean }[];
+    /**
+     * §26's stem region: a stretch of the mix a style does something across
+     * — a blend's bass handover — drawn as a band under the marks. Its end is
+     * a mark of its own when it can be grabbed.
+     */
+    region?: { from: number; to: number; label: string } | null;
     /**
      * A draggable mark was let go somewhere else. Frames, in the file.
      *
@@ -194,6 +201,14 @@
    * Sync button beside it refused to touch it.
    */
   const gridIsAGuess = $derived(deck.loaded && !deck.can_sync);
+
+  /** §26's stem region, in pixels; nothing narrower than a hairline is drawn. */
+  const regionBand = $derived.by(() => {
+    if (!region) return null;
+    const left = Math.min(region.from, region.to) / framesPerPixel;
+    const width = Math.abs(region.to - region.from) / framesPerPixel;
+    return width > 1 ? { left, width, label: region.label } : null;
+  });
 
   /** The stretch a transition covers, when two marks describe one. */
   const seamBand = $derived.by(() => {
@@ -894,6 +909,16 @@
           style:width="{seamBand.width}px"
         ></div>
       {/if}
+      {#if regionBand && showing("seam")}
+        <div
+          class="region-band"
+          data-layer="seam"
+          data-region={regionBand.label}
+          title={regionBand.label}
+          style:left="{regionBand.left}px"
+          style:width="{regionBand.width}px"
+        ></div>
+      {/if}
       <!--
         §25's saved-loops layer, under the armed band on purpose.
 
@@ -1048,6 +1073,7 @@
           <div
             class="mark grabbable"
             data-layer="seam"
+            class:low={mark.low}
             class:dragging={dragging?.key === mark.label}
             style:left="{(dragging?.key === mark.label
               ? dragging.frame
@@ -1701,6 +1727,16 @@
     z-index: 1;
   }
 
+  /* §26's stem region: the low half of the lane, where the bass is. */
+  .region-band {
+    position: absolute;
+    bottom: 0;
+    height: 35%;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--active) 22%, transparent);
+    border-right: 1px dashed var(--active);
+  }
+
   /* What the mix covers, between the two marks that bound it. */
   .seam-band {
     position: absolute;
@@ -1735,6 +1771,16 @@
     border-left-style: solid;
     border-left-color: var(--accent);
     touch-action: none;
+  }
+
+  /*
+    §26's stem region: a handle for something in the low end lives in the low
+    end of the lane — the band it ends is drawn there — so where it meets a
+    full-height handle (the mix point, at a zoom that puts the two together)
+    a press in the middle still takes the mix point.
+  */
+  .mark.grabbable.low {
+    top: 65%;
   }
 
   .mark.grabbable .mark-flag {

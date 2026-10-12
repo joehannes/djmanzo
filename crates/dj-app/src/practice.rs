@@ -50,7 +50,7 @@
 
 use std::time::Duration;
 
-use crate::automix::{Automix, DeckView, Held};
+use crate::automix::{Automix, DeckView};
 use crate::plan::Record;
 use crate::session::Session;
 use crate::transition::Transition;
@@ -258,14 +258,7 @@ pub fn rehearse(
     // settings are never consulted: a held mix names its style and its length,
     // and this *is* a held mix.
     let mut automix = Automix::new();
-    automix.hold(Some(Held {
-        outgoing: transition.outgoing_deck,
-        incoming: transition.incoming_deck,
-        start_frame: transition.plan.start_frame,
-        length_beats: transition.plan.length_beats,
-        style: transition.plan.style,
-        keep_incoming: transition.brings_in(),
-    }));
+    automix.hold(Some(transition.held()));
     let views: Vec<DeckView> = side.iter().map(|s| s.view()).collect();
     let opening = automix.apply(AutomixChange::SetEnabled(true), &views);
     debug_assert!(opening.actions.is_empty(), "switching on played something");

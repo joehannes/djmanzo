@@ -1018,14 +1018,7 @@ impl AppState {
     /// `None`, so the automix falls back to its own answer rather than aiming
     /// at a place nobody worked out.
     fn tell_automix(&self) {
-        let held = self.transition().map(|transition| crate::automix::Held {
-            outgoing: transition.outgoing_deck,
-            incoming: transition.incoming_deck,
-            start_frame: transition.plan.start_frame,
-            length_beats: transition.plan.length_beats,
-            style: transition.plan.style,
-            keep_incoming: transition.brings_in(),
-        });
+        let held = self.transition().map(|transition| transition.held());
         if let Ok(mut automix) = self.automix.lock() {
             automix.hold(held);
         }
