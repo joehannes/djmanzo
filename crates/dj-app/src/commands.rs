@@ -4408,7 +4408,7 @@ mod tests {
     }
 
     mod ranked_by_profile {
-        use super::super::with_profile;
+        use super::super::{AppState, SAID_LIFT, said_genres, with_profile, with_said};
 
         fn suggestion(byte: u8, score: f64) -> dj_library::suggest::Suggestion {
             dj_library::suggest::Suggestion {
@@ -4479,6 +4479,61 @@ mod tests {
             assert_eq!(
                 out[1].1, None,
                 "a record it said nothing about got a reason"
+            );
+        }
+
+        /// §118: **a DJ with no history is ranked by what they said they
+        /// play** — a record in a genre family they named moves up and says
+        /// why, by a third of a pack's lift; one they did not name keeps its
+        /// place and its reason; nothing said, nothing moved; and while a
+        /// profile speaks for tonight, what they said stands aside.
+        #[test]
+        fn what_the_dj_said_they_play_lifts_the_rail_until_a_profile_speaks() {
+            let id = |n: u8| dj_core::TrackId::from_bytes([n; 32]);
+            let family = |t: dj_core::TrackId| (t == id(2)).then_some("bachata");
+            let ranked = || {
+                vec![
+                    (suggestion(1, 5.0), Some("kept".to_owned())),
+                    (suggestion(2, 4.9), None),
+                ]
+            };
+            let out = with_said(ranked(), &["bachata".to_owned()], &family);
+            assert_eq!(out[0].0.track, id(2), "what they said did not move the row");
+            assert!((out[0].0.score - (4.9 + SAID_LIFT)).abs() < 1e-9);
+            assert_eq!(
+                out[0].1.as_deref(),
+                Some("bachata: a genre you said you play")
+            );
+            assert_eq!(
+                out[1].1.as_deref(),
+                Some("kept"),
+                "another row lost its reason"
+            );
+            assert!(SAID_LIFT < dj_library::suggest::Reason::InPack("bachata").weight() / 2.0);
+
+            assert_eq!(with_said(ranked(), &[], &family)[0].0.track, id(1));
+            let unnamed = with_said(ranked(), &["house".to_owned()], &family);
+            assert_eq!(unnamed[0].0.track, id(1), "a genre they did not name moved");
+
+            let dir = tempfile::tempdir().expect("a folder");
+            let state = AppState::new(true);
+            state.set_config_dir(dir.path().to_path_buf());
+            assert!(
+                said_genres(&state, false).is_empty(),
+                "a welcome never answered"
+            );
+            crate::welcome::save(
+                dir.path(),
+                crate::welcome::Answers {
+                    genres: vec!["bachata".to_owned()],
+                    ..crate::welcome::Answers::default()
+                },
+            )
+            .expect("kept");
+            assert_eq!(said_genres(&state, false), ["bachata"]);
+            assert!(
+                said_genres(&state, true).is_empty(),
+                "the word spoke over the evidence"
             );
         }
 
@@ -10359,6 +10414,15 @@ fn next_rail(
         profile.as_ref(),
         &|id| genres.get(&id).cloned(),
     );
+    // §118: and, until there is a profile to speak, what the DJ told the
+    // welcome they play. Evidence outranks the word, so never both.
+    let said = said_genres(state, profile.is_some());
+    let ranked = with_said(ranked, &said, &|id| {
+        genres
+            .get(&id)
+            .and_then(|tag| dj_core::genre::family_for(tag))
+            .map(|family| family.name)
+    });
 
     // §22's estimated transition type. Read once for the whole rail rather
     // than per candidate — it is the *outgoing* half, which every row shares —
@@ -10604,6 +10668,59 @@ fn with_profile(
         .collect();
     // The same tie-break the ranking used, so a re-sort cannot reorder two
     // candidates the profile said nothing about.
+    out.sort_by(|a, b| {
+        b.0.score
+            .partial_cmp(&a.0.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.track.cmp(&b.0.track))
+    });
+    out
+}
+
+/// §118: the genres the DJ told the welcome they play, for the rail —
+/// none while there is a profile for tonight, which is evidence of how they
+/// play this kind of night and outranks a word about all of them.
+fn said_genres(state: &AppState, profiled: bool) -> Vec<String> {
+    if profiled {
+        return Vec::new();
+    }
+    state
+        .config_dir()
+        .and_then(|config| crate::welcome::load(&config))
+        .map(|answers| answers.genres)
+        .unwrap_or_default()
+}
+
+/// §118: how far a record in a genre the DJ said they play is lifted — a
+/// third of a chosen pack's (`Reason::InPack`), because a pack is what they
+/// chose for tonight and this is what they said about every night.
+const SAID_LIFT: f64 = 0.25;
+
+/// Fold the genres the DJ told the welcome they play into a ranking, and
+/// re-sort — the weak prior a DJ with no history has, with its reason on the
+/// row. Called only while §81 has no profile for tonight; no genres said,
+/// the ranking untouched.
+fn with_said(
+    ranked: Vec<(dj_library::suggest::Suggestion, Option<String>)>,
+    said: &[String],
+    family_of: &dyn Fn(dj_core::TrackId) -> Option<&'static str>,
+) -> Vec<(dj_library::suggest::Suggestion, Option<String>)> {
+    if said.is_empty() {
+        return ranked;
+    }
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|(mut s, because)| {
+            match family_of(s.track).filter(|family| said.iter().any(|g| g == family)) {
+                Some(family) => {
+                    s.score += SAID_LIFT;
+                    (s, Some(format!("{family}: a genre you said you play")))
+                }
+                None => (s, because),
+            }
+        })
+        .collect();
+    // The same tie-break the ranking used.
     out.sort_by(|a, b| {
         b.0.score
             .partial_cmp(&a.0.score)

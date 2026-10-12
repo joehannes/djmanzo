@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **What you told the welcome steers the Next rail until djmanzo knows you
+  (§118).** Until there are enough nights for a profile of this kind of
+  night, a record in a genre you said you play is lifted a little and says
+  *a genre you said you play*; once the profile exists, your playing speaks
+  instead.
+
 - **The assistant knows what you told the welcome (§118).** The name you
   play under, your kinds of night, genres, tempo, favourites, the moves you
   reach for and the ones you are learning reach the assistant as one
