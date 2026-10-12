@@ -1848,6 +1848,28 @@ fn the_browser_fixture_has_a_nights_crowd() {
     let placed_by_model = placed.iter().filter(|p| p.by_model).count();
     // Kept before the room was measured: drawn by arrival.
     let timeline = crowd::timeline(&played, &[], &placed, delay);
+    // The DJ's hand through it: the first record loaded, the crossfader
+    // worked through the blend into the second, djmanzo's automix riding an
+    // EQ, a cue set on the second record.
+    let logged = |seconds: f64, line: &str, by: dj_control::By| dj_control::TimedEvent {
+        event: dj_control::SessionEvent::parse_line(line).expect("a line of the log"),
+        at: std::time::Duration::from_secs_f64(seconds),
+        by,
+    };
+    let hand = dj_control::By::Hand;
+    #[allow(clippy::cast_precision_loss)]
+    let moves = crowd::moves(
+        start as f64,
+        &[
+            logged(0.0, &format!("load deck 1 {}", "a".repeat(64)), hand),
+            logged(185.0, "crossfader 0.2", hand),
+            logged(187.0, "crossfader 0.4", hand),
+            logged(189.0, "crossfader 0.6", hand),
+            logged(191.0, "crossfader 0.8", hand),
+            logged(205.0, "deck 2 eq_low 0.5", dj_control::By::Machine),
+            logged(250.0, "deck 2 hotcue_set 1", hand),
+        ],
+    );
     let view = CrowdView {
         // In the form `AppState` names a run's session: when it began.
         session: format!("session-{start}"),
@@ -1877,6 +1899,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
             error: None,
         },
         timeline,
+        moves: Some(moves),
     };
     // §119: the night above beside an earlier one that played its first
     // record to a quieter room, its second to silence, and one of its own.

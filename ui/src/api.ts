@@ -6295,6 +6295,22 @@ export interface CrowdView {
   measures: { measure: CrowdMeasure; title: string }[];
   ai: CrowdAi;
   timeline: CrowdTimeline | null;
+  /** The DJ's gestures through the night; `null` for a night kept before they were. */
+  moves?: CrowdMove[] | null;
+}
+
+/** `crowd::Move`: one of the DJ's gestures on a night's line, or a run of one. */
+export interface CrowdMove {
+  /** Unix seconds, the first and the last of the run. */
+  from: number;
+  to: number;
+  did: string;
+  mark: string;
+  count: number;
+  /** djmanzo's own: the automix, the autopilot, break music. */
+  machine: boolean;
+  /** The first move as the log has it. */
+  first: string;
 }
 
 /** `crowd::Met`: how one night met a record it shares with another. */

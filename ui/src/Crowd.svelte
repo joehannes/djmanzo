@@ -29,6 +29,7 @@
     type CrowdMet,
     type CrowdGoal,
     type CrowdMeasure,
+    type CrowdMove,
     type CrowdPart,
     type CrowdPlaced,
     type CrowdView,
@@ -277,6 +278,10 @@
   // arrows (ten seconds) and Page Up/Down (a minute), as a slider is.
 
   const line = $derived(view?.timeline ?? null);
+  /** The gestures on the line's stretch: Rust's, by when they were done. */
+  const moves = $derived(
+    line && view?.moves ? view.moves.filter((m) => m.to >= line.from && m.from <= line.to) : [],
+  );
   const tallestMinute = $derived(Math.max(1, ...(line?.per_minute ?? [0])));
   let cursor = $state<number | null>(null);
 
@@ -315,10 +320,19 @@
     } else {
       said.push("between records");
     }
+    // The DJ's gesture under the cursor, near enough to point at.
+    const near = Math.max(1, (line.to - line.from) / 200);
+    const move = moves.find((m) => m.from - near <= t && t <= m.to + near);
+    if (move) said.push(moveWords(move));
     const minute = Math.floor((t - line.from) / 60);
     const busy = line.per_minute[minute] ?? 0;
     said.push(busy === 1 ? "1 reaction that minute" : `${busy} reactions that minute`);
     return said.join(" · ");
+  }
+
+  /** A gesture as the cursor says it: *EQ ×14*, *Crossfader by djmanzo*. */
+  function moveWords(move: CrowdMove): string {
+    return `${move.mark}${move.count > 1 ? ` ×${move.count}` : ""}${move.machine ? " by djmanzo" : ""}`;
   }
 
   const across = (t: number) => (line ? ((t - line.from) / Math.max(1, line.to - line.from)) * 100 : 0);
@@ -454,6 +468,18 @@
           onpointerdown={point}
           onkeydown={step}
         >
+          <div class="lane done">
+            {#each moves as move, i (i)}
+              <span
+                class="move"
+                data-move={move.did}
+                data-machine={move.machine}
+                title={moveWords(move)}
+                style:left="{across(Math.max(line.from, move.from))}%"
+                style:width="{across(Math.min(line.to, move.to)) - across(Math.max(line.from, move.from))}%"
+              ></span>
+            {/each}
+          </div>
           <div class="lane records">
             {#each line.spans as span, i (i)}
               <span
@@ -487,6 +513,9 @@
             <span class="cursor" style:left="{across(cursor)}%"></span>
           {/if}
         </div>
+        {#if view.moves == null}
+          <p class="no-moves">No actions on this line: the night was kept before they were.</p>
+        {/if}
       </div>
     {/if}
 
@@ -778,7 +807,7 @@
   .lanes {
     position: relative;
     display: grid;
-    grid-template-rows: 1.1rem 0.8rem 1.4rem;
+    grid-template-rows: 0.7rem 1.1rem 0.8rem 1.4rem;
     gap: 2px;
     cursor: crosshair;
     touch-action: none;
@@ -839,6 +868,28 @@
 
   .dot[data-lean="down"] {
     background: var(--warn);
+  }
+
+  /* A gesture, or a run of one: never narrower than a tick. */
+  .move {
+    position: absolute;
+    top: 15%;
+    bottom: 15%;
+    min-width: 3px;
+    margin-left: -1px;
+    border-radius: 2px;
+    background: var(--text);
+    opacity: 0.75;
+  }
+
+  .move[data-machine="true"] {
+    background: var(--text-dim);
+  }
+
+  .no-moves {
+    margin: 0;
+    font-size: 0.8em;
+    color: var(--text-dim);
   }
 
   .bar {

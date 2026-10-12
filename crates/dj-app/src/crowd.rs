@@ -1273,6 +1273,159 @@ pub fn load_room(config: &Path, session: &str) -> Vec<Heard> {
     out
 }
 
+/// §119: the file a session's actions are kept in — a session file
+/// (`crate::session`), in a folder of its own so it is never listed as a
+/// night of reactions.
+///
+/// # Errors
+/// A session id that would not be a plain file name.
+pub fn actions_file(config: &Path, session: &str) -> Result<PathBuf, String> {
+    if !is_session(session) {
+        return Err(format!("{session:?} is not a session"));
+    }
+    Ok(folder(config)
+        .join("actions")
+        .join(format!("{session}.djset")))
+}
+
+/// The comment under a kept night's header that ties its log's clock to the
+/// wall's: `# started <unix milliseconds>`.
+const STARTED: &str = "# started ";
+
+/// §119: appends the action bus's log to a night's file as it grows — once
+/// a second, from the pump, and only what is new.
+#[derive(Debug, Default)]
+pub struct ActionKeeper {
+    /// How many of the log's entries are already in the file.
+    kept: usize,
+}
+
+impl ActionKeeper {
+    /// How many entries to ask the bus for from (`ActionBus::log_since`).
+    #[must_use]
+    pub const fn kept(&self) -> usize {
+        self.kept
+    }
+
+    /// Append `fresh` — the log after [`Self::kept`] — to the night's file,
+    /// writing its header and when the log began (`started`, unix
+    /// milliseconds) first if the file is new. Nothing is written for nothing
+    /// new.
+    ///
+    /// # Errors
+    /// The file system's own sentence; nothing is counted as kept then, so
+    /// the next call tries the same entries again.
+    pub fn keep(
+        &mut self,
+        config: &Path,
+        session: &str,
+        started: i64,
+        fresh: &[dj_control::TimedEvent],
+    ) -> Result<(), String> {
+        use std::io::Write as _;
+        if fresh.is_empty() {
+            return Ok(());
+        }
+        let path = actions_file(config, session)?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let mut text = String::new();
+        if !path.exists() {
+            text.push_str(crate::session::HEADER);
+            text.push('\n');
+            text.push_str(&format!("{STARTED}{started}\n"));
+        }
+        for entry in fresh {
+            text.push_str(&crate::session::line(entry));
+            text.push('\n');
+        }
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut out| out.write_all(text.as_bytes()))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        self.kept += fresh.len();
+        Ok(())
+    }
+}
+
+/// A night's actions as kept: when its log began, in unix seconds, and every
+/// event in it. `None` for a night kept before actions were, or a file that
+/// does not say when it began.
+#[must_use]
+pub fn load_actions(config: &Path, session: &str) -> Option<(f64, Vec<dj_control::TimedEvent>)> {
+    let text = std::fs::read_to_string(actions_file(config, session).ok()?).ok()?;
+    let started: f64 = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(STARTED))?
+        .trim()
+        .parse::<i64>()
+        .ok()? as f64
+        / 1_000.0;
+    let session = crate::session::Session::from_text(&text).ok()?;
+    Some((started, session.events))
+}
+
+/// §119: one of the DJ's gestures on a night's line — or a run of the same
+/// one, from the same hand, with less than [`MOVE_GAP`] between moves.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Move {
+    /// When the first and the last of the run were done, unix seconds.
+    pub from: f64,
+    pub to: f64,
+    /// The gesture (`signals::Did::slug`) and its name on the line.
+    pub did: &'static str,
+    pub mark: &'static str,
+    /// How many moves the run is.
+    pub count: usize,
+    /// djmanzo's own — the automix, the autopilot, break music — rather than
+    /// the DJ's.
+    pub machine: bool,
+    /// The first move as the log has it: `deck 1 eq low 0.3`.
+    pub first: String,
+}
+
+/// Seconds between two moves of one gesture that still make them one run.
+pub const MOVE_GAP: f64 = 3.0;
+
+/// A night's gestures as marks: each event one of §14's gestures names, runs
+/// of one gesture from one hand merged, in the order they began. Events no
+/// gesture names are left out.
+#[must_use]
+pub fn moves(started: f64, events: &[dj_control::TimedEvent]) -> Vec<Move> {
+    let mut out: Vec<Move> = Vec::new();
+    // The run still open for each gesture and hand, as an index into `out`.
+    let mut open: std::collections::BTreeMap<(crate::signals::Did, bool), usize> =
+        std::collections::BTreeMap::new();
+    for entry in events {
+        let Some(did) = crate::signals::did(&entry.event) else {
+            continue;
+        };
+        let at = started + entry.at.as_secs_f64();
+        let machine = entry.by == dj_control::By::Machine;
+        if let Some(&run) = open.get(&(did, machine))
+            && at - out[run].to < MOVE_GAP
+        {
+            out[run].to = at;
+            out[run].count += 1;
+            continue;
+        }
+        open.insert((did, machine), out.len());
+        out.push(Move {
+            from: at,
+            to: at,
+            did: did.slug(),
+            mark: did.mark(),
+            count: 1,
+            machine,
+            first: entry.event.to_line(),
+        });
+    }
+    out
+}
+
 /// What the DJ's AI provider read in a reaction the rules could not place.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reading {
@@ -1453,6 +1606,95 @@ mod tests {
             who: "someone".to_owned(),
             text: text.to_owned(),
         }
+    }
+
+    /// One logged event, from its line, `seconds` into the log.
+    fn logged(seconds: f64, line: &str, by: dj_control::By) -> dj_control::TimedEvent {
+        dj_control::TimedEvent {
+            event: dj_control::SessionEvent::parse_line(line).expect("a line of the log"),
+            at: std::time::Duration::from_secs_f64(seconds),
+            by,
+        }
+    }
+
+    /// §119: **a night's actions are kept as a session file** — appended as
+    /// the log grows, its header and when the log began written once, nothing
+    /// written for nothing new — and read back as they were, so a past night
+    /// can be drawn, and opened and replayed like any set.
+    #[test]
+    fn a_nights_actions_are_kept_as_a_session_file() {
+        use dj_control::By;
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let first = [
+            logged(0.5, "crossfader 0.25", By::Hand),
+            logged(1.25, "deck 1 hotcue_set 2", By::Machine),
+        ];
+        let then = [logged(4.0, "deck 2 eq_low 0.5", By::Hand)];
+        let mut keeper = ActionKeeper::default();
+        assert!(
+            load_actions(config, "session-7").is_none(),
+            "a night with nothing kept"
+        );
+        keeper
+            .keep(config, "session-7", 1_790_000_000_250, &[])
+            .expect("nothing");
+        assert!(!actions_file(config, "session-7").expect("a file").exists());
+        keeper
+            .keep(config, "session-7", 1_790_000_000_250, &first)
+            .expect("kept");
+        assert_eq!(keeper.kept(), 2);
+        keeper
+            .keep(config, "session-7", 1_790_000_999_999, &then)
+            .expect("kept");
+        assert_eq!(keeper.kept(), 3);
+
+        let text = std::fs::read_to_string(actions_file(config, "session-7").expect("a file"))
+            .expect("written");
+        assert_eq!(text.matches(crate::session::HEADER).count(), 1, "{text}");
+        let opened = crate::session::Session::from_text(&text).expect("a session file");
+        assert_eq!(opened.events, [first.as_slice(), then.as_slice()].concat());
+        let (started, events) = load_actions(config, "session-7").expect("kept");
+        assert!((started - 1_790_000_000.25).abs() < 1e-6, "{started}");
+        assert_eq!(events, opened.events);
+        assert!(actions_file(config, "../elsewhere").is_err());
+    }
+
+    /// §119: **a night's gestures are marks on its line, and a run of one is
+    /// one mark** — the same gesture from the same hand with less than
+    /// [`MOVE_GAP`] between moves; djmanzo's own moves apart from the DJ's;
+    /// what no gesture names left off.
+    #[test]
+    fn a_nights_gestures_are_marks_and_a_run_is_one() {
+        use dj_control::By;
+        let load = format!("load deck 1 {}", "a".repeat(64));
+        let events = [
+            logged(0.0, &load, By::Hand),
+            logged(10.0, "crossfader 0.1", By::Hand),
+            logged(11.0, "crossfader 0.2", By::Machine),
+            logged(11.5, "crossfader 0.3", By::Hand),
+            logged(14.0, "crossfader 0.4", By::Hand),
+            logged(17.5, "crossfader 0.5", By::Hand),
+            logged(18.0, "deck 1 play", By::Hand),
+            logged(19.0, "deck 1 hotcue_set 1", By::Hand),
+        ];
+        let marks = moves(1_000.0, &events);
+        let seen: Vec<(&str, f64, f64, usize, bool)> = marks
+            .iter()
+            .map(|m| (m.mark, m.from, m.to, m.count, m.machine))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("Load", 1_000.0, 1_000.0, 1, false),
+                ("Crossfader", 1_010.0, 1_014.0, 3, false),
+                ("Crossfader", 1_011.0, 1_011.0, 1, true),
+                ("Crossfader", 1_017.5, 1_017.5, 1, false),
+                ("Cue", 1_019.0, 1_019.0, 1, false),
+            ]
+        );
+        assert_eq!(marks[1].first, "crossfader 0.1");
+        assert_eq!(marks[1].did, "crossfaded");
     }
 
     /// **A reaction is read for what it is about**, and for which way it

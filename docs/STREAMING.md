@@ -131,6 +131,22 @@ waits for the log to be kept. Compare takes any two or more kept nights.
 - *Not there:* a night kept before this has no actions, and its line says
   so rather than drawing an empty row as if nothing was done.
 
+*Built 12 October* (`crowd::ActionKeeper`, `crowd::load_actions`,
+`crowd::moves`, `ActionBus::log_since`, the *Crowd* panel's line), as
+designed. Driven in WebKitGTK: the demo's night was kept as it was played —
+`crowd/actions/session-1791767720.djset`, its `# started` within a second of
+the session's own name, every load, EQ, cue, loop, the crossfader dragged
+in six steps and a sync — and the line drew them above the records, the
+cursor reading *Crossfader ×6* over the drag and *Sync* over the press; after
+a restart the same night, chosen from the list, drew the same marks from its
+file. Held by three Rust tests (the file appended, its header once, read back
+as a session file at the wall's time; runs merged within the gap, the hands
+apart, ungestured events left off; tonight's line from the bus, a past
+night's from its file, an older night with none) and one on the bus, the
+`crowd.json` golden carrying a night's moves, and two browser tests; nine
+Rust and six interface mutants fail them. The pump's once-a-second call is
+held only by the drive.
+
 ## 4. YouTube's live chat, as it arrives
 
 *Through a verified djmanzo Google app.*

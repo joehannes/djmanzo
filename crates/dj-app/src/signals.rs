@@ -145,6 +145,27 @@ impl Did {
         Did::SyncChanged,
     ];
 
+    /// §119: the gesture as a mark on a night's line is named — a word or
+    /// two, since the cursor says the rest.
+    #[must_use]
+    pub const fn mark(self) -> &'static str {
+        match self {
+            Did::Previewed => "Preview",
+            Did::Loaded => "Load",
+            Did::Ejected => "Clear",
+            Did::Cued => "Cue",
+            Did::Looped => "Loop",
+            Did::LoopResized => "Loop size",
+            Did::StemChanged => "Stems",
+            Did::EqMoved => "EQ",
+            Did::FilterSwept => "Filter",
+            Did::FxUsed => "Effect",
+            Did::Crossfaded => "Crossfader",
+            Did::TempoMoved => "Tempo",
+            Did::SyncChanged => "Sync",
+        }
+    }
+
     /// Read back what [`Self::slug`] wrote.
     ///
     /// `None` for anything else. A stored gesture djmanzo no longer has is
@@ -363,7 +384,9 @@ pub fn effects_used(events: &[TimedEvent]) -> Vec<EffectKind> {
     used
 }
 
-fn did(event: &SessionEvent) -> Option<Did> {
+/// The gesture an event is, if it is one of §14's — also what §119 draws a
+/// night's actions by (`crate::crowd::moves`).
+pub(crate) fn did(event: &SessionEvent) -> Option<Did> {
     match event {
         SessionEvent::Load { .. } => Some(Did::Loaded),
         SessionEvent::Auditioned { .. } => Some(Did::Previewed),

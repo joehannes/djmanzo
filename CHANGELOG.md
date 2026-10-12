@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A night's actions on its line (§119).** Every night's session log is
+  now kept beside its reactions, as a set file that opens and replays like
+  any other, and the Crowd panel's line draws the DJ's gestures above the
+  records — loads, cues, loops, the EQ, the crossfader, sync — a drag as one
+  stroke, djmanzo's own moves marked as its own, the cursor naming each.
+  A past night shows them too.
+
 - **Pitch correction in a singer's chain (K9).** *Pitch*, behind a
   microphone's name after the gate, off unless chosen: *+10 ms* said
   beside it, since the singer's wedge hears that; strength and speed; and

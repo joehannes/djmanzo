@@ -535,6 +535,9 @@ pub fn run() {
                 let state: tauri::State<'_, AppState> = handle.state();
                 (state.focus(), state.marks())
             };
+            // §119: the night's actions, kept beside its reactions.
+            let mut action_keeper = crowd::ActionKeeper::default();
+            let mut actions_kept_at = std::time::Instant::now();
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
@@ -601,6 +604,10 @@ pub fn run() {
                     {
                         let state: tauri::State<'_, AppState> = handle.state();
                         record_room(&state, &snapshot, &watched_tracks, &session_id);
+                        if actions_kept_at.elapsed() >= std::time::Duration::from_secs(1) {
+                            actions_kept_at = std::time::Instant::now();
+                            keep_actions(&state, &mut action_keeper, &session_id);
+                        }
                         watch_drops(&state, &snapshot, &watched_tracks);
                     }
                     // §115: the quiet proposer reads the frame the DJ is
@@ -1211,6 +1218,18 @@ fn record_responses(state: &AppState, session: &str, writer: &persist::LibraryWr
                 after: response.after,
             });
         }
+    }
+}
+
+/// §119: what the action bus logged since the last call, appended to the
+/// night's file — so a past night's line has its actions on it.
+fn keep_actions(state: &AppState, keeper: &mut crowd::ActionKeeper, session: &str) {
+    let Some(config) = state.config_dir() else {
+        return;
+    };
+    let fresh = state.bus().log_since(keeper.kept());
+    if let Err(error) = keeper.keep(&config, session, commands::log_started_ms(state), &fresh) {
+        tracing::warn!(%error, "tonight's actions were not kept");
     }
 }
 

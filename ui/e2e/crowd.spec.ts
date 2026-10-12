@@ -22,9 +22,10 @@ const view = crowd.view;
 const calls = (page: Page) =>
   page.evaluate(() => ((window as unknown as { __crowdCalls?: unknown[] }).__crowdCalls ?? []) as Record<string, unknown>[]);
 
-async function withCrowd(page: Page) {
+async function withCrowd(page: Page, answers: Record<string, unknown> = {}) {
   await page.setViewportSize({ width: 1400, height: 900 });
   await openShell(page, "/", {}, {
+    ...answers,
     cockpit_workspace: {
       workspace: {
         name: "Crowd",
@@ -191,6 +192,53 @@ test.describe("§119: the crowd", () => {
     const half = Math.round(line.from + (line.to - line.from) / 2);
     const into = half - second.from + second.into;
     await expect(moment).toContainText(`${view.played[second.record].title} · ${Math.floor(into / 60)}:${String(into % 60).padStart(2, "0")} in`);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The DJ's hand on the line** (`crowd::moves`): each gesture where Rust
+   * put it, a run of one as one stroke across its length, djmanzo's own
+   * moves marked as djmanzo's, and the cursor naming the one it is over; a
+   * night kept before actions were says so rather than drawing an empty row.
+   */
+  test("the DJ's actions are on the night's line, and the cursor names them", async ({ page }) => {
+    const line = view.timeline!;
+    const moves = view.moves!;
+    const panel = await withCrowd(page);
+    const night = panel.locator("[data-night-line]");
+    const marks = night.locator("[data-move]");
+    await expect(marks).toHaveCount(moves.length);
+    expect(await marks.evaluateAll((all) => all.map((m) => [m.getAttribute("data-move"), m.getAttribute("data-machine")]))).toEqual(
+      moves.map((m) => [m.did, String(m.machine)]),
+    );
+    const at = (t: number) => ((t - line.from) / (line.to - line.from)) * 100;
+    const run = moves.find((m) => m.count > 1)!;
+    const stroke = marks.nth(moves.indexOf(run));
+    const style = await stroke.evaluate((el) => [(el as HTMLElement).style.left, (el as HTMLElement).style.width]);
+    expect(parseFloat(style[0])).toBeCloseTo(at(run.from), 3);
+    expect(parseFloat(style[1])).toBeCloseTo(at(run.to) - at(run.from), 3);
+    await expect(night.locator(".no-moves")).toHaveCount(0);
+
+    // The cursor over the run, then over djmanzo's own move.
+    const slider = night.getByRole("slider", { name: "The night, on one line" });
+    const moment = night.locator("[data-moment]");
+    const box = (await night.locator(".lanes").boundingBox())!;
+    const over = async (t: number) => page.mouse.move(box.x + (at(t) / 100) * box.width, box.y + box.height / 2);
+    await over((run.from + run.to) / 2);
+    await expect(moment).toContainText(`${run.mark} ×${run.count} ·`);
+    const machine = moves.find((m) => m.machine)!;
+    await over(machine.from);
+    await expect(moment).toContainText(`${machine.mark} by djmanzo`);
+    await expect(slider).toHaveAttribute("aria-valuetext", (await moment.textContent())!.trim());
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("a night kept before its actions were says so", async ({ page }) => {
+    const panel = await withCrowd(page, { crowd_view: { ...view, moves: null } });
+    const night = panel.locator("[data-night-line]");
+    await expect(night.locator("[data-span]").first()).toBeVisible();
+    await expect(night.locator("[data-move]")).toHaveCount(0);
+    await expect(night.locator(".no-moves")).toHaveText("No actions on this line: the night was kept before they were.");
     expect(errorsThrown(page)).toEqual([]);
   });
 

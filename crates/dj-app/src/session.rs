@@ -47,7 +47,23 @@ use std::time::Duration;
 /// the line format changes meaning, not when a new verb is added: an unknown
 /// verb is already refused by the parser, line by line, which is the more
 /// useful failure.
-const HEADER: &str = "djmanzo-session 1";
+pub const HEADER: &str = "djmanzo-session 1";
+
+/// One event as a line of a session file, without its newline — what
+/// [`Session::to_text`] writes, and what §119's keeper appends a night's log
+/// with (`crate::crowd::ActionKeeper`).
+#[must_use]
+pub fn line(entry: &TimedEvent) -> String {
+    // Milliseconds. Finer would be false precision -- the timestamps come
+    // from a UI thread and a human finger -- and coarser would quantise a beat
+    // at 174 BPM into the wrong place.
+    format!(
+        "{:.3} {}{}",
+        entry.at.as_secs_f64(),
+        entry.by.marker(),
+        entry.event.to_line()
+    )
+}
 
 /// A set, as recorded.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -62,16 +78,7 @@ impl Session {
         let mut out = String::from(HEADER);
         out.push('\n');
         for entry in &self.events {
-            // Milliseconds. Finer would be false precision -- the timestamps
-            // come from a UI thread and a human finger -- and coarser would
-            // quantise a beat at 174 BPM into the wrong place.
-            let _ = writeln!(
-                out,
-                "{:.3} {}{}",
-                entry.at.as_secs_f64(),
-                entry.by.marker(),
-                entry.event.to_line()
-            );
+            let _ = writeln!(out, "{}", line(entry));
         }
         out
     }

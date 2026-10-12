@@ -22300,6 +22300,9 @@ pub struct CrowdView {
     pub ai: CrowdAi,
     /// The night on one line; `None` for a night with nothing in it.
     pub timeline: Option<crate::crowd::Timeline>,
+    /// §119: the DJ's gestures through the night, for the line; `None` for
+    /// a night kept before its actions were.
+    pub moves: Option<Vec<crate::crowd::Move>>,
 }
 
 /// §119: what the rules could not place, and the DJ's provider.
@@ -22531,6 +22534,32 @@ pub fn crowd_compare(
     })
 }
 
+/// §119: when the action bus's log began, in unix milliseconds — the wall's
+/// time of every entry's `at` of zero.
+pub(crate) fn log_started_ms(state: &AppState) -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    i64::try_from(now.saturating_sub(state.bus().elapsed()).as_millis()).unwrap_or(i64::MAX)
+}
+
+/// §119: a night's gestures on its line — tonight's from the bus itself,
+/// a past night's from its file; `None` for a night kept before actions were.
+fn night_moves(
+    state: &AppState,
+    config: &std::path::Path,
+    session: &str,
+    current: bool,
+) -> Option<Vec<crate::crowd::Move>> {
+    if current {
+        #[allow(clippy::cast_precision_loss)]
+        let started = log_started_ms(state) as f64 / 1_000.0;
+        return Some(crate::crowd::moves(started, &state.bus().log()));
+    }
+    crate::crowd::load_actions(config, session)
+        .map(|(started, events)| crate::crowd::moves(started, &events))
+}
+
 fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView, String> {
     let config = state
         .config_dir()
@@ -22590,6 +22619,7 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
     names.retain(|id| *id != now);
     names.insert(0, now);
 
+    let moves = night_moves(state, &config, &session, current);
     Ok(CrowdView {
         session,
         current,
@@ -22608,6 +22638,7 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
             .collect(),
         ai,
         timeline,
+        moves,
     })
 }
 
@@ -24360,6 +24391,65 @@ mod correction_tests {
             super::with_rotation(&state, |_| false).sung_key.as_deref(),
             Some("Bm (10A)"),
             "the key said on the strip's row"
+        );
+    }
+}
+
+#[cfg(test)]
+mod night_actions_tests {
+    use super::{AppState, crowd_view_of};
+
+    /// §119: **a night's line has its actions** — tonight's straight from
+    /// the bus, so the line is never behind; a past night's from the file it
+    /// was kept in, at the wall's time it was done; and a night kept before
+    /// actions were has none rather than an empty row.
+    #[test]
+    fn a_nights_line_has_the_djs_actions() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        for line in ["crossfader 0.3", "deck 1 hotcue_set 1", "deck 1 play"] {
+            state
+                .bus()
+                .dispatch(dj_core::Action::parse(line).expect("an action"))
+                .expect("sent");
+        }
+        let tonight = crowd_view_of(&state, None)
+            .expect("a view")
+            .moves
+            .expect("tonight's actions");
+        let marks: Vec<&str> = tonight.iter().map(|m| m.mark).collect();
+        assert_eq!(marks, ["Crossfader", "Cue"]);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after 1970")
+            .as_secs_f64();
+        assert!(
+            (now - tonight[0].from).abs() < 5.0,
+            "{} at {now}",
+            tonight[0].from
+        );
+
+        let mut keeper = crate::crowd::ActionKeeper::default();
+        let past = [dj_control::TimedEvent {
+            event: dj_control::SessionEvent::parse_line("deck 2 loop 4").expect("a line"),
+            at: std::time::Duration::from_secs(90),
+            by: dj_control::By::Hand,
+        }];
+        keeper
+            .keep(dir.path(), "session-100", 1_000_000, &past)
+            .expect("kept");
+        let then = crowd_view_of(&state, Some("session-100".to_owned()))
+            .expect("a view")
+            .moves
+            .expect("that night's actions");
+        assert_eq!(then.len(), 1);
+        assert_eq!((then[0].mark, then[0].from), ("Loop", 1_090.0));
+
+        let older = crowd_view_of(&state, Some("session-99".to_owned())).expect("a view");
+        assert!(
+            older.moves.is_none(),
+            "a night kept before actions were drew an empty row"
         );
     }
 }

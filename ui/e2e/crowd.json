@@ -203,6 +203,44 @@
         "title": "Reactions that were cold"
       }
     ],
+    "moves": [
+      {
+        "count": 1,
+        "did": "loaded",
+        "first": "load deck 1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "from": 1790000000.0,
+        "machine": false,
+        "mark": "Load",
+        "to": 1790000000.0
+      },
+      {
+        "count": 4,
+        "did": "crossfaded",
+        "first": "crossfader 0.2",
+        "from": 1790000185.0,
+        "machine": false,
+        "mark": "Crossfader",
+        "to": 1790000191.0
+      },
+      {
+        "count": 1,
+        "did": "eq-moved",
+        "first": "deck 2 eq_low 0.5",
+        "from": 1790000205.0,
+        "machine": true,
+        "mark": "EQ",
+        "to": 1790000205.0
+      },
+      {
+        "count": 1,
+        "did": "cued",
+        "first": "deck 2 hotcue_set 1",
+        "from": 1790000250.0,
+        "machine": false,
+        "mark": "Cue",
+        "to": 1790000250.0
+      }
+    ],
     "placed": [
       {
         "about": "greeting",

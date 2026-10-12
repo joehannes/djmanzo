@@ -334,6 +334,24 @@ where
             .unwrap_or_default()
     }
 
+    /// What was dispatched after the first `from` entries, in order — for a
+    /// keeper appending the log to disk without copying all of it each time.
+    /// Empty when `from` is past the end, as after [`Self::clear_log`].
+    #[must_use]
+    pub fn log_since(&self, from: usize) -> Vec<TimedEvent> {
+        self.log
+            .lock()
+            .map(|log| log.entries().get(from..).unwrap_or_default().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// The log's clock: how long since the bus began, which every
+    /// [`TimedEvent::at`] is measured from.
+    #[must_use]
+    pub fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+
     pub fn clear_log(&self) {
         if let Ok(mut log) = self.log.lock() {
             log.clear();
@@ -544,6 +562,23 @@ mod tests {
         assert_eq!(log.len(), 2);
         assert_eq!(log[0].event, SessionEvent::Action(play(1)));
         assert_eq!(log[1].event, SessionEvent::Action(play(2)));
+    }
+
+    /// §119: **the log from a point on** — what a keeper appending it to disk
+    /// has not written yet, and nothing past the end; and the clock every
+    /// entry is measured on.
+    #[test]
+    fn the_log_is_read_from_where_a_keeper_left_off() {
+        let (bus, _consumer) = ActionBus::<TestCommand>::new(16);
+        for deck in 1..=3 {
+            bus.dispatch(play(deck)).unwrap();
+        }
+        let rest = bus.log_since(1);
+        assert_eq!(rest.len(), 2);
+        assert_eq!(rest[0].event, SessionEvent::Action(play(2)));
+        assert!(bus.log_since(3).is_empty());
+        assert!(bus.log_since(9).is_empty());
+        assert!(bus.elapsed() >= rest[1].at);
     }
 
     /// Intent is recorded even when the engine cannot accept it, so a replay of
