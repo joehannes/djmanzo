@@ -271,6 +271,8 @@ fn context_lines(state: &AppState) -> Vec<String> {
         Ok(db) => (candidate_lines(state, &db), profile_line(state, &db)),
         Err(_) => (Vec::new(), String::new()),
     };
+    // §118: and the DJ's own words, which need no library.
+    let profile = preferences(welcome_words(state), profile);
 
     // §40's audience context: only while a reading is still arriving, by
     // the room panel's own rule for saying "watching".
@@ -405,6 +407,25 @@ fn candidate_lines(state: &AppState, db: &dj_library::Library) -> Vec<String> {
 /// than weights it could assemble a stronger one out of.
 fn profile_line(state: &AppState, db: &dj_library::Library) -> String {
     crate::commands::tonight_profile(state, db).map_or_else(String::new, |p| p.words())
+}
+
+/// §118: what the DJ told the welcome, as their own sentence; empty when
+/// they told it nothing or there is nowhere it was kept.
+fn welcome_words(state: &AppState) -> String {
+    state
+        .config_dir()
+        .and_then(|config| crate::welcome::load(&config))
+        .map_or_else(String::new, |answers| answers.words())
+}
+
+/// §40's *user preferences*: the DJ's own words first, then djmanzo's
+/// reading of how they play here — the claim before the evidence.
+fn preferences(own: String, profile: String) -> String {
+    [own, profile]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// §53's controller profile, as one line.
@@ -556,6 +577,40 @@ mod tests {
             assert_eq!(provider_from_slug(id.slug()), Some(*id));
         }
         assert_eq!(provider_from_slug("nonsense"), None);
+    }
+
+    /// §118: **the briefing carries what the DJ told the welcome**, under
+    /// §40's *user preferences*, their own words before djmanzo's reading;
+    /// and nothing of it when they told it nothing.
+    #[test]
+    fn the_briefing_carries_the_djs_own_words() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        let line = |state: &AppState| {
+            context_lines(state)
+                .into_iter()
+                .find(|line| line.starts_with("user preferences:"))
+                .expect("preferences have a line")
+        };
+        assert!(!line(&state).contains("own words"), "{}", line(&state));
+        crate::welcome::save(
+            dir.path(),
+            crate::welcome::Answers {
+                name: "Rosa".to_owned(),
+                favourites: vec!["Juan Luis Guerra".to_owned()],
+                ..crate::welcome::Answers::default()
+            },
+        )
+        .expect("kept");
+        assert_eq!(
+            line(&state),
+            "user preferences: In their own words, the DJ plays as Rosa; loves Juan Luis Guerra."
+        );
+        assert_eq!(
+            preferences("Mine.".to_owned(), "Djmanzo's.".to_owned()),
+            "Mine. Djmanzo's."
+        );
     }
 
     /// §40: **the briefing reads the room from the room**, and only while it

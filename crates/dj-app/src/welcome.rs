@@ -67,6 +67,52 @@ pub struct Answers {
     pub done: bool,
 }
 
+impl Answers {
+    /// §40's *user preferences*, in the DJ's own words: one sentence of what
+    /// they told the welcome, each part only when it was said, for the
+    /// assistant's briefing — beside §81's profile, which is djmanzo's
+    /// reading rather than the DJ's word. Empty when nothing was said.
+    #[must_use]
+    pub fn words(&self) -> String {
+        let list = |items: &[String]| items.join(", ");
+        let mut said: Vec<String> = Vec::new();
+        if !self.name.is_empty() {
+            said.push(format!("plays as {}", self.name));
+        }
+        if !self.nights.is_empty() {
+            let nights: Vec<String> = self
+                .nights
+                .iter()
+                .map(|night| night.title().to_lowercase())
+                .collect();
+            said.push(format!(
+                "plays {} nights, the first most",
+                nights.join(", ")
+            ));
+        }
+        if !self.genres.is_empty() {
+            said.push(format!("at home in {}", list(&self.genres)));
+        }
+        if (self.bpm_low, self.bpm_high) != (0, 0) {
+            said.push(format!("at {}–{} BPM", self.bpm_low, self.bpm_high));
+        }
+        if !self.favourites.is_empty() {
+            said.push(format!("loves {}", list(&self.favourites)));
+        }
+        if !self.moves.is_empty() {
+            said.push(format!("reaches for {}", list(&self.moves)));
+        }
+        if !self.learn.is_empty() {
+            said.push(format!("is learning {}", list(&self.learn)));
+        }
+        if said.is_empty() {
+            String::new()
+        } else {
+            format!("In their own words, the DJ {}.", said.join("; "))
+        }
+    }
+}
+
 /// Why answers were not kept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refused {
@@ -324,6 +370,43 @@ mod tests {
             theme: String::new(),
             done: false,
         }
+    }
+
+    /// §118: **what the DJ told the welcome is one sentence of their own**
+    /// for the assistant — every part they said, in their spelling as held,
+    /// nothing they did not, and nothing at all for a welcome put away
+    /// unanswered.
+    #[test]
+    fn the_welcome_is_said_back_in_the_djs_own_words() {
+        let kept = check(dj()).expect("the answers are usable");
+        let words = kept.words();
+        for part in [
+            "plays as Johannes",
+            "plays wedding, latin nights, the first most",
+            "at 100–128 BPM",
+            "loves Romeo Santos",
+            "reaches for cut",
+            "is learning echo out",
+        ] {
+            assert!(words.contains(part), "{part:?} not in {words:?}");
+        }
+        for genre in &kept.genres {
+            assert!(words.contains(genre.as_str()), "{genre} not in {words:?}");
+        }
+        let unsaid = Answers {
+            name: "Rosa".to_owned(),
+            ..Answers::default()
+        };
+        assert_eq!(unsaid.words(), "In their own words, the DJ plays as Rosa.");
+        assert_eq!(
+            Answers {
+                done: true,
+                ..Answers::default()
+            }
+            .words(),
+            "",
+            "a welcome put away unanswered said something"
+        );
     }
 
     /// **Answers are held to what djmanzo can use**: spelled its way,

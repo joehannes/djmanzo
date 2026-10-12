@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The assistant knows what you told the welcome (§118).** The name you
+  play under, your kinds of night, genres, tempo, favourites, the moves you
+  reach for and the ones you are learning reach the assistant as one
+  sentence in your own words, before djmanzo's own reading of how you play.
+
 - **A blend's bass handover, on the waveform (§26).** In the Pair view a
   held blend draws where the outgoing bass comes out as a band from the mix
   point, its end a *bass* handle: drag it and the handover happens there,
