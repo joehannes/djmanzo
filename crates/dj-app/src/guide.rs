@@ -31,6 +31,8 @@ pub enum Topic {
     Next,
     /// How to bring the record waiting on the other deck in.
     Mix,
+    /// Where the night stands, and the DJ's word on where it goes.
+    Energy,
     /// What the room asked for and is still waiting: find it, or not tonight.
     Request,
     /// The plans written for tonight's troubles.
@@ -39,13 +41,20 @@ pub enum Topic {
 
 impl Topic {
     /// In the order the guides are offered.
-    pub const ALL: [Topic; 4] = [Topic::Next, Topic::Mix, Topic::Request, Topic::Trouble];
+    pub const ALL: [Topic; 5] = [
+        Topic::Next,
+        Topic::Mix,
+        Topic::Energy,
+        Topic::Request,
+        Topic::Trouble,
+    ];
 
     #[must_use]
     pub const fn title(self) -> &'static str {
         match self {
             Topic::Next => "Next record",
             Topic::Mix => "The mix",
+            Topic::Energy => "The energy of the night",
             Topic::Request => "A request waiting",
             Topic::Trouble => "If something goes wrong",
         }
@@ -56,6 +65,7 @@ impl Topic {
         match self {
             Topic::Next => "Three records to follow what is playing: up, level, or down.",
             Topic::Mix => "How to bring the waiting record in, each way drawn as it sounds.",
+            Topic::Energy => "Where the night stands, and your word on where it goes.",
             Topic::Request => {
                 "What the room asked for, most wanted first: find it, or not tonight."
             }
@@ -124,6 +134,8 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
                     ),
                     (Some(_), to) => (None, to),
                 },
+                Topic::Energy if from.is_some() => (None, None),
+                Topic::Energy => (Some("Nothing is playing.".to_owned()), None),
                 Topic::Request if waiting > 0 => (None, None),
                 Topic::Request => (Some("Nothing is waiting from the room.".to_owned()), None),
                 Topic::Trouble if live => (None, None),
@@ -136,7 +148,7 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
                 topic,
                 title: topic.title(),
                 about: topic.about(),
-                from: if matches!(topic, Topic::Trouble | Topic::Request) {
+                from: if matches!(topic, Topic::Trouble | Topic::Request | Topic::Energy) {
                     None
                 } else {
                     from
@@ -239,6 +251,29 @@ mod tests {
             None,
             "a request is about the room, not a deck"
         );
+    }
+
+    /// §118: **the energy guide opens once the night is under way** — a
+    /// record playing — and works on no deck, because the night is the
+    /// room's, not one record's.
+    #[test]
+    fn the_energy_guide_opens_once_a_record_plays() {
+        let mut snapshot = booth();
+        assert_eq!(
+            open(&guides(&snapshot, false, 2, 0), Topic::Energy)
+                .not_now
+                .as_deref(),
+            Some("Nothing is playing.")
+        );
+        snapshot.decks[0].loaded = true;
+        snapshot.decks[0].playing = true;
+        let playing = guides(&snapshot, false, 2, 0);
+        let energy = open(&playing, Topic::Energy);
+        assert_eq!(
+            (energy.not_now.as_deref(), energy.from, energy.to),
+            (None, None, None)
+        );
+        assert_eq!(energy.title, "The energy of the night");
     }
 
     /// The deck a guide works from is the one the room hears, not the

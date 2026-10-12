@@ -2395,7 +2395,7 @@ export const nextDecision = (deck: number, decks: number) =>
 
 /** §118a: one of the assistant's guides, open or saying why not (`dj_app::guide`). */
 export interface Guide {
-  topic: "next" | "mix" | "request" | "trouble";
+  topic: "next" | "mix" | "energy" | "request" | "trouble";
   title: string;
   about: string;
   /** Why it cannot be opened now; `null` when it can. */
@@ -4770,11 +4770,27 @@ export interface NightRead {
   still_needed: number;
   /** Worth saying, most important first. Never empty. */
   notes: string[];
+  /** §118: the phases the night has been read as, and when each began. */
+  arc: ArcStep[];
   /** What the assistant may do right now. See `dj_assistant::Warrant`. */
   warrant: "nothing" | "watch" | "speak" | "stage" | "act" | "mix";
 }
 
 export const nightRead = () => invoke<NightRead>("night_read");
+
+/** One step of the night's arc: when it became this, in seconds since djmanzo started. */
+export interface ArcStep {
+  at_seconds: number;
+  phase: SessionPhase;
+  /** The phase as it appears mid-sentence. */
+  words: string;
+}
+
+/**
+ * §118: the DJ's word on where the night goes, or `null` to let the music
+ * say -- the same door an occasion declares through, so the latest word wins.
+ */
+export const nightDeclare = (phase: SessionPhase | null) => invoke<NightRead>("night_declare", { phase });
 
 /* -- what tonight's gestures amount to (§13, §14) --------------------------- */
 

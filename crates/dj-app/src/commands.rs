@@ -21389,10 +21389,23 @@ pub struct NightDto {
     pub still_needed: usize,
     /// Everything worth saying, most important first. Never empty.
     pub notes: Vec<String>,
+    /// §118: the night so far, as the phases it has been read as and when
+    /// each began — changes only, so a handful over a whole set.
+    pub arc: Vec<ArcStepDto>,
     /// What the assistant is allowed to do, given the posture and the
     /// certainty. See `dj_assistant::Warrant` — this is §9's matrix as it
     /// actually stands right now.
     pub warrant: String,
+}
+
+/// One step of the night's arc.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArcStepDto {
+    /// When the night became this, in seconds since djmanzo started.
+    pub at_seconds: f64,
+    pub phase: String,
+    /// The phase as it appears mid-sentence.
+    pub words: String,
 }
 
 /// What djmanzo has made of the night, for the surface that shows it.
@@ -21426,8 +21439,31 @@ pub fn night_read(state: State<'_, AppState>) -> Result<NightDto, String> {
         readings,
         still_needed,
         notes: night.notes(),
+        arc: night
+            .arc()
+            .into_iter()
+            .map(|(at, phase)| ArcStepDto {
+                at_seconds: at.as_secs_f64(),
+                phase: phase.name().to_owned(),
+                words: crate::night::phase_words(phase).to_owned(),
+            })
+            .collect(),
         warrant: warrant.name().to_owned(),
     })
+}
+
+/// §118: the DJ's word on where the night goes — a phase by its stable name,
+/// or `None` to let the music say — and the night as it now reads.
+///
+/// The energy guide's choices. The same door an occasion declares through
+/// (`night::Night::say`), so whichever spoke last is the word in force.
+#[tauri::command]
+pub fn night_declare(
+    state: State<'_, AppState>,
+    phase: Option<String>,
+) -> Result<NightDto, String> {
+    state.night().say(phase.as_deref())?;
+    night_read(state)
 }
 
 /// §17's ask, for the rail that starts from it.

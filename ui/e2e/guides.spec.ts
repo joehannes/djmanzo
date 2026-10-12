@@ -147,6 +147,71 @@ test.describe("§118a: the assistant's guides", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * §118: the energy of the night. Opened while a record plays, it draws
+   * the night as djmanzo reads it -- the phase in words, the level, the arc
+   * so far, the first note -- and offers the DJ's word as four choices; a
+   * press declares that phase (recorded, as Rust's `night_declare` would
+   * receive it) and is marked as the word in force, and *Let the music say*
+   * takes it back.
+   */
+  test("the energy of the night shows where it stands and takes the DJ's word", async ({ page }) => {
+    const night = {
+      phase: "heat",
+      words: "building",
+      energy: 0.55,
+      certainty: "fair",
+      certainty_about: "The music alone, and it has been steady.",
+      basis: "measured",
+      drift: null,
+      time_of_day: "evening",
+      declared: null,
+      measured: "heat",
+      readings: 140,
+      still_needed: 0,
+      notes: ["Tonight is building, from the music alone."],
+      arc: [
+        { at_seconds: 1500, phase: "warm_up", words: "a warm-up" },
+        { at_seconds: 3720, phase: "heat", words: "building" },
+      ],
+      warrant: "speak",
+    };
+    await openShell(page, "/", {}, { guides: guides.playing, night_read: night });
+    const topics = await openGuides(page);
+    const tile = topics.locator('[data-topic="energy"]');
+    await expect(tile).toBeEnabled();
+    await tile.click();
+    const card = page.locator('[role="dialog"][aria-label="The energy of the night"]');
+    await expect(card).toBeVisible();
+    await expect(card.locator("header strong")).toHaveText("Tonight is building");
+    await expect(card.locator(".level .fill")).toHaveAttribute("style", /width: 55%/);
+    await expect(card.locator(".arc li")).toHaveText(["a warm-up · 25 min", "building · 1 h 02"]);
+    await expect(card).toContainText("Tonight is building, from the music alone.");
+    const words = card.locator("[data-word]");
+    await expect(words).toHaveText([/Keep building/, /Hold the peak/, /Bring it down/, /Let the music say/]);
+    // Nothing said yet: letting the music say is what is in force.
+    await expect(card.locator('[data-word="music"]')).toHaveAttribute("aria-pressed", "true");
+
+    await card.locator('[data-word="cooldown"]').click();
+    await expect(card.locator('[data-word="cooldown"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(card.locator('[data-word="cooldown"]')).toContainText("Your word");
+    await expect(card.locator('[data-word="music"]')).toHaveAttribute("aria-pressed", "false");
+    await card.locator('[data-word="music"]').click();
+    await expect(card.locator('[data-word="cooldown"]')).toHaveAttribute("aria-pressed", "false");
+    expect(await recorded(page, "__declared")).toEqual(["cooldown", null]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** With nothing playing, the energy guide says so in Rust's words. */
+  test("the energy guide says when nothing is playing", async ({ page }) => {
+    await openShell(page, "/");
+    const topics = await openGuides(page);
+    const quiet = guides.quiet.find((g) => g.topic === "energy")!;
+    await expect(topics.locator('[data-topic="energy"]')).toBeDisabled();
+    await expect(topics.locator('[data-topic="energy"] .about')).toHaveText(quiet.not_now!);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** With nothing waiting, the request guide says so in Rust's words. */
   test("the request guide says when nothing is waiting", async ({ page }) => {
     await openShell(page, "/");

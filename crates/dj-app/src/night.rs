@@ -79,6 +79,23 @@ impl Night {
         }
     }
 
+    /// §118: the DJ's word on where the night goes, by the phase's stable
+    /// name, or `None` to let the music say.
+    ///
+    /// The energy guide's door, and the same one an occasion uses, so the
+    /// latest word wins whichever said it. A name that is no phase changes
+    /// nothing: a guide that misspelled one must not silently clear the
+    /// DJ's word.
+    pub fn say(&self, name: Option<&str>) -> Result<(), String> {
+        let phase = name
+            .map(|name| {
+                SessionPhase::parse(name).ok_or_else(|| format!("no phase is called {name:?}"))
+            })
+            .transpose()?;
+        self.declare(phase);
+        Ok(())
+    }
+
     /// What the DJ last declared.
     #[must_use]
     pub fn declared(&self) -> Option<SessionPhase> {
@@ -341,6 +358,45 @@ mod tests {
         assert_eq!(playing(&snapshot), 1);
         snapshot.decks[1].playing = false;
         assert_eq!(playing(&snapshot), 0);
+    }
+
+    /// §118: **the DJ's word turns the night**, and with it what the rail
+    /// asks for: *Keep building* reads as building and ranks up, *Bring it
+    /// down* as coming down and ranks down; a name that is no phase changes
+    /// nothing, and letting the music say clears the word.
+    #[test]
+    fn the_djs_word_turns_the_night() {
+        let night = Night::new();
+        night.say(Some("heat")).expect("a phase");
+        let read = night
+            .observe_at(&frame(1, 0.6), Duration::from_secs(30), Some(23))
+            .expect("a declared night is a night");
+        assert_eq!(
+            (read.phase, read.basis),
+            (SessionPhase::Heat, Basis::Declared)
+        );
+        let up = crate::asks::asks(Some(read.phase)).trajectory;
+
+        assert!(night.say(Some("loud")).is_err());
+        assert_eq!(
+            night.declared(),
+            Some(SessionPhase::Heat),
+            "a bad name cleared the word"
+        );
+
+        night.say(Some("cooldown")).expect("a phase");
+        let read = night
+            .observe_at(&frame(1, 0.6), Duration::from_secs(31), Some(23))
+            .expect("a declared night is a night");
+        assert_eq!(read.phase, SessionPhase::Cooldown);
+        assert_ne!(
+            crate::asks::asks(Some(read.phase)).trajectory,
+            up,
+            "the rail asks the same of a night going up and one coming down"
+        );
+
+        night.say(None).expect("letting the music say");
+        assert_eq!(night.declared(), None);
     }
 
     /// The tempo the room heard, not the one on the label.

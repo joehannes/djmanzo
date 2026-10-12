@@ -780,6 +780,7 @@ pub fn run() {
             commands::room_read,
             commands::dj_context,
             commands::night_read,
+            commands::night_declare,
             commands::staged_prepare,
             commands::staged_current,
             commands::staged_choose,

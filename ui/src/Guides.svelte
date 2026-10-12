@@ -8,8 +8,9 @@
    * > identify
    *
    * One button in the row the eye already reads for the state of the night.
-   * It opens the topics as large pictures -- the next record, the mix, and
-   * while a night is on, what to do if something goes wrong -- and each
+   * It opens the topics as large pictures -- the next record, the mix, the
+   * energy of the night, a request waiting, and while a night is on, what to
+   * do if something goes wrong -- and each
    * topic opens as a floating widget of a few large choices, told apart by
    * their drawing before their words.
    *
@@ -28,12 +29,16 @@
     audienceWaiting,
     formatTime,
     listGuides,
+    nightDeclare,
+    nightRead,
     planTransition,
     transitionAdjust,
     transitionArm,
     transitionStyles,
     type Ask,
     type Guide,
+    type NightRead,
+    type SessionPhase,
     type Transition,
     type TransitionStyleInfo,
   } from "./api";
@@ -81,6 +86,49 @@
     }
   }
 
+  // The energy guide's state: the night as djmanzo reads it.
+  let night = $state<NightRead | null>(null);
+
+  async function readNight() {
+    try {
+      night = await nightRead();
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
+   * The DJ's word on where the night goes. The phase itself is read again a
+   * moment later, because the engine takes the word on its next look at the
+   * set; what was said is marked at once.
+   */
+  async function say(phase: SessionPhase | null) {
+    try {
+      night = await nightDeclare(phase);
+      error = null;
+      setTimeout(() => {
+        if (open?.topic === "energy") void readNight();
+      }, 400);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /** How far into the night, as a DJ says it: "25 min", "1 h 02". */
+  function into(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}`;
+  }
+
+  /** The energy guide's choices, each a phase declared, drawn as the night's line. */
+  const WORDS: { phase: SessionPhase | null; label: string; does: string; line: string }[] = [
+    { phase: "heat", label: "Keep building", does: "The rail ranks up.", line: "M2 20L30 4" },
+    { phase: "peak", label: "Hold the peak", does: "The rail holds it there.", line: "M2 18C8 4 24 4 30 4" },
+    { phase: "cooldown", label: "Bring it down", does: "The rail ranks down.", line: "M2 4L30 20" },
+    { phase: null, label: "Let the music say", does: "Your word taken back.", line: "M2 12C6 4 10 4 14 12S22 20 26 12 30 8 30 8" },
+  ];
+
   // The mix guide's state.
   let plan = $state<Transition | null>(null);
   let styles = $state<TransitionStyleInfo[]>([]);
@@ -91,6 +139,7 @@
     open = null;
     plan = null;
     held = null;
+    night = null;
     error = null;
   }
 
@@ -123,6 +172,10 @@
       await readAsks();
       return;
     }
+    if (guide.topic === "energy") {
+      await readNight();
+      return;
+    }
     if (guide.topic === "mix" && guide.from != null && guide.to != null) {
       try {
         [plan, styles] = await Promise.all([planTransition(guide.from, guide.to), transitionStyles()]);
@@ -151,7 +204,7 @@
   /** The mix sits under the measured top bar, where the decision card does. */
   let top = $state(96);
   $effect(() => {
-    if (open?.topic !== "mix" && open?.topic !== "request") return;
+    if (open?.topic !== "mix" && open?.topic !== "request" && open?.topic !== "energy") return;
     const bar = document.querySelector(".topbar")?.getBoundingClientRect();
     if (bar) top = Math.round(bar.bottom + 8);
   });
@@ -182,6 +235,7 @@
   const TOPIC: Record<Guide["topic"], string> = {
     next: "M4 12h6M10 12l9-7M10 12h10M10 12l9 7",
     mix: "M3 6c8 0 10 12 18 12M3 18c8 0 10-12 18-12",
+    energy: "M2 19l5-5 4 3 5-8 6 4",
     request: "M4 5h16v10H10l-6 4z",
     trouble: "M12 3l10 18H2zM12 10v5M12 17.5v.5",
   };
@@ -206,7 +260,7 @@
   bind:this={button}
   aria-expanded={picking || open !== null}
   aria-haspopup="dialog"
-  title="The assistant's guides: the next record, the mix, a request waiting, and tonight's plans"
+  title="The assistant's guides: the next record, the mix, the energy of the night, a request waiting, and tonight's plans"
   onclick={() => void toggle()}
 >
   <Icon name="signpost" size="0.95rem" /> Guides
@@ -244,6 +298,47 @@
     onTaken={close}
     onLater={close}
   />
+{/if}
+
+{#if open?.topic === "energy"}
+  <div class="guides-float energy" use:portal style="top: {top}px" role="dialog" aria-label="The energy of the night">
+    <header>
+      <strong>{night?.words ? `Tonight is ${night.words}` : "The energy of the night"}</strong>
+      <button type="button" onclick={close}>Close</button>
+    </header>
+    {#if night}
+      {#if night.energy !== null}
+        <div class="level" title="How hard the night is going, on tonight's own range">
+          <span class="fill" style="width: {Math.round(night.energy * 100)}%"></span>
+        </div>
+      {/if}
+      {#if night.arc.length > 0}
+        <ol class="arc" aria-label="The night so far">
+          {#each night.arc.slice(-6) as step (step.at_seconds)}
+            <li data-phase={step.phase}>{step.words} <span class="when">· {into(step.at_seconds)}</span></li>
+          {/each}
+        </ol>
+      {/if}
+      <p class="held" role="status">{night.notes[0]}</p>
+      <div class="words-choice">
+        {#each WORDS as word (word.label)}
+          <button
+            type="button"
+            class="style"
+            data-word={word.phase ?? "music"}
+            aria-pressed={night.declared === word.phase}
+            onclick={() => void say(word.phase)}
+          >
+            <svg viewBox="0 0 32 24" aria-hidden="true"><path class="out" d={word.line} /></svg>
+            <strong>{word.label}</strong>
+            {#if night.declared === word.phase && word.phase !== null}<span class="mark">Your word</span>{/if}
+            <span class="does">{word.does}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+    {#if error}<p class="error">{error}</p>{/if}
+  </div>
 {/if}
 
 {#if open?.topic === "request"}
@@ -457,6 +552,65 @@
     gap: 0.55rem;
   }
 
+  .energy {
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(44rem, calc(100vw - 2rem));
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .energy header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .level {
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--panel-raised);
+    overflow: hidden;
+  }
+
+  .level .fill {
+    display: block;
+    height: 100%;
+    background: var(--active);
+  }
+
+  .arc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8em;
+  }
+
+  .arc li {
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+  }
+
+  .arc li:last-child {
+    border-color: var(--active);
+  }
+
+  .when {
+    color: var(--text-dim);
+  }
+
+  .words-choice {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
   .mix header {
     display: flex;
     align-items: center;
@@ -533,6 +687,7 @@
   }
 
   @media (max-width: 40rem) {
+    .words-choice,
     .styles {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }

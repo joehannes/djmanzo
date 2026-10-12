@@ -671,6 +671,7 @@ export const ANSWERS: Record<string, unknown> = {
     readings: 0,
     still_needed: 90,
     notes: ["Nothing has read the night yet."],
+    arc: [],
     warrant: "speak",
   },
     // What the presets and settings surfaces ask for.
@@ -2179,6 +2180,13 @@ export async function openShell(
           }
           if (cmd === "guides") {
             ((win.__guidesDecks ??= []) as number[]).push(Number(args.decks));
+          }
+          // §118: the DJ's word on the night, recorded, and the night read
+          // back with it declared, as Rust's `night_declare` answers.
+          if (cmd === "night_declare") {
+            ((win.__declared ??= []) as unknown[]).push(args.phase ?? null);
+            answers.night_read = { ...(answers.night_read as object), declared: args.phase ?? null };
+            return Promise.resolve(structuredClone(answers.night_read));
           }
           // §118: what the room is waiting for, and what became of it. The
           // order and the settling are Rust's (`audience`); this keeps what

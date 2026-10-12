@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The energy of the night (§118).** While a record plays, *Guides*
+  offers *The energy of the night*: where djmanzo reads the night (the
+  phase, how hard it is going, the arc so far) and your word on where it
+  goes — *Keep building*, *Hold the peak*, *Bring it down* or *Let the
+  music say*. One press sets the phase everything reads, the rail's
+  direction included; choosing an occasion afterwards speaks again.
+
 - **A guide for a request waiting (§118).** While the room has asked for
   something, *Guides* offers *A request waiting*: the three most wanted, each
   with how many asked, and *Find it* (the library searched for it), *Played*
