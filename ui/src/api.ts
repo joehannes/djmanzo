@@ -2289,9 +2289,22 @@ export interface Board {
   about: string;
   glyph: string;
   widgets: BoardWidget[];
+  /** §117: the DJ has arranged it by hand, so djmanzo's can be put back. */
+  arranged?: boolean;
 }
 
 export const boards = () => invoke<Board[]>("boards");
+/**
+ * §117: keep the DJ's arrangement of a board — sent whole, held by Rust
+ * (`boards::check`) — and get the boards back as they now are.
+ */
+export const boardArrange = (slug: string, widgets: BoardWidget[]) =>
+  invoke<Board[]>("board_arrange", {
+    slug,
+    widgets: widgets.map(({ name, cols, rows }) => ({ name, cols, rows })),
+  });
+/** §117: put djmanzo's arrangement of a board back. */
+export const boardReset = (slug: string) => invoke<Board[]>("board_reset", { slug });
 /** Count one use of a tile, however it was reached. */
 export const usedTile = (id: string) => invoke<void>("used_tile", { id });
 

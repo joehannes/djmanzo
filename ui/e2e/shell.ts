@@ -2028,6 +2028,23 @@ export async function openShell(
           // Rust's (the fixture), because the rules are Rust's and are
           // tested there. Goals saved come back unanswered, as a night that
           // cannot yet say.
+          // §117: a board arranged by hand. What a board may hold is
+          // Rust's (`boards::check`, tested there); this keeps what was sent,
+          // as Rust would, and puts djmanzo's back on a reset.
+          if (cmd === "board_arrange" || cmd === "board_reset") {
+            ((win.__boardCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            type Kept = { slug: string; widgets: unknown[]; arranged?: boolean };
+            const shipped = answers.boards as Kept[];
+            const held = (win.__boards ??= structuredClone(shipped)) as Kept[];
+            win.__boards = held.map((b) =>
+              b.slug !== args.slug
+                ? b
+                : cmd === "board_reset"
+                  ? structuredClone(shipped.find((s) => s.slug === b.slug)!)
+                  : { ...b, widgets: args.widgets as unknown[], arranged: true },
+            );
+            return Promise.resolve(structuredClone(win.__boards));
+          }
           if (
             cmd === "crowd_view" ||
             cmd === "crowd_add" ||

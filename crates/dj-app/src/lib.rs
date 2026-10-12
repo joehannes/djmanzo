@@ -830,6 +830,8 @@ pub fn run() {
             commands::leader_tree,
             commands::dashboard,
             commands::boards,
+            commands::board_arrange,
+            commands::board_reset,
             commands::interface_settings,
             commands::set_toolbars,
             commands::used_tile,

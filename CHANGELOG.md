@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Arrange a board by hand (§117).** *Arrange* on any board puts small
+  controls on each widget — earlier, later, narrower, wider, shorter,
+  taller, take it off — and offers the widgets it does not have. Kept
+  across restarts; *Put back djmanzo's* undoes it.
+
 - **What you told the welcome steers the Next rail until djmanzo knows you
   (§118).** Until there are enough nights for a profile of this kind of
   night, a record in a genre you said you play is lifted a little and says

@@ -12001,8 +12001,57 @@ pub fn dashboard(state: State<'_, AppState>, current: String) -> crate::dashboar
 /// of the decks while they are up. See [`crate::boards`].
 #[tauri::command]
 #[must_use]
-pub fn boards() -> Vec<crate::boards::Board> {
-    crate::boards::all()
+pub fn boards(state: State<'_, AppState>) -> Vec<crate::boards::Board> {
+    boards_of(&state)
+}
+
+/// The boards as the DJ has them: djmanzo's, with their own arrangements
+/// laid over.
+fn boards_of(state: &AppState) -> Vec<crate::boards::Board> {
+    state
+        .config_dir()
+        .map_or_else(crate::boards::all, |config| {
+            crate::boards::arranged(&crate::boards::kept(&config))
+        })
+}
+
+/// §117: keep the DJ's arrangement of a board, held to what a board can be,
+/// and answer with the boards as they now are.
+///
+/// # Errors
+/// A board djmanzo does not have, an arrangement `boards::check` refuses,
+/// no settings folder, or the file system's own sentence.
+#[tauri::command]
+pub fn board_arrange(
+    state: State<'_, AppState>,
+    slug: String,
+    widgets: Vec<crate::boards::Placed>,
+) -> Result<Vec<crate::boards::Board>, String> {
+    arrange_board(&state, &slug, Some(widgets))
+}
+
+/// §117: put djmanzo's arrangement of a board back.
+///
+/// # Errors
+/// As [`board_arrange`].
+#[tauri::command]
+pub fn board_reset(
+    state: State<'_, AppState>,
+    slug: String,
+) -> Result<Vec<crate::boards::Board>, String> {
+    arrange_board(&state, &slug, None)
+}
+
+fn arrange_board(
+    state: &AppState,
+    slug: &str,
+    widgets: Option<Vec<crate::boards::Placed>>,
+) -> Result<Vec<crate::boards::Board>, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep it in yet".to_owned())?;
+    crate::boards::keep(&config, slug, widgets)?;
+    Ok(boards_of(state))
 }
 
 /// §117: the interface's own settings.

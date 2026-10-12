@@ -72,6 +72,58 @@ test.describe("§121: the boards", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **§117: a board arranged by hand.** *Arrange* puts small controls on
+   * each widget; a widget moved, widened, taken off or added is sent to
+   * Rust whole and the board drawn as it comes back; *Put back djmanzo's*
+   * gives the shipped arrangement back; the controls go with *Done* and with
+   * the board.
+   */
+  test("a board can be arranged by hand and put back", async ({ page }) => {
+    await shell(page);
+    await pick(page, "My music");
+    const music = boards.find((b) => b.slug === "music")!;
+    const order = () => board(page).locator("[data-widget]").evaluateAll((all) => all.map((w) => w.getAttribute("data-widget")));
+    const calls = () =>
+      page.evaluate(() => (window as unknown as { __boardCalls?: { cmd: string; slug: string; widgets?: { name: string; cols: number; rows: number }[] }[] }).__boardCalls ?? []);
+    expect(await order()).toEqual(music.widgets.map((w) => w.name));
+    await expect(board(page).getByRole("button", { name: "Put back djmanzo's" })).toHaveCount(0);
+    await expect(board(page).getByRole("group", { name: /^Arrange / })).toHaveCount(0);
+
+    await board(page).getByRole("button", { name: "Arrange", exact: true }).click();
+    const second = music.widgets[1];
+    const title = await board(page).locator(`[data-widget="${second.name}"] h3`).innerText();
+    await board(page).getByRole("button", { name: `Move ${title} earlier` }).click();
+    await expect.poll(order).toEqual([second.name, music.widgets[0].name, ...music.widgets.slice(2).map((w) => w.name)]);
+    expect((await calls()).at(-1)).toEqual({
+      cmd: "board_arrange",
+      slug: "music",
+      widgets: [second, music.widgets[0], ...music.widgets.slice(2)].map(({ name, cols, rows }) => ({ name, cols, rows })),
+    });
+    await expect(board(page).getByRole("button", { name: `Move ${title} earlier` })).toBeDisabled();
+
+    await board(page).getByRole("button", { name: `${title} wider` }).click();
+    await expect(board(page).locator(`[data-widget="${second.name}"]`)).toHaveAttribute("style", new RegExp(`--cols: ${second.cols + 1};`));
+
+    const last = music.widgets.at(-1)!;
+    const lastTitle = await board(page).locator(`[data-widget="${last.name}"] h3`).innerText();
+    await board(page).getByRole("button", { name: `Take ${lastTitle} off` }).click();
+    await expect(board(page).locator(`[data-widget="${last.name}"]`)).toHaveCount(0);
+
+    await board(page).getByRole("combobox", { name: "Add a widget" }).selectOption("crowd");
+    await expect(board(page).locator('[data-widget="crowd"]')).toHaveCount(1);
+    expect((await order()).at(-1)).toBe("crowd");
+
+    await board(page).getByRole("button", { name: "Put back djmanzo's" }).click();
+    await expect.poll(order).toEqual(music.widgets.map((w) => w.name));
+    await expect(board(page).getByRole("button", { name: "Put back djmanzo's" })).toHaveCount(0);
+    expect((await calls()).at(-1)).toEqual({ cmd: "board_reset", slug: "music" });
+
+    await board(page).getByRole("button", { name: "Done", exact: true }).click();
+    await expect(board(page).getByRole("group", { name: /^Arrange / })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** The strip's controls send what the decks' own send. */
   test("the decks in brief play a deck and hand the mix to the autopilot", async ({ page }) => {
     await shell(page);

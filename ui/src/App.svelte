@@ -55,7 +55,10 @@
     setToolbars,
     dashboard as fetchDashboard,
     boards as fetchBoards,
+    boardArrange,
+    boardReset,
     type Board,
+    type BoardWidget,
     usedTile,
     type InterfaceSettings,
     type Dashboard,
@@ -357,6 +360,54 @@
   let onBoard = $state<string | null>(null);
   let boardMenuOpen = $state(false);
   const activeBoard = $derived(boardList.find((b) => b.slug === onBoard) ?? null);
+  /**
+   * §117: the board up is being arranged by hand — small controls on each
+   * widget, and what it does not have offered to add. Every change goes to
+   * Rust whole (`boards::check`) and what comes back is drawn.
+   */
+  let arranging = $state(false);
+  let arrangeProblem = $state("");
+
+  async function arrangeBoard(b: Board, widgets: BoardWidget[]) {
+    try {
+      boardList = await boardArrange(b.slug, widgets);
+      arrangeProblem = "";
+    } catch (e) {
+      arrangeProblem = String(e);
+    }
+  }
+
+  async function putBackBoard(b: Board) {
+    try {
+      boardList = await boardReset(b.slug);
+      arrangeProblem = "";
+    } catch (e) {
+      arrangeProblem = String(e);
+    }
+  }
+
+  function moveWidget(b: Board, i: number, by: number) {
+    const widgets = [...b.widgets];
+    const j = i + by;
+    if (j < 0 || j >= widgets.length) return;
+    [widgets[i], widgets[j]] = [widgets[j], widgets[i]];
+    void arrangeBoard(b, widgets);
+  }
+
+  function sizeWidget(b: Board, i: number, cols: number, rows: number) {
+    const widgets = b.widgets.map((w, k) =>
+      k === i
+        ? { ...w, cols: Math.min(12, Math.max(2, w.cols + cols)), rows: Math.min(3, Math.max(1, w.rows + rows)) }
+        : w,
+    );
+    void arrangeBoard(b, widgets);
+  }
+
+  /** What a board can hold that this one does not: the panels drawn here and a board's own. */
+  const boardOwn = ["flow", "links", "folders"] as const;
+  const addable = (b: Board) =>
+    [...boardOwn, ...(DRAWN as readonly string[])].filter((name) => !b.widgets.some((w) => w.name === name));
+
   /** A part of the press kit a folder on the kit board asked to open. */
   let kitOpen = $state<{ section: string; at: number } | null>(null);
 
@@ -387,6 +438,8 @@
     if (!boardList.some((b) => b.slug === slug)) return;
     lifted = null;
     board = null;
+    arranging = false;
+    arrangeProblem = "";
     onBoard = slug;
     counted(`board:${slug}`);
   }
@@ -3765,6 +3818,31 @@
       <header class="board-head">
         <h2><Icon name={b.glyph} size="1.1rem" /> {b.title}</h2>
         <p class="board-about">{b.about}</p>
+        <div class="board-arrange">
+          <button type="button" aria-pressed={arranging} onclick={() => (arranging = !arranging)}>
+            {arranging ? "Done" : "Arrange"}
+          </button>
+          {#if arranging}
+            <select
+              aria-label="Add a widget"
+              value=""
+              onchange={(e) => {
+                const name = e.currentTarget.value;
+                e.currentTarget.value = "";
+                if (name) void arrangeBoard(b, [...b.widgets, { name, cols: 4, rows: 1 }]);
+              }}
+            >
+              <option value="">Add a widget…</option>
+              {#each addable(b) as name (name)}
+                <option value={name}>{widgetTitle(name)}</option>
+              {/each}
+            </select>
+          {/if}
+          {#if b.arranged}
+            <button type="button" onclick={() => void putBackBoard(b)}>Put back djmanzo's</button>
+          {/if}
+          {#if arrangeProblem}<span class="board-problem" role="alert">{arrangeProblem}</span>{/if}
+        </div>
         {#if snapshot}
           <BoardFlow decks={snapshot.decks.slice(0, deckCount)} master={snapshot.master} enabled={ready} send={(a) => void send(a)} />
         {/if}
@@ -3779,6 +3857,22 @@
           >
             <header class="widget-head">
               <h3>{widgetTitle(widget.name)}</h3>
+              {#if arranging}
+                {@const title = widgetTitle(widget.name)}
+                <span class="widget-arrange" role="group" aria-label="Arrange {title}">
+                  <button type="button" aria-label="Move {title} earlier" disabled={i === 0} onclick={() => moveWidget(b, i, -1)}>‹</button>
+                  <button type="button" aria-label="Move {title} later" disabled={i === b.widgets.length - 1} onclick={() => moveWidget(b, i, 1)}>›</button>
+                  <button type="button" aria-label="{title} narrower" disabled={widget.cols <= 2} onclick={() => sizeWidget(b, i, -1, 0)}>−</button>
+                  <button type="button" aria-label="{title} wider" disabled={widget.cols >= 12} onclick={() => sizeWidget(b, i, 1, 0)}>+</button>
+                  <button type="button" aria-label="{title} shorter" disabled={widget.rows <= 1} onclick={() => sizeWidget(b, i, 0, -1)}>▴</button>
+                  <button type="button" aria-label="{title} taller" disabled={widget.rows >= 3} onclick={() => sizeWidget(b, i, 0, 1)}>▾</button>
+                  <button
+                    type="button"
+                    aria-label="Take {title} off"
+                    disabled={b.widgets.length === 1}
+                    onclick={() => void arrangeBoard(b, b.widgets.filter((_, k) => k !== i))}>×</button>
+                </span>
+              {/if}
               {#if (DRAWN as readonly string[]).includes(widget.name)}
                 <button
                   type="button"
@@ -4920,6 +5014,32 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-dim);
+  }
+
+  /* §117: arranging a board by hand. */
+  .board-arrange {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .board-problem {
+    color: var(--warn);
+    font-size: 0.8rem;
+  }
+
+  .widget-arrange {
+    display: inline-flex;
+    gap: 0.15rem;
+    margin-left: auto;
+  }
+
+  .widget-arrange button {
+    min-width: 1.5rem;
+    padding: 0 0.3rem;
+    font: inherit;
+    font-size: 0.8rem;
   }
 
   .widget-dock {
