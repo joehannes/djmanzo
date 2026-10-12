@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A guide for a request waiting (§118).** While the room has asked for
+  something, *Guides* offers *A request waiting*: the three most wanted, each
+  with how many asked, and *Find it* (the library searched for it), *Played*
+  and *Not tonight*. With nothing waiting it says so instead of opening.
+
 - **A board of your own (§117).** Under *Arrange*, give a name and *Make
   a board of your own* from the board you are on, as you arranged it. It is
   listed after djmanzo's boards, arranged like any other, and *Forget this

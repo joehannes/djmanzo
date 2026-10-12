@@ -2395,7 +2395,7 @@ export const nextDecision = (deck: number, decks: number) =>
 
 /** §118a: one of the assistant's guides, open or saying why not (`dj_app::guide`). */
 export interface Guide {
-  topic: "next" | "mix" | "trouble";
+  topic: "next" | "mix" | "request" | "trouble";
   title: string;
   about: string;
   /** Why it cannot be opened now; `null` when it can. */

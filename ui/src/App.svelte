@@ -3506,7 +3506,15 @@
         §118a: the assistant's guides, one per topic -- the next record, the
         mix, and while a night is on, its plans for trouble.
       -->
-      <Guides send={(action) => send(action)} decks={deckCount} onTrouble={() => (tonightDeciding = true)} />
+      <Guides
+        send={(action) => send(action)}
+        decks={deckCount}
+        onTrouble={() => (tonightDeciding = true)}
+        onFind={(text) => {
+          if (!isOpen("library")) void toggleSurface("library");
+          findInCollection(text);
+        }}
+      />
       {#if liveId}
         <Tonight id={liveId} onEnd={() => void endNight()} bind:deciding={tonightDeciding} />
       {/if}

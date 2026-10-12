@@ -31,19 +31,22 @@ pub enum Topic {
     Next,
     /// How to bring the record waiting on the other deck in.
     Mix,
+    /// What the room asked for and is still waiting: find it, or not tonight.
+    Request,
     /// The plans written for tonight's troubles.
     Trouble,
 }
 
 impl Topic {
     /// In the order the guides are offered.
-    pub const ALL: [Topic; 3] = [Topic::Next, Topic::Mix, Topic::Trouble];
+    pub const ALL: [Topic; 4] = [Topic::Next, Topic::Mix, Topic::Request, Topic::Trouble];
 
     #[must_use]
     pub const fn title(self) -> &'static str {
         match self {
             Topic::Next => "Next record",
             Topic::Mix => "The mix",
+            Topic::Request => "A request waiting",
             Topic::Trouble => "If something goes wrong",
         }
     }
@@ -53,6 +56,9 @@ impl Topic {
         match self {
             Topic::Next => "Three records to follow what is playing: up, level, or down.",
             Topic::Mix => "How to bring the waiting record in, each way drawn as it sounds.",
+            Topic::Request => {
+                "What the room asked for, most wanted first: find it, or not tonight."
+            }
             Topic::Trouble => "The plans you wrote for tonight, one press each.",
         }
     }
@@ -85,9 +91,10 @@ fn leading(snapshot: &Snapshot, shown: u8) -> Option<&DeckSnapshot> {
         })
 }
 
-/// Every guide, each open or saying why not, over the first `shown` decks.
+/// Every guide, each open or saying why not, over the first `shown` decks;
+/// `waiting` is how many of the room's requests are still waiting.
 #[must_use]
-pub fn guides(snapshot: &Snapshot, live: bool, shown: u8) -> Vec<Guide> {
+pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec<Guide> {
     let lead = leading(snapshot, shown);
     let from = lead.map(|d| d.number);
     let other = |wanted: fn(&DeckSnapshot) -> bool| {
@@ -117,6 +124,8 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8) -> Vec<Guide> {
                     ),
                     (Some(_), to) => (None, to),
                 },
+                Topic::Request if waiting > 0 => (None, None),
+                Topic::Request => (Some("Nothing is waiting from the room.".to_owned()), None),
                 Topic::Trouble if live => (None, None),
                 Topic::Trouble => (
                     Some("Only while a prepared night is being played.".to_owned()),
@@ -127,7 +136,11 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8) -> Vec<Guide> {
                 topic,
                 title: topic.title(),
                 about: topic.about(),
-                from: if topic == Topic::Trouble { None } else { from },
+                from: if matches!(topic, Topic::Trouble | Topic::Request) {
+                    None
+                } else {
+                    from
+                },
                 not_now,
                 to,
             }
@@ -165,13 +178,13 @@ mod tests {
     #[test]
     fn a_guide_opens_onto_something_or_says_why_not() {
         let mut snapshot = booth();
-        let quiet = guides(&snapshot, false, 2);
+        let quiet = guides(&snapshot, false, 2, 0);
         assert_eq!(quiet.len(), Topic::ALL.len());
         assert!(quiet.iter().all(|g| g.not_now.is_some()), "{quiet:#?}");
 
         snapshot.decks[0].loaded = true;
         snapshot.decks[0].playing = true;
-        let one = guides(&snapshot, false, 2);
+        let one = guides(&snapshot, false, 2, 0);
         let next = open(&one, Topic::Next);
         assert_eq!(
             (next.not_now.as_deref(), next.from, next.to),
@@ -183,7 +196,7 @@ mod tests {
         );
 
         snapshot.decks[1].loaded = true;
-        let waiting = guides(&snapshot, false, 2);
+        let waiting = guides(&snapshot, false, 2, 0);
         let mix = open(&waiting, Topic::Mix);
         assert_eq!(
             (mix.not_now.as_deref(), mix.from, mix.to),
@@ -192,6 +205,39 @@ mod tests {
         assert!(
             open(&waiting, Topic::Next).not_now.is_some(),
             "no deck to load on"
+        );
+    }
+
+    /// §118: **the request guide opens only while the room is waiting** —
+    /// on a request, whatever the decks are doing, and on no deck; with
+    /// nothing waiting it says so rather than opening onto an empty list.
+    #[test]
+    fn the_request_guide_opens_only_while_the_room_is_waiting() {
+        let snapshot = booth();
+        let none = guides(&snapshot, false, 2, 0);
+        assert_eq!(
+            open(&none, Topic::Request).not_now.as_deref(),
+            Some("Nothing is waiting from the room.")
+        );
+        let one = guides(&snapshot, false, 2, 1);
+        let request = open(&one, Topic::Request);
+        assert_eq!(
+            (request.not_now.as_deref(), request.from, request.to),
+            (None, None, None)
+        );
+        assert_eq!(request.title, "A request waiting");
+        assert!(
+            open(&one, Topic::Next).not_now.is_some(),
+            "a request opened another guide"
+        );
+        let mut playing = booth();
+        playing.decks[0].loaded = true;
+        playing.decks[0].playing = true;
+        let on_a_deck = guides(&playing, false, 2, 1);
+        assert_eq!(
+            open(&on_a_deck, Topic::Request).from,
+            None,
+            "a request is about the room, not a deck"
         );
     }
 
@@ -208,7 +254,7 @@ mod tests {
         snapshot.decks[0].crossfader_assign = dj_core::CrossfaderAssign::Left;
         snapshot.decks[1].crossfader_assign = dj_core::CrossfaderAssign::Right;
         snapshot.master.crossfader = 1.0;
-        let both = guides(&snapshot, false, 2);
+        let both = guides(&snapshot, false, 2, 0);
         assert_eq!(open(&both, Topic::Next).from, Some(2));
     }
 
@@ -227,16 +273,16 @@ mod tests {
         snapshot.decks[0].loaded = true;
         snapshot.decks[0].playing = true;
         snapshot.decks[1].loaded = true;
-        let two = guides(&snapshot, false, 2);
+        let two = guides(&snapshot, false, 2, 0);
         assert!(open(&two, Topic::Next).not_now.is_some(), "{two:#?}");
-        let four = guides(&snapshot, false, 4);
+        let four = guides(&snapshot, false, 4, 0);
         assert_eq!(open(&four, Topic::Next).to, Some(3));
         // A deck off screen is not what the room hears either.
         snapshot.decks[0].playing = false;
         snapshot.decks[2].loaded = true;
         snapshot.decks[2].playing = true;
         assert!(
-            open(&guides(&snapshot, false, 2), Topic::Next)
+            open(&guides(&snapshot, false, 2, 0), Topic::Next)
                 .from
                 .is_none()
         );
@@ -247,12 +293,12 @@ mod tests {
     fn trouble_is_open_only_while_a_night_is_played() {
         let snapshot = booth();
         assert!(
-            open(&guides(&snapshot, false, 2), Topic::Trouble)
+            open(&guides(&snapshot, false, 2, 0), Topic::Trouble)
                 .not_now
                 .is_some()
         );
         assert_eq!(
-            open(&guides(&snapshot, true, 2), Topic::Trouble).not_now,
+            open(&guides(&snapshot, true, 2, 0), Topic::Trouble).not_now,
             None
         );
     }

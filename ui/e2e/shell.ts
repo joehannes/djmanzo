@@ -2180,6 +2180,18 @@ export async function openShell(
           if (cmd === "guides") {
             ((win.__guidesDecks ??= []) as number[]).push(Number(args.decks));
           }
+          // §118: what the room is waiting for, and what became of it. The
+          // order and the settling are Rust's (`audience`); this keeps what
+          // was settled out of what is waiting, as Rust would.
+          if (cmd === "audience_waiting" || cmd === "audience_settle") {
+            const asks = (win.__asks ??= structuredClone(answers.audience_waiting ?? [])) as { id: number }[];
+            if (cmd === "audience_settle") {
+              ((win.__settled ??= []) as unknown[]).push({ id: args.id, standing: args.standing });
+              win.__asks = asks.filter((ask) => ask.id !== args.id);
+              return Promise.resolve(true);
+            }
+            return Promise.resolve(structuredClone(asks));
+          }
           if (cmd === "load_track") {
             ((win.__loadedTracks ??= []) as unknown[]).push({ deck: args.deck, path: args.path });
           }

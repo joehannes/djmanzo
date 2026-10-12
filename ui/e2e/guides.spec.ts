@@ -100,6 +100,63 @@ test.describe("§118a: the assistant's guides", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **A request waiting** (§118): the most wanted three, in Rust's order, each
+   * with how many asked; *Played* and *Not tonight* settle it through the
+   * Requests panel's own command and the next comes up; *Find it* searches
+   * the collection for it and puts the guide away.
+   */
+  test("a request waiting offers the most wanted, found or settled", async ({ page }) => {
+    const ask = (id: number, text: string, voices: number) => ({
+      id,
+      text,
+      voices,
+      first_asked: 1_790_000_000,
+      last_asked: 1_790_000_000,
+      standing: "waiting",
+    });
+    const waiting = [ask(1, "Vivir mi vida", 5), ask(2, "Danza kuduro", 3), ask(3, "La bicicleta", 1), ask(4, "Propuesta indecente", 1)];
+    await openShell(page, "/", {}, { guides: guides.asked, audience_waiting: waiting });
+    const topics = await openGuides(page);
+    const tile = topics.locator('[data-topic="request"]');
+    await expect(tile).toBeEnabled();
+    await tile.click();
+    const card = page.locator('[role="dialog"][aria-label="A request waiting"]');
+    await expect(card).toBeVisible();
+    const rows = card.locator("[data-ask]");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText("Vivir mi vida");
+    await expect(rows.nth(0)).toContainText("5 asked");
+    await expect(rows.nth(2)).toContainText("1 asked");
+
+    await rows.nth(0).getByRole("button", { name: "Played" }).click();
+    await expect(rows.nth(0)).toContainText("Danza kuduro");
+    await expect(rows).toHaveCount(3);
+    await expect(card).toContainText("Propuesta indecente");
+    await card.locator('[data-ask="2"]').getByRole("button", { name: "Not tonight" }).click();
+    await expect(card.locator('[data-ask="2"]')).toHaveCount(0);
+    expect(await recorded(page, "__settled")).toEqual([
+      { id: 1, standing: "played" },
+      { id: 2, standing: "passed" },
+    ]);
+
+    await card.locator('[data-ask="3"]').getByRole("button", { name: "Find it" }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.locator('.surface[data-surface="library"]')).toBeVisible();
+    await expect(page.locator('.surface[data-surface="library"] input[type="search"], .surface[data-surface="library"] input').first()).toHaveValue("La bicicleta");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** With nothing waiting, the request guide says so in Rust's words. */
+  test("the request guide says when nothing is waiting", async ({ page }) => {
+    await openShell(page, "/");
+    const topics = await openGuides(page);
+    const quiet = guides.quiet.find((g) => g.topic === "request")!;
+    await expect(topics.locator('[data-topic="request"]')).toBeDisabled();
+    await expect(topics.locator('[data-topic="request"] .about')).toHaveText(quiet.not_now!);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** While a night is played, trouble opens its own quick decision. */
   test("trouble opens the night's quick decision", async ({ page }) => {
     await openShell(page, "/", {}, { guides: guides.live, live_event: events.wedding.gig.id });

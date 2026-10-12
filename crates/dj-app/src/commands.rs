@@ -19427,7 +19427,8 @@ pub fn guides(state: State<'_, AppState>, decks: u8) -> Vec<crate::guide::Guide>
         .ok()
         .and_then(|dir| crate::gig::live(&dir))
         .is_some();
-    crate::guide::guides(&snapshot_now(&state), live, decks)
+    let waiting = state.audience().waiting().len();
+    crate::guide::guides(&snapshot_now(&state), live, decks, waiting)
 }
 
 /// §118: play an event, or end the night with `None`.

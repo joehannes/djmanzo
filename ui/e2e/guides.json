@@ -1,4 +1,38 @@
 {
+  "asked": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": null,
+      "not_now": "Nothing is playing.",
+      "title": "Next record",
+      "to": null,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": null,
+      "not_now": "Nothing is playing.",
+      "title": "The mix",
+      "to": null,
+      "topic": "mix"
+    },
+    {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": null,
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": "Only while a prepared night is being played.",
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ],
   "live": [
     {
       "about": "Three records to follow what is playing: up, level, or down.",
@@ -15,6 +49,14 @@
       "title": "The mix",
       "to": 2,
       "topic": "mix"
+    },
+    {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": "Nothing is waiting from the room.",
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
     },
     {
       "about": "The plans you wrote for tonight, one press each.",
@@ -43,6 +85,14 @@
       "topic": "mix"
     },
     {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": "Nothing is waiting from the room.",
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
+    },
+    {
       "about": "The plans you wrote for tonight, one press each.",
       "from": null,
       "not_now": "Only while a prepared night is being played.",
@@ -69,6 +119,14 @@
       "topic": "mix"
     },
     {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": "Nothing is waiting from the room.",
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
+    },
+    {
       "about": "The plans you wrote for tonight, one press each.",
       "from": null,
       "not_now": "Only while a prepared night is being played.",
@@ -93,6 +151,14 @@
       "title": "The mix",
       "to": 2,
       "topic": "mix"
+    },
+    {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": "Nothing is waiting from the room.",
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
     },
     {
       "about": "The plans you wrote for tonight, one press each.",

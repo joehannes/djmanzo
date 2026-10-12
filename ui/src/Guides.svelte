@@ -24,12 +24,15 @@
   import Icon from "./controls/Icon.svelte";
   import { portal } from "./controls/portal";
   import {
+    audienceSettle,
+    audienceWaiting,
     formatTime,
     listGuides,
     planTransition,
     transitionAdjust,
     transitionArm,
     transitionStyles,
+    type Ask,
     type Guide,
     type Transition,
     type TransitionStyleInfo,
@@ -38,6 +41,7 @@
   let {
     send,
     onTrouble,
+    onFind,
     decks,
   }: {
     send: (action: string) => void | Promise<void>;
@@ -45,6 +49,8 @@
     decks: number;
     /** Open the night's quick decision. */
     onTrouble: () => void;
+    /** Search the collection for what the room asked for, as the Requests panel's *Find it* does. */
+    onFind?: (text: string) => void;
   } = $props();
 
   let picking = $state(false);
@@ -53,6 +59,27 @@
   let button = $state<HTMLElement | undefined>();
   let place = $state({ top: 0, left: 0 });
   let error = $state<string | null>(null);
+
+  // The request guide's state: the most wanted three, Rust's order.
+  let asks = $state<Ask[]>([]);
+
+  async function readAsks() {
+    try {
+      asks = (await audienceWaiting()).slice(0, 3);
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function settle(ask: Ask, standing: "played" | "passed") {
+    try {
+      await audienceSettle(ask.id, standing);
+      await readAsks();
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   // The mix guide's state.
   let plan = $state<Transition | null>(null);
@@ -92,6 +119,10 @@
       return;
     }
     open = guide;
+    if (guide.topic === "request") {
+      await readAsks();
+      return;
+    }
     if (guide.topic === "mix" && guide.from != null && guide.to != null) {
       try {
         [plan, styles] = await Promise.all([planTransition(guide.from, guide.to), transitionStyles()]);
@@ -120,7 +151,7 @@
   /** The mix sits under the measured top bar, where the decision card does. */
   let top = $state(96);
   $effect(() => {
-    if (open?.topic !== "mix") return;
+    if (open?.topic !== "mix" && open?.topic !== "request") return;
     const bar = document.querySelector(".topbar")?.getBoundingClientRect();
     if (bar) top = Math.round(bar.bottom + 8);
   });
@@ -151,6 +182,7 @@
   const TOPIC: Record<Guide["topic"], string> = {
     next: "M4 12h6M10 12l9-7M10 12h10M10 12l9 7",
     mix: "M3 6c8 0 10 12 18 12M3 18c8 0 10-12 18-12",
+    request: "M4 5h16v10H10l-6 4z",
     trouble: "M12 3l10 18H2zM12 10v5M12 17.5v.5",
   };
 
@@ -174,7 +206,7 @@
   bind:this={button}
   aria-expanded={picking || open !== null}
   aria-haspopup="dialog"
-  title="The assistant's guides: the next record, the mix, and tonight's plans"
+  title="The assistant's guides: the next record, the mix, a request waiting, and tonight's plans"
   onclick={() => void toggle()}
 >
   <Icon name="signpost" size="0.95rem" /> Guides
@@ -212,6 +244,40 @@
     onTaken={close}
     onLater={close}
   />
+{/if}
+
+{#if open?.topic === "request"}
+  <div class="guides-float request" use:portal style="top: {top}px" role="dialog" aria-label="A request waiting">
+    <header>
+      <strong>The room asked for</strong>
+      <button type="button" onclick={close}>Close</button>
+    </header>
+    {#if asks.length === 0}
+      <p class="held" role="status">Nothing else is waiting from the room.</p>
+    {:else}
+      <ul class="asks">
+        {#each asks as ask (ask.id)}
+          <li data-ask={ask.id}>
+            <span class="asked">
+              <strong>{ask.text}</strong>
+              <span class="voices">{ask.voices === 1 ? "1 asked" : `${ask.voices} asked`}</span>
+            </span>
+            <span class="choices">
+              <button
+                type="button"
+                onclick={() => {
+                  onFind?.(ask.text);
+                  close();
+                }}>Find it</button>
+              <button type="button" onclick={() => void settle(ask, "played")}>Played</button>
+              <button type="button" onclick={() => void settle(ask, "passed")}>Not tonight</button>
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if error}<p class="error">{error}</p>{/if}
+  </div>
 {/if}
 
 {#if open?.topic === "mix"}
@@ -262,6 +328,56 @@
 {/if}
 
 <style>
+  .request {
+    right: 1rem;
+    width: min(30rem, calc(100vw - 2rem));
+  }
+
+  .request header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .asks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .asks li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem 0.8rem;
+    min-height: 3.2rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+  }
+
+  .asked {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .voices {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+
+  .choices {
+    display: inline-flex;
+    gap: 0.3rem;
+  }
+
   .guides-open {
     flex: none;
     display: inline-flex;

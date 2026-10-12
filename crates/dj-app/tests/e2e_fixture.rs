@@ -1626,15 +1626,18 @@ fn the_browser_fixture_has_the_guides() {
         deck.volume = 1.0;
     }
     booth.master.crossfader = 0.0;
-    let quiet = dj_app::guide::guides(&booth, false, 2);
+    let quiet = dj_app::guide::guides(&booth, false, 2, 0);
+    // §118: the room has asked for something, nothing else going on.
+    let asked = dj_app::guide::guides(&booth, false, 2, 4);
     booth.decks[0].loaded = true;
     booth.decks[0].playing = true;
-    let playing = dj_app::guide::guides(&booth, false, 2);
+    let playing = dj_app::guide::guides(&booth, false, 2, 0);
     booth.decks[1].loaded = true;
-    let waiting = dj_app::guide::guides(&booth, false, 2);
-    let live = dj_app::guide::guides(&booth, true, 2);
+    let waiting = dj_app::guide::guides(&booth, false, 2, 0);
+    let live = dj_app::guide::guides(&booth, true, 2, 0);
     let fixture = serde_json::json!({
         "quiet": quiet,
+        "asked": asked,
         "playing": playing,
         "waiting": waiting,
         "live": live,
