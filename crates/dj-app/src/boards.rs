@@ -32,6 +32,7 @@
 //! many rows tall it is, and the interface lays them out in order.
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -50,16 +51,19 @@ pub struct Widget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Board {
     /// The stable name, as a key, a controller line and a saved choice use it.
-    pub slug: &'static str,
-    pub title: &'static str,
+    pub slug: Cow<'static, str>,
+    pub title: Cow<'static, str>,
     /// What it is for, in one line.
-    pub about: &'static str,
+    pub about: Cow<'static, str>,
     /// A drawing from the interface's icon set.
-    pub glyph: &'static str,
+    pub glyph: Cow<'static, str>,
     pub widgets: Vec<Widget>,
     /// §117: the DJ has arranged it by hand (`boards.json`), so *Put back
     /// djmanzo's* has something to put back.
     pub arranged: bool,
+    /// §117: a board of the DJ's own (`my-boards.json`), which can be
+    /// forgotten rather than put back.
+    pub mine: bool,
 }
 
 /// The widgets that exist only on a board, not as a panel a dock can hold.
@@ -82,11 +86,14 @@ const fn w(name: &'static str, cols: u8, rows: u8) -> Widget {
 pub fn all() -> Vec<Board> {
     vec![
         Board {
-            slug: "prepare",
-            title: "Prepare",
-            about: "Readying records for a night: the collection, what is set aside, the plan and the pairings.",
-            glyph: "list-ol",
+            slug: Cow::Borrowed("prepare"),
+            title: Cow::Borrowed("Prepare"),
+            about: Cow::Borrowed(
+                "Readying records for a night: the collection, what is set aside, the plan and the pairings.",
+            ),
+            glyph: Cow::Borrowed("list-ol"),
             arranged: false,
+            mine: false,
             widgets: vec![
                 w("library", 8, 2),
                 w("prepare", 4, 1),
@@ -96,11 +103,14 @@ pub fn all() -> Vec<Board> {
             ],
         },
         Board {
-            slug: "live",
-            title: "Live",
-            about: "Playing: the decks in brief, what comes next, the night, the room and what it asks for.",
-            glyph: "headphones",
+            slug: Cow::Borrowed("live"),
+            title: Cow::Borrowed("Live"),
+            about: Cow::Borrowed(
+                "Playing: the decks in brief, what comes next, the night, the room and what it asks for.",
+            ),
+            glyph: Cow::Borrowed("headphones"),
             arranged: false,
+            mine: false,
             widgets: vec![
                 w("flow", 12, 1),
                 w("next", 4, 1),
@@ -111,11 +121,14 @@ pub fn all() -> Vec<Board> {
             ],
         },
         Board {
-            slug: "lab",
-            title: "Experiment",
-            about: "Messing about: the sampler, presets, practice, and the keys to try things with.",
-            glyph: "flask",
+            slug: Cow::Borrowed("lab"),
+            title: Cow::Borrowed("Experiment"),
+            about: Cow::Borrowed(
+                "Messing about: the sampler, presets, practice, and the keys to try things with.",
+            ),
+            glyph: Cow::Borrowed("flask"),
             arranged: false,
+            mine: false,
             widgets: vec![
                 w("flow", 12, 1),
                 w("sampler", 6, 1),
@@ -125,27 +138,36 @@ pub fn all() -> Vec<Board> {
             ],
         },
         Board {
-            slug: "music",
-            title: "My music",
-            about: "The collection, the mixes you have recorded, and what you keep at hand.",
-            glyph: "compact-disc",
+            slug: Cow::Borrowed("music"),
+            title: Cow::Borrowed("My music"),
+            about: Cow::Borrowed(
+                "The collection, the mixes you have recorded, and what you keep at hand.",
+            ),
+            glyph: Cow::Borrowed("compact-disc"),
             arranged: false,
+            mine: false,
             widgets: vec![w("library", 8, 3), w("mixes", 4, 2), w("athand", 4, 1)],
         },
         Board {
-            slug: "kit",
-            title: "Press kit",
-            about: "Who you are as a DJ, laid out like a desktop: photos, documents, bookings, links.",
-            glyph: "folder-open",
+            slug: Cow::Borrowed("kit"),
+            title: Cow::Borrowed("Press kit"),
+            about: Cow::Borrowed(
+                "Who you are as a DJ, laid out like a desktop: photos, documents, bookings, links.",
+            ),
+            glyph: Cow::Borrowed("folder-open"),
             arranged: false,
+            mine: false,
             widgets: vec![w("folders", 4, 2), w("kit", 8, 2), w("event", 12, 1)],
         },
         Board {
-            slug: "social",
-            title: "Social",
-            about: "The people: the crowd's comments, their requests, your mixes and your kit to share.",
-            glyph: "cloud",
+            slug: Cow::Borrowed("social"),
+            title: Cow::Borrowed("Social"),
+            about: Cow::Borrowed(
+                "The people: the crowd's comments, their requests, your mixes and your kit to share.",
+            ),
+            glyph: Cow::Borrowed("cloud"),
             arranged: false,
+            mine: false,
             widgets: vec![
                 w("crowd", 6, 2),
                 w("requests", 6, 1),
@@ -236,6 +258,9 @@ pub fn kept(config: &Path) -> BTreeMap<String, Vec<Placed>> {
 /// A board djmanzo does not have, an arrangement [`check`] refuses, or the
 /// file system's own sentence.
 pub fn keep(config: &Path, slug: &str, widgets: Option<Vec<Placed>>) -> Result<(), String> {
+    if slug.starts_with(MINE) {
+        return keep_mine(config, slug, widgets);
+    }
     if !all().iter().any(|board| board.slug == slug) {
         return Err(format!("djmanzo has no board called {slug:?}"));
     }
@@ -257,11 +282,11 @@ pub fn keep(config: &Path, slug: &str, widgets: Option<Vec<Placed>>) -> Result<(
 /// longer holds (a widget since gone) is left out rather than opening with a
 /// hole in it.
 #[must_use]
-pub fn arranged(kept: &BTreeMap<String, Vec<Placed>>) -> Vec<Board> {
+pub fn arranged(kept: &BTreeMap<String, Vec<Placed>>, mine: &[MyBoard]) -> Vec<Board> {
     all()
         .into_iter()
         .map(
-            |board| match kept.get(board.slug).map(|widgets| check(widgets)) {
+            |board| match kept.get(board.slug.as_ref()).map(|widgets| check(widgets)) {
                 Some(Ok(widgets)) => Board {
                     widgets,
                     arranged: true,
@@ -270,7 +295,126 @@ pub fn arranged(kept: &BTreeMap<String, Vec<Placed>>) -> Vec<Board> {
                 _ => board,
             },
         )
+        .chain(mine.iter().filter_map(|own| {
+            Some(Board {
+                slug: Cow::Owned(slug_of(&own.title)),
+                title: Cow::Owned(own.title.clone()),
+                about: Cow::Borrowed("A board of your own."),
+                glyph: Cow::Borrowed("desktop"),
+                widgets: check(&own.widgets).ok()?,
+                arranged: false,
+                mine: true,
+            })
+        }))
         .collect()
+}
+
+/// What a board of the DJ's own begins with, so its slug can never be one
+/// of djmanzo's.
+pub const MINE: &str = "mine-";
+
+/// The most boards of their own a DJ keeps.
+pub const MOST_MINE: usize = 8;
+
+/// §117: a board of the DJ's own, as `my-boards.json` keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MyBoard {
+    pub title: String,
+    pub widgets: Vec<Placed>,
+}
+
+/// A board of the DJ's own's slug: [`MINE`] and its name, in lower case,
+/// its words joined by dashes.
+#[must_use]
+pub fn slug_of(title: &str) -> String {
+    let words: Vec<String> = title
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    format!("{MINE}{}", words.join("-"))
+}
+
+/// Where the DJ's own boards are kept.
+#[must_use]
+pub fn mine_file(config: &Path) -> PathBuf {
+    config.join("my-boards.json")
+}
+
+/// The DJ's own boards, in the order they were made.
+#[must_use]
+pub fn mine(config: &Path) -> Vec<MyBoard> {
+    std::fs::read_to_string(mine_file(config))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_mine(config: &Path, boards: &[MyBoard]) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(boards).map_err(|e| e.to_string())?;
+    std::fs::write(mine_file(config), text).map_err(|e| e.to_string())
+}
+
+/// §117: make a board of the DJ's own, named `title`, holding `widgets`;
+/// its slug is [`slug_of`] the name.
+///
+/// # Errors
+/// A name of none or more than forty characters, or one with no letters or
+/// digits in it; one that is already a board of theirs; more than
+/// [`MOST_MINE`]; an arrangement [`check`] refuses; or the file system.
+pub fn make(config: &Path, title: &str, widgets: Vec<Placed>) -> Result<String, String> {
+    let title = title.trim();
+    if title.is_empty() || title.chars().count() > 40 {
+        return Err("a board's name is one to forty characters".to_owned());
+    }
+    let slug = slug_of(title);
+    if slug == MINE {
+        return Err("a board's name needs a letter or a digit in it".to_owned());
+    }
+    check(&widgets)?;
+    let mut boards = mine(config);
+    if boards.iter().any(|own| slug_of(&own.title) == slug) {
+        return Err(format!("you already have a board called {title:?}"));
+    }
+    if boards.len() >= MOST_MINE {
+        return Err(format!("{MOST_MINE} boards of your own at most"));
+    }
+    boards.push(MyBoard {
+        title: title.to_owned(),
+        widgets,
+    });
+    write_mine(config, &boards)?;
+    Ok(slug)
+}
+
+/// §117: forget a board of the DJ's own.
+///
+/// # Errors
+/// No board of theirs by that slug, or the file system.
+pub fn forget(config: &Path, slug: &str) -> Result<(), String> {
+    let mut boards = mine(config);
+    let before = boards.len();
+    boards.retain(|own| slug_of(&own.title) != slug);
+    if boards.len() == before {
+        return Err(format!("you have no board called {slug:?}"));
+    }
+    write_mine(config, &boards)
+}
+
+/// An arrangement of a board of the DJ's own: kept on the board itself,
+/// since there is no djmanzo's to put back.
+fn keep_mine(config: &Path, slug: &str, widgets: Option<Vec<Placed>>) -> Result<(), String> {
+    let Some(widgets) = widgets else {
+        return Err("a board of your own has no djmanzo's to put back".to_owned());
+    };
+    check(&widgets)?;
+    let mut boards = mine(config);
+    let own = boards
+        .iter_mut()
+        .find(|own| slug_of(&own.title) == slug)
+        .ok_or_else(|| format!("you have no board called {slug:?}"))?;
+    own.widgets = widgets;
+    write_mine(config, &boards)
 }
 
 /// The run that takes the DJ back to the decks from any board.
@@ -341,7 +485,7 @@ mod tests {
         let config = dir.path();
         let mine = vec![placed("mixes", 12, 1), placed("library", 6, 3)];
         keep(config, "music", Some(mine.clone())).expect("kept");
-        let boards = arranged(&kept(config));
+        let boards = arranged(&kept(config), &[]);
         let music = boards.iter().find(|b| b.slug == "music").expect("music");
         assert!(music.arranged);
         assert_eq!(music.widgets, check(&mine).expect("fine"));
@@ -352,13 +496,13 @@ mod tests {
         assert!(keep(config, "nowhere", Some(mine.clone())).is_err());
         assert!(keep(config, "live", Some(vec![])).is_err());
         assert!(
-            !arranged(&kept(config))
+            !arranged(&kept(config), &[])
                 .iter()
                 .any(|b| b.slug == "live" && b.arranged)
         );
 
         keep(config, "music", None).expect("put back");
-        let music = arranged(&kept(config))
+        let music = arranged(&kept(config), &[])
             .into_iter()
             .find(|b| b.slug == "music")
             .expect("music");
@@ -367,7 +511,7 @@ mod tests {
 
         let mut stale = BTreeMap::new();
         stale.insert("music".to_owned(), vec![placed("gone", 4, 1)]);
-        let music = arranged(&stale)
+        let music = arranged(&stale, &[])
             .into_iter()
             .find(|b| b.slug == "music")
             .expect("music");
@@ -375,6 +519,77 @@ mod tests {
             !music.arranged,
             "an arrangement that no longer holds was drawn"
         );
+    }
+
+    /// §117: **a board of the DJ's own** — made under a name from an
+    /// arrangement, listed after djmanzo's with the desktop icon, its slug
+    /// never one of djmanzo's; arranged on itself, never put back; a name
+    /// empty, too long, wordless or taken refused, and no more than
+    /// [`MOST_MINE`]; forgotten on request, and only one that is theirs.
+    #[test]
+    fn a_board_of_the_djs_own_is_made_arranged_and_forgotten() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let widgets = vec![placed("library", 8, 2), placed("mixes", 4, 1)];
+        let slug = make(config, "  Sunday sets!  ", widgets.clone()).expect("made");
+        assert_eq!(slug, "mine-sunday-sets");
+        let boards = arranged(&kept(config), &mine(config));
+        assert_eq!(boards.len(), all().len() + 1);
+        let own = boards.last().expect("theirs, after djmanzo's");
+        assert_eq!(
+            (own.slug.as_ref(), own.title.as_ref()),
+            (slug.as_str(), "Sunday sets!")
+        );
+        assert!(own.mine && !own.arranged);
+        assert_eq!(own.glyph, "desktop");
+        assert_eq!(own.widgets, check(&widgets).expect("fine"));
+
+        keep(config, &slug, Some(vec![placed("crowd", 12, 1)])).expect("arranged");
+        let own = arranged(&kept(config), &mine(config))
+            .pop()
+            .expect("theirs");
+        assert_eq!(own.widgets, [w("crowd", 12, 1)]);
+        assert!(keep(config, &slug, None).is_err(), "put back to what?");
+        assert!(
+            keep(config, &slug, Some(vec![])).is_err(),
+            "an empty board of their own"
+        );
+        assert!(
+            kept(config).is_empty(),
+            "an own board's arrangement went to djmanzo's file"
+        );
+
+        assert!(make(config, "", widgets.clone()).is_err());
+        assert!(make(config, &"x".repeat(41), widgets.clone()).is_err());
+        assert!(
+            make(config, "!!", widgets.clone()).is_err(),
+            "no letter or digit"
+        );
+        assert!(
+            make(config, "sunday SETS", widgets.clone()).is_err(),
+            "the same board twice"
+        );
+        assert!(make(config, "Empty", vec![]).is_err());
+        for n in 1..MOST_MINE {
+            make(config, &format!("Board {n}"), widgets.clone()).expect("made");
+        }
+        assert!(
+            make(config, "One more", widgets.clone()).is_err(),
+            "more than eight"
+        );
+        assert!(all().iter().all(|board| !board.slug.starts_with(MINE)));
+
+        assert!(
+            forget(config, "music").is_err(),
+            "djmanzo's is not theirs to forget"
+        );
+        forget(config, &slug).expect("forgotten");
+        assert!(
+            !arranged(&kept(config), &mine(config))
+                .iter()
+                .any(|b| b.slug == slug.as_str())
+        );
+        assert!(forget(config, &slug).is_err(), "forgotten twice");
     }
 
     /// **Every widget is something the interface draws**: a surface the
@@ -410,7 +625,7 @@ mod tests {
     #[test]
     fn the_six_boards_the_owner_listed_are_there() {
         let boards = all();
-        let slugs: Vec<&str> = boards.iter().map(|board| board.slug).collect();
+        let slugs: Vec<&str> = boards.iter().map(|board| board.slug.as_ref()).collect();
         assert_eq!(slugs, ["prepare", "live", "lab", "music", "kit", "social"]);
         let icons = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),

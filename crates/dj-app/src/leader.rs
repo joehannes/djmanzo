@@ -335,7 +335,7 @@ pub fn tree(
         "Dashboard",
         crate::boards::all()
             .iter()
-            .map(|board| (board.title.to_owned(), format!("board {}", board.slug)))
+            .map(|board| (board.title.to_string(), format!("board {}", board.slug)))
             .chain([(
                 "Decks".to_owned(),
                 format!("board {}", crate::boards::DECKS),

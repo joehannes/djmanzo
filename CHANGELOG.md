@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A board of your own (§117).** Under *Arrange*, give a name and *Make
+  a board of your own* from the board you are on, as you arranged it. It is
+  listed after djmanzo's boards, arranged like any other, and *Forget this
+  board* takes it away.
+
 - **Arrange a board by hand (§117).** *Arrange* on any board puts small
   controls on each widget — earlier, later, narrower, wider, shorter,
   taller, take it off — and offers the widgets it does not have. Kept

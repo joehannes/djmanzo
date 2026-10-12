@@ -832,6 +832,8 @@ pub fn run() {
             commands::boards,
             commands::board_arrange,
             commands::board_reset,
+            commands::board_make,
+            commands::board_forget,
             commands::interface_settings,
             commands::set_toolbars,
             commands::used_tile,

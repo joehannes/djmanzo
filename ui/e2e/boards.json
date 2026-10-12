@@ -31,7 +31,8 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   },
   {
     "slug": "live",
@@ -70,7 +71,8 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   },
   {
     "slug": "lab",
@@ -104,7 +106,8 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   },
   {
     "slug": "music",
@@ -128,7 +131,8 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   },
   {
     "slug": "kit",
@@ -152,7 +156,8 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   },
   {
     "slug": "social",
@@ -181,6 +186,7 @@
         "rows": 1
       }
     ],
-    "arranged": false
+    "arranged": false,
+    "mine": false
   }
 ]

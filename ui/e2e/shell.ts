@@ -2031,6 +2031,22 @@ export async function openShell(
           // §117: a board arranged by hand. What a board may hold is
           // Rust's (`boards::check`, tested there); this keeps what was sent,
           // as Rust would, and puts djmanzo's back on a reset.
+          if (cmd === "board_make" || cmd === "board_forget") {
+            ((win.__boardCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            type Kept = { slug: string; title: string; widgets: unknown[]; mine?: boolean };
+            const held = (win.__boards ??= structuredClone(answers.boards)) as Kept[];
+            if (cmd === "board_forget") {
+              win.__boards = held.filter((b) => b.slug !== args.slug);
+            } else {
+              const title = String(args.title).trim();
+              const slug = `mine-${title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join("-")}`;
+              win.__boards = [
+                ...held,
+                { slug, title, about: "A board of your own.", glyph: "desktop", widgets: args.widgets as unknown[], arranged: false, mine: true },
+              ];
+            }
+            return Promise.resolve(structuredClone(win.__boards));
+          }
           if (cmd === "board_arrange" || cmd === "board_reset") {
             ((win.__boardCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
             type Kept = { slug: string; widgets: unknown[]; arranged?: boolean };

@@ -12011,7 +12011,7 @@ fn boards_of(state: &AppState) -> Vec<crate::boards::Board> {
     state
         .config_dir()
         .map_or_else(crate::boards::all, |config| {
-            crate::boards::arranged(&crate::boards::kept(&config))
+            crate::boards::arranged(&crate::boards::kept(&config), &crate::boards::mine(&config))
         })
 }
 
@@ -12040,6 +12040,40 @@ pub fn board_reset(
     slug: String,
 ) -> Result<Vec<crate::boards::Board>, String> {
     arrange_board(&state, &slug, None)
+}
+
+/// §117: make a board of the DJ's own from `widgets`, named `title`, and
+/// answer with the boards as they now are.
+///
+/// # Errors
+/// See `boards::make`; or no settings folder.
+#[tauri::command]
+pub fn board_make(
+    state: State<'_, AppState>,
+    title: String,
+    widgets: Vec<crate::boards::Placed>,
+) -> Result<Vec<crate::boards::Board>, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep it in yet".to_owned())?;
+    crate::boards::make(&config, &title, widgets)?;
+    Ok(boards_of(&state))
+}
+
+/// §117: forget a board of the DJ's own.
+///
+/// # Errors
+/// See `boards::forget`; or no settings folder.
+#[tauri::command]
+pub fn board_forget(
+    state: State<'_, AppState>,
+    slug: String,
+) -> Result<Vec<crate::boards::Board>, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep it in yet".to_owned())?;
+    crate::boards::forget(&config, &slug)?;
+    Ok(boards_of(&state))
 }
 
 fn arrange_board(

@@ -2291,6 +2291,8 @@ export interface Board {
   widgets: BoardWidget[];
   /** §117: the DJ has arranged it by hand, so djmanzo's can be put back. */
   arranged?: boolean;
+  /** §117: a board of the DJ's own, which can be forgotten. */
+  mine?: boolean;
 }
 
 export const boards = () => invoke<Board[]>("boards");
@@ -2303,6 +2305,14 @@ export const boardArrange = (slug: string, widgets: BoardWidget[]) =>
     slug,
     widgets: widgets.map(({ name, cols, rows }) => ({ name, cols, rows })),
   });
+/** §117: make a board of the DJ's own, named, from an arrangement. */
+export const boardMake = (title: string, widgets: BoardWidget[]) =>
+  invoke<Board[]>("board_make", {
+    title,
+    widgets: widgets.map(({ name, cols, rows }) => ({ name, cols, rows })),
+  });
+/** §117: forget a board of the DJ's own. */
+export const boardForget = (slug: string) => invoke<Board[]>("board_forget", { slug });
 /** §117: put djmanzo's arrangement of a board back. */
 export const boardReset = (slug: string) => invoke<Board[]>("board_reset", { slug });
 /** Count one use of a tile, however it was reached. */

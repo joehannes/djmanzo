@@ -90,7 +90,21 @@ test.describe("§121: the boards", () => {
     await expect(board(page).getByRole("button", { name: "Put back djmanzo's" })).toHaveCount(0);
     await expect(board(page).getByRole("group", { name: /^Arrange / })).toHaveCount(0);
 
+    // The line about the board stays beside its title, arranging or not:
+    // the controls' row once widened the title's column and pushed it away.
+    // The title's own text, not its box: the heading is stretched to its
+    // grid column, so the box grows with the very fault this looks for.
+    const besideTitle = () =>
+      board(page)
+        .locator(".board-head")
+        .evaluate((head) => {
+          const range = document.createRange();
+          range.selectNodeContents(head.querySelector("h2")!);
+          return head.querySelector(".board-about")!.getBoundingClientRect().left - range.getBoundingClientRect().right;
+        });
+    expect(await besideTitle()).toBeLessThan(30);
     await board(page).getByRole("button", { name: "Arrange", exact: true }).click();
+    expect(await besideTitle()).toBeLessThan(30);
     const second = music.widgets[1];
     const title = await board(page).locator(`[data-widget="${second.name}"] h3`).innerText();
     await board(page).getByRole("button", { name: `Move ${title} earlier` }).click();
@@ -121,6 +135,49 @@ test.describe("§121: the boards", () => {
 
     await board(page).getByRole("button", { name: "Done", exact: true }).click();
     await expect(board(page).getByRole("group", { name: /^Arrange / })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§117: a board of the DJ's own** — made under *Arrange* from the board
+   * up as it is arranged, named by the DJ, put up at once and listed after
+   * djmanzo's; forgotten, the decks come back and the menu loses it.
+   */
+  test("a board of your own is made from the one up, and forgotten", async ({ page }) => {
+    await shell(page);
+    await pick(page, "My music");
+    const music = boards.find((b) => b.slug === "music")!;
+    await board(page).getByRole("button", { name: "Arrange", exact: true }).click();
+    const make = board(page).getByRole("button", { name: "Make a board of your own" });
+    await expect(make).toBeDisabled();
+    await board(page).getByRole("textbox", { name: "Your board's name" }).fill("Sunday sets");
+    await make.click();
+
+    await expect(board(page)).toHaveAttribute("data-board", "mine-sunday-sets");
+    await expect(board(page).locator("h2")).toHaveText(/Sunday sets/);
+    expect(await board(page).locator("[data-widget]").evaluateAll((all) => all.map((w) => w.getAttribute("data-widget")))).toEqual(
+      music.widgets.map((w) => w.name),
+    );
+    const calls = await page.evaluate(() => (window as unknown as { __boardCalls?: unknown[] }).__boardCalls ?? []);
+    expect(calls.at(-1)).toEqual({
+      cmd: "board_make",
+      title: "Sunday sets",
+      widgets: music.widgets.map(({ name, cols, rows }) => ({ name, cols, rows })),
+    });
+    await expect(board(page).getByRole("button", { name: "Put back djmanzo's" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Dashboards", exact: true }).click();
+    const items = page.getByRole("menu", { name: "Dashboards" }).getByRole("menuitemradio");
+    await expect(items).toHaveCount(boards.length + 2);
+    await expect(items.nth(boards.length)).toHaveText(/Sunday sets/);
+    await page.keyboard.press("Escape");
+
+    await board(page).getByRole("button", { name: "Forget this board" }).click();
+    await expect(board(page)).toHaveCount(0);
+    await expect(page.locator(".deck-slot").first()).toBeVisible();
+    await page.getByRole("button", { name: "Dashboards", exact: true }).click();
+    await expect(page.getByRole("menu", { name: "Dashboards" }).getByRole("menuitemradio")).toHaveCount(boards.length + 1);
+    await expect(page.getByRole("menuitemradio", { name: "Decks" })).toHaveAttribute("aria-checked", "true");
     expect(errorsThrown(page)).toEqual([]);
   });
 

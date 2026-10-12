@@ -57,6 +57,8 @@
     boards as fetchBoards,
     boardArrange,
     boardReset,
+    boardMake,
+    boardForget,
     type Board,
     type BoardWidget,
     usedTile,
@@ -381,6 +383,32 @@
     try {
       boardList = await boardReset(b.slug);
       arrangeProblem = "";
+    } catch (e) {
+      arrangeProblem = String(e);
+    }
+  }
+
+  let ownName = $state("");
+
+  /** A board of the DJ's own, from the one that is up, as it is arranged. */
+  async function makeOwnBoard(b: Board) {
+    const title = ownName.trim();
+    if (!title) return;
+    try {
+      boardList = await boardMake(title, b.widgets);
+      arrangeProblem = "";
+      ownName = "";
+      const made = boardList.find((x) => x.mine && x.title === title);
+      if (made) showBoard(made.slug);
+    } catch (e) {
+      arrangeProblem = String(e);
+    }
+  }
+
+  async function forgetOwnBoard(b: Board) {
+    try {
+      boardList = await boardForget(b.slug);
+      showBoard("decks");
     } catch (e) {
       arrangeProblem = String(e);
     }
@@ -3838,7 +3866,21 @@
               {/each}
             </select>
           {/if}
-          {#if b.arranged}
+          {#if arranging}
+            <form
+              class="board-own"
+              onsubmit={(e) => {
+                e.preventDefault();
+                void makeOwnBoard(b);
+              }}
+            >
+              <input type="text" maxlength="40" placeholder="Its name" aria-label="Your board's name" bind:value={ownName} />
+              <button type="submit" disabled={!ownName.trim()}>Make a board of your own</button>
+            </form>
+          {/if}
+          {#if b.mine}
+            <button type="button" onclick={() => void forgetOwnBoard(b)}>Forget this board</button>
+          {:else if b.arranged}
             <button type="button" onclick={() => void putBackBoard(b)}>Put back djmanzo's</button>
           {/if}
           {#if arrangeProblem}<span class="board-problem" role="alert">{arrangeProblem}</span>{/if}
@@ -5017,11 +5059,19 @@
   }
 
   /* §117: arranging a board by hand. */
+  /* Its own row: in the title's column it would widen that column and push
+     the line about the board away from the title it belongs to. */
   .board-arrange {
+    grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
+  }
+
+  .board-own {
+    display: inline-flex;
+    gap: 0.3rem;
   }
 
   .board-problem {
