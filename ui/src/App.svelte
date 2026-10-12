@@ -943,10 +943,11 @@
 
   /**
    * The surfaces that have a window of their own to go to, and the name
-   * `monitors::Panel` gives that window — Rust's list, read once. The other
-   * surfaces are drawn out of this shell's own state (the event being played,
-   * the density, the key map, the settings…), and a second window cannot draw
-   * them, so they carry no button that would do nothing.
+   * `monitors::Panel` gives that window — Rust's list, read once. Since
+   * §121's last seven every surface drawn here has one; what a window needs
+   * of this shell's own state (the event being played, the density, the key
+   * map, the settings…) it asks for through Rust. A surface Rust lists
+   * without a window would carry no button that would do nothing.
    */
   let POP_OUT = $state<Partial<Record<string, string>>>({});
   $effect(() => {
