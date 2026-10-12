@@ -105,6 +105,32 @@ the record, how far in, the part just heard, how busy that minute was.
 the run and is not kept per night, so a past night has none to show; that
 waits for the log to be kept. Compare takes any two or more kept nights.
 
+**The session log's actions, kept with the night — designed 12 October.**
+
+- *Kept.* The bus's log is appended, from the pump, once a second and only
+  when something new was logged, to `crowd/actions/<session>.djset`: a
+  session file in `crate::session`'s own format, so a past night can be
+  opened, replayed and diffed like any set the DJ saved by hand. A
+  `# started <unix ms>` comment under the header ties the log's clock (time
+  since the bus began) to the wall's, which is what the line is drawn in; the
+  session reader already skips comments. A restart is a new session and a
+  new file, as the reactions are.
+- *Drawn.* Each event one of §14's gestures names (`signals::did`) — a
+  record loaded or previewed, a deck cleared, a cue, a loop or its size, the
+  stems, the EQ, the filter, an effect, the crossfader, the tempo, sync — is
+  a mark on a row above the records, where it was done. A run of the same
+  gesture from the same hand with less than three seconds between moves is
+  one mark across its length, with its count — a crossfader worked through
+  a blend is one stroke, not two hundred ticks. djmanzo's own moves (the
+  log's `By::Machine`: automix, autopilot, break music) are marked as
+  djmanzo's, as the log marks them. The cursor names the mark it is over,
+  beside the record and the part. An event no gesture names is in the file
+  and not on the line.
+- *This night* is read from the bus itself, so the line is never a second
+  behind; a past night from its file.
+- *Not there:* a night kept before this has no actions, and its line says
+  so rather than drawing an empty row as if nothing was done.
+
 ## 4. YouTube's live chat, as it arrives
 
 *Through a verified djmanzo Google app.*
