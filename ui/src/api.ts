@@ -2395,7 +2395,7 @@ export const nextDecision = (deck: number, decks: number) =>
 
 /** §118a: one of the assistant's guides, open or saying why not (`dj_app::guide`). */
 export interface Guide {
-  topic: "next" | "mix" | "energy" | "request" | "trouble";
+  topic: "next" | "mix" | "energy" | "request" | "learn" | "trouble";
   title: string;
   about: string;
   /** Why it cannot be opened now; `null` when it can. */
@@ -2405,6 +2405,23 @@ export interface Guide {
   /** The deck it works towards. */
   to: number | null;
 }
+
+/** §118: one move in the learning guide, in the coach's words. */
+export interface Learning {
+  name: string;
+  what: string;
+  when: string;
+  metaphor: string;
+  difficulty: "first" | "practised" | "hard";
+  /** One the DJ said they are learning, rather than the coach's next. */
+  yours: boolean;
+}
+
+/** §118: the moves being learned, then the coach's next lesson. */
+export const learningMoves = () => invoke<Learning[]>("learning_moves");
+
+/** §118: a move learned (`have`), or one taken up; the moves as they now are. */
+export const learningMark = (name: string, have: boolean) => invoke<Learning[]>("learning_mark", { name, have });
 
 export const listGuides = (decks: number) => invoke<Guide[]>("guides", { decks });
 

@@ -3514,6 +3514,9 @@
           if (!isOpen("library")) void toggleSurface("library");
           findInCollection(text);
         }}
+        onRehearse={() => {
+          if (!isOpen("practice")) void toggleSurface("practice");
+        }}
       />
       {#if liveId}
         <Tonight id={liveId} onEnd={() => void endNight()} bind:deciding={tonightDeciding} />

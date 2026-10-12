@@ -848,6 +848,8 @@ pub fn run() {
             commands::suggest_next,
             commands::next_decision,
             commands::guides,
+            commands::learning_moves,
+            commands::learning_mark,
             commands::kit_view,
             commands::kit_save,
             commands::kit_compose,

@@ -1635,7 +1635,23 @@ fn the_browser_fixture_has_the_guides() {
     booth.decks[1].loaded = true;
     let waiting = dj_app::guide::guides(&booth, false, 2, 0);
     let live = dj_app::guide::guides(&booth, true, 2, 0);
+    // §118: mixing, which leaves no room for a lesson.
+    booth.attention.room_for = dj_app::tiers::Tier::Performable;
+    let mixing = dj_app::guide::guides(&booth, false, 2, 0);
+    // §118: the learning guide's moves for a DJ learning the echo out, on a
+    // laptop, in no pack.
+    let learning = dj_app::guide::learning(
+        &dj_app::welcome::Answers {
+            moves: vec!["cut".to_owned()],
+            learn: vec!["echo out".to_owned()],
+            ..dj_app::welcome::Answers::default()
+        },
+        dj_assistant::technique::Rig::laptop(),
+        None,
+    );
     let fixture = serde_json::json!({
+        "mixing": mixing,
+        "learning": learning,
         "quiet": quiet,
         "asked": asked,
         "playing": playing,

@@ -35,17 +35,20 @@ pub enum Topic {
     Energy,
     /// What the room asked for and is still waiting: find it, or not tonight.
     Request,
+    /// The moves the DJ is learning, and one more to try.
+    Learn,
     /// The plans written for tonight's troubles.
     Trouble,
 }
 
 impl Topic {
     /// In the order the guides are offered.
-    pub const ALL: [Topic; 5] = [
+    pub const ALL: [Topic; 6] = [
         Topic::Next,
         Topic::Mix,
         Topic::Energy,
         Topic::Request,
+        Topic::Learn,
         Topic::Trouble,
     ];
 
@@ -56,6 +59,7 @@ impl Topic {
             Topic::Mix => "The mix",
             Topic::Energy => "The energy of the night",
             Topic::Request => "A request waiting",
+            Topic::Learn => "Learning a move",
             Topic::Trouble => "If something goes wrong",
         }
     }
@@ -68,6 +72,9 @@ impl Topic {
             Topic::Energy => "Where the night stands, and your word on where it goes.",
             Topic::Request => {
                 "What the room asked for, most wanted first: find it, or not tonight."
+            }
+            Topic::Learn => {
+                "The moves you are learning, each as it is taught, and one more to try."
             }
             Topic::Trouble => "The plans you wrote for tonight, one press each.",
         }
@@ -138,6 +145,13 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
                 Topic::Energy => (Some("Nothing is playing.".to_owned()), None),
                 Topic::Request if waiting > 0 => (None, None),
                 Topic::Request => (Some("Nothing is waiting from the room.".to_owned()), None),
+                // The coach's own rule and words: §58 puts technique advice in
+                // the contextual tier, and mixing leaves no room for it.
+                Topic::Learn => (
+                    crate::commands::lesson_withheld(snapshot.attention.room_for)
+                        .map(str::to_owned),
+                    None,
+                ),
                 Topic::Trouble if live => (None, None),
                 Topic::Trouble => (
                     Some("Only while a prepared night is being played.".to_owned()),
@@ -148,7 +162,10 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
                 topic,
                 title: topic.title(),
                 about: topic.about(),
-                from: if matches!(topic, Topic::Trouble | Topic::Request | Topic::Energy) {
+                from: if matches!(
+                    topic,
+                    Topic::Trouble | Topic::Request | Topic::Energy | Topic::Learn
+                ) {
                     None
                 } else {
                     from
@@ -158,6 +175,66 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
             }
         })
         .collect()
+}
+
+/// One move in the learning guide.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Learning {
+    pub name: &'static str,
+    /// What it does, in one line.
+    pub what: &'static str,
+    /// When a DJ reaches for it.
+    pub when: &'static str,
+    /// The bridge from the world it is taught in.
+    pub metaphor: &'static str,
+    /// `first`, `practised` or `hard`.
+    pub difficulty: &'static str,
+    /// One the DJ said they are learning, rather than the coach's next.
+    pub yours: bool,
+}
+
+impl Learning {
+    fn of(technique: &'static dj_assistant::technique::Technique, yours: bool) -> Self {
+        Self {
+            name: technique.name,
+            what: technique.what,
+            when: technique.when,
+            metaphor: technique.metaphor,
+            difficulty: match technique.difficulty {
+                dj_assistant::technique::Difficulty::First => "first",
+                dj_assistant::technique::Difficulty::Practised => "practised",
+                dj_assistant::technique::Difficulty::Hard => "hard",
+            },
+            yours,
+        }
+    }
+}
+
+/// §118: the learning guide's moves — the ones the DJ is learning, in their
+/// order, then the coach's next lesson: the easiest move they neither play
+/// nor are learning, inside the chosen pack, that the rig allows.
+#[must_use]
+pub fn learning(
+    answers: &crate::welcome::Answers,
+    rig: dj_assistant::technique::Rig,
+    pack: Option<&dj_assistant::pack::Pack>,
+) -> Vec<Learning> {
+    let mut moves: Vec<Learning> = answers
+        .learn
+        .iter()
+        .filter_map(|name| dj_assistant::technique::by_name(name))
+        .map(|technique| Learning::of(technique, true))
+        .collect();
+    let known: Vec<&str> = answers
+        .moves
+        .iter()
+        .chain(&answers.learn)
+        .map(String::as_str)
+        .collect();
+    if let Some(next) = dj_assistant::coach::next_lesson(&known, rig, pack) {
+        moves.push(Learning::of(next, false));
+    }
+    moves
 }
 
 #[cfg(test)]
@@ -192,7 +269,13 @@ mod tests {
         let mut snapshot = booth();
         let quiet = guides(&snapshot, false, 2, 0);
         assert_eq!(quiet.len(), Topic::ALL.len());
-        assert!(quiet.iter().all(|g| g.not_now.is_some()), "{quiet:#?}");
+        // Every guide but learning a move, which a quiet booth is the time for.
+        assert!(
+            quiet
+                .iter()
+                .all(|g| g.not_now.is_some() == (g.topic != Topic::Learn)),
+            "{quiet:#?}"
+        );
 
         snapshot.decks[0].loaded = true;
         snapshot.decks[0].playing = true;
@@ -274,6 +357,61 @@ mod tests {
             (None, None, None)
         );
         assert_eq!(energy.title, "The energy of the night");
+    }
+
+    /// §118: **learning a move waits for the room the coach waits for** —
+    /// closed while mixing in the coach's own words, open between records,
+    /// on no deck.
+    #[test]
+    fn the_learning_guide_opens_between_records() {
+        let mut snapshot = booth();
+        snapshot.attention.room_for = crate::tiers::Tier::Performable;
+        let mixing = guides(&snapshot, false, 2, 0);
+        assert_eq!(
+            open(&mixing, Topic::Learn).not_now.as_deref(),
+            Some("Not while you are mixing. The lesson will be here between records.")
+        );
+        snapshot.attention.room_for = crate::tiers::Tier::Contextual;
+        let between = guides(&snapshot, false, 2, 0);
+        let learn = open(&between, Topic::Learn);
+        assert_eq!(
+            (learn.not_now.as_deref(), learn.from, learn.to),
+            (None, None, None)
+        );
+    }
+
+    /// §118: **the moves being learned, then the coach's next** — theirs in
+    /// their order, a name djmanzo does not know left out, and the one more
+    /// to try neither one they play nor one they are learning.
+    #[test]
+    fn the_moves_being_learned_come_first_then_the_coachs_next() {
+        let rig = dj_assistant::technique::Rig::laptop();
+        let none = crate::welcome::Answers::default();
+        let first = dj_assistant::coach::next_lesson(&[], rig, None).expect("a lesson");
+        let alone = learning(&none, rig, None);
+        assert_eq!(alone.len(), 1);
+        assert_eq!((alone[0].name, alone[0].yours), (first.name, false));
+
+        // Learning the very move the coach would offer next: it is theirs,
+        // and the one more is another.
+        let second = dj_assistant::coach::next_lesson(&[first.name], rig, None).expect("a second");
+        let answers = crate::welcome::Answers {
+            moves: vec![first.name.to_owned()],
+            learn: vec![second.name.to_owned(), "moonwalk".to_owned()],
+            ..crate::welcome::Answers::default()
+        };
+        let list = learning(&answers, rig, None);
+        assert_eq!(list[0].name, second.name);
+        assert!(list[0].yours);
+        assert!(!list[0].metaphor.is_empty() && !list[0].what.is_empty());
+        let next = list.last().expect("the coach's next");
+        assert!(!next.yours);
+        assert!(
+            next.name != first.name && next.name != second.name,
+            "suggested {} again",
+            next.name
+        );
+        assert_eq!(list.len(), 2, "{list:#?}");
     }
 
     /// The deck a guide works from is the one the room hears, not the

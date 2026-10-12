@@ -41,9 +41,14 @@ test.describe("§118a: the assistant's guides", () => {
     expect(await recorded(page, "__guidesDecks")).toEqual([2]);
     for (const guide of guides.quiet) {
       const tile = topics.locator(`[data-topic="${guide.topic}"]`);
-      await expect(tile).toBeDisabled();
       await expect(tile).toContainText(guide.title);
-      await expect(tile.locator(".about")).toHaveText(guide.not_now!);
+      if (guide.not_now === null) {
+        // Learning a move: a quiet booth is the time for it.
+        await expect(tile).toBeEnabled();
+        continue;
+      }
+      await expect(tile).toBeDisabled();
+      await expect(tile.locator(".about")).toHaveText(guide.not_now);
     }
     await page.keyboard.press("Escape");
     await expect(topics).toHaveCount(0);
@@ -209,6 +214,55 @@ test.describe("§118a: the assistant's guides", () => {
     const quiet = guides.quiet.find((g) => g.topic === "energy")!;
     await expect(topics.locator('[data-topic="energy"]')).toBeDisabled();
     await expect(topics.locator('[data-topic="energy"] .about')).toHaveText(quiet.not_now!);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * §118: learning a move. Between records it lists the moves the DJ is
+   * learning, then the coach's next, each in the coach's words (Rust's,
+   * `guides.json`); *I have it now* keeps one as played and it leaves the
+   * list, *Learn this one* makes the suggestion theirs, and *Rehearse it*
+   * opens the Practice lab.
+   */
+  test("learning a move lists the moves being learned, kept or rehearsed", async ({ page }) => {
+    await openShell(page, "/", {}, { learning_moves: guides.learning });
+    const topics = await openGuides(page);
+    await topics.locator('[data-topic="learn"]').click();
+    const card = page.locator('[role="dialog"][aria-label="Learning a move"]');
+    await expect(card).toBeVisible();
+    const [theirs, next] = guides.learning;
+    const rows = card.locator("[data-move]");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toHaveAttribute("data-move", theirs.name);
+    await expect(rows.nth(0).locator(".tag")).toHaveText(`You are learning it · ${theirs.difficulty}`);
+    await expect(rows.nth(0)).toContainText(theirs.what);
+    await expect(rows.nth(0)).toContainText(theirs.metaphor);
+    await expect(rows.nth(1).locator(".tag")).toHaveText(`One more to try · ${next.difficulty}`);
+
+    await rows.nth(1).getByRole("button", { name: "Learn this one" }).click();
+    await expect(rows.nth(1).locator(".tag")).toContainText("You are learning it");
+    await expect(card).toContainText(`Kept: you are learning ${next.name}.`);
+    await card.locator(`[data-move="${theirs.name}"]`).getByRole("button", { name: "I have it now" }).click();
+    await expect(card.locator(`[data-move="${theirs.name}"]`)).toHaveCount(0);
+    await expect(card).toContainText(`Kept: ${theirs.name} is one of your moves now.`);
+    expect(await recorded(page, "__marked")).toEqual([
+      { name: next.name, have: false },
+      { name: theirs.name, have: true },
+    ]);
+
+    await rows.nth(0).getByRole("button", { name: "Rehearse it" }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.locator('.surface[data-surface="practice"]')).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** While mixing, learning a move waits, in the coach's words. */
+  test("learning a move waits while mixing", async ({ page }) => {
+    await openShell(page, "/", {}, { guides: guides.mixing });
+    const topics = await openGuides(page);
+    const mixing = guides.mixing.find((g) => g.topic === "learn")!;
+    await expect(topics.locator('[data-topic="learn"]')).toBeDisabled();
+    await expect(topics.locator('[data-topic="learn"] .about')).toHaveText(mixing.not_now!);
     expect(errorsThrown(page)).toEqual([]);
   });
 

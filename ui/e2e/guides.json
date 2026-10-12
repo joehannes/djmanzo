@@ -33,12 +33,38 @@
       "topic": "request"
     },
     {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": null,
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
+    },
+    {
       "about": "The plans you wrote for tonight, one press each.",
       "from": null,
       "not_now": "Only while a prepared night is being played.",
       "title": "If something goes wrong",
       "to": null,
       "topic": "trouble"
+    }
+  ],
+  "learning": [
+    {
+      "difficulty": "practised",
+      "metaphor": "a shout in a valley — the sound leaves before the voice does",
+      "name": "echo out",
+      "what": "throw a delay on the outgoing record and pull the fader under it",
+      "when": "leaving a record that has no outro, without dead air",
+      "yours": true
+    },
+    {
+      "difficulty": "first",
+      "metaphor": "weather over a landscape — the same ground, lit differently",
+      "name": "EQ ride",
+      "what": "moving the three bands through a mix rather than setting them once",
+      "when": "every blend. It is the technique the others are built on",
+      "yours": false
     }
   ],
   "live": [
@@ -75,9 +101,67 @@
       "topic": "request"
     },
     {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": null,
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
+    },
+    {
       "about": "The plans you wrote for tonight, one press each.",
       "from": null,
       "not_now": null,
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ],
+  "mixing": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": 1,
+      "not_now": "Every other deck has a record on it already.",
+      "title": "Next record",
+      "to": null,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": 1,
+      "not_now": null,
+      "title": "The mix",
+      "to": 2,
+      "topic": "mix"
+    },
+    {
+      "about": "Where the night stands, and your word on where it goes.",
+      "from": null,
+      "not_now": null,
+      "title": "The energy of the night",
+      "to": null,
+      "topic": "energy"
+    },
+    {
+      "about": "What the room asked for, most wanted first: find it, or not tonight.",
+      "from": null,
+      "not_now": "Nothing is waiting from the room.",
+      "title": "A request waiting",
+      "to": null,
+      "topic": "request"
+    },
+    {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": "Not while you are mixing. The lesson will be here between records.",
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": "Only while a prepared night is being played.",
       "title": "If something goes wrong",
       "to": null,
       "topic": "trouble"
@@ -115,6 +199,14 @@
       "title": "A request waiting",
       "to": null,
       "topic": "request"
+    },
+    {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": null,
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
     },
     {
       "about": "The plans you wrote for tonight, one press each.",
@@ -159,6 +251,14 @@
       "topic": "request"
     },
     {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": null,
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
+    },
+    {
       "about": "The plans you wrote for tonight, one press each.",
       "from": null,
       "not_now": "Only while a prepared night is being played.",
@@ -199,6 +299,14 @@
       "title": "A request waiting",
       "to": null,
       "topic": "request"
+    },
+    {
+      "about": "The moves you are learning, each as it is taught, and one more to try.",
+      "from": null,
+      "not_now": null,
+      "title": "Learning a move",
+      "to": null,
+      "topic": "learn"
     },
     {
       "about": "The plans you wrote for tonight, one press each.",

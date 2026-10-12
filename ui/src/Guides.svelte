@@ -9,8 +9,8 @@
    *
    * One button in the row the eye already reads for the state of the night.
    * It opens the topics as large pictures -- the next record, the mix, the
-   * energy of the night, a request waiting, and while a night is on, what to
-   * do if something goes wrong -- and each
+   * energy of the night, a request waiting, learning a move, and while a
+   * night is on, what to do if something goes wrong -- and each
    * topic opens as a floating widget of a few large choices, told apart by
    * their drawing before their words.
    *
@@ -28,6 +28,8 @@
     audienceSettle,
     audienceWaiting,
     formatTime,
+    learningMark,
+    learningMoves,
     listGuides,
     nightDeclare,
     nightRead,
@@ -37,6 +39,7 @@
     transitionStyles,
     type Ask,
     type Guide,
+    type Learning,
     type NightRead,
     type SessionPhase,
     type Transition,
@@ -47,6 +50,7 @@
     send,
     onTrouble,
     onFind,
+    onRehearse,
     decks,
   }: {
     send: (action: string) => void | Promise<void>;
@@ -56,6 +60,8 @@
     onTrouble: () => void;
     /** Search the collection for what the room asked for, as the Requests panel's *Find it* does. */
     onFind?: (text: string) => void;
+    /** Open the Practice lab, where a move is rehearsed without the room hearing it. */
+    onRehearse?: () => void;
   } = $props();
 
   let picking = $state(false);
@@ -81,6 +87,29 @@
     try {
       await audienceSettle(ask.id, standing);
       await readAsks();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  // The learning guide's state: Rust's moves, and what was last kept.
+  let moves = $state<Learning[]>([]);
+  let kept = $state<string | null>(null);
+
+  async function readMoves() {
+    try {
+      moves = await learningMoves();
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function mark(move: Learning, have: boolean) {
+    try {
+      moves = await learningMark(move.name, have);
+      kept = have ? `Kept: ${move.name} is one of your moves now.` : `Kept: you are learning ${move.name}.`;
+      error = null;
     } catch (e) {
       error = String(e);
     }
@@ -140,6 +169,7 @@
     plan = null;
     held = null;
     night = null;
+    kept = null;
     error = null;
   }
 
@@ -176,6 +206,10 @@
       await readNight();
       return;
     }
+    if (guide.topic === "learn") {
+      await readMoves();
+      return;
+    }
     if (guide.topic === "mix" && guide.from != null && guide.to != null) {
       try {
         [plan, styles] = await Promise.all([planTransition(guide.from, guide.to), transitionStyles()]);
@@ -204,7 +238,7 @@
   /** The mix sits under the measured top bar, where the decision card does. */
   let top = $state(96);
   $effect(() => {
-    if (open?.topic !== "mix" && open?.topic !== "request" && open?.topic !== "energy") return;
+    if (open?.topic !== "mix" && open?.topic !== "request" && open?.topic !== "energy" && open?.topic !== "learn") return;
     const bar = document.querySelector(".topbar")?.getBoundingClientRect();
     if (bar) top = Math.round(bar.bottom + 8);
   });
@@ -237,6 +271,7 @@
     mix: "M3 6c8 0 10 12 18 12M3 18c8 0 10-12 18-12",
     energy: "M2 19l5-5 4 3 5-8 6 4",
     request: "M4 5h16v10H10l-6 4z",
+    learn: "M3 8l9-4 9 4-9 4zM7 10v5c3 2 7 2 10 0v-5",
     trouble: "M12 3l10 18H2zM12 10v5M12 17.5v.5",
   };
 
@@ -260,7 +295,7 @@
   bind:this={button}
   aria-expanded={picking || open !== null}
   aria-haspopup="dialog"
-  title="The assistant's guides: the next record, the mix, the energy of the night, a request waiting, and tonight's plans"
+  title="The assistant's guides: the next record, the mix, the energy of the night, a request waiting, learning a move, and tonight's plans"
   onclick={() => void toggle()}
 >
   <Icon name="signpost" size="0.95rem" /> Guides
@@ -337,6 +372,44 @@
         {/each}
       </div>
     {/if}
+    {#if error}<p class="error">{error}</p>{/if}
+  </div>
+{/if}
+
+{#if open?.topic === "learn"}
+  <div class="guides-float learn" use:portal style="top: {top}px" role="dialog" aria-label="Learning a move">
+    <header>
+      <strong>Learning a move</strong>
+      <button type="button" onclick={close}>Close</button>
+    </header>
+    <ul class="moves">
+      {#each moves as move (move.name)}
+        <li data-move={move.name} class:yours={move.yours}>
+          <span class="move">
+            <strong>{move.name}</strong>
+            <span class="tag">{move.yours ? "You are learning it" : "One more to try"} · {move.difficulty}</span>
+            <span class="what">{move.what}.</span>
+            <span class="when">When: {move.when}.</span>
+            <em class="metaphor">Like {move.metaphor}.</em>
+          </span>
+          <span class="choices">
+            <button
+              type="button"
+              onclick={() => {
+                onRehearse?.();
+                close();
+              }}>Rehearse it</button>
+            {#if move.yours}
+              <button type="button" onclick={() => void mark(move, true)}>I have it now</button>
+            {:else}
+              <button type="button" onclick={() => void mark(move, false)}>Learn this one</button>
+            {/if}
+          </span>
+        </li>
+      {/each}
+    </ul>
+    {#if moves.length === 0}<p class="held" role="status">Nothing left to learn in the chosen pack.</p>{/if}
+    {#if kept}<p class="held" role="status">{kept}</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
   </div>
 {/if}
@@ -550,6 +623,65 @@
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
+  }
+
+  .learn {
+    right: 1rem;
+    width: min(34rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 8rem);
+    overflow-y: auto;
+  }
+
+  .learn header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .moves {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0 0 0.4rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .moves li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+  }
+
+  .moves li.yours {
+    border-color: var(--active);
+  }
+
+  .move {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .move strong::first-letter {
+    text-transform: uppercase;
+  }
+
+  .tag,
+  .when {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+
+  .metaphor {
+    color: var(--text-dim);
+    font-size: 0.85rem;
   }
 
   .energy {

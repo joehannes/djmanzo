@@ -324,6 +324,26 @@ pub fn started(answers: &Answers, gig: crate::gig::Gig) -> crate::gig::Gig {
     }
 }
 
+/// §118: a move learned, or one taken up. `have` moves it from what the DJ is
+/// learning to the moves they play; otherwise it joins what they are
+/// learning — unless they play it already, which [`check`] keeps out.
+///
+/// # Errors
+/// [`Refused::Move`] for a name that is no move, and whatever else
+/// [`check`] refuses.
+pub fn mark(mut answers: Answers, name: &str, have: bool) -> Result<Answers, Refused> {
+    let technique =
+        dj_assistant::technique::by_name(name).ok_or_else(|| Refused::Move(name.to_owned()))?;
+    let name = technique.name.to_owned();
+    // A move played leaves what is being learned in `check`.
+    if have {
+        answers.moves.push(name);
+    } else {
+        answers.learn.push(name);
+    }
+    check(answers)
+}
+
 /// `welcome.json` beside the settings.
 #[must_use]
 pub fn file(config: &Path) -> PathBuf {
@@ -355,6 +375,44 @@ pub fn save(config: &Path, answers: Answers) -> Result<Answers, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §118: **a move learned leaves what is being learned for what is
+    /// played**, once; one taken up joins what is being learned, unless it
+    /// is played already; a name that is no move is refused.
+    #[test]
+    fn a_move_learned_is_kept_as_one_played() {
+        let start = Answers {
+            moves: vec!["cut".to_owned()],
+            learn: vec!["echo out".to_owned()],
+            ..Answers::default()
+        };
+        let have = mark(start.clone(), "Echo out", true).expect("a move");
+        assert_eq!(
+            (have.moves.as_slice(), have.learn.as_slice()),
+            (&["cut".to_owned(), "echo out".to_owned()][..], &[][..])
+        );
+        let again = mark(have.clone(), "echo out", true).expect("a move");
+        assert_eq!(again.moves, have.moves, "learned twice, kept twice");
+
+        let take = mark(start.clone(), "cut", false).expect("a move");
+        assert_eq!(
+            take.learn,
+            ["echo out"],
+            "a move played became one to learn"
+        );
+        let name = dj_assistant::technique::catalogue()
+            .iter()
+            .map(|t| t.name)
+            .find(|n| *n != "cut" && *n != "echo out")
+            .expect("a third move");
+        let take = mark(start.clone(), name, false).expect("a move");
+        assert_eq!(take.learn, ["echo out", name]);
+
+        assert!(matches!(
+            mark(start, "moonwalk", true),
+            Err(Refused::Move(_))
+        ));
+    }
 
     fn dj() -> Answers {
         Answers {

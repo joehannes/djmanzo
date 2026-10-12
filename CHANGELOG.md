@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Learning a move (§118).** Between records, *Guides* offers *Learning a
+  move*: the moves you told the welcome you are learning, and the coach's
+  next one, each with what it does, when to reach for it and its picture.
+  *Rehearse it* opens the Practice lab; *I have it now* keeps it as one of
+  your moves; *Learn this one* takes the suggestion up.
+
 - **The energy of the night (§118).** While a record plays, *Guides*
   offers *The energy of the night*: where djmanzo reads the night (the
   phase, how hard it is going, the arc so far) and your word on where it

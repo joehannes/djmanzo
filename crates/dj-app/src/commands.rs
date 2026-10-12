@@ -8430,7 +8430,7 @@ pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
 ///
 /// Separate from the command so it can be tested: the command needs a live
 /// `AppState`, a snapshot and an action log, and this is the decision.
-fn lesson_withheld(room: crate::tiers::Tier) -> Option<&'static str> {
+pub(crate) fn lesson_withheld(room: crate::tiers::Tier) -> Option<&'static str> {
     if room >= crate::tiers::Tier::Contextual {
         return None;
     }
@@ -19429,6 +19429,44 @@ pub fn guides(state: State<'_, AppState>, decks: u8) -> Vec<crate::guide::Guide>
         .is_some();
     let waiting = state.audience().waiting().len();
     crate::guide::guides(&snapshot_now(&state), live, decks, waiting)
+}
+
+/// §118: the learning guide's moves — the ones the DJ told the welcome they
+/// are learning, then the coach's next lesson, on this rig, in the chosen
+/// pack.
+///
+/// # Errors
+/// When djmanzo has no settings folder yet.
+#[tauri::command]
+pub fn learning_moves(state: State<'_, AppState>) -> Result<Vec<crate::guide::Learning>, String> {
+    let dir = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    let answers = crate::welcome::load(&dir).unwrap_or_default();
+    let chosen = state.chosen_pack();
+    let pack = chosen.as_deref().and_then(dj_assistant::pack::pack);
+    Ok(crate::guide::learning(&answers, rig(&state), pack))
+}
+
+/// §118: a move learned (`have`), or one taken up, kept in the welcome's
+/// answers; the guide's moves as they now are.
+///
+/// # Errors
+/// A name that is no move, or the file system's refusal.
+#[tauri::command]
+pub fn learning_mark(
+    state: State<'_, AppState>,
+    name: String,
+    have: bool,
+) -> Result<Vec<crate::guide::Learning>, String> {
+    let dir = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    let answers = crate::welcome::load(&dir).unwrap_or_default();
+    let marked =
+        crate::welcome::mark(answers, &name, have).map_err(|refused| refused.to_string())?;
+    crate::welcome::save(&dir, marked)?;
+    learning_moves(state)
 }
 
 /// §118: play an event, or end the night with `None`.

@@ -2181,6 +2181,20 @@ export async function openShell(
           if (cmd === "guides") {
             ((win.__guidesDecks ??= []) as number[]).push(Number(args.decks));
           }
+          // §118: the moves being learned, and what was marked: kept as Rust
+          // keeps them -- a move learned leaves the list, one taken up is
+          // the DJ's own.
+          if (cmd === "learning_moves" || cmd === "learning_mark") {
+            let moves = (win.__moves ??= structuredClone(answers.learning_moves ?? [])) as { name: string; yours: boolean }[];
+            if (cmd === "learning_mark") {
+              ((win.__marked ??= []) as unknown[]).push({ name: args.name, have: args.have });
+              moves = args.have
+                ? moves.filter((m) => m.name !== args.name)
+                : moves.map((m) => (m.name === args.name ? { ...m, yours: true } : m));
+              win.__moves = moves;
+            }
+            return Promise.resolve(structuredClone(moves));
+          }
           // §118: the DJ's word on the night, recorded, and the night read
           // back with it declared, as Rust's `night_declare` answers.
           if (cmd === "night_declare") {
