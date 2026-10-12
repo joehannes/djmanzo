@@ -84,6 +84,67 @@ test.describe("§118d: the press kit", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * §118: a fact sheet for the job is Rust's sheet for the kind of night
+   * chosen -- what is booked, what the DJ brings, what the venue provides,
+   * when they arrive -- asked for as itself and sent with that night.
+   */
+  test("a fact sheet for the job is that night's own sheet", async ({ page }) => {
+    const panel = await withKit(page, { kit_compose: kit.sheet });
+    const sheet = panel.locator('[data-occasion="sheet"]');
+    const any = kit.full.occasions.find((o) => o.occasion === "sheet")!;
+    await expect(sheet.locator(".text")).toHaveText(any.text);
+    await sheet.getByRole("combobox", { name: "The kind of night the job is" }).selectOption("wedding");
+    await expect(sheet.locator(".text")).toHaveText(kit.sheet.text);
+    await expect(sheet).toContainText("I bring: Two decks, a mixer, two speakers and a microphone");
+    await expect(sheet.locator(".missing")).toHaveCount(0);
+    expect((await calls(page)).find((c) => c.cmd === "kit_compose")).toMatchObject({ occasion: "sheet", night: "wedding" });
+    await sheet.locator('[data-way="whatsapp"]').click();
+    await expect
+      .poll(async () => (await calls(page)).find((c) => c.cmd === "kit_send"))
+      .toMatchObject({ occasion: "sheet", night: "wedding", way: "whatsapp" });
+
+    // The facts are kept with the fee they belong to.
+    await panel.getByRole("tab", { name: "Your kit" }).click();
+    await panel.getByLabel("When you arrive").nth(1).fill("Two hours before");
+    await expect
+      .poll(async () => ((await calls(page)).filter((c) => c.cmd === "kit_save").at(-1)?.kit as { fees: { arrive: string }[] } | undefined)?.fees[1].arrive)
+      .toBe("Two hours before");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A pause after a space keeps the space.** Every pause saves, and Rust
+   * keeps the kit trimmed; its answer put back under the caret took the
+   * space a DJ had just typed ("DJ " and a breath became "DJRosa"), found by
+   * typing into the running application. The answer waits for the typing to
+   * stop, and is shown when the focus leaves the kit.
+   */
+  test("a pause after a space keeps the space", async ({ page }) => {
+    const panel = await withKit(page);
+    await panel.getByRole("tab", { name: "Your kit" }).click();
+    const name = panel.getByLabel("Name", { exact: true });
+    await name.fill("");
+    await name.click();
+    await page.keyboard.type("DJ ");
+    // Longer than the save waits, so the answer comes back mid-word.
+    await expect.poll(async () => (await calls(page)).filter((c) => c.cmd === "kit_save").at(-1)?.kit).toMatchObject({ name: "DJ " });
+    await page.waitForTimeout(200);
+    await page.keyboard.type("Rosa");
+    await expect(name).toHaveValue("DJ Rosa");
+    await expect.poll(async () => (await calls(page)).filter((c) => c.cmd === "kit_save").at(-1)?.kit).toMatchObject({ name: "DJ Rosa" });
+
+    // Rust's word is shown once the typing stops.
+    const line = panel.getByLabel("In one line");
+    await line.fill("  Disco at dawn  ");
+    await expect.poll(async () => (await calls(page)).filter((c) => c.cmd === "kit_save").at(-1)?.kit).toMatchObject({ tagline: "  Disco at dawn  " });
+    await page.waitForTimeout(200);
+    await expect(line).toHaveValue("  Disco at dawn  ");
+    await panel.getByRole("tab", { name: "Your kit" }).click();
+    await expect(line).toHaveValue("Disco at dawn");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** An enquiry for a kind of night is Rust's answer for that night. */
   test("an enquiry for a kind of night is that night's own answer", async ({ page }) => {
     const panel = await withKit(page);

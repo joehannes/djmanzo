@@ -6141,6 +6141,12 @@ export interface KitFee {
   night: string | null;
   what: string;
   price: string;
+  /** §118: what the DJ brings to the job. */
+  brings: string;
+  /** What the venue provides. */
+  needs: string;
+  /** When the DJ arrives. */
+  arrive: string;
 }
 
 export interface KitKept {
@@ -6166,7 +6172,7 @@ export interface Kit {
   documents: KitKept[];
 }
 
-export type KitOccasion = "card" | "enquiry" | "next" | "page";
+export type KitOccasion = "card" | "enquiry" | "sheet" | "next" | "page";
 export type KitWay = "copy" | "email" | "whatsapp" | "x" | "bluesky" | "threads" | "save";
 
 /** `dj_app::kit::Composed`: an occasion, written from the kit. */

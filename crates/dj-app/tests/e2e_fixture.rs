@@ -1731,11 +1731,15 @@ fn the_browser_fixture_has_the_press_kit() {
                 night: Some(Setting::Wedding),
                 what: "Up to five hours, sound included".to_owned(),
                 price: "€900".to_owned(),
+                brings: "Two decks, a mixer, two speakers and a microphone".to_owned(),
+                needs: "A table two metres wide and two sockets".to_owned(),
+                arrive: "An hour before, to set up".to_owned(),
             },
             Fee {
                 night: None,
                 what: "A club night".to_owned(),
                 price: "€400".to_owned(),
+                ..Fee::default()
             },
         ],
         links: vec![
@@ -1753,6 +1757,9 @@ fn the_browser_fixture_has_the_press_kit() {
         starts: "18:00".to_owned(),
     }];
     let wedding = kit::compose(&rosa, Occasion::Enquiry, Some(Setting::Wedding), &booked);
+    // §118: the wedding's fact sheet, and the one for a night with only the
+    // any-night fee, which says what that fee still lacks.
+    let sheet = kit::compose(&rosa, Occasion::Sheet, Some(Setting::Wedding), &booked);
     let full = view(rosa.clone(), true, booked);
     let bad = Kit {
         phone: "call me".to_owned(),
@@ -1763,6 +1770,7 @@ fn the_browser_fixture_has_the_press_kit() {
         "fresh": fresh,
         "full": full,
         "wedding": wedding,
+        "sheet": sheet,
         "refused": { "phone": "call me", "message": refused },
     });
     let text = serde_json::to_string_pretty(&fixture).expect("the kit serialises");

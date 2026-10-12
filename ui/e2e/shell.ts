@@ -2106,7 +2106,14 @@ export async function openShell(
               const sent = args.kit as { phone?: string };
               const refused = answers.kit_refused as { phone: string; message: string };
               if (sent.phone === refused.phone) return Promise.reject(refused.message);
-              return Promise.resolve({ ...view, kept: true, kit: args.kit });
+              // The kit as Rust keeps it: its one-line words trimmed
+              // (`kit::check`), which is what an answer arriving mid-word
+              // would put back in the field.
+              const kept = { ...(args.kit as Record<string, unknown>) };
+              for (const field of ["name", "tagline", "bio", "based", "email", "phone", "booking"]) {
+                if (typeof kept[field] === "string") kept[field] = (kept[field] as string).trim();
+              }
+              return Promise.resolve({ ...view, kept: true, kit: kept });
             }
             if (cmd === "kit_compose") return Promise.resolve(answers.kit_compose);
             if (cmd === "kit_send") {

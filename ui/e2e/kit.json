@@ -78,6 +78,34 @@
       },
       {
         "missing": [
+          "an e-mail or a phone number",
+          "a fee"
+        ],
+        "occasion": "sheet",
+        "subject": "DJ Rosa — fact sheet",
+        "text": "DJ Rosa — the job",
+        "title": "A fact sheet for the job",
+        "ways": [
+          {
+            "fits": true,
+            "name": "E-mail",
+            "way": "email"
+          },
+          {
+            "fits": true,
+            "name": "WhatsApp",
+            "way": "whatsapp"
+          },
+          {
+            "fits": true,
+            "name": "Copy",
+            "way": "copy"
+          }
+        ],
+        "when": "A client or a venue asks what the job involves."
+      },
+      {
+        "missing": [
           "an event with a date"
         ],
         "occasion": "next",
@@ -167,11 +195,17 @@
       ],
       "fees": [
         {
+          "arrive": "An hour before, to set up",
+          "brings": "Two decks, a mixer, two speakers and a microphone",
+          "needs": "A table two metres wide and two sockets",
           "night": "wedding",
           "price": "€900",
           "what": "Up to five hours, sound included"
         },
         {
+          "arrive": "",
+          "brings": "",
+          "needs": "",
           "night": null,
           "price": "€400",
           "what": "A club night"
@@ -240,6 +274,34 @@
           }
         ],
         "when": "Someone asks what a night would cost."
+      },
+      {
+        "missing": [
+          "what you bring",
+          "what the venue provides"
+        ],
+        "occasion": "sheet",
+        "subject": "DJ Rosa — fact sheet",
+        "text": "DJ Rosa — the job\nBooked: A club night — €400\nA deposit of 30% holds the date.\nBookings: rosa@example.com · +43 660 123 4567",
+        "title": "A fact sheet for the job",
+        "ways": [
+          {
+            "fits": true,
+            "name": "E-mail",
+            "way": "email"
+          },
+          {
+            "fits": true,
+            "name": "WhatsApp",
+            "way": "whatsapp"
+          },
+          {
+            "fits": true,
+            "name": "Copy",
+            "way": "copy"
+          }
+        ],
+        "when": "A client or a venue asks what the job involves."
       },
       {
         "missing": [],
@@ -313,6 +375,31 @@
   "refused": {
     "message": "\"call me\" is not a phone number",
     "phone": "call me"
+  },
+  "sheet": {
+    "missing": [],
+    "occasion": "sheet",
+    "subject": "DJ Rosa — fact sheet",
+    "text": "DJ Rosa — a wedding night\nBooked: Up to five hours, sound included — €900\nI bring: Two decks, a mixer, two speakers and a microphone\nThe venue provides: A table two metres wide and two sockets\nI arrive: An hour before, to set up\nA deposit of 30% holds the date.\nBookings: rosa@example.com · +43 660 123 4567",
+    "title": "A fact sheet for the job",
+    "ways": [
+      {
+        "fits": true,
+        "name": "E-mail",
+        "way": "email"
+      },
+      {
+        "fits": true,
+        "name": "WhatsApp",
+        "way": "whatsapp"
+      },
+      {
+        "fits": true,
+        "name": "Copy",
+        "way": "copy"
+      }
+    ],
+    "when": "A client or a venue asks what the job involves."
   },
   "wedding": {
     "missing": [],

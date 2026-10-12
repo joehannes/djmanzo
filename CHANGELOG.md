@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A fact sheet for the job (§118).** Each fee in the press kit can say
+  what you bring, what the venue provides and when you arrive, and *A fact
+  sheet for the job* puts them together for the kind of night chosen —
+  by e-mail, WhatsApp or a copy — saying what it still lacks.
+- **Fixed: a pause after a space lost the space in the press kit.** Saving
+  as you type put the kept, trimmed words back under the caret.
+
 - **Learning a move (§118).** Between records, *Guides* offers *Learning a
   move*: the moves you told the welcome you are learning, and the coach's
   next one, each with what it does, when to reach for it and its picture.

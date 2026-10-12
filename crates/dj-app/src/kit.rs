@@ -80,6 +80,14 @@ pub struct Fee {
     pub what: String,
     /// As the DJ writes it: "€900", "from 600 €".
     pub price: String,
+    /// §118: what the DJ brings to the job, as they write it: "Two decks, a
+    /// mixer, two speakers and a microphone".
+    pub brings: String,
+    /// What the venue provides: "A table two metres wide, two sockets,
+    /// cover if it is outdoors".
+    pub needs: String,
+    /// When the DJ arrives: "An hour before, to set up".
+    pub arrive: String,
 }
 
 /// A photo or a document, copied into the kit's folder.
@@ -244,11 +252,23 @@ pub fn check(mut kit: Kit) -> Result<Kit, Refused> {
         fresh
     });
     for fee in &mut kit.fees {
-        fee.what = fee.what.trim().to_owned();
-        fee.price = fee.price.trim().to_owned();
+        for field in [
+            &mut fee.what,
+            &mut fee.price,
+            &mut fee.brings,
+            &mut fee.needs,
+            &mut fee.arrive,
+        ] {
+            *field = field.trim().to_owned();
+        }
     }
-    kit.fees
-        .retain(|f| !(f.what.is_empty() && f.price.is_empty()));
+    kit.fees.retain(|f| {
+        !(f.what.is_empty()
+            && f.price.is_empty()
+            && f.brings.is_empty()
+            && f.needs.is_empty()
+            && f.arrive.is_empty())
+    });
     if kit.fees.iter().any(|f| f.what.is_empty()) {
         return Err(Refused::Fee);
     }
@@ -272,12 +292,15 @@ pub enum Occasion {
     Next,
     /// A venue or a promoter asks for the kit.
     Page,
+    /// §118: a client or a venue asks what the job involves.
+    Sheet,
 }
 
 impl Occasion {
-    pub const ALL: [Occasion; 4] = [
+    pub const ALL: [Occasion; 5] = [
         Occasion::Card,
         Occasion::Enquiry,
+        Occasion::Sheet,
         Occasion::Next,
         Occasion::Page,
     ];
@@ -289,6 +312,7 @@ impl Occasion {
             Occasion::Enquiry => "A booking enquiry",
             Occasion::Next => "Where you play next",
             Occasion::Page => "The whole kit",
+            Occasion::Sheet => "A fact sheet for the job",
         }
     }
 
@@ -299,6 +323,7 @@ impl Occasion {
             Occasion::Enquiry => "Someone asks what a night would cost.",
             Occasion::Next => "Telling people where to find you next.",
             Occasion::Page => "A venue or a promoter asks for your press kit.",
+            Occasion::Sheet => "A client or a venue asks what the job involves.",
         }
     }
 
@@ -310,6 +335,7 @@ impl Occasion {
             Occasion::Enquiry => &[Way::Email, Way::WhatsApp, Way::Copy],
             Occasion::Next => &[Way::Copy, Way::WhatsApp, Way::X, Way::Bluesky, Way::Threads],
             Occasion::Page => &[Way::Save, Way::Email, Way::Copy],
+            Occasion::Sheet => &[Way::Email, Way::WhatsApp, Way::Copy],
         }
     }
 }
@@ -525,6 +551,51 @@ pub fn compose(
             sign.extend(kit.links.iter().cloned());
             parts.push(sign.join("\n"));
             (format!("{name} — booking"), parts.join("\n\n"))
+        }
+        Occasion::Sheet => {
+            if reach.is_empty() {
+                missing.push("an e-mail or a phone number");
+            }
+            let fee = fee_for(kit, night);
+            match fee {
+                None => missing.push("a fee"),
+                Some(fee) => {
+                    if fee.brings.is_empty() {
+                        missing.push("what you bring");
+                    }
+                    if fee.needs.is_empty() {
+                        missing.push("what the venue provides");
+                    }
+                }
+            }
+            let job = match (night, fee.and_then(|f| f.night)) {
+                (Some(n), Some(f)) if n == f => format!("a {} night", n.title().to_lowercase()),
+                _ => "the job".to_owned(),
+            };
+            let mut lines = vec![format!("{name} — {job}")];
+            if let Some(fee) = fee {
+                lines.push(if fee.price.is_empty() {
+                    format!("Booked: {}", fee.what)
+                } else {
+                    format!("Booked: {} — {}", fee.what, fee.price)
+                });
+                for (label, said) in [
+                    ("I bring", &fee.brings),
+                    ("The venue provides", &fee.needs),
+                    ("I arrive", &fee.arrive),
+                ] {
+                    if !said.is_empty() {
+                        lines.push(format!("{label}: {said}"));
+                    }
+                }
+            }
+            if !kit.booking.is_empty() {
+                lines.push(kit.booking.clone());
+            }
+            if !reach.is_empty() {
+                lines.push(format!("Bookings: {reach}"));
+            }
+            (format!("{name} — fact sheet"), lines.join("\n"))
         }
         Occasion::Next => {
             let next = booked.first();
@@ -975,11 +1046,13 @@ mod tests {
                     night: Some(Setting::Wedding),
                     what: "Up to five hours, sound included".to_owned(),
                     price: "€900".to_owned(),
+                    ..Fee::default()
                 },
                 Fee {
                     night: None,
                     what: "A club night".to_owned(),
                     price: "€400".to_owned(),
+                    ..Fee::default()
                 },
             ],
             links: vec!["https://soundcloud.com/djrosa".to_owned(), " ".to_owned()],
@@ -1035,7 +1108,8 @@ mod tests {
             refused(|k| k.fees = vec![Fee {
                 night: None,
                 what: String::new(),
-                price: "€5".to_owned()
+                price: "€5".to_owned(),
+                ..Fee::default()
             }]),
             Refused::Fee
         ));
@@ -1048,6 +1122,81 @@ mod tests {
         ));
         // Unsaid is not wrong.
         assert_eq!(check(Kit::default()), Ok(Kit::default()));
+    }
+
+    /// §118: **a fact sheet is the job for that night**: what is booked and
+    /// its price, what the DJ brings, what the venue provides, when they
+    /// arrive and how to reach them; the night's own fee before the one for
+    /// any night; and what the sheet still lacks said, not sent with a hole.
+    #[test]
+    fn a_fact_sheet_is_the_job_for_that_night() {
+        let mut kit = check(dj()).expect("the kit is usable");
+        let bare = compose(&kit, Occasion::Sheet, Some(Setting::Wedding), &[]);
+        assert_eq!(bare.missing, ["what you bring", "what the venue provides"]);
+        assert!(
+            bare.text.starts_with(
+                "DJ Rosa — a wedding night\nBooked: Up to five hours, sound included — €900"
+            ),
+            "{}",
+            bare.text
+        );
+
+        kit.fees[0].brings = "Two decks and two speakers".to_owned();
+        kit.fees[0].needs = "A table and two sockets".to_owned();
+        kit.fees[0].arrive = "An hour before".to_owned();
+        let full = compose(&kit, Occasion::Sheet, Some(Setting::Wedding), &[]);
+        assert!(full.missing.is_empty(), "{:?}", full.missing);
+        assert_eq!(full.subject, "DJ Rosa — fact sheet");
+        for line in [
+            "I bring: Two decks and two speakers",
+            "The venue provides: A table and two sockets",
+            "I arrive: An hour before",
+            "A deposit of 30% holds the date.",
+            "Bookings: rosa@example.com · +43 660 123 4567",
+        ] {
+            assert!(
+                full.text.lines().any(|l| l == line),
+                "{line:?} not in\n{}",
+                full.text
+            );
+        }
+        assert_eq!(
+            full.ways.iter().map(|w| w.way).collect::<Vec<_>>(),
+            [Way::Email, Way::WhatsApp, Way::Copy]
+        );
+
+        // A club night has only the fee for any night, and that one's sheet.
+        let club = compose(&kit, Occasion::Sheet, Some(Setting::Club), &[]);
+        assert!(
+            club.text
+                .starts_with("DJ Rosa — the job\nBooked: A club night — €400"),
+            "{}",
+            club.text
+        );
+        assert!(club.missing.contains(&"what you bring"));
+
+        kit.fees.clear();
+        assert!(
+            compose(&kit, Occasion::Sheet, None, &[])
+                .missing
+                .contains(&"a fee")
+        );
+
+        // Facts with nothing booked are a fee that says nothing.
+        let mut half = dj();
+        half.fees = vec![Fee {
+            brings: "Two decks".to_owned(),
+            ..Fee::default()
+        }];
+        assert_eq!(check(half), Err(Refused::Fee));
+        // A kit kept before fact sheets opens with them empty.
+        let old: Fee =
+            serde_json::from_str(r#"{"night":null,"what":"A club night","price":"€400"}"#)
+                .expect("an older fee");
+        assert_eq!(
+            (old.brings.as_str(), old.needs.as_str(), old.arrive.as_str()),
+            ("", "", "")
+        );
     }
 
     /// A link says where it goes by the name a reader knows.

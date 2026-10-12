@@ -40,6 +40,9 @@
   /** The kind of night an enquiry is for. */
   let night = $state("");
   let enquiry = $state<KitComposed | null>(null);
+  /** §118: the kind of night a fact sheet is for, and its sheet. */
+  let sheetNight = $state("");
+  let sheet = $state<KitComposed | null>(null);
   let copied = $state<string | null>(null);
   let savedAt = $state<string | null>(null);
   /** Bumped when a photo changes, so the webview does not show the old one. */
@@ -112,9 +115,32 @@
     })();
   });
 
+  // The fact sheet for the night chosen, the same way.
+  $effect(() => {
+    const chosen = sheetNight;
+    void view;
+    if (!chosen) {
+      sheet = null;
+      return;
+    }
+    void (async () => {
+      try {
+        sheet = await kitCompose("sheet", chosen);
+      } catch (e) {
+        error = String(e);
+      }
+    })();
+  });
+
   const occasions = $derived(
-    (view?.occasions ?? []).map((o) => (o.occasion === "enquiry" && enquiry ? enquiry : o)),
+    (view?.occasions ?? []).map((o) =>
+      o.occasion === "enquiry" && enquiry ? enquiry : o.occasion === "sheet" && sheet ? sheet : o,
+    ),
   );
+
+  /** The kind of night an occasion was composed for, when it was. */
+  const nightOf = (occasion: string) =>
+    occasion === "enquiry" ? night || null : occasion === "sheet" ? sheetNight || null : null;
 
   /** Held while an address or a link is half typed, rather than refused. */
   const held = $derived.by(() => {
@@ -138,6 +164,29 @@
     }, 400);
   }
 
+  /**
+   * Rust's answer to the last save, not yet shown because a field is being
+   * typed in. Rust trims what it keeps, so putting its answer back under a
+   * DJ who paused after a space would take the space away -- "DJ " became
+   * "DJRosa". It is shown when the typing stops: the focus leaving the kit.
+   */
+  let kept: { kit: Kit; at: number } | null = null;
+
+  /** Whether a field of the kit has the caret. */
+  function typing(): boolean {
+    const at = document.activeElement;
+    return !!at && !!root?.contains(at) && (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement);
+  }
+
+  function settle() {
+    // After the focus has moved, so a press from one field to the next is
+    // still typing.
+    setTimeout(() => {
+      if (kept && kept.at === edits && !typing()) draft = structuredClone(kept.kit);
+      if (!typing()) kept = null;
+    }, 0);
+  }
+
   async function send() {
     if (!draft) return;
     const sent = edits;
@@ -147,7 +196,10 @@
       view = answer;
       refused = null;
       error = null;
-      if (edits === sent) draft = structuredClone(answer.kit);
+      if (edits === sent) {
+        if (typing()) kept = { kit: answer.kit, at: sent };
+        else draft = structuredClone(answer.kit);
+      }
     } catch (e) {
       refused = { message: String(e), of: JSON.stringify(kit) };
     }
@@ -179,7 +231,7 @@
       return;
     }
     try {
-      const path = await kitSend(composed.occasion, composed.occasion === "enquiry" ? night || null : null, way);
+      const path = await kitSend(composed.occasion, nightOf(composed.occasion), way);
       if (path) savedAt = path;
     } catch (e) {
       error = String(e);
@@ -229,11 +281,11 @@
 
   function addFee() {
     if (!draft) return;
-    draft.fees.push({ night: null, what: "", price: "" });
+    draft.fees.push({ night: null, what: "", price: "", brings: "", needs: "", arrive: "" });
   }
 </script>
 
-<div class="kit" bind:this={root}>
+<div class="kit" bind:this={root} onfocusout={settle}>
   {#if view && draft}
     <div class="tabs" role="tablist" aria-label="Press kit">
       <button type="button" role="tab" aria-selected={tab === "send"} onclick={() => (tab = "send")}>Send</button>
@@ -258,6 +310,16 @@
                 <option value="">night</option>
                 {#each options?.nights ?? [] as n (n.slug)}
                   <option value={n.slug}>{n.title.toLowerCase()} night</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          {#if composed.occasion === "sheet"}
+            <label class="night">For
+              <select bind:value={sheetNight} aria-label="The kind of night the job is">
+                <option value="">any job</option>
+                {#each options?.nights ?? [] as n (n.slug)}
+                  <option value={n.slug}>a {n.title.toLowerCase()} night</option>
                 {/each}
               </select>
             </label>
@@ -351,6 +413,11 @@
                 edited();
               }}>×</button
             >
+            <span class="facts" role="group" aria-label="The job's facts">
+              <input type="text" bind:value={fee.brings} oninput={edited} placeholder="What you bring" aria-label="What you bring" />
+              <input type="text" bind:value={fee.needs} oninput={edited} placeholder="What the venue provides" aria-label="What the venue provides" />
+              <input type="text" bind:value={fee.arrive} oninput={edited} placeholder="When you arrive" aria-label="When you arrive" />
+            </span>
           </div>
         {/each}
         <button type="button" onclick={addFee}>+ A fee</button>
@@ -579,8 +646,22 @@
 
   .fee {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.3rem;
     width: 100%;
+  }
+
+  /* The job's facts, on their own row under what it costs. */
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    flex: 1 1 100%;
+  }
+
+  /* Wide enough to read what each one asks, wrapping before it is cut. */
+  .fee .facts input {
+    flex: 1 1 12rem;
   }
 
   .fee input {
