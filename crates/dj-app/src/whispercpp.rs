@@ -356,11 +356,22 @@ pub fn estimate(model: &Model, record_seconds: f64, rates: &Rates, cores: usize)
     (model.seconds_per_minute * factor * minutes, false)
 }
 
+/// Whether whisper.cpp is in this build. The karaoke build for macOS 10.13
+/// leaves it out (the `whisper` feature): it needs a C++ library that Mac
+/// has not got.
+pub const BUILT_IN: bool = cfg!(feature = "whisper");
+
+/// What djmanzo says where it would have listened, in a build without it.
+pub const NOT_BUILT_IN: &str = "this build of djmanzo has no speech recognition (word timing and spoken commands need macOS 10.15 or later); lyrics from LRCLIB and the record's own tags still work";
+
 /// Whether this processor can run the whisper.cpp djmanzo was built with.
 ///
 /// # Errors
 /// An x86-64 processor without AVX2, FMA and F16C, which the build assumes.
 pub fn cpu_can_run() -> Result<(), String> {
+    if !BUILT_IN {
+        return Err(NOT_BUILT_IN.to_owned());
+    }
     #[cfg(target_arch = "x86_64")]
     {
         if !(std::arch::is_x86_feature_detected!("avx2")
@@ -794,6 +805,27 @@ pub struct Heard {
     pub listen_seconds: f64,
 }
 
+/// As the build with whisper.cpp, which this one is not: it says so.
+///
+/// # Errors
+/// Always, with [`NOT_BUILT_IN`].
+#[cfg(not(feature = "whisper"))]
+#[allow(clippy::needless_pass_by_value)]
+pub fn listen(
+    path: &Path,
+    model: &Model,
+    audio: &[f32],
+    language: Option<&str>,
+    prompt: Option<&str>,
+    threads: usize,
+    progress: impl FnMut(i32) + 'static,
+) -> Result<Heard, String> {
+    let _ = (
+        &path, &model, &audio, &language, &prompt, &threads, progress,
+    );
+    Err(NOT_BUILT_IN.to_owned())
+}
+
 /// Listen to `audio` — sixteen-kilohertz mono — with the model at `path`.
 ///
 /// `language` a two-letter code, or `None` for Whisper to tell; `prompt`
@@ -803,6 +835,7 @@ pub struct Heard {
 /// # Errors
 /// A processor that cannot run it, a model that would not load, or a run
 /// that failed.
+#[cfg(feature = "whisper")]
 pub fn listen(
     path: &Path,
     model: &Model,
@@ -911,6 +944,23 @@ pub fn listen(
     })
 }
 
+/// As the build with whisper.cpp, which this one is not: it says so.
+///
+/// # Errors
+/// Always, with [`NOT_BUILT_IN`].
+#[cfg(not(feature = "whisper"))]
+#[allow(clippy::needless_pass_by_value)]
+pub fn command(
+    path: &Path,
+    model: &Model,
+    audio: &[f32],
+    prompt: Option<&str>,
+    threads: usize,
+) -> Result<Heard, String> {
+    let _ = (&path, &model, &audio, &prompt, &threads);
+    Err(NOT_BUILT_IN.to_owned())
+}
+
 /// A2: the words of a spoken command — seconds long, sixteen-kilohertz
 /// mono — with the model at `path`, the language left to the model.
 ///
@@ -924,6 +974,7 @@ pub fn listen(
 ///
 /// # Errors
 /// As [`listen`].
+#[cfg(feature = "whisper")]
 pub fn command(
     path: &Path,
     model: &Model,
@@ -1009,6 +1060,26 @@ pub fn prompt_of(known: &[Known]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The build for macOS 10.13 leaves whisper.cpp out; everything that
+    /// would listen says why, in the one sentence, instead of failing
+    /// somewhere further in.
+    #[cfg(not(feature = "whisper"))]
+    #[test]
+    fn a_build_without_whisper_says_so() {
+        assert!(!BUILT_IN);
+        assert_eq!(cpu_can_run(), Err(NOT_BUILT_IN.to_owned()));
+        let model = recommended();
+        let path = Path::new("/nowhere");
+        assert_eq!(
+            listen(path, model, &[0.0; 16], None, None, 1, |_| {}).map(|h| h.language),
+            Err(NOT_BUILT_IN.to_owned())
+        );
+        assert_eq!(
+            command(path, model, &[0.0; 16], None, 1).map(|h| h.language),
+            Err(NOT_BUILT_IN.to_owned())
+        );
+    }
 
     fn token(text: &str, at: f64) -> Token {
         Token {
@@ -1315,6 +1386,43 @@ mod tests {
             parts >= vec![10, 15],
             "macOS {release} has no std::filesystem for whisper.cpp"
         );
+    }
+
+    /// **The karaoke build reaches a 2011 Mac, and so leaves whisper.cpp
+    /// out.** Its config names 10.13 (High Sierra, the last such a laptop
+    /// runs); the release compiles it for 10.13 and without the `whisper`
+    /// feature, since whisper.cpp needs 10.15's C++ library. A build that
+    /// named 10.13 and kept whisper would fail to compile, or worse, compile
+    /// and not start; one that dropped the minimum back to 10.15 would not
+    /// open on the laptop at all.
+    #[test]
+    fn the_karaoke_mac_is_built_for_high_sierra_without_whisper() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.karaoke.conf.json")).expect("the config");
+        assert_eq!(
+            config["bundle"]["macOS"]["minimumSystemVersion"].as_str(),
+            Some("10.13")
+        );
+        assert_eq!(
+            config["build"]["beforeBuildCommand"].as_str(),
+            Some("node dj-app/build-ui.cjs build:karaoke"),
+            "the interface lowered to Safari 13's WebKit"
+        );
+        let release = include_str!("../../../.github/workflows/release.yml");
+        let entry = release
+            .lines()
+            .find(|line| line.contains("tauri.karaoke.conf.json") && line.contains("\"os\""))
+            .expect("the release builds the karaoke Mac");
+        for needed in [
+            "--target x86_64-apple-darwin",
+            "-- --no-default-features",
+            "\"deployment\":\"10.13\"",
+            "\"karaoke\":\"yes\"",
+        ] {
+            assert!(entry.contains(needed), "the karaoke entry lacks {needed}");
+        }
+        let ui = include_str!("../../../ui/package.json");
+        assert!(ui.contains("\"build:karaoke\": \"svelte-check --tsconfig ./tsconfig.json && vite build --mode karaoke\""));
     }
 
     #[test]

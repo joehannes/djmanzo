@@ -1,3 +1,5 @@
+// First, before anything that might call what an older webview lacks.
+import "./legacy";
 import { mount } from "svelte";
 import App from "./App.svelte";
 import Detached from "./Detached.svelte";

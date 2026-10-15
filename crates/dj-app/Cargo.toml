@@ -32,6 +32,13 @@ tauri-build = { version = "2", features = [] }
 # this for you; see docs/BUILD.md.
 custom-protocol = ["tauri/custom-protocol"]
 
+# §122: whisper.cpp compiled in, for word timing and spoken commands. On by
+# default; the karaoke build for macOS 10.13 turns it off
+# (`--no-default-features`), and then `whispercpp::cpu_can_run` says so and
+# everything that would listen refuses with that sentence.
+whisper = ["dep:whisper-rs"]
+default = ["whisper"]
+
 [dependencies]
 dj-core = { workspace = true }
 dj-clap = { workspace = true }
@@ -64,7 +71,10 @@ base64 = { workspace = true }
 zip = { workspace = true }
 sha2 = { workspace = true }
 ring = { workspace = true }
-whisper-rs = { workspace = true }
+# Optional so the karaoke build for older Macs can leave it out: whisper.cpp
+# needs `std::filesystem`, which Apple's C++ library has only from 10.15
+# (Catalina), and a 2011 laptop stops at 10.13. See `whisper` below.
+whisper-rs = { workspace = true, optional = true }
 rtrb = { workspace = true }
 # Fetching a streamed track to the cache before it reaches a deck. See
 # `sources::resolve_source_track` for why it lands on disk first.

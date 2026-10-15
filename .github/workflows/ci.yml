@@ -96,6 +96,23 @@ jobs:
 
       - run: cargo clippy --workspace --all-targets
 
+      # The karaoke build for macOS 10.13 leaves whisper.cpp out
+      # (`--no-default-features`). Nothing else compiles that way, so without
+      # this it would rot unseen until the night somebody needed it.
+      - name: The karaoke build, without whisper.cpp
+        run: |
+          cargo clippy -p dj-app --no-default-features --all-targets
+          cargo test -p dj-app --no-default-features --lib whispercpp::
+
+      # Its interface is lowered to Safari 13's WebKit; a syntax newer than
+      # that would be a blank window on a 2011 Mac.
+      - name: The karaoke interface parses on Safari 13
+        working-directory: ui
+        run: |
+          npm run build:karaoke
+          npx -y es-check@8 es2020 --module 'dist/assets/*.js'
+          npm run build:fast
+
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}

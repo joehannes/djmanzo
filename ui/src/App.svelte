@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { EDITION, firstActivity } from "./edition";
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
   import DashboardView from "./Dashboard.svelte";
@@ -1506,6 +1507,11 @@
     if (activityRestored || !activityState || layouts.length === 0) return;
     activityRestored = true;
     if (activityState.on && activityState.current) void chooseActivity(activityState.current);
+    else {
+      // The karaoke build opens on Karaoke for a DJ who has never chosen.
+      const first = firstActivity(EDITION, activityState.current);
+      if (first) void chooseActivity(first);
+    }
   });
 
   /**

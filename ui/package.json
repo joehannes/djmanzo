@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "build:fast": "vite build",
+    "build:karaoke": "svelte-check --tsconfig ./tsconfig.json && vite build --mode karaoke",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",

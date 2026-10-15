@@ -41,6 +41,7 @@ on:
         default: all
         options:
           - linux
+          - karaoke
           - all
       tag:
         description: 'Cut a release at this tag, e.g. v0.8.0. Leave empty to build without releasing.'
@@ -113,13 +114,23 @@ jobs:
             [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin --config tauri.onnxruntime.conf.json","target":"aarch64-apple-darwin","artifact":"macos-aarch64","onnxruntime":"macos"},
              {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin","artifact":"macos-x86_64","onnxruntime":""},
              {"os":"windows-latest","name":"Windows (x86_64)","args":"--config tauri.onnxruntime.conf.json","target":"","artifact":"windows-x86_64","onnxruntime":"windows"},
-             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64","onnxruntime":""}]
+             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64","onnxruntime":""},
+             {"os":"macos-latest","name":"macOS Karaoke (Intel, 10.13+)","args":"--target x86_64-apple-darwin --config tauri.karaoke.conf.json -- --no-default-features","target":"x86_64-apple-darwin","artifact":"macos-karaoke-x86_64","onnxruntime":"","deployment":"10.13","karaoke":"yes"}]
+          # The karaoke build for older Intel Macs, back to a 2011 laptop on
+          # macOS 10.13 (High Sierra): without whisper.cpp, which needs 10.15
+          # (`--no-default-features` drops the `whisper` feature), its own name
+          # and settings (tauri.karaoke.conf.json), and the interface lowered to
+          # Safari 13's WebKit (`npm run build:karaoke`).
+          KARAOKE: >-
+            [{"os":"macos-latest","name":"macOS Karaoke (Intel, 10.13+)","args":"--target x86_64-apple-darwin --config tauri.karaoke.conf.json -- --no-default-features","target":"x86_64-apple-darwin","artifact":"macos-karaoke-x86_64","onnxruntime":"","deployment":"10.13","karaoke":"yes"}]
           LINUX: >-
             [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64","onnxruntime":""}]
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
             chosen="$LINUX"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "karaoke" ]; then
+            chosen="$KARAOKE"
           else
             chosen="$ALL"
           fi
@@ -164,6 +175,14 @@ jobs:
             libxdo-dev \
             libayatana-appindicator3-dev
 
+      # The oldest macOS a build runs on is the one it is compiled for:
+      # `.cargo/config.toml` pins 10.15 for whisper.cpp, and an environment
+      # variable set here wins over it (cargo's `[env]` never overrides one
+      # already set). The C compilers read the same variable.
+      - name: Compile for an older macOS
+        if: matrix.deployment
+        run: echo "MACOSX_DEPLOYMENT_TARGET=${{ matrix.deployment }}" >> "$GITHUB_ENV"
+
       - name: Set LIBCLANG_PATH for Windows
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
@@ -200,6 +219,7 @@ jobs:
             |---|---|
             | macOS, Apple Silicon | `.dmg` (aarch64) |
             | macOS, Intel | `.dmg` (x86_64) |
+            | macOS Karaoke, Intel, back to 10.13 (2011 laptops) | `djmanzo Karaoke` `.dmg` (x86_64) |
             | Linux | `.deb`, `.rpm` and `.AppImage` |
             | Windows | `.msi` and `.exe` |
 
@@ -244,6 +264,33 @@ jobs:
           test -f "$lib" || { echo "::error::$lib is not in the app"; exit 1; }
           file "$lib"
           file "$lib" | grep -q arm64
+
+      # A karaoke app that names 10.13 and cannot start there is the v0.34.0
+      # failure on a machine nobody here can test on. So what can be read from
+      # the bundle is read: the oldest macOS the binary and its Info.plist
+      # say, that nothing of C++'s std::filesystem (10.15) is called for, and
+      # that no framework newer than 10.13 is linked unconditionally.
+      - name: The karaoke app is built to start on macOS 10.13
+        if: matrix.karaoke == 'yes'
+        run: |
+          set -euo pipefail
+          app="target/${{ matrix.target }}/release/bundle/macos/djmanzo Karaoke.app"
+          bin="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Contents/Info.plist")"
+          plist_min="$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")"
+          echo "Info.plist minimum: $plist_min"
+          test "$plist_min" = "10.13" || { echo "::error::Info.plist says $plist_min"; exit 1; }
+          otool -l "$bin" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | tee /tmp/min.txt
+          grep -qE '(minos|version) 10\.13' /tmp/min.txt || { echo "::error::the binary is not built for 10.13"; exit 1; }
+          if nm -u "$bin" | grep -E '__fs10filesystem|whisper_'; then
+            echo "::error::the binary calls what 10.13 has not got"; exit 1
+          fi
+          otool -L "$bin" | tee /tmp/linked.txt
+          for newer in UniformTypeIdentifiers ScreenCaptureKit Network.framework UserNotifications CryptoKit Combine SwiftUI libswiftCore; do
+            if otool -l "$bin" | grep -B1 -A2 'LC_LOAD_DYLIB$' | grep -q "$newer"; then
+              echo "::error::$newer is linked unconditionally and is not on 10.13"; exit 1
+            fi
+          done
+          echo "Built for 10.13: minimum, symbols and frameworks checked."
 
       - name: The Windows installers carry ONNX Runtime
         if: matrix.onnxruntime == 'windows'
