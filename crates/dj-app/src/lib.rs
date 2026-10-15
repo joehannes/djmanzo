@@ -84,6 +84,7 @@ pub mod plan;
 pub mod plugins;
 pub mod practice;
 pub mod presets;
+pub mod preview;
 pub mod profile;
 pub mod quiz;
 pub mod rackcapture;
@@ -856,6 +857,8 @@ pub fn run() {
             commands::kit_add,
             commands::kit_forget,
             commands::kit_send,
+            commands::kit_fill,
+            commands::kit_take_photo,
             commands::crowd_view,
             commands::crowd_add,
             commands::crowd_import,

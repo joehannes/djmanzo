@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fill your press kit from your own pages (§118).** *Fill from your pages*
+  under your links reads each of them once, when you press it, for what the
+  page shows when it is shared — its title, its description and its picture
+  — and offers your one line, your bio and a photo from it. Nothing changes
+  until you take one; a field you have already written is offered a
+  replacement, never overwritten; and a page that shows nothing (one behind
+  a login, often) says so.
+
+## v0.42.0 — Boards of your own, guides for the night, and karaoke by voice
+
 - **A fact sheet for the job (§118).** Each fee in the press kit can say
   what you bring, what the venue provides and when you arrive, and *A fact
   sheet for the job* puts them together for the kind of night chosen —

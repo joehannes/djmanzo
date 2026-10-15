@@ -1760,6 +1760,31 @@ fn the_browser_fixture_has_the_press_kit() {
     // §118: the wedding's fact sheet, and the one for a night with only the
     // any-night fee, which says what that fee still lacks.
     let sheet = kit::compose(&rosa, Occasion::Sheet, Some(Setting::Wedding), &booked);
+    // §118d: what the kit's two links offer, read by Rust from saved pages:
+    // SoundCloud's preview (a line and a bio in place of hers, and a
+    // photo), and Instagram's login wall, which publishes none.
+    let soundcloud = r#"<html><head><title>DJ Rosa | SoundCloud</title>
+<meta property="og:title" content="DJ Rosa">
+<meta property="og:description" content="Bachata &amp; disco from Vienna. Resident at Sun Bar since 2019; weddings, clubs and the occasional sunrise.">
+<meta property="og:image" content="https://i1.sndcdn.com/avatars-rosa-t500x500.jpg">
+</head><body></body></html>"#;
+    let instagram = "<html><head><script>login()</script></head><body>Log in</body></html>";
+    let fill = vec![
+        dj_app::preview::answer(
+            &rosa,
+            &rosa.links[0],
+            200,
+            Some("text/html; charset=utf-8"),
+            soundcloud.as_bytes(),
+        ),
+        dj_app::preview::answer(
+            &rosa,
+            &rosa.links[1],
+            200,
+            Some("text/html"),
+            instagram.as_bytes(),
+        ),
+    ];
     let full = view(rosa.clone(), true, booked);
     let bad = Kit {
         phone: "call me".to_owned(),
@@ -1772,6 +1797,7 @@ fn the_browser_fixture_has_the_press_kit() {
         "wedding": wedding,
         "sheet": sheet,
         "refused": { "phone": "call me", "message": refused },
+        "fill": fill,
     });
     let text = serde_json::to_string_pretty(&fixture).expect("the kit serialises");
 

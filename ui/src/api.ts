@@ -6219,6 +6219,25 @@ export const kitForget = (kind: "photo" | "document", file: string) =>
 export const kitSend = (occasion: KitOccasion, night: string | null, way: KitWay) =>
   invoke<string | null>("kit_send", { occasion, night, way, today: localToday() });
 
+/** `dj_app::preview::Field`: which of the kit's fields a page's offer fills. */
+export type KitFillField = "line" | "bio" | "photo";
+
+/** `dj_app::preview::Read`: what one of the kit's links offered. */
+export interface KitPageRead {
+  link: string;
+  site: string;
+  /** What the page calls itself, when it says. */
+  title: string | null;
+  suggestions: { field: KitFillField; value: string }[];
+  /** Why there is nothing to offer: no preview, not a page, no answer. */
+  said: string | null;
+}
+
+/** Read each of the kit's links once, for what it publishes as a preview. */
+export const kitFill = () => invoke<KitPageRead[]>("kit_fill", { today: localToday() });
+/** Take a photo a page offered: fetched now and copied into the kit. */
+export const kitTakePhoto = (url: string) => invoke<KitView>("kit_take_photo", { url, today: localToday() });
+
 /** A photo in the kit's folder, as the webview loads it. */
 export function kitUrl(file: string, version = 0): string {
   const path = `${encodeURIComponent(file)}?v=${version}`;

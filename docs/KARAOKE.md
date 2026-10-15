@@ -459,7 +459,7 @@ piece of this document lands among them.
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | built (§10) |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | built (§11) |
-| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | designed (§12) |
+| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | recorded performances and pitch correction built; the other three wait on hardware, a licence or a secure page (§12) |
 
 ---
 

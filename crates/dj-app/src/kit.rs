@@ -966,11 +966,34 @@ pub fn copy_in(config: &Path, source: &Path) -> Result<String, String> {
             MAX_BYTES / 1024 / 1024
         ));
     }
+    let name = free_name(config, source.file_name().and_then(|n| n.to_str()))?;
+    std::fs::copy(source, folder(config).join(&name))
+        .map_err(|e| format!("{}: {e}", source.display()))?;
+    Ok(name)
+}
+
+/// Keep `bytes` in the kit's folder under a name no other file there has,
+/// made from `name`, and answer that name: a photo taken from one of the
+/// DJ's pages ([`crate::preview`]).
+///
+/// # Errors
+/// More than [`MAX_BYTES`], or the file system's own sentence.
+pub fn keep_bytes(config: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(format!("larger than {} MB", MAX_BYTES / 1024 / 1024));
+    }
+    let name = free_name(config, Some(name))?;
+    let path = folder(config).join(&name);
+    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(name)
+}
+
+/// A plain name in the kit's folder, made from `wanted`, that no file there
+/// has yet; the folder made if it is not there.
+fn free_name(config: &Path, wanted: Option<&str>) -> Result<String, String> {
     let dir = folder(config);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let original = source
-        .file_name()
-        .and_then(|n| n.to_str())
+    let original = wanted
         .map(|n| {
             n.chars()
                 .map(|c| {
@@ -995,7 +1018,6 @@ pub fn copy_in(config: &Path, source: &Path) -> Result<String, String> {
         name = format!("{stem} {n}{ext}");
         n += 1;
     }
-    std::fs::copy(source, dir.join(&name)).map_err(|e| format!("{}: {e}", source.display()))?;
     Ok(name)
 }
 

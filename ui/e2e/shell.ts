@@ -310,6 +310,7 @@ export const ANSWERS: Record<string, unknown> = {
   kit_view: kit.full,
   kit_compose: kit.wedding,
   kit_refused: kit.refused,
+  kit_fill: kit.fill,
   crowd_view: crowd.view,
   crowd_compare: crowd.compare,
   // §107: break music off, as a fresh install has it.
@@ -2098,7 +2099,9 @@ export async function openShell(
             cmd === "kit_compose" ||
             cmd === "kit_send" ||
             cmd === "kit_add" ||
-            cmd === "kit_forget"
+            cmd === "kit_forget" ||
+            cmd === "kit_fill" ||
+            cmd === "kit_take_photo"
           ) {
             ((win.__kitCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
             const view = answers.kit_view as { kit: Record<string, unknown> } & Record<string, unknown>;
@@ -2116,6 +2119,14 @@ export async function openShell(
               return Promise.resolve({ ...view, kept: true, kit: kept });
             }
             if (cmd === "kit_compose") return Promise.resolve(answers.kit_compose);
+            // §118d: what the kit's pages offer is Rust's own reading of
+            // saved pages; a photo taken is kept under the address's name.
+            if (cmd === "kit_fill") return Promise.resolve(answers.kit_fill);
+            if (cmd === "kit_take_photo") {
+              const file = String(args.url).split("/").pop() ?? "photo.jpg";
+              const photos = [...((view.kit.photos ?? []) as { file: string; caption: string }[]), { file, caption: "" }];
+              return Promise.resolve({ ...view, kept: true, kit: { ...view.kit, photos } });
+            }
             if (cmd === "kit_send") {
               return Promise.resolve(args.way === "save" ? "/home/dj/.config/djmanzo/kit/press-kit.html" : null);
             }

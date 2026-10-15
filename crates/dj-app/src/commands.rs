@@ -22517,6 +22517,55 @@ pub fn kit_forget(
     kit_view_of(&state, &today)
 }
 
+/// §118d: read each of the kit's own links once, on the DJ's press, for
+/// what it publishes as a link preview, and answer what each offers. Nothing
+/// is written: the DJ takes or leaves each suggestion ([`crate::preview`]).
+///
+/// # Errors
+/// No settings folder yet.
+#[tauri::command]
+pub async fn kit_fill(
+    state: State<'_, AppState>,
+    today: String,
+) -> Result<Vec<crate::preview::Read>, String> {
+    let kit = kit_view_of(&state, &today)?.kit;
+    let client = reqwest::Client::new();
+    Ok(crate::preview::read_all(&client, &kit).await)
+}
+
+/// §118d: take a photo one of the kit's pages offered: fetched now, kept
+/// only as a picture djmanzo can show, and copied into the kit like any
+/// other.
+///
+/// # Errors
+/// An address that is not one, no answer, an answer that is not a photo, or
+/// a kit that cannot be kept.
+#[tauri::command]
+pub async fn kit_take_photo(
+    state: State<'_, AppState>,
+    url: String,
+    today: String,
+) -> Result<KitView, String> {
+    let config = kit_config(&state)?;
+    let client = reqwest::Client::new();
+    let fetched = crate::preview::fetch(
+        &client,
+        &url,
+        crate::preview::MOST_PHOTO,
+        crate::preview::WAIT,
+    )
+    .await?;
+    let (name, bytes) = crate::preview::photo(&url, &fetched)?;
+    let mut kit = kit_view_of(&state, &today)?.kit;
+    let file = crate::kit::keep_bytes(&config, &name, &bytes)?;
+    kit.photos.push(crate::kit::Kept {
+        file,
+        caption: String::new(),
+    });
+    crate::kit::save(&config, kit)?;
+    kit_view_of(&state, &today)
+}
+
 /// §118d: hand an occasion over. A composer opens with the words in it --
 /// the mail client or a network's own -- or the whole kit is written as a
 /// page and opened; nothing is sent. The interface names a way, never an

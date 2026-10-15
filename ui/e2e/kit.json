@@ -1,4 +1,33 @@
 {
+  "fill": [
+    {
+      "link": "https://soundcloud.com/djrosa",
+      "said": null,
+      "site": "SoundCloud",
+      "suggestions": [
+        {
+          "field": "line",
+          "value": "Bachata & disco from Vienna."
+        },
+        {
+          "field": "bio",
+          "value": "Bachata & disco from Vienna. Resident at Sun Bar since 2019; weddings, clubs and the occasional sunrise."
+        },
+        {
+          "field": "photo",
+          "value": "https://i1.sndcdn.com/avatars-rosa-t500x500.jpg"
+        }
+      ],
+      "title": "DJ Rosa"
+    },
+    {
+      "link": "https://www.instagram.com/djrosa/",
+      "said": "Instagram gave no preview — a page behind a login often does not",
+      "site": "Instagram",
+      "suggestions": [],
+      "title": null
+    }
+  ],
   "fresh": {
     "booked": [],
     "kept": false,

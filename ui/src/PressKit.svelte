@@ -23,12 +23,16 @@
     kitCompose,
     kitForget,
     kitSave,
+    kitFill,
     kitSend,
+    kitTakePhoto,
     kitUrl,
     kitView,
     type GigOptions,
     type Kit,
     type KitComposed,
+    type KitFillField,
+    type KitPageRead,
     type KitView,
     type KitWay,
   } from "./api";
@@ -271,6 +275,66 @@
     }
   }
 
+  /**
+   * §118d: what the kit's own pages offered, read once on a press. Rust
+   * proposes and never writes: taking an offer is an edit of the kit like
+   * typing it, and a field already filled is offered a replacement.
+   */
+  let pages = $state<KitPageRead[] | null>(null);
+  let filling = $state(false);
+
+  const FIELD: Record<KitFillField, string> = { line: "In one line", bio: "Bio", photo: "A photo" };
+
+  /** What a page still offers: not what was left, nor what the kit now says. */
+  const offered = (page: KitPageRead) =>
+    page.suggestions.filter(
+      (s) => !(s.field === "line" && draft?.tagline === s.value) && !(s.field === "bio" && draft?.bio === s.value),
+    );
+
+  /** Whether taking it would put it in place of something the DJ wrote. */
+  const replaces = (field: KitFillField) =>
+    (field === "line" && !!draft?.tagline.trim()) || (field === "bio" && !!draft?.bio.trim());
+
+  async function fill() {
+    await flush();
+    filling = true;
+    error = null;
+    try {
+      pages = await kitFill();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      filling = false;
+    }
+  }
+
+  function leave(page: KitPageRead, offer: KitPageRead["suggestions"][number]) {
+    page.suggestions = page.suggestions.filter((s) => s !== offer);
+  }
+
+  async function take(page: KitPageRead, offer: KitPageRead["suggestions"][number]) {
+    if (!draft) return;
+    error = null;
+    if (offer.field === "photo") {
+      await flush();
+      try {
+        const answer = await kitTakePhoto(offer.value);
+        view = answer;
+        draft = structuredClone(answer.kit);
+        version += 1;
+        leave(page, offer);
+      } catch (e) {
+        error = String(e);
+      }
+      return;
+    }
+    if (offer.field === "line") draft.tagline = offer.value;
+    else draft.bio = offer.value;
+    leave(page, offer);
+    edited();
+    await flush();
+  }
+
   function toggleGenre(genre: string) {
     if (!draft) return;
     const at = draft.genres.indexOf(genre);
@@ -438,6 +502,48 @@
       {#if view.sites.length > 0}
         <p class="sites">{view.sites.join(" · ")}</p>
       {/if}
+      <div class="fill">
+        <button
+          type="button"
+          class="fill-go"
+          disabled={filling || !!held || draft.links.every((l) => !l.trim())}
+          onclick={() => void fill()}
+        >
+          {filling ? "Reading your pages…" : "Fill from your pages"}
+        </button>
+        <p class="hint">
+          Reads each link above once, for what the page shows when it is shared. Nothing changes until you take it.
+        </p>
+        {#if pages}
+          <ul class="pages" aria-label="What your pages offer">
+            {#each pages as page (page.link)}
+              <li class="page" data-page={page.link}>
+                <span class="from"><strong>{page.site}</strong>{page.title ? ` — ${page.title}` : ""}</span>
+                {#if page.said}
+                  <p class="said">{page.said}</p>
+                {/if}
+                {#each offered(page) as offer (offer.field + offer.value)}
+                  <div class="offer" data-field={offer.field}>
+                    <span class="what">
+                      {FIELD[offer.field]}{replaces(offer.field) ? ", in place of what you wrote" : ""}
+                    </span>
+                    {#if offer.field === "photo"}
+                      <span class="value address">{offer.value}</span>
+                      <span class="hint">A photo on a page may be a photographer's to give: take it if it is yours to use.</span>
+                    {:else}
+                      <q class="value">{offer.value}</q>
+                    {/if}
+                    <span class="choices">
+                      <button type="button" class="take" onclick={() => void take(page, offer)}>Take</button>
+                      <button type="button" class="leave" onclick={() => leave(page, offer)}>Leave</button>
+                    </span>
+                  </div>
+                {/each}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
 
       <h3>Photos</h3>
       <div class="photos">
@@ -673,6 +779,60 @@
     flex: 0 1 6rem;
   }
 
+  .fill {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: flex-start;
+  }
+  .pages {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    width: 100%;
+  }
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    min-width: 0;
+  }
+  .page .from {
+    overflow-wrap: anywhere;
+  }
+  .said {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.85em;
+  }
+  .offer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-top: 0.3rem;
+    border-top: 1px solid var(--border);
+  }
+  .offer .what {
+    font-size: 0.8em;
+    color: var(--text-dim);
+  }
+  .offer .value {
+    user-select: text;
+    overflow-wrap: anywhere;
+  }
+  .offer .address {
+    font-size: 0.8em;
+  }
+  .choices {
+    display: flex;
+    gap: 0.3rem;
+  }
   .photos {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
