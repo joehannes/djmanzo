@@ -24,6 +24,9 @@ pub mod analysis;
 pub mod art;
 pub mod artists;
 pub mod asks;
+// Karaoke beta, session A (docs/karaoke_beta_release.md §4): its modules
+// go between these two lines, and nothing else does.
+// End of session A's modules.
 pub mod assistant;
 pub mod at_hand;
 pub mod audience;
@@ -126,6 +129,9 @@ pub mod widgets;
 pub mod wordtimes;
 pub mod workers;
 pub mod world;
+// Karaoke beta, session B (docs/karaoke_beta_release.md §4): its modules
+// go between these two lines, and nothing else does.
+// End of session B's modules.
 pub mod youtube;
 
 pub use host::{AudioHost, HostError};
@@ -682,6 +688,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its
+            // commands go between these two lines, and nothing else does.
+            // End of session A's commands.
             commands::list_devices,
             commands::list_inputs,
             commands::list_panels,
@@ -1125,6 +1134,9 @@ pub fn run() {
             presets::apply_preset,
             presets::preset_folder,
             presets::save_rack_preset,
+            // Karaoke beta, session B (docs/karaoke_beta_release.md §4): its
+            // commands go between these two lines, and nothing else does.
+            // End of session B's commands.
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

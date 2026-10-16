@@ -2706,3 +2706,24 @@ added together as light, white when all were present:
 *Decided the same day (2026-09-27), answering questions put to the owner in the session:*
 - Sections that are partly done only because of something deliberately not built — §3, §11, §17, §67, §90, §34's identifying people and §36's single mood model — are **closed as done by design** where nothing else in them is left, with the reason kept in each row. Four were (§3, §11, §67, §90). §17, §34 and §36 stay open: §17 still has a real disagreement with §18 in it, and reading §34 and §36 again showed their rows had called unbuilt measurements a refusal.
 - How far should the SVG interface go? → **leave it as it is**: the controls a DJ performs with are SVG, the world is drawn with canvas and WebGL, and panels, lists, forms and text stay HTML ([VISUAL-LANGUAGE.md §6](VISUAL-LANGUAGE.md)).
+
+---
+# 126. ASKED SINCE: KARAOKE EXTRAS FOR TONIGHT, SUNO AND WHATSAPP
+Added by the owner in conversation, 2026-10-16, for a karaoke night the same evening. Quoted as written.
+> if there is any additional ideas and/or easy wins as of karaoke features that can be done in 2 sessions until late afternoon today ... please do that.
+> thinking of effects and plugins for karaoke, webgl visualisations, lyrical visualizations, better crowd integration, maybe live comments of the crowd on the karaoke lyrics screen as they input emoticons ... (but keep back, don't overdo the visual influences of the crowd on the karaoke screen as not to distract the singer much)
+> check if suno ai already has an official API. if so, do a feature the user can use right from the app to create a song according to styles and lyrics as of the topic and influences given by the night, the singers background, the sung song, the venue and circumstances, the DJs or venue's core branding ... and additional extras ... would be lovely to be able to send to a WA link directly as well ... possibly sending the created songs suno.com link via CLI to wa.me ... but it would have to be connected to a WA API ... check what's possible and implement if there's a way.
+
+*Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md): session B; Suno still has no public API and automatic WhatsApp sending needs Meta's Business Cloud API, so both stay a host's press (§7 there).*
+
+---
+# 127. ASKED SINCE: CARIBBEAN THEMES, PLAYLISTS ON THE DECKS, AND A KARAOKE DECK LAYOUT
+Added by the owner in conversation, 2026-10-16. Quoted as written.
+> also: I want in time for the late afternoon karaoke version, if possible:
+> a few more special themes/skins/effects for the app itself (with a keen eye on the caribbean)
+> Explore and extend and augment and enhance the playlist feature ... in many prudent and integral ways.
+> also enable a stylish GUI extension at the bottom of each turntable/mixer widget, that on click extends to a playlist for that mixer.
+> as of karaoke, there should be a special feature, enabling one mixer of 2 to be minimized/hidden and the other more useful bigger (playlist visible??) ... and also the one configured as karaoke mixer, the other one with default jingles/playlist items that can be repeated as fillers ... and similar ...
+
+*Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md): the themes in session B, the rest in session A.*
+
