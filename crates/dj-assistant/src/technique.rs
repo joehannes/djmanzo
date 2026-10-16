@@ -26,6 +26,7 @@
 //! what it is nicest with. Both are written down so they can be argued with,
 //! which is the only way a table like this improves.
 
+use dj_core::action::TransitionStyle;
 use dj_core::genre::Blendability;
 
 /// What kind of move this is.
@@ -91,6 +92,16 @@ pub struct Technique {
     pub when: &'static str,
     /// The bridge from the world, for teaching. See the module docs.
     pub metaphor: &'static str,
+    /// The transition style the automix performs this move as, when it is
+    /// one — which is what lets the practice lab render it.
+    ///
+    /// Only where the style *is* the move whatever its length: a bass swap
+    /// is the blend style, an acapella over an instrumental is the vocal
+    /// drop. A long blend is not here, because it is a blend held long and
+    /// the lab renders the held mix at the length it has; nor a filter fade,
+    /// whose filter the fade style does not have. Everything else is played
+    /// on the decks.
+    pub performed_as: Option<TransitionStyle>,
 }
 
 impl Technique {
@@ -199,6 +210,7 @@ static CATALOGUE: &[Technique] = &[
         when: "always worth being able to do; essential the night the analysis is wrong",
         metaphor: "two people walking together fall into step without counting; \
                    you are listening for the moment they stop fighting",
+        performed_as: None,
     },
     Technique {
         name: "sync",
@@ -209,6 +221,7 @@ static CATALOGUE: &[Technique] = &[
         when: "any time the hands are better spent on EQ, effects or the crowd",
         metaphor: "a river locked to its bed — it still has to be steered, \
                    it just will not wander off",
+        performed_as: None,
     },
     Technique {
         name: "long blend",
@@ -219,6 +232,7 @@ static CATALOGUE: &[Technique] = &[
         when: "two records that agree, and a room that does not need surprising",
         metaphor: "two streams meeting — for a while there is one wider river \
                    and you cannot say where either began",
+        performed_as: None,
     },
     Technique {
         name: "bass swap",
@@ -229,6 +243,7 @@ static CATALOGUE: &[Technique] = &[
         when: "any blend longer than a few bars; two basses at once is mud, not power",
         metaphor: "a riverbed only has room for one channel; \
                    the water has to leave one before it fills the other",
+        performed_as: Some(TransitionStyle::Blend),
     },
     Technique {
         name: "phrase mix",
@@ -239,6 +254,7 @@ static CATALOGUE: &[Technique] = &[
         when: "almost always — it is the difference between a mix and a collision",
         metaphor: "a breath. Come in mid-breath and the room hears you \
                    interrupt; come in on the next one and nobody notices",
+        performed_as: None,
     },
     Technique {
         name: "harmonic mix",
@@ -249,6 +265,7 @@ static CATALOGUE: &[Technique] = &[
         when: "long blends, and anything with a held vocal or pad",
         metaphor: "two streams meeting at a shallow angle join; \
                    meeting head-on they throw up spray",
+        performed_as: None,
     },
     Technique {
         name: "acapella over instrumental",
@@ -259,6 +276,7 @@ static CATALOGUE: &[Technique] = &[
         when: "a moment nobody has heard before; the payoff for knowing your keys",
         metaphor: "a bird over a landscape — it belongs to neither and \
                    makes you look at both",
+        performed_as: Some(TransitionStyle::VocalDrop),
     },
     Technique {
         name: "double drop",
@@ -269,6 +287,7 @@ static CATALOGUE: &[Technique] = &[
         when: "peak time, once, when it will land — not twice in a night",
         metaphor: "two waterfalls meeting at the bottom. \
                    Thrilling when it works and a mess when it does not",
+        performed_as: None,
     },
     // -- leaving a record ------------------------------------------------
     Technique {
@@ -279,6 +298,7 @@ static CATALOGUE: &[Technique] = &[
         what: "one record stops, the next starts, on the beat",
         when: "records that will not blend, and any time the night needs a jolt",
         metaphor: "stepping over a wall instead of walking round it",
+        performed_as: Some(TransitionStyle::Cut),
     },
     Technique {
         name: "echo out",
@@ -288,6 +308,7 @@ static CATALOGUE: &[Technique] = &[
         what: "throw a delay on the outgoing record and pull the fader under it",
         when: "leaving a record that has no outro, without dead air",
         metaphor: "a shout in a valley — the sound leaves before the voice does",
+        performed_as: Some(TransitionStyle::Echo),
     },
     Technique {
         name: "filter fade",
@@ -298,6 +319,7 @@ static CATALOGUE: &[Technique] = &[
         when: "when a volume fade sounds like something breaking",
         metaphor: "mist closing over a hill. It is still there; you just \
                    stop being able to make it out",
+        performed_as: None,
     },
     Technique {
         name: "brake",
@@ -308,6 +330,7 @@ static CATALOGUE: &[Technique] = &[
         when: "an announcement, a genre change, the end of a section",
         metaphor: "a wheel running down. Everyone knows what it means \
                    before they know what they heard",
+        performed_as: None,
     },
     Technique {
         name: "backspin",
@@ -317,6 +340,7 @@ static CATALOGUE: &[Technique] = &[
         what: "the record is thrown backwards and the next one lands",
         when: "high energy, and a record that has said what it came to say",
         metaphor: "a wave pulling back off the sand before the next one breaks",
+        performed_as: None,
     },
     // -- shaping what is playing -----------------------------------------
     Technique {
@@ -327,6 +351,7 @@ static CATALOGUE: &[Technique] = &[
         what: "moving the three bands through a mix rather than setting them once",
         when: "every blend. It is the technique the others are built on",
         metaphor: "weather over a landscape — the same ground, lit differently",
+        performed_as: None,
     },
     Technique {
         name: "filter sweep",
@@ -337,6 +362,7 @@ static CATALOGUE: &[Technique] = &[
         when: "building tension into a drop, or hiding a rough seam",
         metaphor: "a valley narrowing. Nothing is added; there is just \
                    less and less room until it opens out",
+        performed_as: None,
     },
     Technique {
         name: "stem swap",
@@ -346,6 +372,7 @@ static CATALOGUE: &[Technique] = &[
         what: "the drums of one record under the vocal of another, live",
         when: "when two records nearly work and one element is what is wrong",
         metaphor: "moving a tree rather than the hill it stands on",
+        performed_as: None,
     },
     Technique {
         name: "tone play",
@@ -355,6 +382,7 @@ static CATALOGUE: &[Technique] = &[
         what: "pitching a cue or a stab to make a melody out of one sound",
         when: "an instrumental stretch that needs something on top",
         metaphor: "the same stone thrown into different depths of water",
+        performed_as: None,
     },
     // -- performing -------------------------------------------------------
     Technique {
@@ -365,6 +393,7 @@ static CATALOGUE: &[Technique] = &[
         what: "the record pushed and pulled with the fader open",
         when: "the first scratch anybody learns, and still used every night",
         metaphor: "a hand in a stream, back and forth against the current",
+        performed_as: None,
     },
     Technique {
         name: "chirp",
@@ -375,6 +404,7 @@ static CATALOGUE: &[Technique] = &[
         when: "over a break, once the baby scratch is automatic",
         metaphor: "a bird call — it starts and stops sharply enough \
                    that the silence is part of it",
+        performed_as: None,
     },
     Technique {
         name: "transformer",
@@ -384,6 +414,7 @@ static CATALOGUE: &[Technique] = &[
         what: "the record runs and the fader chops it into pieces",
         when: "over a loop or a held note",
         metaphor: "sunlight through moving leaves",
+        performed_as: None,
     },
     Technique {
         name: "beat juggle",
@@ -394,6 +425,7 @@ static CATALOGUE: &[Technique] = &[
         when: "a break everybody knows, made into something they do not",
         metaphor: "a stone skipped so it touches the water in a rhythm \
                    the water did not have",
+        performed_as: None,
     },
     Technique {
         name: "loop roll",
@@ -403,6 +435,7 @@ static CATALOGUE: &[Technique] = &[
         what: "a short loop held over the record, which carries on underneath",
         when: "the last bar before a drop; a stutter that costs nothing",
         metaphor: "an eddy at the edge of a river. The river does not stop",
+        performed_as: None,
     },
     Technique {
         name: "censor",
@@ -412,6 +445,7 @@ static CATALOGUE: &[Technique] = &[
         what: "the record plays backwards, silently, and returns in time",
         when: "a word the room should not hear, with the beat unbroken",
         metaphor: "a held breath. Nothing was added and nothing was lost",
+        performed_as: None,
     },
     // -- structure ---------------------------------------------------------
     Technique {
@@ -422,6 +456,7 @@ static CATALOGUE: &[Technique] = &[
         what: "hold a short intro open until there is time to mix into it",
         when: "a record with eight bars of intro and a mix that needs thirty-two",
         metaphor: "damming a stream for as long as you need it to be deeper",
+        performed_as: None,
     },
     Technique {
         name: "hot cue juggle",
@@ -432,6 +467,7 @@ static CATALOGUE: &[Technique] = &[
         when: "a long record with a short attention span in the room",
         metaphor: "walking a path you already know, taking the turns \
                    in a different order",
+        performed_as: None,
     },
     Technique {
         name: "slip trick",
@@ -442,6 +478,7 @@ static CATALOGUE: &[Technique] = &[
         when: "anything that should sound like it never interrupted the track",
         metaphor: "the current under ice. The surface does what you like; \
                    underneath it never stopped",
+        performed_as: None,
     },
     Technique {
         name: "phrase jump",
@@ -452,6 +489,7 @@ static CATALOGUE: &[Technique] = &[
         when: "a record that is running long, or an intro worth skipping",
         metaphor: "turning two pages instead of one, and still \
                    being on a paragraph",
+        performed_as: None,
     },
 ];
 

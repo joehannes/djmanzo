@@ -221,8 +221,9 @@ test.describe("§118a: the assistant's guides", () => {
    * §118: learning a move. Between records it lists the moves the DJ is
    * learning, then the coach's next, each in the coach's words (Rust's,
    * `guides.json`); *I have it now* keeps one as played and it leaves the
-   * list, *Learn this one* makes the suggestion theirs, and *Rehearse it*
-   * opens the Practice lab.
+   * list, *Learn this one* makes the suggestion theirs, and *Rehearse it* is
+   * offered only for a move djmanzo performs — a move played by hand says
+   * why not, in Rust's words.
    */
   test("learning a move lists the moves being learned, kept or rehearsed", async ({ page }) => {
     await openShell(page, "/", {}, { learning_moves: guides.learning });
@@ -238,6 +239,12 @@ test.describe("§118a: the assistant's guides", () => {
     await expect(rows.nth(0)).toContainText(theirs.what);
     await expect(rows.nth(0)).toContainText(theirs.metaphor);
     await expect(rows.nth(1).locator(".tag")).toHaveText(`One more to try · ${next.difficulty}`);
+    // The coach's next is played by hand: no rehearsal is offered for it,
+    // and Rust's sentence says why; the move djmanzo performs offers one.
+    await expect(rows.nth(1).getByRole("button", { name: "Rehearse it" })).toHaveCount(0);
+    await expect(rows.nth(1).locator(".not-lab")).toHaveText(next.not_in_lab!);
+    await expect(rows.nth(0).getByRole("button", { name: "Rehearse it" })).toBeVisible();
+    await expect(rows.nth(0).locator(".not-lab")).toHaveCount(0);
 
     await rows.nth(1).getByRole("button", { name: "Learn this one" }).click();
     await expect(rows.nth(1).locator(".tag")).toContainText("You are learning it");
@@ -250,9 +257,56 @@ test.describe("§118a: the assistant's guides", () => {
       { name: theirs.name, have: true },
     ]);
 
-    await rows.nth(0).getByRole("button", { name: "Rehearse it" }).click();
-    await expect(card).toHaveCount(0);
-    await expect(page.locator('.surface[data-surface="practice"]')).toBeVisible();
+    // The one left is played by hand: still no rehearsal offered for it.
+    await expect(card.locator("[data-move]")).toHaveCount(1);
+    await expect(card.locator(`[data-move="${next.name}"]`).getByRole("button", { name: "Rehearse it" })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * §118: *Rehearse it* sets the move up in the lab. With nothing held it
+   * says what it is waiting for, in the move's own style (Rust's word,
+   * `guides.json`); once a mix is held it is rendered in that style, once,
+   * and the held mix keeps its own — learning a move does not restyle what
+   * the automix is about to perform.
+   */
+  test("rehearsing a move renders the held mix in the move's style, once", async ({ page }) => {
+    await openShell(page, "/", {}, { learning_moves: guides.learning });
+    const topics = await openGuides(page);
+    await topics.locator('[data-topic="learn"]').click();
+    const [theirs] = guides.learning;
+    expect(theirs.style, "the fixture's move is one djmanzo performs").toBeTruthy();
+    await page
+      .locator(`[role="dialog"][aria-label="Learning a move"] [data-move="${theirs.name}"]`)
+      .getByRole("button", { name: "Rehearse it" })
+      .click();
+
+    const lab = page.locator('.surface[data-surface="practice"]');
+    await expect(lab.getByTestId("practice-learning")).toContainText(`To rehearse the ${theirs.name}`);
+    await expect(lab.getByTestId("practice-learning")).toContainText(`djmanzo's ${theirs.style}`);
+    expect(await recorded(page, "__rehearsed")).toEqual([]);
+
+    // A mix held in the pair view, as the lab's own tests hold one.
+    await page.getByRole("button", { name: "Pair", exact: true }).click();
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+    const held = await page.evaluate(() => (window as unknown as { __transition: { style: string } }).__transition.style);
+    expect(held, "the fixture holds a mix in another style").not.toBe(theirs.style);
+
+    await expect(lab.getByTestId("practice-heard").locator("li")).toHaveCount(1, { timeout: 5000 });
+    await expect(lab.getByTestId("practice-heard").locator(".style")).toHaveText(theirs.style!);
+    await expect(lab.getByTestId("practice-learning")).toHaveText(
+      `Rehearsing the ${theirs.name} as djmanzo's ${theirs.style}.`,
+    );
+    await expect(lab.locator(".tries button.asked")).toHaveText(theirs.style!);
+    await expect(lab.locator(".tries button.on")).toHaveText(held);
+    // Once: the panel's refreshes after it do not render it again.
+    await page.waitForTimeout(2500);
+    expect(await recorded(page, "__rehearsed")).toEqual([theirs.style]);
+    expect(
+      await page.evaluate(() => (window as unknown as { __transition: { style: string } }).__transition.style),
+      "the held mix keeps its style",
+    ).toBe(held);
     expect(errorsThrown(page)).toEqual([]);
   });
 

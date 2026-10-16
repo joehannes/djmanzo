@@ -42,6 +42,7 @@
     type Learning,
     type NightRead,
     type SessionPhase,
+    type RehearseAsk,
     type Transition,
     type TransitionStyleInfo,
   } from "./api";
@@ -60,8 +61,11 @@
     onTrouble: () => void;
     /** Search the collection for what the room asked for, as the Requests panel's *Find it* does. */
     onFind?: (text: string) => void;
-    /** Open the Practice lab, where a move is rehearsed without the room hearing it. */
-    onRehearse?: () => void;
+    /**
+     * Open the Practice lab on a move, to be heard in the style that performs
+     * it — the held mix rendered that way, without the room hearing it.
+     */
+    onRehearse?: (ask: RehearseAsk) => void;
   } = $props();
 
   let picking = $state(false);
@@ -391,14 +395,19 @@
             <span class="what">{move.what}.</span>
             <span class="when">When: {move.when}.</span>
             <em class="metaphor">Like {move.metaphor}.</em>
+            <!-- Rust's reason, where the lab has nothing to render for it. -->
+            {#if move.not_in_lab}<span class="not-lab">{move.not_in_lab}</span>{/if}
           </span>
           <span class="choices">
-            <button
-              type="button"
-              onclick={() => {
-                onRehearse?.();
-                close();
-              }}>Rehearse it</button>
+            {#if move.style}
+              {@const style = move.style}
+              <button
+                type="button"
+                onclick={() => {
+                  onRehearse?.({ move: move.name, style });
+                  close();
+                }}>Rehearse it</button>
+            {/if}
             {#if move.yours}
               <button type="button" onclick={() => void mark(move, true)}>I have it now</button>
             {:else}
@@ -682,6 +691,12 @@
   .metaphor {
     color: var(--text-dim);
     font-size: 0.85rem;
+  }
+
+  .not-lab {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
   }
 
   .energy {

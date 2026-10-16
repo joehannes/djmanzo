@@ -54,6 +54,8 @@
       "difficulty": "practised",
       "metaphor": "a shout in a valley — the sound leaves before the voice does",
       "name": "echo out",
+      "not_in_lab": null,
+      "style": "echo",
       "what": "throw a delay on the outgoing record and pull the fader under it",
       "when": "leaving a record that has no outro, without dead air",
       "yours": true
@@ -62,6 +64,8 @@
       "difficulty": "first",
       "metaphor": "weather over a landscape — the same ground, lit differently",
       "name": "EQ ride",
+      "not_in_lab": "EQ ride is not one of djmanzo's mixes, so the practice lab cannot render it. Try it on a deck the room cannot hear, in your headphones.",
+      "style": null,
       "what": "moving the three bands through a mix rather than setting them once",
       "when": "every blend. It is the technique the others are built on",
       "yours": false

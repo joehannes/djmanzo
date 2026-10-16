@@ -27,6 +27,7 @@
   import {
     controlMappings as listControlMappings,
     type MappingInfo,
+    type RehearseAsk,
   } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
   import { watchFrameRate } from "./framerate";
@@ -746,6 +747,8 @@
   let liveId = $state<string | null>(null);
   /** §118a: whether the night's quick decision is open, which the guides can ask for. */
   let tonightDeciding = $state(false);
+  /** §118: a move the learning guide asked the Practice lab to rehearse, until it is heard. */
+  let practiceAsked = $state<RehearseAsk | null>(null);
 
   $effect(() => {
     liveEvent()
@@ -3520,7 +3523,8 @@
           if (!isOpen("library")) void toggleSurface("library");
           findInCollection(text);
         }}
-        onRehearse={() => {
+        onRehearse={(ask) => {
+          practiceAsked = ask;
           if (!isOpen("practice")) void toggleSurface("practice");
         }}
       />
@@ -3637,7 +3641,7 @@
   {/snippet}
 
   {#snippet surfacePractice()}
-    <Practice enabled={ready} />
+    <Practice enabled={ready} asked={practiceAsked} onAsked={() => (practiceAsked = null)} />
   {/snippet}
 
   {#snippet surfaceEvent()}

@@ -2415,6 +2415,16 @@ export interface Learning {
   difficulty: "first" | "practised" | "hard";
   /** One the DJ said they are learning, rather than the coach's next. */
   yours: boolean;
+  /** The style the practice lab renders it in, when the automix performs it. */
+  style: string | null;
+  /** Rust's reason the lab cannot, when it cannot. Exactly one of the two. */
+  not_in_lab: string | null;
+}
+
+/** §118: a move to rehearse in the practice lab, in the style that performs it. */
+export interface RehearseAsk {
+  move: string;
+  style: string;
 }
 
 /** §118: the moves being learned, then the coach's next lesson. */

@@ -34,18 +34,56 @@
    * hearing the alternatives. Comparing BPM, phrase structure and keys is the
    * pair view's, and is drawn there rather than a second time here.
    */
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import {
     formatTime,
     practiceRehearse,
     transitionCurrent,
     transitionStyles,
+    type RehearseAsk,
     type Rehearsal,
     type Transition,
     type TransitionStyleInfo,
   } from "./api";
 
-  let { enabled }: { enabled: boolean } = $props();
+  let {
+    enabled,
+    asked = null,
+    onAsked,
+  }: {
+    enabled: boolean;
+    /**
+     * §118: a move the learning guide asked to rehearse, in the style that
+     * performs it. It is heard as soon as a mix is held — at once if one is
+     * — and answered once, so a restyle later does not render it again.
+     */
+    asked?: RehearseAsk | null;
+    onAsked?: () => void;
+  } = $props();
+
+  /**
+   * The move the marked style is being heard for, kept after the ask is
+   * answered so the panel can still say what the file is.
+   */
+  let learning = $state<RehearseAsk | null>(null);
+  $effect(() => {
+    if (asked) learning = asked;
+  });
+
+  /*
+   * The ask, rendered on the held mix as a clone in the move's style —
+   * `practice_rehearse` restyles a copy, so the mix the automix is about to
+   * perform is not changed by learning a move. Nothing held yet: it waits,
+   * and the empty panel says what for.
+   */
+  $effect(() => {
+    const ask = asked;
+    if (!ask || !pair || !enabled || working !== null) return;
+    untrack(() => {
+      onAsked?.();
+      void rehearse(ask.style);
+    });
+  });
 
   /**
    * The held transition, asked for rather than handed down.
@@ -136,10 +174,19 @@
       An empty panel reads as broken, so it says which empty this is and what
       to do about it. There is nothing to rehearse until a pair is held.
     -->
-    <p class="empty">
-      Nothing to rehearse yet. Set a transition up in the pair view, then hear
-      it here — the decks keep playing while you do.
-    </p>
+    {#if learning}
+      <p class="empty" data-testid="practice-learning">
+        To rehearse the {learning.move}, hold a mix first — set a transition
+        up in the pair view, or choose one in <em>The mix</em> guide. It is
+        heard as djmanzo's <strong>{learning.style}</strong> as soon as one is
+        held, and the decks keep playing while it is.
+      </p>
+    {:else}
+      <p class="empty">
+        Nothing to rehearse yet. Set a transition up in the pair view, then hear
+        it here — the decks keep playing while you do.
+      </p>
+    {/if}
   {:else}
     <p class="about">
       <strong>{pair.outgoing.track.title}</strong> into
@@ -148,10 +195,18 @@
       decks.
     </p>
 
+    {#if learning}
+      <p class="about learning" data-testid="practice-learning">
+        Rehearsing the {learning.move} as djmanzo's
+        <strong>{learning.style}</strong>.
+      </p>
+    {/if}
+
     <div class="tries" role="group" aria-label="Hear it this way">
       {#each styles as style (style.name)}
         <button
           class:on={pair.style === style.name}
+          class:asked={learning?.style === style.name}
           class:done={!!heard[style.name]}
           disabled={!enabled || working !== null}
           onclick={() => rehearse(style.name)}
@@ -249,6 +304,12 @@
   .tries button.on {
     border-color: var(--selected);
     color: var(--selected);
+  }
+
+  /* The move being learned: underlined, so it is not the held one's colour. */
+  .tries button.asked {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 
   /* Already rendered once — §30's `success`, which is simply "it worked". */

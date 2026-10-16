@@ -1651,6 +1651,16 @@ The largest of them, in the order they are worth doing:
    Those need a second engine feeding the headphone output. That is a real
    piece of work and the offline half does not pretend to be it.
 
+   **A move is rehearsed in the style that performs it** (§118's *Rehearse
+   it*): `technique::Technique::performed_as` says which of the coach's moves
+   the automix performs and as what, and the learning guide hands the lab that
+   style's word — or Rust's sentence for why there is nothing to render. Add a
+   transition style and the moves it *is* belong in that column; a move that
+   only resembles a style (a long blend is a blend held long, a filter fade is
+   not the fade) stays out of it, because the lab renders the held mix at the
+   length and shape it has. The ask is answered once, on a clone, so a DJ
+   learning the echo out never restyles the mix the automix is about to play.
+
 4. **The learning cluster, now that §13 and §14 exist.** `dj_app::signals`
    names the gestures and `Tendency` is the only thing that generalises from
    them — constructible only through `tendencies()`, never without a phase,

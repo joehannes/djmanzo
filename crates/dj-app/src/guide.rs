@@ -191,6 +191,12 @@ pub struct Learning {
     pub difficulty: &'static str,
     /// One the DJ said they are learning, rather than the coach's next.
     pub yours: bool,
+    /// The style the practice lab renders this move in — the word
+    /// `practice_rehearse` takes — when the automix performs it.
+    pub style: Option<&'static str>,
+    /// Why the lab cannot, when it cannot: the move is played on the decks.
+    /// Exactly one of this and `style` is there.
+    pub not_in_lab: Option<String>,
 }
 
 impl Learning {
@@ -206,8 +212,29 @@ impl Learning {
                 dj_assistant::technique::Difficulty::Hard => "hard",
             },
             yours,
+            style: technique
+                .performed_as
+                .map(dj_core::action::TransitionStyle::as_str),
+            not_in_lab: technique
+                .performed_as
+                .is_none()
+                .then(|| not_in_lab(technique.name)),
         }
     }
+}
+
+/// Why *Rehearse it* is not offered for a move the automix does not
+/// perform: the lab renders the held mix in one of djmanzo's styles, and a
+/// move that is not one of them has nothing there to render.
+fn not_in_lab(name: &str) -> String {
+    let mut name = name.to_owned();
+    if let Some(first) = name.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    format!(
+        "{name} is not one of djmanzo's mixes, so the practice lab cannot render it. \
+         Try it on a deck the room cannot hear, in your headphones."
+    )
 }
 
 /// §118: the learning guide's moves — the ones the DJ is learning, in their
@@ -412,6 +439,46 @@ mod tests {
             next.name
         );
         assert_eq!(list.len(), 2, "{list:#?}");
+    }
+
+    /// §118: **a move the automix performs is rehearsed in its style, and
+    /// one it does not says why** — for every move in the table, exactly one
+    /// of the two, and the style in the very word `practice_rehearse` parses
+    /// back to that move's own style.
+    #[test]
+    fn a_move_is_rehearsed_in_its_style_or_says_why_not() {
+        for technique in dj_assistant::technique::catalogue() {
+            let move_ = Learning::of(technique, true);
+            match (move_.style, &move_.not_in_lab) {
+                (Some(word), None) => assert_eq!(
+                    dj_core::action::TransitionStyle::parse(word),
+                    technique.performed_as,
+                    "{} is offered as {word}",
+                    technique.name
+                ),
+                (None, Some(why)) => {
+                    assert!(technique.performed_as.is_none(), "{}", technique.name);
+                    assert!(
+                        why.to_lowercase()
+                            .starts_with(&technique.name.to_lowercase()),
+                        "{why}"
+                    );
+                }
+                both => panic!("{}: {both:?}", technique.name),
+            }
+        }
+        let echo = dj_assistant::technique::by_name("echo out").expect("in the table");
+        assert_eq!(Learning::of(echo, true).style, Some("echo"));
+        let swap = dj_assistant::technique::by_name("bass swap").expect("in the table");
+        assert_eq!(Learning::of(swap, true).style, Some("blend"));
+        let ride = dj_assistant::technique::by_name("EQ ride").expect("in the table");
+        assert_eq!(
+            Learning::of(ride, false).not_in_lab.as_deref(),
+            Some(
+                "EQ ride is not one of djmanzo's mixes, so the practice lab cannot render it. \
+                 Try it on a deck the room cannot hear, in your headphones."
+            )
+        );
     }
 
     /// The deck a guide works from is the one the room hears, not the

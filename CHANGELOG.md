@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Rehearse it sets the move up in the Practice lab.** In *Learning a move*,
+  a move djmanzo performs — a cut, an echo out, a bass swap, an acapella over
+  an instrumental — is rehearsed in the style that performs it: the held mix
+  is rendered that way as soon as one is held, once, and the mix the automix
+  is about to perform keeps its own style. A move played by hand offers no
+  rehearsal and says why.
+
 ## v0.44.0 — Karaoke, made safer on older machines
 
 - **A machine that cannot listen is offered nothing to download.** Where

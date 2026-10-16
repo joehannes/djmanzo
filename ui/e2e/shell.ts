@@ -3849,6 +3849,9 @@ export async function openShell(
               );
             }
             const style = (args.style ?? held.style) as string;
+            // What each render was asked for, so a test can tell a move
+            // rehearsed in its own style from the held one rendered again.
+            ((win.__rehearsed ??= []) as unknown[]).push(args.style ?? null);
             return Promise.resolve({
               style,
               path: `/recordings/practice/aaaaaaaa-bbbbbbbb-${style.replace(" ", "-")}.wav`,
