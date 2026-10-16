@@ -1310,7 +1310,11 @@ mod tests {
         );
         assert_eq!(
             config["bundle"]["externalBin"],
-            serde_json::json!([format!("binaries/{}", dj_whisper::HELPER)]),
+            // Tauri adds the target triple and, on Windows, `.exe` itself.
+            serde_json::json!([format!(
+                "binaries/{}",
+                dj_whisper::HELPER.trim_end_matches(".exe")
+            )]),
             "the helper is bundled under the name the application looks for"
         );
         let builds = include_str!("../build-listen.cjs");
