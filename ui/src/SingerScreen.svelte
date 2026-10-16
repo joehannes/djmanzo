@@ -56,7 +56,10 @@
     type SingerBackdrop,
     type SingerLyrics,
     type VocalsState,
+    vocalsState,
   } from "./api";
+  import { breakAt, partOf } from "./lyricBreak";
+  import { MIC_TOKENS, spread } from "./micColours";
   import { lyricsAt } from "./lyricsAt";
   import Visuals from "./Visuals.svelte";
   import RoomEmoji from "./RoomEmoji.svelte";
@@ -149,6 +152,8 @@
 
   /** The rotation, looked at every few seconds: it changes when a host marks a song sung. */
   let rotation = $state<Rotation | null>(null);
+  /** B3: the singer on each microphone, by strip; `null` where nobody is. */
+  let onMic = $state<(string | null)[]>([]);
   /**
    * §122: the look behind the words, asked for as often: it is picked in the
    * Singers panel, in another window. The catalogue is asked again only when
@@ -167,6 +172,18 @@
         } catch {
           // A screen for singers says nothing rather than an error.
         }
+        // B3: who is on which microphone, for a duet's colours.
+        if ((vocals?.inputs ?? 0) > 0) {
+          try {
+            const on = (await vocalsState()).on.map((mic) => mic?.singer ?? null);
+            if (on.join("\n") !== onMic.join("\n")) onMic = on;
+            const theme = getComputedStyle(document.documentElement);
+            const order = spread(MIC_TOKENS.map((token) => theme.getPropertyValue(token)));
+            if (order.join() !== micOrder.join()) micOrder = order;
+          } catch {
+            // No microphones known: no duet colours.
+          }
+        } else if (onMic.length > 0) onMic = [];
         try {
           const chosen = await lookChosen();
           const name = chosen.singers;
@@ -191,11 +208,36 @@
   );
   const current = $derived(moment && words && moment.index >= 0 ? words.lines[moment.index] : null);
   /**
+   * B3: an instrumental break long enough to be told how long — a bar that
+   * fills to the next line, with the seconds left.
+   */
+  const pause = $derived(words && deck ? breakAt(words.lines, deck.position_seconds) : null);
+  /**
+   * B3: a duet — two or more singers on the microphones. Each wears their
+   * microphone's colour: their name, lit while their microphone hears them,
+   * and a line that begins with their name ("Ana: …") wiped in it.
+   */
+  // The theme's own colours, worn in the order that keeps them apart
+  // (`./micColours`): a theme's two accents can be two greens a singer
+  // cannot tell apart across a room. Read again with who is on the mics.
+  let micOrder = $state<number[]>([0, 1, 2, 3]);
+  /** A microphone's level above which its singer is heard, not handled. */
+  const HEARD = 0.12;
+  const micColour = (strip: number) => `var(${MIC_TOKENS[micOrder[strip % micOrder.length] ?? 0]})`;
+  const duet = $derived(onMic.filter((name) => name !== null).length >= 2);
+  const part = $derived(current && duet ? partOf(current.text, onMic) : null);
+  /** A timed line's first word is the name itself ("Ana:"): not sung, not drawn. */
+  const named = $derived(
+    part?.singer != null && current !== null && (current.words[0]?.[1] ?? "").trim().endsWith(":"),
+  );
+  /**
    * B7: the singer's deck playing with the guide under them, before their
    * first line — the intro and the count-in, and gone once they sing.
    */
   const guided = $derived(Boolean(deck?.playing && isGuide(deck.voice) && moment && moment.index < 0));
   const following = $derived(moment && words ? (words.lines[moment.index + 1] ?? null) : null);
+  /** B3: the line after, a duet's part read ahead in its singer's colour. */
+  const nextPart = $derived(following && duet ? partOf(following.text, onMic) : null);
 
   /**
    * Who is next. While a song plays its singer is still at the top of the
@@ -370,7 +412,36 @@
     <p class="song">{deck.title}{deck.artist ? ` — ${deck.artist}` : ""}</p>
   {/if}
 
+  {#if duet}
+    <p class="duet" data-duet role="group" aria-label="Singing together">
+      {#each onMic as name, strip (strip)}
+        {#if name}
+          <span
+            class="duet-name"
+            data-mic={strip + 1}
+            class:hot={(vocals?.strips[strip]?.level ?? 0) > HEARD}
+            style:--mic={micColour(strip)}>{name}</span
+          >
+        {/if}
+      {/each}
+    </p>
+  {/if}
+
   <div class="words" aria-live="polite">
+    {#if pause}
+      <div
+        class="break"
+        data-break
+        role="progressbar"
+        aria-label="Instrumental break, {pause.left} seconds to the next line"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(pause.progress * 100)}
+      >
+        <span class="break-track"><span class="break-fill" style:--done="{pause.progress * 100}%"></span></span>
+        <span class="break-left" data-break-left>{pause.left}s</span>
+      </div>
+    {/if}
     {#if guided}
       <p class="guided" data-guided>You'll hear the original singer quietly underneath</p>
     {/if}
@@ -383,25 +454,43 @@
     {/if}
     {#if words && words.lines.length > 0}
       {#if current && current.text !== ""}
-        <p class="line now" data-line="now">
+        <p
+          class="line now"
+          data-line="now"
+          data-part={part?.singer != null ? part.singer + 1 : undefined}
+          style:--sing={part?.singer != null ? micColour(part.singer) : undefined}
+        >
           {#if current.words.length > 0}
             {#each current.words as [, word], i (i)}
-              <span
-                class="word"
-                class:sung={i + 1 <= (moment?.words ?? 0)}
-                style:--fill="{Math.max(0, Math.min(1, (moment?.words ?? 0) - i)) * 100}%"
-                >{word}</span
-              >{" "}
+              {#if !(named && i === 0)}
+                <!-- B3: the word being sung glows softly; the wipe is still the fill. -->
+                <span
+                  class="word"
+                  class:sung={i + 1 <= (moment?.words ?? 0)}
+                  class:singing={i < (moment?.words ?? 0) && i + 1 > (moment?.words ?? 0)}
+                  style:--fill="{Math.max(0, Math.min(1, (moment?.words ?? 0) - i)) * 100}%"
+                  >{word}</span
+                >{" "}
+              {/if}
             {/each}
           {:else}
-            <span class="wipe" style:--fill="{(moment?.progress ?? 0) * 100}%">{current.text}</span>
+            <span class="wipe" style:--fill="{(moment?.progress ?? 0) * 100}%">{part?.text ?? current.text}</span>
           {/if}
         </p>
       {:else if current}
         <p class="line gap" data-line="now">♪</p>
       {/if}
       {#if following && following.text !== ""}
-        <p class="line next" data-line="next">{following.text}</p>
+        <p
+          class="line next"
+          data-line="next"
+          data-part={nextPart?.singer != null ? nextPart.singer + 1 : undefined}
+          style:color={nextPart?.singer != null
+            ? `color-mix(in srgb, ${micColour(nextPart.singer)} 70%, transparent)`
+            : undefined}
+        >
+          {nextPart?.text ?? following.text}
+        </p>
       {/if}
     {:else if words && words.plain.length > 0}
       <!-- No times for these words: shown still, because a wipe at a guessed pace leads a singer wrong. -->
@@ -598,7 +687,7 @@
   */
   .wipe,
   .word {
-    background: linear-gradient(90deg, var(--stem-vocal) var(--fill), rgb(245 245 245) var(--fill));
+    background: linear-gradient(90deg, var(--sing, var(--stem-vocal)) var(--fill), rgb(245 245 245) var(--fill));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -606,6 +695,66 @@
 
   .word.sung {
     --fill: 100%;
+  }
+
+  /*
+    B3: the word being sung, glowing softly in the voice's colour. A filter,
+    not a text-shadow: a shadow would paint over the wipe clipped to the
+    letters.
+  */
+  .word.singing {
+    filter: drop-shadow(0 0 1.2vh color-mix(in srgb, var(--sing, var(--stem-vocal)) 75%, transparent));
+  }
+
+  /* B3: how long an instrumental break lasts — a thin bar, under the words' place. */
+  .break {
+    display: flex;
+    align-items: center;
+    gap: 1.4vh;
+  }
+
+  .break-track {
+    position: relative;
+    width: min(42vw, 56vh);
+    height: 1.1vh;
+    border-radius: 1vh;
+    background: rgb(255 255 255 / 0.14);
+    overflow: hidden;
+  }
+
+  .break-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--done);
+    background: var(--stem-vocal);
+  }
+
+  .break-left {
+    min-width: 4ch;
+    font-size: 2.4vh;
+    font-variant-numeric: tabular-nums;
+    color: rgb(255 255 255 / 0.65);
+  }
+
+  /* B3: a duet's singers, each in their microphone's colour, lit while heard. */
+  .duet {
+    margin: 0;
+    display: flex;
+    gap: 2vw;
+    justify-content: center;
+    font-size: 2.6vh;
+  }
+
+  .duet-name {
+    color: var(--mic);
+    opacity: 0.55;
+    padding-bottom: 0.3vh;
+    border-bottom: 0.35vh solid transparent;
+  }
+
+  .duet-name.hot {
+    opacity: 1;
+    border-bottom-color: var(--mic);
   }
 
   .guided {
