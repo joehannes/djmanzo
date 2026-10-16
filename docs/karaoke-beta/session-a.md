@@ -26,6 +26,9 @@ Only session A edits this file.
 - **⚙ Sources and connections.** One press shows everything djmanzo can
   find, play, buy, fetch lyrics or covers from, what works now, and where
   to set up the rest.
+- **Shuffle, and a playlist's flow.** The deck's playlist drawer can
+  shuffle — every record once before any twice — and shows each record's
+  tempo and key, and the list's tempo range.
 - **One deck slim, the other big.** ⇤ in a deck's header makes it a slim
   strip — the record, the time left, play — and gives the other deck the
   room, its playlist open. *Full size* puts both back.
@@ -102,9 +105,21 @@ Only session A edits this file.
   first and showed a guard was dead code, now removed) and
   `e2e/findsong.spec.ts` (3 mutants). Not driven in the app: the demo
   records have no year or genre tags to narrow by.
-- Not yet: A4 (shuffle, BPM/key flow); a way into *Find a song* from the
-  Singers panel (Session B's file — a link there to the Library's *From
-  memory* would do it).
+- **A4 built**: *Shuffle* in each deck's drawer — a shuffled order kept
+  with the queue (`DeckQueue::order`), every record once a round, *Repeat*
+  round the same order again, made afresh when switched on or when the list
+  changes length (xorshift Fisher–Yates, no new crate); and the list's flow:
+  each record's tempo and key in its row, the tempo range in the summary.
+  1 Rust test (4 mutants), the drawer's browser test extended (2 mutants).
+  Driven in WebKitGTK: *Shuffle* stored `[1, 0]` and the next record
+  followed it. The drive found the playlist select blank on one start in
+  three — the lists still loading when it was first drawn — so the select
+  is now set explicitly once both have arrived; 3 of 3 starts then showed
+  it.
+- **Session A's milestones are all done** (A1–A7). Still open for whoever
+  folds the sessions together: a way into *Find a song* from the Singers
+  panel (Session B's file — a link there to the Library's *From memory*
+  would do it).
 
 ## For the host (KARAOKE-NIGHT.md)
 

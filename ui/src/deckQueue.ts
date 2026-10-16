@@ -20,6 +20,8 @@ export interface DeckQueue {
   advance: boolean;
   /** After the last, the first again. */
   repeat: boolean;
+  /** In a shuffled order, every record once a round. */
+  shuffle: boolean;
   /** The record that comes next, by its place in `entries`. */
   next: number | null;
   /** Why the list could not be read. */
@@ -28,8 +30,13 @@ export interface DeckQueue {
 
 export const deckQueue = (deck: number) => invoke<DeckQueue>("deck_queue", { deck });
 
-export const deckQueueSet = (deck: number, playlist: number | null, advance: boolean, repeat: boolean) =>
-  invoke<DeckQueue>("deck_queue_set", { deck, playlist, advance, repeat });
+export const deckQueueSet = (
+  deck: number,
+  playlist: number | null,
+  advance: boolean,
+  repeat: boolean,
+  shuffle: boolean,
+) => invoke<DeckQueue>("deck_queue_set", { deck, playlist, advance, repeat, shuffle });
 
 export const deckQueueLoad = (deck: number, index: number, play: boolean) =>
   invoke<DeckQueue>("deck_queue_load", { deck, index, play });

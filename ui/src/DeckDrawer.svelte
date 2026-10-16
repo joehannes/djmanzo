@@ -42,6 +42,19 @@
   let lists = $state<Playlist[]>([]);
   let error = $state("");
   let busy = $state(false);
+  let chooser = $state<HTMLSelectElement>();
+
+  /**
+   * The select shows the deck's playlist once its options exist. A value
+   * given before them is dropped, and WebKitGTK did not always take the
+   * option's own `selected` either (found driving, 16 October) — so it is
+   * set here, after both the lists and the queue have arrived.
+   */
+  $effect(() => {
+    const want = queue?.playlist ?? null;
+    if (!chooser || lists.length === 0) return;
+    chooser.value = want === null ? "" : String(want);
+  });
 
   async function refresh() {
     try {
@@ -89,15 +102,15 @@
 
   async function choose(playlist: number | null) {
     try {
-      queue = await deckQueueSet(deck, playlist, queue?.advance ?? false, queue?.repeat ?? false);
+      queue = await deckQueueSet(deck, playlist, queue?.advance ?? false, queue?.repeat ?? false, queue?.shuffle ?? false);
     } catch (e) {
       error = String(e);
     }
   }
 
-  async function setFlags(advance: boolean, repeat: boolean) {
+  async function setFlags(advance: boolean, repeat: boolean, shuffle = queue?.shuffle ?? false) {
     try {
-      queue = await deckQueueSet(deck, queue?.playlist ?? null, advance, repeat);
+      queue = await deckQueueSet(deck, queue?.playlist ?? null, advance, repeat, shuffle);
     } catch (e) {
       error = String(e);
     }
@@ -119,6 +132,14 @@
     const whole = Math.max(0, Math.round(seconds));
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
   };
+  /** The list's tempo range, as the summary says it: "96–128 BPM". */
+  const tempo = $derived.by(() => {
+    const known = (queue?.entries ?? []).map((entry) => entry.bpm).filter((bpm): bpm is number => bpm != null);
+    if (known.length === 0) return "";
+    const low = Math.round(Math.min(...known));
+    const high = Math.round(Math.max(...known));
+    return low === high ? `${low} BPM` : `${low}–${high} BPM`;
+  });
   /** The whole list's running time. */
   const length = $derived((queue?.entries ?? []).reduce((sum, entry) => sum + (entry.duration_seconds ?? 0), 0));
 </script>
@@ -128,6 +149,7 @@
     <div class="drawer" role="region" aria-label="Deck {deck}'s playlist">
       <div class="head">
         <select
+          bind:this={chooser}
           aria-label="Playlist for deck {deck}"
           value={queue?.playlist ?? ""}
           disabled={!enabled}
@@ -162,6 +184,16 @@
             />
             <span>Repeat</span>
           </label>
+          <label class="flag" title="A shuffled order: every record once a round, none twice">
+            <input
+              type="checkbox"
+              checked={queue.shuffle}
+              aria-label="Deck {deck}: shuffle"
+              disabled={!enabled}
+              onchange={(e) => void setFlags(queue?.advance ?? false, queue?.repeat ?? false, e.currentTarget.checked)}
+            />
+            <span>Shuffle</span>
+          </label>
         {/if}
       </div>
       {#if queue?.problem}
@@ -172,8 +204,8 @@
         <p class="hint">{queue.name ?? "This playlist"} is empty.</p>
       {:else}
         <p class="sum">
-          {queue.entries.length} records · {time(length)}{#if queue.advance} · goes on by itself{/if}{#if queue.repeat}
-            · round again{/if}
+          {queue.entries.length} records · {time(length)}{#if tempo} · {tempo}{/if}{#if queue.advance} · goes on by itself{/if}{#if queue.repeat}
+            · round again{/if}{#if queue.shuffle} · shuffled{/if}
         </p>
         <ol class="entries" aria-label="Records in deck {deck}'s playlist">
           {#each queue.entries as entry, i (entry.position)}
@@ -192,6 +224,10 @@
                 >
                 <span class="tag"
                   >{onDeck(i) ? "on the deck" : queue.next === i ? "next" : ""}</span
+                >
+                <!-- §127 A4: the flow of the list — tempo and key, record by record. -->
+                <span class="flow mono"
+                  >{entry.bpm != null ? Math.round(entry.bpm) : "–"}{#if entry.key}&nbsp;{entry.key}{/if}</span
                 >
                 <span class="len mono">{time(entry.duration_seconds ?? 0)}</span>
               </button>
@@ -345,7 +381,7 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    grid-template-columns: 1.6rem minmax(0, 1fr) auto auto;
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto auto auto;
     gap: 0.5rem;
     align-items: center;
     text-align: left;
@@ -379,6 +415,7 @@
   .artist,
   .n,
   .len,
+  .flow,
   .tag {
     color: var(--text-dim);
   }

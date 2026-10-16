@@ -68,9 +68,8 @@ in §5. Same rule: each milestone committed and pushed when green.
 | **B5** | **A song for the singer, sent.** The song brief also draws on the venue, the night's genre and the DJ's branding (`kit`, `brand.rs`); one press copies lyrics and style for Suno's window; *Send their song*: the host pastes the suno.com link and djmanzo opens WhatsApp to that guest (only with their contact consent) with a personal message ready. | Rust builds the brief and the `wa.me` address; tests of both; driven up to the WhatsApp window |
 
 **Order for session B:** B1, B2, B6, B7, B3, B4, B5, B8 — the visible and
-the asked-for first. **Session A:** A1, A2, A3, A5, A6 **done** (16 October,
-on `claude/vigilant-tesla-xdqpmf`, last `056767b`); **open: A7, then A4**,
-then §6. What each milestone did and what it left is in
+the asked-for first. **Session A:** A1–A7 **all done** (16 October, on
+`claude/vigilant-tesla-xdqpmf`); what is left is §6, once session B is done. What each milestone did and what it left is in
 [karaoke-beta/session-a.md](karaoke-beta/session-a.md).
 
 ## 4. How the two sessions stay out of each other's way

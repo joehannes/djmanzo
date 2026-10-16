@@ -42,6 +42,84 @@ pub struct DeckQueue {
     pub advance: bool,
     /// After the last, the first again.
     pub repeat: bool,
+    /// §127 A4: in a shuffled order rather than the list's.
+    pub shuffle: bool,
+    /// The shuffled order, a place in the list for each record — made when
+    /// *Shuffle* is switched on or the list changes length, so a round plays
+    /// every record once before any twice, and *Repeat* goes round it again.
+    pub order: Vec<usize>,
+}
+
+impl DeckQueue {
+    /// The record after the one this queue last put on the deck, in a list
+    /// of `len`: the shuffled order's when *Shuffle* is on and the order
+    /// still fits the list, the list's own otherwise.
+    #[must_use]
+    pub fn after(&self, len: usize) -> Option<usize> {
+        if self.shuffle && fits(&self.order, len) {
+            following(&self.order, self.at, self.repeat)
+        } else {
+            next(len, self.at, self.repeat)
+        }
+    }
+
+    /// Make the shuffled order again when *Shuffle* is on and the order no
+    /// longer fits a list of `len`. `seed` varies it from one time to the
+    /// next; the order itself is [`shuffled`]'s.
+    pub fn reorder(&mut self, len: usize, seed: u64) {
+        if self.shuffle && !fits(&self.order, len) {
+            self.order = shuffled(len, seed);
+        }
+    }
+}
+
+/// Whether `order` is a place for each of `len` records, each once.
+fn fits(order: &[usize], len: usize) -> bool {
+    let mut seen = vec![false; len];
+    order.len() == len
+        && order
+            .iter()
+            .all(|&place| place < len && !std::mem::replace(&mut seen[place], true))
+}
+
+/// The record after `at` in a shuffled `order`: its first when nothing is
+/// taken yet, round again after its last only with `repeat`. A record no
+/// longer in the order starts it from the top.
+#[must_use]
+pub fn following(order: &[usize], at: Option<usize>, repeat: bool) -> Option<usize> {
+    let first = order.first().copied()?;
+    let Some(at) = at else { return Some(first) };
+    match order.iter().position(|&place| place == at) {
+        None => Some(first),
+        Some(step) if step + 1 < order.len() => Some(order[step + 1]),
+        Some(_) if repeat => Some(first),
+        Some(_) => None,
+    }
+}
+
+/// `len` places in a shuffled order, from `seed`: Fisher–Yates over a
+/// xorshift, which is plenty for a list of fillers and needs no crate.
+#[must_use]
+pub fn shuffled(len: usize, seed: u64) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..len).collect();
+    let mut state = seed | 1;
+    for i in (1..len).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        #[allow(clippy::cast_possible_truncation)]
+        let j = (state % (i as u64 + 1)) as usize;
+        order.swap(i, j);
+    }
+    order
+}
+
+/// A seed that differs from one press to the next.
+fn seed() -> u64 {
+    #[allow(clippy::cast_possible_truncation)]
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0x9E37_79B9, |since| since.as_nanos() as u64)
 }
 
 /// The record after `at` in a list of `len`: the first when the queue has
@@ -157,7 +235,9 @@ pub struct DeckQueueDto {
     pub at: Option<usize>,
     pub advance: bool,
     pub repeat: bool,
-    /// The record [`next`] would give, by its place in `entries`.
+    pub shuffle: bool,
+    /// The record that comes next ([`DeckQueue::after`]), by its place in
+    /// `entries`.
     pub next: Option<usize>,
     /// Why the list could not be read, said rather than shown empty.
     pub problem: Option<String>,
@@ -172,6 +252,7 @@ fn dto(state: &AppState, deck: u8, queue: &DeckQueue) -> DeckQueueDto {
         at: queue.at,
         advance: queue.advance,
         repeat: queue.repeat,
+        shuffle: queue.shuffle,
         next: None,
         problem: None,
     };
@@ -197,7 +278,7 @@ fn dto(state: &AppState, deck: u8, queue: &DeckQueue) -> DeckQueueDto {
                     track: LibraryTrackDto::from(track),
                 })
                 .collect();
-            answer.next = next(answer.entries.len(), queue.at, queue.repeat);
+            answer.next = queue.after(answer.entries.len());
         }
         Err(error) => answer.problem = Some(format!("The playlist could not be read: {error}")),
     }
@@ -221,17 +302,33 @@ pub fn deck_queue_set(
     playlist: Option<i64>,
     advance: bool,
     repeat: bool,
+    shuffle: bool,
 ) -> Result<DeckQueueDto, String> {
     let index = index_of(deck)?;
+    let len = playlist
+        .and_then(|id| {
+            crate::commands::library(&state)
+                .ok()?
+                .playlist_tracks(id)
+                .ok()
+        })
+        .map_or(0, |entries| entries.len());
     let queue = {
         let mut held = queues(&state);
         let queue = &mut held.decks[index];
         if queue.playlist != playlist {
             queue.at = None;
+            queue.order.clear();
+        }
+        if shuffle && !queue.shuffle {
+            // Switched on: a new order, from the top.
+            queue.order.clear();
         }
         queue.playlist = playlist;
         queue.advance = advance;
         queue.repeat = repeat;
+        queue.shuffle = shuffle;
+        queue.reorder(len, seed());
         let queue = queue.clone();
         keep(&state, &held);
         queue
@@ -321,16 +418,20 @@ pub fn tick(state: &AppState, snapshot: &crate::snapshot::Snapshot) -> Vec<usize
 /// pump, since it decodes a file. Nothing when the list has run out without
 /// *Repeat*.
 pub fn advance(state: &AppState, deck_index: usize) {
-    let (playlist, at, repeat) = {
-        let held = queues(state);
-        let queue = &held.decks[deck_index];
-        (queue.playlist, queue.at, queue.repeat)
+    let Some(playlist) = queues(state).decks[deck_index].playlist else {
+        return;
     };
-    let Some(playlist) = playlist else { return };
     let len = crate::commands::library(state)
         .and_then(|db| db.playlist_tracks(playlist).map_err(|e| e.to_string()))
         .map_or(0, |entries| entries.len());
-    let Some(index) = next(len, at, repeat) else {
+    let index = {
+        let mut held = queues(state);
+        let queue = &mut held.decks[deck_index];
+        // A list that grew or shrank under a shuffled deck gets a new order.
+        queue.reorder(len, seed());
+        queue.after(len)
+    };
+    let Some(index) = index else {
         return;
     };
     let loaded = entry_path(state, deck_index, index)
@@ -361,6 +462,52 @@ mod tests {
         // A list that shrank under the deck: past its end is its end.
         assert_eq!(next(2, Some(5), false), None);
         assert_eq!(next(2, Some(5), true), Some(0));
+    }
+
+    /// **Shuffled, a round plays every record once, in an order of its own,
+    /// and only Repeat goes round again.** The order from a seed is a
+    /// permutation and not the list's own; following it from nothing visits
+    /// each place once and stops, or wraps with *Repeat*; an order that no
+    /// longer fits the list (it grew) is not used — the list's own order is,
+    /// until it is made again.
+    #[test]
+    fn shuffled_a_round_plays_each_record_once() {
+        let order = shuffled(8, 42);
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..8).collect::<Vec<_>>());
+        assert_ne!(order, (0..8).collect::<Vec<_>>(), "shuffled, not as listed");
+        assert_ne!(
+            shuffled(8, 42),
+            shuffled(8, 7),
+            "another seed, another order"
+        );
+
+        let mut queue = DeckQueue {
+            shuffle: true,
+            order: order.clone(),
+            ..DeckQueue::default()
+        };
+        let mut played = Vec::new();
+        while let Some(next) = queue.after(8) {
+            played.push(next);
+            queue.at = Some(next);
+            assert!(played.len() <= 8, "went round without Repeat");
+        }
+        assert_eq!(played, order);
+        queue.repeat = true;
+        assert_eq!(queue.after(8), Some(order[0]), "round again with Repeat");
+
+        // The list grew: the old order is not followed; made again, it is.
+        queue.at = None;
+        queue.repeat = false;
+        assert_eq!(queue.after(9), Some(0), "the list's own order meanwhile");
+        queue.reorder(9, 3);
+        assert_eq!(queue.order.len(), 9);
+        assert_eq!(queue.after(9), Some(queue.order[0]));
+        // Shuffle off: the list's own order, whatever is kept.
+        queue.shuffle = false;
+        assert_eq!(queue.after(9), Some(0));
     }
 
     fn view(playing: bool, position: f32) -> DeckView {

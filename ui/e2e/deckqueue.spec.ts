@@ -39,13 +39,13 @@ const FILLERS = [track(1, "Jingle", "djmanzo", 12), track(2, "Merengue break", "
 async function rust(page: Page) {
   await page.evaluate(
     ({ fillers }) => {
-      type Queue = { playlist: number | null; at: number | null; advance: boolean; repeat: boolean };
+      type Queue = { playlist: number | null; at: number | null; advance: boolean; repeat: boolean; shuffle: boolean };
       const win = window as unknown as {
         __TAURI_INTERNALS__: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
         __queueCalls: { cmd: string; args: Record<string, unknown> }[];
       };
       const decks: Record<number, Queue> = {};
-      const held = (deck: number) => (decks[deck] ??= { playlist: null, at: null, advance: false, repeat: false });
+      const held = (deck: number) => (decks[deck] ??= { playlist: null, at: null, advance: false, repeat: false, shuffle: false });
       const answer = (deck: number) => {
         const q = held(deck);
         const entries = q.playlist === 5 ? fillers : [];
@@ -70,7 +70,7 @@ async function rust(page: Page) {
         if (cmd === "deck_queue_set") {
           const q = held(deck);
           if (q.playlist !== args.playlist) q.at = null;
-          Object.assign(q, { playlist: args.playlist, advance: args.advance, repeat: args.repeat });
+          Object.assign(q, { playlist: args.playlist, advance: args.advance, repeat: args.repeat, shuffle: args.shuffle });
         }
         if (cmd === "deck_queue_load") held(deck).at = Number(args.index);
         return Promise.resolve(answer(deck));
@@ -119,7 +119,7 @@ test.describe("§127: a playlist under each deck", () => {
     const choose = drawer.getByRole("combobox", { name: "Playlist for deck 1" });
     await expect(choose.locator("option")).toHaveText(["No playlist", "Fillers — 3"]);
     await choose.selectOption("5");
-    expect((await sent(page, "deck_queue_set")).at(-1)).toEqual({ deck: 1, playlist: 5, advance: false, repeat: false });
+    expect((await sent(page, "deck_queue_set")).at(-1)).toEqual({ deck: 1, playlist: 5, advance: false, repeat: false, shuffle: false });
     const rows = drawer.getByRole("list", { name: "Records in deck 1's playlist" }).getByRole("listitem");
     await expect(rows).toHaveCount(3);
     await expect(drawer).toContainText("3 records · 3:57");
@@ -129,8 +129,20 @@ test.describe("§127: a playlist under each deck", () => {
     // A filler deck: on by itself, round again.
     await drawer.getByRole("checkbox", { name: "Deck 1: next when this ends" }).check();
     await drawer.getByRole("checkbox", { name: "Deck 1: repeat" }).check();
-    expect((await sent(page, "deck_queue_set")).at(-1)).toEqual({ deck: 1, playlist: 5, advance: true, repeat: true });
+    expect((await sent(page, "deck_queue_set")).at(-1)).toEqual({ deck: 1, playlist: 5, advance: true, repeat: true, shuffle: false });
     await expect(tab.locator(".badge")).toHaveCount(2);
+    // The list's flow: each record's tempo and key, and the range.
+    await expect(rows.nth(1)).toContainText("120 8A");
+    await expect(drawer).toContainText("120 BPM");
+    // Shuffle, sent with the rest.
+    await drawer.getByRole("checkbox", { name: "Deck 1: shuffle" }).check();
+    expect((await sent(page, "deck_queue_set")).at(-1)).toEqual({ deck: 1, playlist: 5, advance: true, repeat: true, shuffle: true });
+    await expect(drawer).toContainText("shuffled");
+    // Closed and opened again, the select still names the deck's playlist.
+    await tab.click();
+    await expect(drawer).toHaveCount(0);
+    await tab.click();
+    await expect(drawer.getByRole("combobox", { name: "Playlist for deck 1" })).toHaveValue("5");
 
     // ▶ on the last loads and plays it on this deck; round again, the first is next.
     await drawer.getByRole("button", { name: "Load and play tune_rising on deck 1" }).click();
