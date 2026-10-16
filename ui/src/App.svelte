@@ -12,6 +12,7 @@
   import { tick } from "svelte";
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
+  import { deckFocus } from "./deckFocus.svelte";
   import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
   import Automix from "./Automix.svelte";
@@ -4297,7 +4298,13 @@
       </div>
     {/if}
 
-    <div class="decks" class:four={deckCount === 4} class:six={deckCount === 6}>
+    <div
+      class="decks"
+      class:four={deckCount === 4}
+      class:six={deckCount === 6}
+      class:slim-1={deckCount === 2 && deckFocus.slim === 1}
+      class:slim-2={deckCount === 2 && deckFocus.slim === 2}
+    >
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <!--
           Wrapped rather than given a prop: the outline is about *this window's*
@@ -5796,6 +5803,15 @@
     unreadable, and a deck you cannot read at arm's length in a dark booth is
     not a deck.
   */
+  /* §127: one deck a slim strip, the other given the room. */
+  .decks.slim-1 {
+    grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
+  }
+
+  .decks.slim-2 {
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 13rem);
+  }
+
   .decks.four {
     grid-template-columns: repeat(2, 1fr);
   }

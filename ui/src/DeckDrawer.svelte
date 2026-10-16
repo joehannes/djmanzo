@@ -20,13 +20,22 @@
     deck,
     title = null,
     enabled = true,
+    openWhen = false,
   }: {
     /** 1-based. */
     deck: number;
     /** What is on the deck now; the drawer asks again when it changes. */
     title?: string | null;
     enabled?: boolean;
+    /** §127: opened when this becomes true — the deck given the room shows its playlist. */
+    openWhen?: boolean;
   } = $props();
+
+  let wasOpenWhen = false;
+  $effect(() => {
+    if (openWhen && !wasOpenWhen) open = true;
+    wasOpenWhen = openWhen;
+  });
 
   let open = $state(false);
   let queue = $state<DeckQueue | null>(null);

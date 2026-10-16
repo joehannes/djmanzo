@@ -152,4 +152,45 @@ test.describe("§127: a playlist under each deck", () => {
     await expect(page.getByRole("region", { name: "Deck 2's playlist" })).toContainText("Choose a playlist");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **One deck slim, the other given the room** (§127). With two decks, a
+   * press in a deck's header makes it a strip — its record, what is left,
+   * play — and the other deck takes the width and opens its playlist. Play
+   * on the strip is the deck's own action. *Full size* gives both their
+   * room back. Everything stays inside the window.
+   */
+  test("one deck slim, the other given the room with its playlist open", async ({ page }) => {
+    await openShell(page, "/", {}, { list_playlists: LISTS });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await rust(page);
+    const deck1 = page.locator('section.deck[data-deck="1"]');
+    const deck2 = page.locator('section.deck[data-deck="2"]');
+    const width = async (deck: typeof deck1) => (await deck.boundingBox())?.width ?? 0;
+    const even = await width(deck1);
+    expect(Math.abs(even - (await width(deck2)))).toBeLessThan(3);
+
+    await deck1.getByRole("button", { name: "Make deck 1 slim" }).click();
+    await expect(deck1.getByRole("group", { name: "Deck 1, slim" })).toBeVisible();
+    await expect(deck1.locator(".deck-body")).toHaveCount(0);
+    await expect.poll(() => width(deck1)).toBeLessThan(220);
+    await expect.poll(() => width(deck2)).toBeGreaterThan(even * 1.5);
+    // The record is still named on the strip.
+    await expect(deck1.locator("header .title")).toBeVisible();
+    // The deck given the room shows its playlist.
+    await expect(page.getByRole("region", { name: "Deck 2's playlist" })).toBeVisible();
+    // Inside the window.
+    const right = await deck2.boundingBox();
+    expect((right?.x ?? 0) + (right?.width ?? 0)).toBeLessThanOrEqual(1280);
+
+    await deck1.getByRole("button", { name: /^(Play|Pause) deck 1$/ }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
+      .toContain("deck 1 play_pause");
+
+    await deck1.getByRole("button", { name: "Full size" }).click();
+    await expect(deck1.locator(".deck-body")).toHaveCount(1);
+    await expect.poll(async () => Math.abs((await width(deck1)) - (await width(deck2)))).toBeLessThan(3);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

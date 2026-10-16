@@ -15,6 +15,9 @@ Only session A edits this file.
   out, and *Repeat* goes round again: jingles and fillers on one deck while
   the other carries the singers. A deck you pause is left alone. Each deck's
   choice is kept for next time.
+- **One deck slim, the other big.** ⇤ in a deck's header makes it a slim
+  strip — the record, the time left, play — and gives the other deck the
+  room, its playlist open. *Full size* puts both back.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
 
@@ -36,7 +39,12 @@ Only session A edits this file.
   the select lost its value when the lists arrived after the queue, and a
   record taken again (same title) left the drawer stale — it now asks every
   two seconds while open, and "on the deck" needs the deck's own title too.
-- Not yet: A3 (one deck slim, the other big), A4 (shuffle, BPM/key flow).
+- **A3 built**: with two decks, ⇤ in a deck's header makes it a slim strip
+  (its record, the time left, play/pause, *Full size*, its playlist tab) and
+  the other deck takes the width and opens its playlist
+  (`deckFocus.svelte.ts`, remembered in the window's storage). Held by a
+  browser test (3 mutants fail it); driven in WebKitGTK.
+- Not yet: A4–A7.
 
 ## For the host (KARAOKE-NIGHT.md)
 

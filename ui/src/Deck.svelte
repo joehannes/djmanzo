@@ -13,6 +13,7 @@
   import { onMount } from "svelte";
   import JogWheel from "./JogWheel.svelte";
   import DeckDrawer from "./DeckDrawer.svelte";
+  import { deckFocus, setSlim } from "./deckFocus.svelte";
   import { recordAsks } from "./waveformAsks";
   import { wantsJogRoom } from "./hands.svelte";
   import { fill } from "./meter";
@@ -108,6 +109,13 @@
     density?: number;
     zones?: Placed[] | null;
   } = $props();
+
+  /**
+   * §127: one deck slim, the other given the room (`deckFocus.svelte.ts`).
+   * Only with two decks on screen.
+   */
+  const slim = $derived(deckCount === 2 && deckFocus.slim === deck.number);
+  const roomy = $derived(deckCount === 2 && deckFocus.slim !== null && deckFocus.slim !== deck.number);
 
   /**
    * Fetched once, on mount.
@@ -589,6 +597,7 @@
   aria-label="Deck {deck.number}"
   data-deck={deck.number}
   class:playing={deck.playing}
+  class:slim
   class:drop-target={isOver(dropZone) || trackOver}
   bind:this={dropZone}
   ondragover={(event) => {
@@ -741,6 +750,17 @@
       </div>
     {/if}
     <IconButton icon="fa-solid fa-folder-open" title={loading ? "Loading…" : "Load"} onClick={pickTrack} disabled={!enabled || loading} />
+    {#if deckCount === 2}
+      <button
+        class="slim-toggle"
+        aria-pressed={slim}
+        aria-label={slim ? `Give deck ${deck.number} its room back` : `Make deck ${deck.number} slim`}
+        title={slim
+          ? `Give deck ${deck.number} its room back`
+          : `Make deck ${deck.number} a slim strip and give the other deck the room`}
+        onclick={() => setSlim(slim ? null : deck.number)}>{slim ? "⇥" : "⇤"}</button
+      >
+    {/if}
   </header>
 
   <!--
@@ -1495,15 +1515,31 @@
     pads go instead. Same move the master strip made one level up, same
     reason.
   -->
-  <div class="deck-body">
-    {@render band(scrolling)}
-  </div>
-  <div class="deck-foot">
-    {@render band(pinned)}
-  </div>
+  {#if slim}
+    <!-- §127: the slim strip — what is on it, how long is left, play. -->
+    <div class="slim-body" role="group" aria-label="Deck {deck.number}, slim">
+      <span class="slim-left mono" title="Left on deck {deck.number}"
+        >-{formatTime(Math.max(0, deck.length_seconds - deck.position_seconds))}</span
+      >
+      <button
+        class="slim-play"
+        disabled={!enabled || !deck.loaded}
+        aria-label="{deck.playing ? 'Pause' : 'Play'} deck {deck.number}"
+        onclick={() => send(`deck ${deck.number} play_pause`)}>{deck.playing ? "❚❚" : "▶"}</button
+      >
+      <button class="slim-back" onclick={() => setSlim(null)}>Full size</button>
+    </div>
+  {:else}
+    <div class="deck-body">
+      {@render band(scrolling)}
+    </div>
+    <div class="deck-foot">
+      {@render band(pinned)}
+    </div>
+  {/if}
 
   <!-- §127: this deck's playlist, on its bottom edge. -->
-  <DeckDrawer deck={deck.number} title={deck.title} {enabled} />
+  <DeckDrawer deck={deck.number} title={deck.title} {enabled} openWhen={roomy} />
 
   {#if error}
     <p class="error">{error}</p>
@@ -1728,6 +1764,67 @@
     */
     gap: 0.45rem;
     min-width: 0;
+  }
+
+  /* §127: the slim strip keeps the deck's number, its record and the toggle;
+     everything else in the header waits for the room to come back. */
+  .deck.slim header > :not(.number):not(.meta):not(.slim-toggle) {
+    display: none;
+  }
+
+  .deck.slim header {
+    flex-wrap: wrap;
+  }
+
+  .slim-toggle {
+    margin-left: auto;
+    flex: none;
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+
+  .slim-toggle[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .slim-body {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+    padding-bottom: 1.6rem;
+  }
+
+  .slim-left {
+    font-size: 1.6rem;
+    text-align: center;
+    color: var(--text);
+  }
+
+  .slim-play {
+    height: 3rem;
+    font-size: 1.2rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .slim-back {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    color: var(--text-dim);
+    padding: 0.3rem;
+    cursor: pointer;
   }
 
   .deck.playing {
