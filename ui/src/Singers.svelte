@@ -1,5 +1,6 @@
 <script lang="ts">
   import { roomReactions, roomReactionsSet } from "./roomReactions";
+  import SkinPicker from "./SkinPicker.svelte";
   import { carriesTrack, droppedTrack } from "./trackdrag";
   /**
    * §107: the singer rotation, as a karaoke host works it.
@@ -1426,6 +1427,9 @@
       </ul>
     </details>
   {/if}
+
+  <!-- Karaoke beta B6: a skin over the theme, for the night's look. -->
+  <SkinPicker />
 
   <section class="room-emoji-switch" aria-label="Emoji from the room">
     <label class="switch">

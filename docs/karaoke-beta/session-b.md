@@ -6,6 +6,14 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **Skins over a theme.** Faint artwork over the whole interface, in the
+  theme's own accent colour: *Palm shadows*, *Waves*, *Papel picado*,
+  *Halftone*, *Trash polka* and *Glowing plankton*, two or three offered with
+  each theme they suit (every Caribbean theme has some). A skin never takes
+  a press, is fainter with reduced motion, off with high contrast, and never
+  on the singers' screen. Chosen under *Skin over the theme* in the Singers
+  panel.
+
 - **Four Caribbean themes.** *Malecón Night* (Havana's sea wall after dark:
   a night-sea navy, coral and sea glass; its light variant the pastel
   facades), *Carnaval* (the vejigante masks: yellow and green on black, red
@@ -22,6 +30,18 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B6 built** (§129): `ui/src/skins/skins.ts` (six pure-SVG tiles drawn as
+  a CSS mask in `--accent` over `body::after`, `pointer-events: none`,
+  opacity 0.10–0.18; `prefers-contrast: more` / `forced-colors` off,
+  reduced motion ×0.6), worn through `theme.svelte.ts` (`skin`, `skins`,
+  `setSkin`, `html[data-skin]`, never with `?panel=singers`) and chosen in
+  `SkinPicker.svelte`. Held by `skins.test.ts` (3) and `e2e/skins.spec.ts`
+  (4: chosen and drawn faintly, every visible button still the thing the
+  pointer finds; never on the singers' screen; fainter with reduced motion;
+  only with a theme it suits); 4 mutants fail them. Looked at over four
+  themes; papel picado was redrawn as outlines after the first look showed
+  its solid flags competing with the controls.
 
 - **B1 built**: four rows in `dj_app::theme::ALL` (now 29; the extras test
   names them), packages `pkg-malecon`, `pkg-carnaval`, `pkg-biobay`,
@@ -57,6 +77,11 @@ seconds. It is off until you turn it on.
 ## For the next session (HANDOFF.md)
 
 ## Needed a file this session does not own
+
+- `ui/src/Settings.svelte` (Appearance) or the theme button: the natural
+  home for `<SkinPicker />` is beside the theme picker; for tonight it is in
+  the Singers panel. At the merge, place `<SkinPicker />` under Appearance
+  too if wanted (it needs no props).
 
 - B1 re-blessed three Rust-generated goldens, `ui/e2e/themes.json`,
   `ui/e2e/leader.json` and `ui/e2e/dashboards.json`, because they list every
