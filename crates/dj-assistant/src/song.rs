@@ -52,6 +52,17 @@ pub struct SongBrief {
     pub favourite_song: String,
     /// The DJ's own ideas, as typed.
     pub keywords: String,
+    /// What kind of night it is, when a prepared one is being played:
+    /// "Wedding — Anna and Ben".
+    pub occasion: String,
+    /// How the night is: under the sky or a roof, who has come, what it is
+    /// about — as the prepared event says.
+    pub circumstances: String,
+    /// Whose night it is: the DJ's or the venue's name, from the press kit,
+    /// for one friendly mention in the words and never in the style.
+    pub host: String,
+    /// Their one line, from the press kit: the feel the words may borrow.
+    pub host_line: String,
     /// One set of words per language, in this order. See [`languages`].
     pub languages: Vec<String>,
 }
@@ -150,6 +161,11 @@ pub fn song_prompt() -> String {
          brief tonight, and the event, place and date; work in the DJ's ideas where \
          there are any. Warm, specific, singable; nothing unkind, nothing \
          suggestive.\n\
+         Where the brief names the occasion and its circumstances, the words fit \
+         them: a wedding is not a club night, a terrace at sunset is not a cellar. \
+         Where it names whose night it is, mention that name once, warmly, in the \
+         words — in the spirit of their line if one is given — and never in the \
+         STYLE line.\n\
          Write only original words: never quote or closely paraphrase a line of the \
          song they sang or of any other existing song.\n\
          Put section tags on lines of their own: [Verse], [Chorus], [Verse], \
@@ -195,6 +211,10 @@ pub fn song_request(brief: &SongBrief) -> String {
     line("Favourite genre", &brief.favourite_genre);
     line("Favourite band", &brief.favourite_band);
     line("Favourite song", &brief.favourite_song);
+    line("Occasion", &brief.occasion);
+    line("Circumstances", &brief.circumstances);
+    line("Whose night", &brief.host);
+    line("Their line", &brief.host_line);
     line("The DJ's ideas", &brief.keywords);
     line("Languages, in order", &brief.languages.join("; "));
     out
@@ -327,11 +347,16 @@ const COMPARISONS: [&str; 9] = [
 ];
 
 /// The names a style must not carry for this brief: the guest's favourite
-/// band and song, and the song they sang and its artist.
+/// band and song, the song they sang and its artist, and whose night it is.
 #[must_use]
 pub fn names_in(brief: &SongBrief) -> Vec<String> {
     let mut names = Vec::new();
-    for field in [&brief.favourite_band, &brief.favourite_song, &brief.sang] {
+    for field in [
+        &brief.favourite_band,
+        &brief.favourite_song,
+        &brief.sang,
+        &brief.host,
+    ] {
         let field = field.trim();
         if field.is_empty() {
             continue;
@@ -367,7 +392,48 @@ mod tests {
             favourite_song: "Obsesión".into(),
             keywords: "first time on stage, brave".into(),
             languages: languages("es", "Bachata en Fukuoka", "Japanese"),
+            ..SongBrief::default()
         }
+    }
+
+    /// **The night's occasion, its circumstances and whose night it is reach
+    /// the model, and the host's name is kept out of the style** — a song
+    /// for a wedding on a terrace knows it, and a style line naming the DJ
+    /// would be a name where Suno takes none. Unsaid, none of it is asked.
+    #[test]
+    fn the_night_and_whose_night_it_is_reach_the_words_not_the_style() {
+        let night = SongBrief {
+            occasion: "Wedding — Anna and Ben".into(),
+            circumstances: "partly under the sky; family and friends, about 80".into(),
+            host: "DJ Rosa".into(),
+            host_line: "Karaoke nights & bachata from Vienna".into(),
+            ..brief()
+        };
+        let request = song_request(&night);
+        for needed in [
+            "Occasion: Wedding — Anna and Ben",
+            "Circumstances: partly under the sky; family and friends, about 80",
+            "Whose night: DJ Rosa",
+            "Their line: Karaoke nights & bachata from Vienna",
+        ] {
+            assert!(
+                request.contains(needed),
+                "{needed} missing from:\n{request}"
+            );
+        }
+        let plain = song_request(&brief());
+        for unsaid in ["Occasion:", "Circumstances:", "Whose night:", "Their line:"] {
+            assert!(
+                !plain.contains(unsaid),
+                "{unsaid} asked with nothing to say"
+            );
+        }
+        assert!(song_prompt().contains("never in the STYLE line"));
+        assert!(names_in(&night).iter().any(|name| name == "DJ Rosa"));
+        assert_eq!(
+            clean_style("bachata, warm, DJ Rosa, nylon guitar", &["DJ Rosa"]),
+            "bachata, warm, nylon guitar"
+        );
     }
 
     /// **What reaches the model is what a song needs, and nothing else.**

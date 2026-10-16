@@ -26,6 +26,12 @@ Versioning follows semver, with one project-specific convention:
   `monitor split_off`; the assistant is now also told about
   `monitor music`, which it never was.
 
+- **A song for a singer knows the night.** The words are now written with
+  the occasion and circumstances of the prepared night being played — a
+  wedding partly outdoors, who came, what it was about — and with whose
+  night it was, the DJ's or venue's name and line from the press kit,
+  mentioned once in the words and never in Suno's style line.
+
 - **The karaoke build listens wherever the Mac can.** It used to leave
   speech recognition — timing the words by listening, and spoken commands —
   out for every Mac, because a 2011 laptop cannot run it. Now it carries it

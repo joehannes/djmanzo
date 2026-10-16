@@ -210,7 +210,50 @@ pub fn brief(
             &last.title,
             &guest.native_language,
         ),
+        ..dj_assistant::SongBrief::default()
     })
+}
+
+/// §123: the night around a guest's song — the prepared event being played
+/// and the DJ's press kit — laid into the brief, so the words know a wedding
+/// on a terrace from a club night and whose night it was. Only what is said:
+/// no event, no occasion; an empty kit, no host.
+#[must_use]
+pub fn with_night(
+    mut brief: dj_assistant::SongBrief,
+    night: Option<&crate::gig::Gig>,
+    kit: Option<&crate::kit::Kit>,
+) -> dj_assistant::SongBrief {
+    if let Some(gig) = night {
+        let kind = gig.setting.map(crate::setting::Setting::title);
+        let title = gig.title.trim();
+        brief.occasion = match (kind, title.is_empty()) {
+            (Some(kind), false) => format!("{kind} — {title}"),
+            (Some(kind), true) => kind.to_owned(),
+            (None, false) => title.to_owned(),
+            (None, true) => String::new(),
+        };
+        let mut how = Vec::new();
+        match gig.sky {
+            crate::gig::Sky::Outdoors => how.push("under the sky".to_owned()),
+            crate::gig::Sky::Both => how.push("partly under the sky".to_owned()),
+            crate::gig::Sky::Indoors => {}
+        }
+        for said in [&gig.crowd, &gig.topic] {
+            if !said.trim().is_empty() {
+                how.push(said.trim().to_owned());
+            }
+        }
+        brief.circumstances = how.join("; ");
+        if brief.place.trim().is_empty() {
+            brief.place = gig.place.trim().to_owned();
+        }
+    }
+    if let Some(kit) = kit {
+        brief.host = kit.name.trim().to_owned();
+        brief.host_line = kit.tagline.trim().to_owned();
+    }
+    brief
 }
 
 /// §123: how the song reaches a guest — a message the DJ sends themselves.
@@ -1010,6 +1053,68 @@ fn keep_take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §123: **the night around a song is the prepared event's and the
+    /// press kit's, and only what they say.** A wedding partly outside with
+    /// its guests and topic reaches the brief as an occasion and its
+    /// circumstances, its place where the song did not name one, and the
+    /// DJ's name and line from the kit; no event and an empty kit add
+    /// nothing, and a place the song named is kept over the event's.
+    #[test]
+    fn the_night_around_a_song_is_the_events_and_the_kits() {
+        let base = dj_assistant::SongBrief {
+            singer: "Ana".into(),
+            sang: "Vivir mi vida".into(),
+            ..dj_assistant::SongBrief::default()
+        };
+        let wedding = crate::gig::Gig {
+            title: "Anna and Ben".into(),
+            setting: Some(crate::setting::Setting::Wedding),
+            place: "Finca Sol".into(),
+            sky: crate::gig::Sky::Both,
+            crowd: "family and friends, about 80".into(),
+            topic: "a summer wedding by the sea".into(),
+            ..crate::gig::Gig::default()
+        };
+        let kit = crate::kit::Kit {
+            name: " DJ Rosa ".into(),
+            tagline: "Karaoke nights & bachata from Vienna".into(),
+            ..crate::kit::Kit::default()
+        };
+        let night = with_night(base.clone(), Some(&wedding), Some(&kit));
+        assert_eq!(night.occasion, "Wedding — Anna and Ben");
+        assert_eq!(
+            night.circumstances,
+            "partly under the sky; family and friends, about 80; a summer wedding by the sea"
+        );
+        assert_eq!(night.place, "Finca Sol");
+        assert_eq!(night.host, "DJ Rosa");
+        assert_eq!(night.host_line, "Karaoke nights & bachata from Vienna");
+
+        assert_eq!(with_night(base.clone(), None, None), base);
+        let indoors = crate::gig::Gig {
+            setting: Some(crate::setting::Setting::Club),
+            ..crate::gig::Gig::default()
+        };
+        let club = with_night(
+            base.clone(),
+            Some(&indoors),
+            Some(&crate::kit::Kit::default()),
+        );
+        assert_eq!(
+            (
+                club.occasion.as_str(),
+                club.circumstances.as_str(),
+                club.host.as_str()
+            ),
+            ("Club", "", "")
+        );
+        let named = dj_assistant::SongBrief {
+            place: "Bar Sol".into(),
+            ..base
+        };
+        assert_eq!(with_night(named, Some(&wedding), None).place, "Bar Sol");
+    }
 
     fn guest(name: &str) -> Guest {
         Guest {
