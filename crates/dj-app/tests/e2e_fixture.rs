@@ -1643,9 +1643,10 @@ fn the_browser_fixture_has_the_guides() {
     booth.decks[1].loaded = true;
     let waiting = dj_app::guide::guides(&booth, false, 2, 0);
     let live = dj_app::guide::guides(&booth, true, 2, 0);
-    // §118: mixing, which leaves no room for a lesson.
-    booth.attention.room_for = dj_app::tiers::Tier::Performable;
-    let mixing = dj_app::guide::guides(&booth, false, 2, 0);
+    // §118: mixing, which leaves no room for a lesson — both records
+    // audible, judged as a frame is, so the budget carries its reason.
+    booth.decks[1].playing = true;
+    let mixing = dj_app::guide::guides(&booth.clone().with_session(None), false, 2, 0);
     // §118: the learning guide's moves for a DJ learning the echo out, on a
     // laptop, in no pack.
     let learning = dj_app::guide::learning(

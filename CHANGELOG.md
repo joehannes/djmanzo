@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A lesson held back says what is holding it.** In an activity set for
+  playing, with nothing playing, the learning guide and the coach said *Not
+  while you are mixing*. They now say *Not in an activity set for playing.
+  The lesson has room in Practice.* — and the peak of the night, something
+  failing, or watching the autopilot each say themselves.
+
 - **Rehearse it sets the move up in the Practice lab.** In *Learning a move*,
   a move djmanzo performs — a cut, an echo out, a bass swap, an acapella over
   an instrumental — is rehearsed in the style that performs it: the held mix

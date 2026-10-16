@@ -1488,6 +1488,12 @@ laptop — a fourteenth cost the deck eleven pixels at the relaxed density and
 status strip, which draws even with nothing to report precisely so that it can
 be that way in.
 
+**§18's budget says why it is small** (`cockpit::Quiet`, from
+`Attention::judged` and `Attention::with_focus`, kept on the snapshot beside
+`attention`). Anything that withholds itself because of the budget should
+phrase its sentence from that reason rather than guess one: the lesson did,
+and told a DJ in the Mix activity with nothing playing that they were mixing.
+
 The context engine (§11) now exists and is the shape the rest of phase 5 should
 follow: one judgement, made in one place, published on the snapshot, with a
 stated certainty and a stated basis — and consumers that read it rather than

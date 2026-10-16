@@ -573,6 +573,11 @@ pub struct Snapshot {
     /// asking, which is the whole of [§11](../../../docs/DIRECTIVE.md): one
     /// context engine underneath, not a copy of the logic in each consumer.
     pub attention: crate::cockpit::Attention,
+    /// Why `attention` is the size it is, from the same judgement — what a
+    /// thing it withholds says about itself. Rust's alone: the interface is
+    /// handed the sentence, never the reason to phrase.
+    #[serde(skip)]
+    pub quiet: crate::cockpit::Quiet,
     pub decks: Vec<DeckSnapshot>,
     pub master: MasterSnapshot,
     /// §115: what the quiet proposer proposes about this frame, if anything.
@@ -594,7 +599,7 @@ impl Snapshot {
     #[must_use]
     pub fn with_session(mut self, read: Option<dj_core::SessionRead>) -> Self {
         self.context.session = read;
-        self.attention = crate::cockpit::Attention::for_context(&self);
+        (self.attention, self.quiet) = crate::cockpit::Attention::judged(&self);
         self
     }
 
@@ -610,7 +615,7 @@ impl Snapshot {
     #[must_use]
     pub fn with_focus(mut self, focus: Option<crate::cockpit::Focus>) -> Self {
         if let Some(focus) = focus {
-            self.attention = self.attention.quieter_of(focus.attention());
+            (self.attention, self.quiet) = self.attention.with_focus(self.quiet, focus);
         }
         self
     }
@@ -877,6 +882,7 @@ impl Snapshot {
             // this frame. Preparing is the honest default: a snapshot nobody
             // has read the night from is not one to freeze the interface on.
             attention: crate::cockpit::Attention::preparing(),
+            quiet: crate::cockpit::Quiet::Room,
             decks,
             whisper: None,
             master: MasterSnapshot {

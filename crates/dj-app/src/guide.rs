@@ -148,7 +148,7 @@ pub fn guides(snapshot: &Snapshot, live: bool, shown: u8, waiting: usize) -> Vec
                 // The coach's own rule and words: §58 puts technique advice in
                 // the contextual tier, and mixing leaves no room for it.
                 Topic::Learn => (
-                    crate::commands::lesson_withheld(snapshot.attention.room_for)
+                    crate::commands::lesson_withheld(snapshot.attention.room_for, snapshot.quiet)
                         .map(str::to_owned),
                     None,
                 ),
@@ -391,19 +391,74 @@ mod tests {
     /// on no deck.
     #[test]
     fn the_learning_guide_opens_between_records() {
+        // Through the frame's own path — the judgement, then the focus —
+        // rather than a room set by hand, which carries no reason.
         let mut snapshot = booth();
-        snapshot.attention.room_for = crate::tiers::Tier::Performable;
-        let mixing = guides(&snapshot, false, 2, 0);
+        for deck in &mut snapshot.decks {
+            deck.loaded = true;
+            deck.playing = true;
+        }
+        let mixing = guides(&snapshot.with_session(None), false, 2, 0);
         assert_eq!(
             open(&mixing, Topic::Learn).not_now.as_deref(),
             Some("Not while you are mixing. The lesson will be here between records.")
         );
-        snapshot.attention.room_for = crate::tiers::Tier::Contextual;
-        let between = guides(&snapshot, false, 2, 0);
+        let between = guides(&booth().with_session(None), false, 2, 0);
         let learn = open(&between, Topic::Learn);
         assert_eq!(
             (learn.not_now.as_deref(), learn.from, learn.to),
             (None, None, None)
+        );
+    }
+
+    /// §118: **a lesson held back by the activity says so, not that the DJ
+    /// is mixing.** The drive that found it: the Mix activity, nothing
+    /// playing, and the guide said *Not while you are mixing*. An activity
+    /// set for playing withholds it, rightly, and says where it has room;
+    /// mixing in that activity is still mixing; Practice opens it.
+    #[test]
+    fn a_lesson_held_back_by_the_activity_says_so() {
+        use crate::cockpit::Focus;
+        let said = |snapshot: Snapshot| {
+            open(&guides(&snapshot, false, 2, 0), Topic::Learn)
+                .not_now
+                .clone()
+        };
+        assert_eq!(
+            said(
+                booth()
+                    .with_session(None)
+                    .with_focus(Some(Focus::Performing))
+            )
+            .as_deref(),
+            Some("Not in an activity set for playing. The lesson has room in Practice.")
+        );
+        assert_eq!(
+            said(
+                booth()
+                    .with_session(None)
+                    .with_focus(Some(Focus::Supervising))
+            )
+            .as_deref(),
+            Some("Not while you are watching the autopilot. The lesson has room in Practice.")
+        );
+        let mut mixing = booth();
+        for deck in &mut mixing.decks {
+            deck.loaded = true;
+            deck.playing = true;
+        }
+        assert_eq!(
+            said(
+                mixing
+                    .with_session(None)
+                    .with_focus(Some(Focus::Performing))
+            )
+            .as_deref(),
+            Some("Not while you are mixing. The lesson will be here between records.")
+        );
+        assert_eq!(
+            said(booth().with_session(None).with_focus(Some(Focus::Learning))),
+            None
         );
     }
 

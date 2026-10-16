@@ -7114,7 +7114,21 @@ mod phase_tests {
 #[cfg(test)]
 mod lesson_moment_tests {
     use super::*;
+    use crate::cockpit::{Focus, Quiet};
     use crate::tiers::Tier;
+
+    /// Every reason a budget can give, for the tests that must hold for all.
+    const EVERY_REASON: [Quiet; 9] = [
+        Quiet::Room,
+        Quiet::Failing,
+        Quiet::Mixing,
+        Quiet::Peak,
+        Quiet::Focus(Focus::Performing),
+        Quiet::Focus(Focus::Supervising),
+        Quiet::Focus(Focus::Preparing),
+        Quiet::Focus(Focus::Planning),
+        Quiet::Focus(Focus::Learning),
+    ];
 
     /// **The load-bearing one: a lesson waits for a moment to be heard in, and
     /// a correction does not.**
@@ -7127,17 +7141,20 @@ mod lesson_moment_tests {
     #[test]
     fn a_lesson_waits_for_a_moment_to_be_heard_in() {
         assert!(
-            !lesson_withheld(crate::cockpit::Attention::performing().room_for)
-                .expect("a mix is not the moment to be taught a new move")
-                .is_empty()
+            !lesson_withheld(
+                crate::cockpit::Attention::performing().room_for,
+                Quiet::Mixing
+            )
+            .expect("a mix is not the moment to be taught a new move")
+            .is_empty()
         );
         assert_eq!(
-            lesson_withheld(crate::cockpit::Attention::preparing().room_for),
+            lesson_withheld(crate::cockpit::Attention::preparing().room_for, Quiet::Room),
             None,
             "between records is exactly when a lesson belongs"
         );
         assert_eq!(
-            lesson_withheld(crate::cockpit::Attention::learning().room_for),
+            lesson_withheld(crate::cockpit::Attention::learning().room_for, Quiet::Room),
             None,
             "the practising budget withheld a lesson, which is what it is for"
         );
@@ -7151,12 +7168,15 @@ mod lesson_moment_tests {
     /// either side of the line without somebody deciding which side.
     #[test]
     fn the_line_falls_exactly_where_section_fifty_eight_puts_technique_advice() {
+        // Whatever the reason: the reason chooses the words, never the line.
         for tier in Tier::ALL {
-            assert_eq!(
-                lesson_withheld(tier).is_none(),
-                tier >= Tier::Contextual,
-                "{tier:?} disagrees with where §58 puts technique advice"
-            );
+            for why in EVERY_REASON {
+                assert_eq!(
+                    lesson_withheld(tier, why).is_none(),
+                    tier >= Tier::Contextual,
+                    "{tier:?} for {why:?} disagrees with where §58 puts technique advice"
+                );
+            }
         }
     }
 
@@ -7180,6 +7200,7 @@ mod lesson_moment_tests {
 
         let (next, withheld) = lesson_now(
             crate::cockpit::Attention::performing().room_for,
+            Quiet::Mixing,
             &shown,
             rig,
             None,
@@ -7192,6 +7213,7 @@ mod lesson_moment_tests {
 
         let (next, withheld) = lesson_now(
             crate::cockpit::Attention::preparing().room_for,
+            Quiet::Room,
             &shown,
             rig,
             None,
@@ -7208,11 +7230,13 @@ mod lesson_moment_tests {
         // And every tier, so the pair can never both be empty without a reason
         // or both be full.
         for tier in crate::tiers::Tier::ALL {
-            let (next, withheld) = lesson_now(tier, &shown, rig, None);
-            assert!(
-                next.is_some() != withheld.is_some(),
-                "{tier:?} produced both a lesson and a reason, or neither"
-            );
+            for why in EVERY_REASON {
+                let (next, withheld) = lesson_now(tier, why, &shown, rig, None);
+                assert!(
+                    next.is_some() != withheld.is_some(),
+                    "{tier:?} for {why:?} produced both a lesson and a reason, or neither"
+                );
+            }
         }
     }
 
@@ -7223,8 +7247,11 @@ mod lesson_moment_tests {
     /// the curriculum, which is the one wrong thing a coach can say.
     #[test]
     fn the_reason_is_about_the_minute_rather_than_about_the_dj() {
-        let said = lesson_withheld(crate::cockpit::Attention::performing().room_for)
-            .expect("mixing withholds");
+        let said = lesson_withheld(
+            crate::cockpit::Attention::performing().room_for,
+            Quiet::Mixing,
+        )
+        .expect("mixing withholds");
         assert!(
             said.contains("mixing"),
             "the reason does not say what is actually stopping it: {said}"
@@ -7233,6 +7260,40 @@ mod lesson_moment_tests {
             !said.contains('*') && !said.contains('#'),
             "the reason is written in markup"
         );
+    }
+
+    /// **A withheld lesson names what is holding it, and only that** — the
+    /// drive that found this was in the Mix activity with nothing playing,
+    /// told *Not while you are mixing*. Each reason has its own sentence, the
+    /// mixing one alone says *mixing*, and an activity's focus points to the
+    /// one that has room.
+    #[test]
+    fn a_withheld_lesson_names_what_is_holding_it() {
+        let room = crate::cockpit::Attention::performing().room_for;
+        let said = |why| lesson_withheld(room, why).expect("withheld");
+        let reasons = [
+            Quiet::Room,
+            Quiet::Failing,
+            Quiet::Mixing,
+            Quiet::Peak,
+            Quiet::Focus(Focus::Performing),
+            Quiet::Focus(Focus::Supervising),
+        ];
+        let sentences: std::collections::BTreeSet<&str> =
+            reasons.iter().map(|&why| said(why)).collect();
+        assert_eq!(sentences.len(), reasons.len(), "{sentences:#?}");
+        for why in reasons {
+            assert_eq!(
+                said(why).contains("mixing"),
+                why == Quiet::Mixing,
+                "{why:?}: {}",
+                said(why)
+            );
+        }
+        assert!(said(Quiet::Peak).contains("peak"));
+        assert!(said(Quiet::Failing).contains("failing"));
+        assert!(said(Quiet::Focus(Focus::Performing)).contains("Practice"));
+        assert!(said(Quiet::Focus(Focus::Supervising)).contains("autopilot"));
     }
 }
 
@@ -8408,8 +8469,8 @@ pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
     // The *note* is deliberately not gated. A correction about the mix the DJ
     // is in the middle of is the one thing a coach is for — "both lows are up"
     // is worth saying at exactly the moment a lesson is not.
-    let room = snapshot_now(&state).attention.room_for;
-    let (next, withheld) = lesson_now(room, &shown, rig(&state), pack);
+    let now = snapshot_now(&state);
+    let (next, withheld) = lesson_now(now.attention.room_for, now.quiet, &shown, rig(&state), pack);
 
     Ok(CoachDto {
         observed,
@@ -8430,11 +8491,32 @@ pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
 ///
 /// Separate from the command so it can be tested: the command needs a live
 /// `AppState`, a snapshot and an action log, and this is the decision.
-pub(crate) fn lesson_withheld(room: crate::tiers::Tier) -> Option<&'static str> {
+///
+/// The words are the budget's own reason ([`crate::cockpit::Quiet`]), so a
+/// lesson held back by an activity set for playing does not say the DJ is
+/// mixing when nothing is playing.
+pub(crate) fn lesson_withheld(
+    room: crate::tiers::Tier,
+    why: crate::cockpit::Quiet,
+) -> Option<&'static str> {
+    use crate::cockpit::{Focus, Quiet};
     if room >= crate::tiers::Tier::Contextual {
         return None;
     }
-    Some("Not while you are mixing. The lesson will be here between records.")
+    Some(match why {
+        Quiet::Mixing => "Not while you are mixing. The lesson will be here between records.",
+        Quiet::Peak => "Not at the peak of the night. The lesson will be here when it eases.",
+        Quiet::Failing => {
+            "Not while something is failing. The lesson will be here once it is put right."
+        }
+        Quiet::Focus(Focus::Supervising) => {
+            "Not while you are watching the autopilot. The lesson has room in Practice."
+        }
+        Quiet::Focus(_) => "Not in an activity set for playing. The lesson has room in Practice.",
+        // A budget with no reason to be small: nothing judged it, so the
+        // sentence claims nothing about why.
+        Quiet::Room => "Not now. The lesson will be here when there is room for it.",
+    })
 }
 
 /// The lesson to offer, or the reason there is none — never both, never
@@ -8452,6 +8534,7 @@ pub(crate) fn lesson_withheld(room: crate::tiers::Tier) -> Option<&'static str> 
 /// curriculum.
 fn lesson_now(
     room: crate::tiers::Tier,
+    why: crate::cockpit::Quiet,
     shown: &[&str],
     rig: dj_assistant::technique::Rig,
     pack: Option<&dj_assistant::pack::Pack>,
@@ -8459,7 +8542,7 @@ fn lesson_now(
     Option<&'static dj_assistant::technique::Technique>,
     Option<&'static str>,
 ) {
-    match lesson_withheld(room) {
+    match lesson_withheld(room, why) {
         Some(because) => (None, Some(because)),
         None => (dj_assistant::coach::next_lesson(shown, rig, pack), None),
     }

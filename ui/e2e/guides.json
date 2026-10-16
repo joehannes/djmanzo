@@ -124,7 +124,7 @@
   "mixing": [
     {
       "about": "Three records to follow what is playing: up, level, or down.",
-      "from": 1,
+      "from": 2,
       "not_now": "Every other deck has a record on it already.",
       "title": "Next record",
       "to": null,
@@ -132,10 +132,10 @@
     },
     {
       "about": "How to bring the waiting record in, each way drawn as it sounds.",
-      "from": 1,
-      "not_now": null,
+      "from": 2,
+      "not_now": "Load the next record on another deck first.",
       "title": "The mix",
-      "to": 2,
+      "to": null,
       "topic": "mix"
     },
     {

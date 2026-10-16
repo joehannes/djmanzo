@@ -570,20 +570,65 @@ impl Attention {
     /// 4. Otherwise there is room to think.
     #[must_use]
     pub fn for_context(snapshot: &crate::Snapshot) -> Self {
+        Self::judged(snapshot).0
+    }
+
+    /// [`Self::for_context`]'s budget and **why** it is that size, from the
+    /// one judgement — so a thing the budget withholds can say what is
+    /// holding it back without working it out a second time, and so cannot
+    /// name a cause the budget never had.
+    #[must_use]
+    pub fn judged(snapshot: &crate::Snapshot) -> (Self, Quiet) {
         if failing(snapshot) {
-            return Self::emergency();
+            return (Self::emergency(), Quiet::Failing);
         }
         if audible(snapshot) >= 2 {
-            return Self::performing();
+            return (Self::performing(), Quiet::Mixing);
         }
         let peaking = snapshot.context.session.is_some_and(|read| {
             read.phase == dj_core::SessionPhase::Peak && read.certainty >= dj_core::Certainty::Fair
         });
         if peaking {
-            return Self::performing();
+            return (Self::performing(), Quiet::Peak);
         }
-        Self::preparing()
+        (Self::preparing(), Quiet::Room)
     }
+
+    /// [`Self::quieter_of`] with the DJ's focus, carrying the reason: the
+    /// focus becomes it only where it lowered the room. Mixing in an activity
+    /// set for playing is still mixing — that is the truer of the two, and
+    /// the one that ends between records.
+    #[must_use]
+    pub fn with_focus(self, why: Quiet, focus: Focus) -> (Self, Quiet) {
+        let theirs = focus.attention();
+        let why = if theirs.room_for < self.room_for {
+            Quiet::Focus(focus)
+        } else {
+            why
+        };
+        (self.quieter_of(theirs), why)
+    }
+}
+
+/// Why [`Attention`] leaves the room it does.
+///
+/// The budget's own sentence used to be inferred by whatever it withheld:
+/// a lesson held back said *Not while you are mixing* whatever had held it,
+/// and in an activity set for playing, with nothing playing at all, that
+/// sentence was false. Found by driving the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Quiet {
+    /// Nothing is holding it back.
+    #[default]
+    Room,
+    /// Something is failing — the recording, or the headphone card.
+    Failing,
+    /// Two records are audible.
+    Mixing,
+    /// The night is at its peak, and the reading is sure enough to act on.
+    Peak,
+    /// The DJ's focus — the activity's — lowered it.
+    Focus(Focus),
 }
 
 /// Whether something is wrong enough to want the advice to stop.
@@ -2816,6 +2861,53 @@ mod tests {
             Attention::preparing(),
             "narrowed the interface on a read nothing agreed with"
         );
+    }
+
+    /// **The budget carries why it is that size**, from the same judgement:
+    /// each of `for_context`'s rows gives its own reason, an unsure peak
+    /// gives none, and the DJ's focus becomes the reason only where it
+    /// lowered the room.
+    #[test]
+    fn the_budget_says_why_it_is_the_size_it_is() {
+        assert_eq!(frame(0).quiet, Quiet::Room);
+        assert_eq!(frame(2).quiet, Quiet::Mixing);
+        let mut broken = frame(2);
+        broken.master.recording.failed = true;
+        assert_eq!(broken.with_session(None).quiet, Quiet::Failing);
+        let peak = |certainty| {
+            Some(dj_core::SessionRead {
+                phase: dj_core::SessionPhase::Peak,
+                energy: 0.9,
+                environment: dj_core::EnvironmentContext::default(),
+                certainty,
+                basis: dj_core::Basis::Agreed,
+                drift: None,
+            })
+        };
+        assert_eq!(
+            frame(0).with_session(peak(dj_core::Certainty::Sure)).quiet,
+            Quiet::Peak
+        );
+        assert_eq!(
+            frame(0)
+                .with_session(peak(dj_core::Certainty::Unsure))
+                .quiet,
+            Quiet::Room
+        );
+
+        let playing = frame(0).with_focus(Some(Focus::Performing));
+        assert_eq!(playing.quiet, Quiet::Focus(Focus::Performing));
+        assert_eq!(playing.attention.room_for, crate::tiers::Tier::Performable);
+        assert_eq!(
+            frame(2).with_focus(Some(Focus::Performing)).quiet,
+            Quiet::Mixing,
+            "mixing in an activity set for playing is still mixing"
+        );
+        assert_eq!(
+            frame(0).with_focus(Some(Focus::Learning)).quiet,
+            Quiet::Room
+        );
+        assert_eq!(frame(0).with_focus(None).quiet, Quiet::Room);
     }
 
     /// **Where a surface opens has to be somewhere it may be.**
