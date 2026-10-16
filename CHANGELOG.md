@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.43.0 — djmanzo Karaoke for older Macs, and the karaoke host's kit
+
 - **djmanzo Karaoke, for older Macs (back to a 2011 MacBook).** A build for
   Intel Macs on macOS 10.13 (High Sierra) or later: the same application,
   opening on Karaoke, with its own settings, starting with the lightest
