@@ -12,6 +12,7 @@
   } from "./api";
   import { onMount } from "svelte";
   import JogWheel from "./JogWheel.svelte";
+  import DeckDrawer from "./DeckDrawer.svelte";
   import { recordAsks } from "./waveformAsks";
   import { wantsJogRoom } from "./hands.svelte";
   import { fill } from "./meter";
@@ -1501,6 +1502,9 @@
     {@render band(pinned)}
   </div>
 
+  <!-- §127: this deck's playlist, on its bottom edge. -->
+  <DeckDrawer deck={deck.number} title={deck.title} {enabled} />
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -1695,6 +1699,8 @@
   .deck {
     /* Fills the row it is given and no more; the body inside it scrolls. */
     min-height: 0;
+    /* For the playlist drawer on its bottom edge (§127). */
+    position: relative;
     /*
       And nothing inside it is ever drawn outside it.
 

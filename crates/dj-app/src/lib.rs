@@ -26,6 +26,7 @@ pub mod artists;
 pub mod asks;
 // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its modules
 // go between these two lines, and nothing else does.
+pub mod deck_queue;
 // End of session A's modules.
 pub mod assistant;
 pub mod at_hand;
@@ -592,6 +593,15 @@ pub fn run() {
                         crate::commands::tick_quiz(&state, now);
                         // K9: a song recorded for ten minutes is stopped.
                         crate::commands::tick_performance(&state);
+                        // §127: a deck that ran out, given the next record of
+                        // its playlist — decoded off the pump, as break music's.
+                        for deck in crate::deck_queue::tick(&state, &snapshot) {
+                            let handle = handle.clone();
+                            std::thread::spawn(move || {
+                                let state: tauri::State<'_, AppState> = handle.state();
+                                crate::deck_queue::advance(&state, deck);
+                            });
+                        }
                         if let Some(deck) = crate::commands::tick_breaks(&state, now) {
                             let handle = handle.clone();
                             std::thread::spawn(move || {
@@ -690,6 +700,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its
             // commands go between these two lines, and nothing else does.
+            deck_queue::deck_queue,
+            deck_queue::deck_queue_set,
+            deck_queue::deck_queue_load,
             // End of session A's commands.
             commands::list_devices,
             commands::list_inputs,
