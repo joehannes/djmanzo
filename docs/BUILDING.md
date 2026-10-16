@@ -89,6 +89,39 @@ cargo tauri build --target x86_64-apple-darwin
 There is no universal binary in the release workflow. Two separate builds keep
 each download half the size, and a DJ knows which Mac they have.
 
+### The karaoke build, for Intel Macs back to macOS 10.13
+
+The ordinary build needs macOS 10.15, because whisper.cpp uses
+`std::filesystem`, which Apple's C++ library has only from Catalina. A 2011
+MacBook stops at 10.13 (High Sierra). The karaoke build reaches it by leaving
+whisper.cpp out — word timing by listening and spoken commands — and nothing
+else:
+
+```sh
+MACOSX_DEPLOYMENT_TARGET=10.13 cargo tauri build --target x86_64-apple-darwin \
+  --config tauri.karaoke.conf.json -- --no-default-features
+```
+
+- `--no-default-features` turns off the `whisper` feature;
+  `whispercpp::cpu_can_run` then says so, and everything that would listen
+  refuses with that sentence.
+- `tauri.karaoke.conf.json` names it *djmanzo Karaoke*, gives it its own
+  identifier (so its settings sit apart from the ordinary build's), sets the
+  minimum to 10.13 and builds the interface with `npm run build:karaoke`.
+- `build:karaoke` lowers the interface's syntax to Safari 13's WebKit, which
+  is what 10.13 carries; `ui/src/legacy.ts` fills in the three functions it
+  lacks (`structuredClone`, `Object.hasOwn`, the unprefixed `AudioContext`).
+  It opens on the Karaoke activity the first time, and its performance
+  governor starts at *Eco* and climbs.
+- The environment variable wins over the 10.15 that `.cargo/config.toml`
+  pins: cargo's `[env]` never overrides a variable already set.
+
+The release workflow builds it as *macOS Karaoke (Intel, 10.13+)*, or alone
+with **karaoke** chosen on the Run form, and before it ships reads from the
+bundle what can be read without a 10.13 Mac: the minimum in `Info.plist` and
+in the binary, no `std::filesystem` or whisper symbol, and no framework newer
+than 10.13 linked unconditionally. Nothing has run it on a 10.13 Mac.
+
 ## The one thing a plain `cargo build --release` gets wrong
 
 **`cargo build --release` alone does not produce a shippable binary.**

@@ -15,3 +15,11 @@ describe("where a build opens", () => {
     expect(firstActivity("full", "dig")).toBeNull();
   });
 });
+
+describe("how hard a build works the machine at first", () => {
+  it("the karaoke build starts at Eco and the whole application at Ultra", async () => {
+    const { startingTier } = await import("./performance.svelte");
+    expect(startingTier("karaoke")).toBe("Eco");
+    expect(startingTier("full")).toBe("Ultra");
+  });
+});

@@ -838,6 +838,20 @@
           "mine": false
         },
         {
+          "key": "a",
+          "label": "Karaoke",
+          "run": "board karaoke",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Karaoke prep",
+          "run": "board karaoke-prep",
+          "children": [],
+          "mine": false
+        },
+        {
           "key": "d",
           "label": "Decks",
           "run": "board decks",
@@ -1060,6 +1074,27 @@
           "key": "h",
           "label": "Aurora",
           "run": "switch theme pkg-aurora",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "Karaoke Neon",
+          "run": "switch theme pkg-neon",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "j",
+          "label": "Spotlight",
+          "run": "switch theme pkg-spotlight",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "v",
+          "label": "Velvet",
+          "run": "switch theme pkg-velvet",
           "children": [],
           "mine": false
         }
@@ -1561,6 +1596,160 @@
               "key": "2",
               "label": "On deck 2",
               "run": "switch preset carib-tipico-open 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "v",
+          "label": "Vocals out",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-vocals-out 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-vocals-out 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "u",
+          "label": "Guide vocal",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-guide-vocal 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-guide-vocal 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "y",
+          "label": "Everyone sings",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-sing-along 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-sing-along 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "Down a tone",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-key-down 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-key-down 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "q",
+          "label": "Down a fourth",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-key-other-voice 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-key-other-voice 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "x",
+          "label": "Up a tone",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-key-up 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-key-up 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "z",
+          "label": "Original key",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset karaoke-key-home 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset karaoke-key-home 2",
               "children": [],
               "mine": false
             }

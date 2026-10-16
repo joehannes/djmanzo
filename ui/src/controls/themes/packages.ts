@@ -444,6 +444,47 @@ export const PkgAurora: ThemePackage = {
   effects: [],
 };
 
+// -----------------------------------------------------------------------------
+// Karaoke nights
+// -----------------------------------------------------------------------------
+//
+// Three rooms karaoke happens in. Still, all three: a host's screen beside a
+// singer should not be the thing moving, and the karaoke build reaches old
+// laptops that are better spending their frames on the words.
+
+export const PkgNeon: ThemePackage = {
+  id: "pkg-neon",
+  name: "Karaoke Neon",
+  category: "minimalist",
+  setting: "venue",
+  when: "A karaoke bar: dark, loud colours, and the singers' screen in the same room.",
+  geometry: GeometryCircle,
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgSpotlight: ThemePackage = {
+  id: "pkg-spotlight",
+  name: "Spotlight",
+  category: "minimalist",
+  setting: "venue",
+  when: "A small stage under one warm light, read from a step back.",
+  geometry: GeometryCircle,
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgVelvet: ThemePackage = {
+  id: "pkg-velvet",
+  name: "Velvet",
+  category: "organic",
+  setting: "venue",
+  when: "A karaoke lounge with booths and curtains, and low light.",
+  geometry: GeometryStone,
+  behaviors: [],
+  effects: [],
+};
+
 export const themePackages = [
   PkgDaylight,
   PkgStudio,
@@ -465,4 +506,7 @@ export const themePackages = [
   PkgSpectrum,
   PkgSignal,
   PkgAurora,
+  PkgNeon,
+  PkgSpotlight,
+  PkgVelvet,
 ];

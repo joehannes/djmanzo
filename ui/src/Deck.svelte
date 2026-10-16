@@ -32,6 +32,7 @@
   import IconButton from "./controls/IconButton.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { acceptFiles, isOver } from "./dragdrop.svelte";
+  import { carriesTrack, droppedTrack } from "./trackdrag";
 
   /**
    * §29's gestures, from Rust — see `dj_app::handle`.
@@ -511,6 +512,12 @@
     });
   });
 
+  /**
+   * A record dragged from the collection is over this deck. The desktop's
+   * own drags light the deck through `isOver`; this is the page's.
+   */
+  let trackOver = $state(false);
+
   async function load(path: string) {
     loading = true;
     error = null;
@@ -577,10 +584,28 @@
 </script>
 <section
   class="deck"
+  role="group"
+  aria-label="Deck {deck.number}"
   data-deck={deck.number}
   class:playing={deck.playing}
-  class:drop-target={isOver(dropZone)}
+  class:drop-target={isOver(dropZone) || trackOver}
   bind:this={dropZone}
+  ondragover={(event) => {
+    if (!carriesTrack(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    trackOver = true;
+  }}
+  ondragleave={(event) => {
+    if (!dropZone?.contains(event.relatedTarget as Node | null)) trackOver = false;
+  }}
+  ondrop={(event) => {
+    trackOver = false;
+    const dropped = droppedTrack(event);
+    if (!dropped) return;
+    event.preventDefault();
+    void load(dropped.path);
+  }}
   bind:clientWidth={deckWidth}
   bind:clientHeight={deckHeight}
 >

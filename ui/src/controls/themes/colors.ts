@@ -811,6 +811,122 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#ffffffd0",
     },
   },
+  // Karaoke Neon. A karaoke bar's own colours -- magenta and cyan on a
+  // purple so dark it reads as black -- for the host's screen in the same
+  // room as the singers'. The accents are bright because the room is dark
+  // and the host reads in glances between songs; the text stays near white.
+  "pkg-neon": {
+    dark: {
+      "--bg": "#0b0612",
+      "--panel": "#130b1e",
+      "--panel-raised": "#1c1129",
+      "--panel-hover": "#281838",
+      "--border": "#2a1b3b",
+      "--border-strong": "#4a3366",
+      "--text": "#f7ecff",
+      "--text-dim": "#b9a6cf",
+      "--accent": "#ff5fd2",
+      "--accent-2": "#3fe0ff",
+      "--warn": "#ffd25c",
+      "--danger": "#ff5f6d",
+      "--on-accent": "#1a0614",
+      "--scrim": "#0b0612cc",
+    },
+    light: {
+      "--bg": "#fbf7ff",
+      "--panel": "#ffffff",
+      "--panel-raised": "#f4ecfb",
+      "--panel-hover": "#ebdff6",
+      "--border": "#e6d9f2",
+      "--border-strong": "#b79fd0",
+      "--text": "#1c0f2a",
+      "--text-dim": "#5c4775",
+      "--accent": "#a3127e",
+      "--accent-2": "#006b85",
+      "--warn": "#875a00",
+      "--danger": "#b3152f",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fbf7ffcc",
+    },
+  },
+  // Spotlight. A small stage under one warm light: the host stands back
+  // from the laptop, so the warm accent carries further than a cool one and
+  // the panels stay near black, where the eye adjusted to the stage light
+  // reads them without being dazzled. The second colour is the beam's cool
+  // white-blue, and the warning a lemon yellow: an amber warning beside an
+  // amber accent was 16 apart, and the deck a mix is going to has to be told
+  // from the one it is coming from at a glance.
+  "pkg-spotlight": {
+    dark: {
+      "--bg": "#0a0908",
+      "--panel": "#13110e",
+      "--panel-raised": "#1c1915",
+      "--panel-hover": "#27231d",
+      "--border": "#29241d",
+      "--border-strong": "#4a4033",
+      "--text": "#fff6e8",
+      "--text-dim": "#c2b49e",
+      "--accent": "#ffb547",
+      "--accent-2": "#8fd3ff",
+      "--warn": "#f5f06e",
+      "--danger": "#ff6b5f",
+      "--on-accent": "#1f1300",
+      "--scrim": "#0a0908cc",
+    },
+    light: {
+      "--bg": "#fdfaf4",
+      "--panel": "#ffffff",
+      "--panel-raised": "#f7f0e3",
+      "--panel-hover": "#efe5d2",
+      "--border": "#ebe0cc",
+      "--border-strong": "#c4ae8a",
+      "--text": "#1f1609",
+      "--text-dim": "#66543a",
+      "--accent": "#8f4f00",
+      "--accent-2": "#0b5c86",
+      "--warn": "#6a6200",
+      "--danger": "#b3261e",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fdfaf4cc",
+    },
+  },
+  // Velvet. A karaoke lounge with booths and curtains: burgundy rather than
+  // black, rose gold for what is pressed, and a teal second colour so the
+  // two accents never read as one in the low light.
+  "pkg-velvet": {
+    dark: {
+      "--bg": "#120609",
+      "--panel": "#1b0a0f",
+      "--panel-raised": "#261017",
+      "--panel-hover": "#331620",
+      "--border": "#341821",
+      "--border-strong": "#5a2c3a",
+      "--text": "#fff0f2",
+      "--text-dim": "#d0a9b2",
+      "--accent": "#f2a07b",
+      "--accent-2": "#6fd6c4",
+      "--warn": "#ffcc66",
+      "--danger": "#ff6b7d",
+      "--on-accent": "#26100a",
+      "--scrim": "#120609cc",
+    },
+    light: {
+      "--bg": "#fdf7f8",
+      "--panel": "#ffffff",
+      "--panel-raised": "#f8ecef",
+      "--panel-hover": "#f1dfe4",
+      "--border": "#efdde2",
+      "--border-strong": "#c99aa7",
+      "--text": "#260c14",
+      "--text-dim": "#6e4553",
+      "--accent": "#9c3d1f",
+      "--accent-2": "#006e62",
+      "--warn": "#875a00",
+      "--danger": "#b0122f",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fdf7f8cc",
+    },
+  },
 };
 
 export function applyPackagePalette(pkgId: string, resolved: ResolvedTheme) {

@@ -220,7 +220,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Autopilot** | **shipped** — a half-second tick that stages, levels and mixes according to posture, from an assembled setlist. Never verified against real audio: there is no output device here |
 | **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode, with an input picker and a live calibration reading in Settings. djmanzo writes its own control signal to a WAV, so any turntable, CD deck or phone works without a licensed record. **Not yet run against a pressed record** |
 | Video mixing / VJ output | M8 |
-| Karaoke | K1 and K2 mostly **shipped** (§107, §122, §123): the rotation, the voice knob, the singers' screen, break music, word timing by whisper.cpp inside djmanzo, the guest book. K3 (a microphone per singer) designed, K4–K9 outlined — see [KARAOKE.md](KARAOKE.md) and [ROADMAP.md](ROADMAP.md#karaoke) |
+| Karaoke | K1–K8 **shipped**, K9 two of five (§107, §122, §123, §125): the rotation, the voice knob, the singers' screen, break music, word timing by whisper.cpp inside djmanzo, the guest book, a microphone and chain per singer, singers from their phones, scored singing, the quiz, a singer's range and key, recorded performances and pitch correction. A **karaoke build** for Intel Macs back to macOS 10.13 (2011 laptops) leaves whisper.cpp out — see [KARAOKE-NIGHT.md](KARAOKE-NIGHT.md), [KARAOKE.md](KARAOKE.md) and [ROADMAP.md](ROADMAP.md#karaoke) |
 
 ### Interface
 

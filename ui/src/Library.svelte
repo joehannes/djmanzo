@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { carryTrack } from "./trackdrag";
   /**
    * The DJ's own collection.
    *
@@ -103,6 +104,11 @@
   function startDrag(event: DragEvent, track: { id: string }) {
     const ids = selected.has(track.id) ? [...selected] : [track.id];
     event.dataTransfer?.setData(TRACKS, JSON.stringify(ids));
+    // The row grabbed, whole, for a deck or the karaoke host's form, which
+    // act on one record at once (`trackdrag.ts`). The ids above are still
+    // what the crates file.
+    const grabbed = tracks.find((t) => t.id === track.id);
+    if (grabbed) carryTrack(event, grabbed);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
   }
 

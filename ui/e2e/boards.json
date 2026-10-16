@@ -188,5 +188,60 @@
     ],
     "arranged": false,
     "mine": false
+  },
+  {
+    "slug": "karaoke",
+    "title": "Karaoke",
+    "about": "Hosting singers: the decks in brief, who is up and what they sing, and the songbook beside them.",
+    "glyph": "microphone",
+    "widgets": [
+      {
+        "name": "flow",
+        "cols": 12,
+        "rows": 1
+      },
+      {
+        "name": "karaoke",
+        "cols": 6,
+        "rows": 2
+      },
+      {
+        "name": "library",
+        "cols": 6,
+        "rows": 2
+      }
+    ],
+    "arranged": false,
+    "mine": false
+  },
+  {
+    "slug": "karaoke-prep",
+    "title": "Karaoke prep",
+    "about": "Before the singers arrive: the songbook to check, the singers' settings, the karaoke presets and the night.",
+    "glyph": "list-ol",
+    "widgets": [
+      {
+        "name": "library",
+        "cols": 8,
+        "rows": 2
+      },
+      {
+        "name": "karaoke",
+        "cols": 4,
+        "rows": 2
+      },
+      {
+        "name": "presets",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "event",
+        "cols": 6,
+        "rows": 1
+      }
+    ],
+    "arranged": false,
+    "mine": false
   }
 ]

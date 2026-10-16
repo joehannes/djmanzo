@@ -3260,6 +3260,15 @@ export async function openShell(
             }
             // K5: pressed, the mix is under way until a test says it is done;
             // with nothing to bring in from, Rust's refusal.
+            // `Rotation::move_to`: taken out, then put in at that place,
+            // clamped to the list.
+            if (cmd === "karaoke_move") {
+              const at = rotation.singers.findIndex((s) => s.name === args.singer);
+              if (at >= 0) {
+                const [moved] = rotation.singers.splice(at, 1);
+                rotation.singers.splice(Math.min(Number(args.to), rotation.singers.length), 0, moved);
+              }
+            }
             if (cmd === "karaoke_bring_in") {
               const bring = (rotation as { bring_in?: { bringing: boolean } | null }).bring_in;
               if (!bring) return Promise.reject(new Error("Put the song on a deck first."));

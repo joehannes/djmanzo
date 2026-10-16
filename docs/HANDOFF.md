@@ -113,6 +113,17 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 
+**`pkill -f` matches its own command line.** `pkill -f target/debug/djmanzo`
+inside a longer shell command kills that shell too, because the pattern is
+in its own arguments — the build or test chain after it silently never runs
+(exit 144). Stop the app with `pkill -x djmanzo`, which matches the process
+name only. Cost two gate runs on 15 October.
+
+**A karaoke-mode `dist/` is not the one the browser tests expect.** `npm run
+build:karaoke` writes the same `ui/dist` as `npm run build`, lowered to
+Safari 13 and opening on Karaoke. Run `npm run build` (and read `✓ built`)
+before Playwright, or it tests the karaoke bundle.
+
 **`npm run build` fails silently in a pipeline.** It runs `svelte-check &&
 vite build`, so a type error means `vite build` never runs and `dist/` keeps
 the *previous* bundle. A Playwright run then tests the old code and passes.
@@ -1436,6 +1447,23 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   A2's take ends by itself at eight seconds for exactly this reason.
 
 ## Where the work stands, and what is next
+
+**The karaoke build for older Macs (15–16 October).** The owner asked for a
+karaoke-ready djmanzo a friend could run on a 2011 MacBook, whose last macOS
+is 10.13. It is the same application built differently — `whisper` is a
+default cargo feature it turns off, `tauri.karaoke.conf.json` names it and
+sets 10.13, `npm run build:karaoke` lowers the interface to Safari 13 — and
+the release builds it beside the others as *macOS Karaoke (Intel, 10.13+)*,
+reading the bundle's minimums, symbols and frameworks before it ships.
+[BUILDING.md](BUILDING.md#the-karaoke-build-for-intel-macs-back-to-macos-1013)
+has the how and [KARAOKE-NIGHT.md](KARAOKE-NIGHT.md) is the page for the
+person hosting. **Nothing has run it on a 10.13 Mac.** What would break it
+there first: a new dependency that links a framework newer than 10.13 (the
+release check names the usual ones), a C++ library using
+`std::filesystem` or aligned `new`, or interface code calling a browser
+function Safari 13 lacks — `src/legacy.ts` is where such a function is
+filled in, and CI's es-check catches new *syntax* but not a missing
+*function*.
 
 `DIRECTIVE-STATUS.md` holds the live count; re-run its script rather than
 trusting a number written anywhere else, including here.

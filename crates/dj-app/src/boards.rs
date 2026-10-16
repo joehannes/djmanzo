@@ -175,6 +175,35 @@ pub fn all() -> Vec<Board> {
                 w("links", 12, 1),
             ],
         },
+        // Asked for with the karaoke build: a host's night, and the hour
+        // before it. After the owner's six, so their keys do not move.
+        Board {
+            slug: Cow::Borrowed("karaoke"),
+            title: Cow::Borrowed("Karaoke"),
+            about: Cow::Borrowed(
+                "Hosting singers: the decks in brief, who is up and what they sing, and the songbook beside them.",
+            ),
+            glyph: Cow::Borrowed("microphone"),
+            arranged: false,
+            mine: false,
+            widgets: vec![w("flow", 12, 1), w("karaoke", 6, 2), w("library", 6, 2)],
+        },
+        Board {
+            slug: Cow::Borrowed("karaoke-prep"),
+            title: Cow::Borrowed("Karaoke prep"),
+            about: Cow::Borrowed(
+                "Before the singers arrive: the songbook to check, the singers' settings, the karaoke presets and the night.",
+            ),
+            glyph: Cow::Borrowed("list-ol"),
+            arranged: false,
+            mine: false,
+            widgets: vec![
+                w("library", 8, 2),
+                w("karaoke", 4, 2),
+                w("presets", 6, 1),
+                w("event", 6, 1),
+            ],
+        },
     ]
 }
 
@@ -620,13 +649,26 @@ mod tests {
         }
     }
 
-    /// The six the owner listed, each once, each with an icon the interface
-    /// has, and every board widget on at least one board.
+    /// The six the owner listed, each once and first, then the two karaoke
+    /// boards asked for with the karaoke build; each with an icon the
+    /// interface has, and every board widget on at least one board.
     #[test]
     fn the_six_boards_the_owner_listed_are_there() {
         let boards = all();
         let slugs: Vec<&str> = boards.iter().map(|board| board.slug.as_ref()).collect();
-        assert_eq!(slugs, ["prepare", "live", "lab", "music", "kit", "social"]);
+        assert_eq!(
+            slugs,
+            [
+                "prepare",
+                "live",
+                "lab",
+                "music",
+                "kit",
+                "social",
+                "karaoke",
+                "karaoke-prep"
+            ]
+        );
         let icons = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../ui/src/controls/icons.ts"

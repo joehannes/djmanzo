@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { carriesTrack, droppedTrack } from "./trackdrag";
   /**
    * §107: the singer rotation, as a karaoke host works it.
    *
@@ -538,6 +539,72 @@
    * rotation also holds singers with nothing waiting, so the two positions
    * are not the same number.
    */
+  /**
+   * A singer carried by drag and drop to another's place in calling order:
+   * the type a drop target reads it by, and who is being carried.
+   */
+  const SINGER = "application/x-djmanzo-singer";
+  let carrying = $state<string | null>(null);
+  /** Who a carried singer is over, for marking where they would land. */
+  let landing = $state<string | null>(null);
+
+  function carrySinger(event: DragEvent, name: string) {
+    carrying = name;
+    event.dataTransfer?.setData(SINGER, name);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  function overSinger(event: DragEvent, name: string) {
+    if (!Array.from(event.dataTransfer?.types ?? []).includes(SINGER)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    landing = name;
+  }
+
+  /**
+   * Dropped on somebody: the carried singer takes their place in calling
+   * order — `Rotation::move_to` takes them out and puts them in at that
+   * place, so moving down lands after the one dropped on and moving up lands
+   * before them, which is the place the host pointed at either way. Dropped
+   * on the up-next card, they are next: the birthday singer.
+   */
+  async function dropSinger(event: DragEvent, onto: string) {
+    const name = event.dataTransfer?.getData(SINGER) || carrying;
+    carrying = null;
+    landing = null;
+    if (!name || name === onto) return;
+    event.preventDefault();
+    const to = rotation?.singers.findIndex((s) => s.name === onto) ?? -1;
+    if (to < 0) return;
+    await change(karaokeMove(name, to));
+  }
+
+  /** A song dragged from the collection onto the form is the song asked for. */
+  let songOver = $state(false);
+
+  function dropSong(event: DragEvent) {
+    songOver = false;
+    const dropped = droppedTrack(event);
+    if (!dropped) return;
+    event.preventDefault();
+    picked = { ...dropped } as LibraryTrack;
+    pickedKey = null;
+    song = label(picked);
+    matches = [];
+    fits = [];
+  }
+
+  /**
+   * One press for what dropping a singer on the up-next card does: they
+   * sing next. The drag is far in a panel this tall; the button is where
+   * the singer already is.
+   */
+  async function singNext(name: string) {
+    const to = rotation?.singers.findIndex((s) => s.name === rotation?.up_next) ?? -1;
+    if (to < 0) return;
+    await change(karaokeMove(name, to));
+  }
+
   async function moveUp(name: string, before: string) {
     const to = rotation?.singers.findIndex((s) => s.name === before) ?? -1;
     if (to < 0) return;
@@ -685,7 +752,14 @@
       The up-next singer, large: the host reads it out, and reads it from
       across the booth with a microphone in the other hand.
     -->
-    <section class="up" aria-label="Up next">
+    <section
+      class="up"
+      class:landing={landing === upNext.name}
+      aria-label="Up next"
+      ondragover={(event) => overSinger(event, upNext.name)}
+      ondragleave={() => (landing = null)}
+      ondrop={(event) => void dropSinger(event, upNext.name)}
+    >
       <p class="who">
         {upNext.name}
         {#if upNext.ready}<span class="badge ready" data-ready>Ready</span>{/if}
@@ -1076,7 +1150,22 @@
   {#if waiting.length > 1}
     <ol class="order" aria-label="Calling order">
       {#each waiting.slice(1) as person, index (person.name)}
-        <li>
+        <li
+          draggable="true"
+          class:carried={carrying === person.name}
+          class:landing={landing === person.name && carrying !== person.name}
+          title="Drag to another singer's place"
+          ondragstart={(event) => carrySinger(event, person.name)}
+          ondragend={() => {
+            carrying = null;
+            landing = null;
+          }}
+          ondragover={(event) => overSinger(event, person.name)}
+          ondragleave={() => {
+            if (landing === person.name) landing = null;
+          }}
+          ondrop={(event) => void dropSinger(event, person.name)}
+        >
           <span class="pos mono">{index + 2}</span>
           <span class="name"
             >{person.name}{#if person.from_phone}<span
@@ -1108,6 +1197,12 @@
           {/if}
           <button
             class="quiet"
+            aria-label="{person.name} sings next"
+            title="Sings next"
+            onclick={() => void singNext(person.name)}>⤒</button
+          >
+          <button
+            class="quiet"
             aria-label="Move {person.name} up"
             title="Move up"
             onclick={() => void moveUp(person.name, waiting[index].name)}>↑</button
@@ -1125,10 +1220,21 @@
 
   <form
     class="ask"
+    class:song-over={songOver}
     onsubmit={(event) => {
       event.preventDefault();
       void add();
     }}
+    ondragover={(event) => {
+      if (!carriesTrack(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      songOver = true;
+    }}
+    ondragleave={(event) => {
+      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) songOver = false;
+    }}
+    ondrop={dropSong}
   >
     <input bind:value={singer} placeholder="Singer" aria-label="Singer's name" />
     <div class="song-box">
@@ -1688,6 +1794,22 @@
     gap: 0.35rem;
   }
 
+  /* A record from the collection held over the form, and a singer held over
+     another's place: where the drop would land. */
+  .ask.song-over,
+  .landing {
+    outline: 2px dashed var(--accent);
+    outline-offset: 2px;
+  }
+
+  .carried {
+    opacity: 0.45;
+  }
+
+  .order li[draggable="true"] {
+    cursor: grab;
+  }
+
   .song-box {
     position: relative;
     flex: 1;
@@ -1718,6 +1840,8 @@
     text-align: left;
   }
 
+  /* Over what follows rather than in the form's row: in the row it stretched
+     the singer's name field to the list's height, found by driving it. */
   .matches {
     list-style: none;
     margin: 0.2rem 0 0;
@@ -1725,6 +1849,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    max-height: 14rem;
+    overflow-y: auto;
   }
 
   .matches button {

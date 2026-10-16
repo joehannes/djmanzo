@@ -6,7 +6,8 @@
  * lowered at build time (`vite build --mode karaoke`, `safari13`); what
  * cannot be lowered is a function that does not exist, and two that the
  * interface and Svelte's own runtime call arrived only in Safari 15.4:
- * `structuredClone` and `Object.hasOwn`. Each is defined here only when the
+ * `structuredClone` and `Object.hasOwn`; and Web Audio there is only
+ * `webkitAudioContext`. Each is defined here only when the
  * webview has none, so a current one keeps its own.
  */
 
@@ -46,6 +47,10 @@ export function installLegacy(scope: typeof globalThis = globalThis): void {
   const g = scope as unknown as Record<string, unknown>;
   if (typeof g.structuredClone !== "function") {
     g.structuredClone = <T>(value: T) => cloneOf(value);
+  }
+  // Safari before 14.1 has Web Audio only under its prefixed name.
+  if (typeof g.AudioContext !== "function" && typeof g.webkitAudioContext === "function") {
+    g.AudioContext = g.webkitAudioContext;
   }
   const object = g.Object as unknown as Record<string, unknown>;
   if (typeof object.hasOwn !== "function") {

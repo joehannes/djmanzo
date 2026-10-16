@@ -73,7 +73,7 @@ pub struct Theme {
 }
 
 /// §32's sixteen, and the two djmanzo ships that §32 did not name.
-pub const ALL: [Theme; 22] = [
+pub const ALL: [Theme; 25] = [
     Theme {
         title: "Studio Neutral",
         about: "Long evenings at a desk. Easy on the eyes for hours at a time.",
@@ -273,6 +273,36 @@ pub const ALL: [Theme; 22] = [
         asked: false,
         world: false,
     },
+    // Three rooms karaoke happens in, asked for with the karaoke build for
+    // older Macs. Still, all three: a host's screen beside a singer is not
+    // the thing that should move.
+    Theme {
+        title: "Karaoke Neon",
+        about: "A karaoke bar: magenta and cyan on near-black, for a host who reads the \
+                screen in glances between songs.",
+        pack: Some("pkg-neon"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Spotlight",
+        about: "A small stage under one warm light: amber on black, read from a step back \
+                without being dazzled.",
+        pack: Some("pkg-spotlight"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Velvet",
+        about: "A karaoke lounge with booths and curtains: burgundy, rose gold and teal in \
+                low light.",
+        pack: Some("pkg-velvet"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
 ];
 
 /// The row a package id belongs to, or `None` for an id nothing ships.
@@ -461,11 +491,12 @@ mod tests {
             "a row is marked as §32's and is not one of §32's sixteen"
         );
 
-        // And the extras are honest about not being asked for by §32. Six, and
-        // each for a stated reason: two are rooms §32's list happens not to
-        // name, the third is §33's -- a palette chosen by measurement rather
-        // than for a room at all -- and the last three are §113's, designed
-        // from what a colour does.
+        // And the extras are honest about not being asked for by §32. Nine,
+        // and each for a stated reason: two are rooms §32's list happens not
+        // to name, the third is §33's -- a palette chosen by measurement
+        // rather than for a room at all -- the next three are §113's,
+        // designed from what a colour does, and the last three are the rooms
+        // karaoke happens in, asked for with the karaoke build.
         let extras: Vec<&str> = ALL.iter().filter(|t| !t.asked).map(|t| t.title).collect();
         assert_eq!(
             extras,
@@ -475,7 +506,10 @@ mod tests {
                 "Colour-blind safe",
                 "Spectrum",
                 "Signal",
-                "Aurora"
+                "Aurora",
+                "Karaoke Neon",
+                "Spotlight",
+                "Velvet"
             ]
         );
     }

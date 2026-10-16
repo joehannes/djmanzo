@@ -16,6 +16,27 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo Karaoke, for older Macs (back to a 2011 MacBook).** A build for
+  Intel Macs on macOS 10.13 (High Sierra) or later: the same application,
+  opening on Karaoke, with its own settings, starting with the lightest
+  drawing and stepping up when the machine keeps up. It leaves out timing
+  the words by listening and spoken commands, which need macOS 10.15. See
+  [docs/KARAOKE-NIGHT.md](docs/KARAOKE-NIGHT.md) for the night itself.
+- **Rearrange the singers by dragging.** In the Singers panel a singer
+  dragged onto another's row takes that place in the calling order, and one
+  dropped on the up-next card goes next — or press ⤒ on their row.
+- **Drag a song from your collection** onto the Singers panel to ask for
+  it, or onto a deck to load it there.
+- **Two karaoke boards,** *Karaoke* (the decks in brief, the singers and
+  the songbook side by side) and *Karaoke prep* (the songbook, the singers'
+  settings, the karaoke presets and the night), and **three themes for
+  karaoke rooms:** *Karaoke Neon*, *Spotlight* and *Velvet*.
+- **Fixed: the song suggestions in the Singers panel** stretched the
+  singer's name field to their own height; they now open over what follows.
+- **A Karaoke night preset pack.** *Vocals out*, *Guide vocal*, *Everyone
+  sings*, *Down a tone*, *Down a fourth*, *Up a tone*, *Original key* and
+  *Open microphones* — what a host does by hand between singers, in the
+  Presets panel.
 - **Fill your press kit from your own pages (§118).** *Fill from your pages*
   under your links reads each of them once, when you press it, for what the
   page shows when it is shared — its title, its description and its picture

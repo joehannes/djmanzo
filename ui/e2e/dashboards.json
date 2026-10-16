@@ -306,6 +306,13 @@
             "key": null,
             "label": "Hear both",
             "run": "switch preset move-headphones-both"
+          },
+          {
+            "about": "Set before the first singer: the limiter on, the master two decibels down and the booth six, so a microphone pointed at a speaker has headroom before it howls.",
+            "id": "preset:karaoke-open-mics",
+            "key": null,
+            "label": "Open microphones",
+            "run": "switch preset karaoke-open-mics"
           }
         ],
         "title": "Presets"
@@ -444,6 +451,27 @@
             "key": null,
             "label": "Aurora",
             "run": "switch theme pkg-aurora"
+          },
+          {
+            "about": "A karaoke bar: magenta and cyan on near-black, for a host who reads the screen in glances between songs.",
+            "id": "theme:pkg-neon",
+            "key": null,
+            "label": "Karaoke Neon",
+            "run": "switch theme pkg-neon"
+          },
+          {
+            "about": "A small stage under one warm light: amber on black, read from a step back without being dazzled.",
+            "id": "theme:pkg-spotlight",
+            "key": null,
+            "label": "Spotlight",
+            "run": "switch theme pkg-spotlight"
+          },
+          {
+            "about": "A karaoke lounge with booths and curtains: burgundy, rose gold and teal in low light.",
+            "id": "theme:pkg-velvet",
+            "key": null,
+            "label": "Velvet",
+            "run": "switch theme pkg-velvet"
           }
         ],
         "title": "Themes"
@@ -956,6 +984,13 @@
             "key": null,
             "label": "Hear both",
             "run": "switch preset move-headphones-both"
+          },
+          {
+            "about": "Set before the first singer: the limiter on, the master two decibels down and the booth six, so a microphone pointed at a speaker has headroom before it howls.",
+            "id": "preset:karaoke-open-mics",
+            "key": null,
+            "label": "Open microphones",
+            "run": "switch preset karaoke-open-mics"
           }
         ],
         "title": "Presets"
@@ -1094,6 +1129,27 @@
             "key": null,
             "label": "Aurora",
             "run": "switch theme pkg-aurora"
+          },
+          {
+            "about": "A karaoke bar: magenta and cyan on near-black, for a host who reads the screen in glances between songs.",
+            "id": "theme:pkg-neon",
+            "key": null,
+            "label": "Karaoke Neon",
+            "run": "switch theme pkg-neon"
+          },
+          {
+            "about": "A small stage under one warm light: amber on black, read from a step back without being dazzled.",
+            "id": "theme:pkg-spotlight",
+            "key": null,
+            "label": "Spotlight",
+            "run": "switch theme pkg-spotlight"
+          },
+          {
+            "about": "A karaoke lounge with booths and curtains: burgundy, rose gold and teal in low light.",
+            "id": "theme:pkg-velvet",
+            "key": null,
+            "label": "Velvet",
+            "run": "switch theme pkg-velvet"
           }
         ],
         "title": "Themes"
@@ -1606,6 +1662,13 @@
             "key": null,
             "label": "Hear both",
             "run": "switch preset move-headphones-both"
+          },
+          {
+            "about": "Set before the first singer: the limiter on, the master two decibels down and the booth six, so a microphone pointed at a speaker has headroom before it howls.",
+            "id": "preset:karaoke-open-mics",
+            "key": null,
+            "label": "Open microphones",
+            "run": "switch preset karaoke-open-mics"
           }
         ],
         "title": "Presets"
@@ -1744,6 +1807,27 @@
             "key": null,
             "label": "Aurora",
             "run": "switch theme pkg-aurora"
+          },
+          {
+            "about": "A karaoke bar: magenta and cyan on near-black, for a host who reads the screen in glances between songs.",
+            "id": "theme:pkg-neon",
+            "key": null,
+            "label": "Karaoke Neon",
+            "run": "switch theme pkg-neon"
+          },
+          {
+            "about": "A small stage under one warm light: amber on black, read from a step back without being dazzled.",
+            "id": "theme:pkg-spotlight",
+            "key": null,
+            "label": "Spotlight",
+            "run": "switch theme pkg-spotlight"
+          },
+          {
+            "about": "A karaoke lounge with booths and curtains: burgundy, rose gold and teal in low light.",
+            "id": "theme:pkg-velvet",
+            "key": null,
+            "label": "Velvet",
+            "run": "switch theme pkg-velvet"
           }
         ],
         "title": "Themes"

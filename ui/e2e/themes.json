@@ -174,5 +174,29 @@
     "why_not": "",
     "asked": false,
     "world": false
+  },
+  {
+    "title": "Karaoke Neon",
+    "about": "A karaoke bar: magenta and cyan on near-black, for a host who reads the screen in glances between songs.",
+    "pack": "pkg-neon",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Spotlight",
+    "about": "A small stage under one warm light: amber on black, read from a step back without being dazzled.",
+    "pack": "pkg-spotlight",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Velvet",
+    "about": "A karaoke lounge with booths and curtains: burgundy, rose gold and teal in low light.",
+    "pack": "pkg-velvet",
+    "why_not": "",
+    "asked": false,
+    "world": false
   }
 ]

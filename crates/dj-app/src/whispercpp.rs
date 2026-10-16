@@ -1067,7 +1067,6 @@ mod tests {
     #[cfg(not(feature = "whisper"))]
     #[test]
     fn a_build_without_whisper_says_so() {
-        assert!(!BUILT_IN);
         assert_eq!(cpu_can_run(), Err(NOT_BUILT_IN.to_owned()));
         let model = recommended();
         let path = Path::new("/nowhere");

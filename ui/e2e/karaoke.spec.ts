@@ -75,6 +75,86 @@ test.describe("§107: the singer rotation", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * The host rearranges the night by hand: a singer dragged onto another's
+   * row takes that place in calling order, and one dropped on the up-next
+   * card goes next. What Rust is asked is the place pointed at, counted in
+   * the whole rotation (`Rotation::move_to`'s own terms), and the list then
+   * reads in the new order.
+   */
+  test("a singer dragged to another's place takes it, and onto the card goes next", async ({ page }) => {
+    // Tall enough that the panel holds the card and the list unscrolled: a
+    // drag that scrolls its own panel is the browser's, not this test's.
+    await openSingers(page);
+    await page.setViewportSize({ width: 1400, height: 1700 });
+    const singers = page.locator(SINGERS);
+    for (const [name, title] of [
+      ["Ana", "Vivir mi vida"],
+      ["Ben", "Danza kuduro"],
+      ["Cy", "Bailando"],
+      ["Di", "Despacito"],
+    ]) {
+      await singers.getByRole("textbox", { name: "Singer's name" }).fill(name);
+      await singers.getByRole("textbox", { name: "Song" }).fill(title);
+      await singers.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(singers.getByRole("textbox", { name: "Singer's name" })).toHaveValue("");
+    }
+    const order = singers.getByRole("list", { name: "Calling order" });
+    await expect(order.locator(".name")).toHaveText(["Ben", "Cy", "Di"]);
+
+    await order.locator("li", { hasText: "Di" }).dragTo(order.locator("li", { hasText: "Ben" }));
+    await expect(order.locator(".name")).toHaveText(["Di", "Ben", "Cy"]);
+    expect((await calls(page)).filter((call) => call.cmd === "karaoke_move")).toEqual([
+      { cmd: "karaoke_move", singer: "Di", to: 1 },
+    ]);
+
+    // Down the list lands in the place pointed at too: after the one dropped on.
+    await order.locator("li", { hasText: "Di" }).dragTo(order.locator("li", { hasText: "Cy" }));
+    await expect(order.locator(".name")).toHaveText(["Ben", "Cy", "Di"]);
+
+    // Onto the up-next card: the birthday singer goes next.
+    await order.locator("li", { hasText: "Cy" }).dragTo(singers.getByRole("region", { name: "Up next" }));
+    await expect(singers.getByRole("region", { name: "Up next" })).toContainText("Cy");
+    await expect(order.locator(".name")).toHaveText(["Ana", "Ben", "Di"]);
+
+    // And the same in one press, from the singer's own row.
+    await order.getByRole("button", { name: "Di sings next" }).click();
+    await expect(singers.getByRole("region", { name: "Up next" })).toContainText("Di");
+    await expect(order.locator(".name")).toHaveText(["Cy", "Ana", "Ben"]);
+    expect((await calls(page)).filter((call) => call.cmd === "karaoke_move").at(-1)).toEqual({
+      cmd: "karaoke_move",
+      singer: "Di",
+      to: 0,
+    });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * A song dragged from the collection onto the host's form is the song
+   * asked for, its record and all — the same request a pick from the
+   * search makes — and dragged onto a deck it loads there.
+   */
+  test("a song dragged from the collection is asked for, or loaded on the deck it lands on", async ({ page }) => {
+    await openSingers(page);
+    const singers = page.locator(SINGERS);
+    const row = page.locator('.surface[data-surface="library"] tbody tr', { hasText: "Bachata Rosa" });
+    await expect(row).toBeVisible();
+
+    await row.dragTo(singers.locator("form.ask"));
+    await expect(singers.getByRole("textbox", { name: "Song" })).toHaveValue("Juan Luis Guerra – Bachata Rosa");
+    await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ana");
+    await singers.getByRole("button", { name: "Add", exact: true }).click();
+    const asked = (await calls(page)).find((call) => call.cmd === "karaoke_ask");
+    expect(asked?.track, "the dragged record was not sent").toBe("a".repeat(64));
+    expect(asked?.path).toBe("/music/bachata-rosa.flac");
+
+    await row.dragTo(page.locator('.deck[data-deck="2"]'));
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __loadedTracks?: unknown[] }).__loadedTracks ?? []))
+      .toEqual([{ deck: 2, path: "/music/bachata-rosa.flac" }]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** A song nobody has found in the collection yet can still be queued, and says so. */
   test("a song not found yet is queued and says it needs finding", async ({ page }) => {
     await openSingers(page);

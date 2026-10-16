@@ -42,7 +42,7 @@ fn pack(id: &str, name: &str, description: &str, presets: Vec<Preset>) -> Pack {
 /// Every built-in pack.
 #[must_use]
 pub fn packs() -> Vec<Pack> {
-    vec![phases(), prep(), moves(), caribbean()]
+    vec![phases(), prep(), moves(), caribbean(), karaoke()]
 }
 
 /// Where you are in the night.
@@ -312,6 +312,103 @@ fn caribbean() -> Pack {
     )
 }
 
+/// A karaoke night: what a host does by hand between the rotation's own
+/// buttons (*Load*, *Bring them in*, *Sang*, in the Karaoke panel).
+///
+/// A singer is not a DJ's next record. The recorded voice comes out, the
+/// key moves to where the singer can reach, and the tempo must not move
+/// with it — and the room has open microphones in it, which a club night
+/// does not.
+fn karaoke() -> Pack {
+    pack(
+        "karaoke",
+        "Karaoke night",
+        "For hosting singers: the recorded voice out or left in as a guide, the \
+         key moved to where a singer can reach it, and the mixer set for open \
+         microphones in the room.",
+        vec![
+            preset(
+                "karaoke-vocals-out",
+                "Vocals out",
+                "The singer's song with the recorded voice taken out, and key \
+                 lock on, so slowing it down for a nervous singer never drops \
+                 the key with it.",
+                Category::Prep,
+                true,
+                &["deck {deck} voice 0", "deck {deck} keylock_on"],
+            ),
+            preset(
+                "karaoke-guide-vocal",
+                "Guide vocal",
+                "A quarter of the recorded voice left in under the singer: \
+                 enough to follow the melody, not enough to sing over. For a \
+                 first-timer, or a song they half know.",
+                Category::Prep,
+                true,
+                &["deck {deck} voice 0.25", "deck {deck} keylock_on"],
+            ),
+            preset(
+                "karaoke-sing-along",
+                "Everyone sings",
+                "The record's own voice back in full, for a group number, a \
+                 birthday or the last song of the night, when the room is the \
+                 singer.",
+                Category::Prep,
+                true,
+                &["deck {deck} voice 1"],
+            ),
+            preset(
+                "karaoke-key-down",
+                "Down a tone",
+                "Two semitones lower, tempo untouched. Most people find a hit's \
+                 original key a little high; this is the first thing to try \
+                 when a chorus strains.",
+                Category::Prep,
+                true,
+                &["deck {deck} keylock_on", "deck {deck} key -2"],
+            ),
+            preset(
+                "karaoke-key-other-voice",
+                "Down a fourth",
+                "Five semitones lower: a song written for a high voice brought \
+                 down to a low one, the usual move when a man sings a woman's \
+                 song.",
+                Category::Prep,
+                true,
+                &["deck {deck} keylock_on", "deck {deck} key -5"],
+            ),
+            preset(
+                "karaoke-key-up",
+                "Up a tone",
+                "Two semitones higher, tempo untouched, for a singer whose voice \
+                 sits above the record's.",
+                Category::Prep,
+                true,
+                &["deck {deck} keylock_on", "deck {deck} key 2"],
+            ),
+            preset(
+                "karaoke-key-home",
+                "Original key",
+                "Back to the key the record was made in, before the next \
+                 singer or the break music.",
+                Category::Prep,
+                true,
+                &["deck {deck} key 0"],
+            ),
+            preset(
+                "karaoke-open-mics",
+                "Open microphones",
+                "Set before the first singer: the limiter on, the master two \
+                 decibels down and the booth six, so a microphone pointed at a \
+                 speaker has headroom before it howls.",
+                Category::Mixer,
+                false,
+                &["limiter on", "master gain -2", "booth gain -6"],
+            ),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +428,41 @@ mod tests {
                 "a built-in pack must not claim to be the user's"
             );
         }
+    }
+
+    /// A singer's song never changes tempo with its key, and a song with
+    /// the voice out takes it fully out: a key move without key lock would
+    /// drag the tempo, and a "vocals out" that left some in would be the
+    /// guide vocal under another name.
+    #[test]
+    fn the_karaoke_pack_moves_the_key_not_the_tempo() {
+        let pack = karaoke();
+        let actions = |id: &str| {
+            pack.presets
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap_or_else(|| panic!("no {id}"))
+                .actions
+                .clone()
+        };
+        for preset in &pack.presets {
+            if preset
+                .actions
+                .iter()
+                .any(|a| a.contains(" key -") || a.contains(" key 2"))
+            {
+                assert!(
+                    preset.actions.iter().any(|a| a.ends_with("keylock_on")),
+                    "{} moves the key without key lock",
+                    preset.id
+                );
+            }
+        }
+        assert!(actions("karaoke-vocals-out").contains(&"deck {deck} voice 0".to_owned()));
+        assert!(actions("karaoke-guide-vocal").contains(&"deck {deck} voice 0.25".to_owned()));
+        assert!(actions("karaoke-open-mics").contains(&"limiter on".to_owned()));
+        let fourth = actions("karaoke-key-other-voice");
+        assert!(fourth.contains(&"deck {deck} key -5".to_owned()));
     }
 
     #[test]

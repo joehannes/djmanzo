@@ -26,6 +26,10 @@ describe("what an older webview lacks", () => {
     expect(filled.structuredClone({ a: [1] })).toEqual({ a: [1] });
     expect(filled.Object.hasOwn({ a: 1 }, "a")).toBe(true);
     expect(filled.Object.hasOwn(Object.create({ a: 1 }), "a")).toBe(false);
+    const prefixed = function webkitAudioContext() {};
+    const safari13 = { webkitAudioContext: prefixed, Object: { ...Object } } as unknown as typeof globalThis;
+    installLegacy(safari13);
+    expect((safari13 as unknown as { AudioContext: unknown }).AudioContext).toBe(prefixed);
     const current = { structuredClone: own, Object: { ...Object } } as unknown as typeof globalThis;
     installLegacy(current);
     expect((current as unknown as { structuredClone: unknown }).structuredClone).toBe(own);

@@ -1,4 +1,5 @@
 import { watchFrameRate, type FrameHealth } from "./framerate";
+import { EDITION, type Edition } from "./edition";
 
 export type PerformanceLevel = "Eco" | "Balanced" | "Ultra" | "Auto";
 export type ResolvedPerformance = "Eco" | "Balanced" | "Ultra";
@@ -27,6 +28,17 @@ function load(): PerformanceLevel {
   return "Auto";
 }
 
+/**
+ * Where Auto starts. The whole application starts at the top and steps down
+ * when frames drop; the karaoke build, which reaches back to a 2011 laptop,
+ * starts at the bottom and climbs a tier after each ten healthy seconds, so
+ * an old machine never pays for the first heavy frames and a new one is at
+ * Ultra within half a minute.
+ */
+export function startingTier(edition: Edition): ResolvedPerformance {
+  return edition === "karaoke" ? "Eco" : "Ultra";
+}
+
 class PerformanceGovernor {
   /** The user's requested level */
   preference = $state<PerformanceLevel>(load());
@@ -35,7 +47,7 @@ class PerformanceGovernor {
    * The active level decided by the governor if preference is "Auto". 
    * Starts at Ultra, but downgrades if frame drops are detected.
    */
-  #autoResolved = $state<ResolvedPerformance>("Ultra");
+  #autoResolved = $state<ResolvedPerformance>(startingTier(EDITION));
   
   /**
    * Consecutive healthy *windows*, not frames.
@@ -96,7 +108,7 @@ class PerformanceGovernor {
     
     // Reset auto-governor if they switch back to Auto manually
     if (preference === "Auto") {
-      this.#autoResolved = "Ultra";
+      this.#autoResolved = startingTier(EDITION);
     }
 
     try {
