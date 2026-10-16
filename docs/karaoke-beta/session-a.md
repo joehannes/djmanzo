@@ -15,6 +15,12 @@ Only session A edits this file.
   out, and *Repeat* goes round again: jingles and fillers on one deck while
   the other carries the singers. A deck you pause is left alone. Each deck's
   choice is kept for next time.
+- **A one-line top bar.** The bar at the top is one line now; on a smaller
+  screen its buttons become icons, and ⋯ shows the night's readings and the
+  guides when you want them.
+- **⚙ Sources and connections.** One press shows everything djmanzo can
+  find, play, buy, fetch lyrics or covers from, what works now, and where
+  to set up the rest.
 - **One deck slim, the other big.** ⇤ in a deck's header makes it a slim
   strip — the record, the time left, play — and gives the other deck the
   room, its playlist open. *Full size* puts both back.
@@ -44,7 +50,35 @@ Only session A edits this file.
   the other deck takes the width and opens its playlist
   (`deckFocus.svelte.ts`, remembered in the window's storage). Held by a
   browser test (3 mutants fail it); driven in WebKitGTK.
-- Not yet: A4–A7.
+- **A5 built** (§128, "make the navbar a one-liner ... auto-condense the
+  items into symbol only buttons if they don't fit"): the top bar is one
+  line, fitted by measuring — full words; then icons only (the words stay
+  as names, visually hidden, so screen readers, tests and voice still find
+  "Browse"); then the night's readings and Guides fold behind ⋯, which
+  shows them again on demand; only if even that does not fit does the bar
+  wrap, and then it folds nothing. djmanzo's own bar (no toolbars, §117) is
+  one line at 1400, 1280 and 1024 wide. **The full toolbars (§117's
+  opt-in) keep their rows**: folding their Activities, Workspace and Layout
+  away would hide what that mode is for, and §109's and §115's tests caught
+  exactly that — the decks moving when the activity strip or a proposal
+  came in. Held by `e2e/navbar.spec.ts` (3 mutants fail it); the whole
+  browser suite passes (868, with `whisper.spec.ts`'s too-long sentence
+  made a little longer: the bar's slimmer padding gave it just enough room
+  to fit, which was the one thing that test assumes it cannot do).
+- **A6 built** (§128, "a cogwheel in the navbar and ... a configuration
+  dashboard ... for connecting sources"): ⚙ in the bar opens *Sources and
+  connections* — every source by job (finding songs, playing them, buying
+  them, lyrics, songs like this one, covers and artists), whether it works
+  now, and *Set up →* to Settings. `dj_app::sources_board` builds it from
+  the catalog's live status, `dj_sources::stores`, the karaoke sources
+  (the record's words, LRCLIB, Cover Art Archive, the Next rail) and
+  whether an AI provider has a key. 2 Rust tests (4 mutants fail them,
+  one after a fix: whether a key is set is now its own function, tested
+  on an in-memory store) and a browser test (1 mutant). Not yet: *Set up →*
+  opens Settings at its top, not at the section.
+- Not yet: A4 (shuffle, BPM/key flow), A7 (finding a song a singer cannot
+  name — see the plan; `dj_app::memory` already does words, a description
+  and a hum by key and tempo).
 
 ## For the host (KARAOKE-NIGHT.md)
 
@@ -61,6 +95,12 @@ and plays it.
   settings folder instead (`[{"playlist": <id>, "advance": true, "repeat": true}]`).
 - A playlist row made by hand in `library.db` needs `system` NULL, not 0, or
   `playlists()` leaves it out.
+- **A djmanzo left running under Xvfb starves `framerate.spec.ts`**: its
+  slow-interface chip never appears, on untouched code too. `pkill -x
+  djmanzo` before the browser suite. Cost three runs on 16 October.
+- The top bar's fitting is in `App.svelte` (`fit`, `refit`): levels 0–3,
+  measured with a ResizeObserver. A new item in the bar is fitted for free;
+  one that must never fold away must not carry `foldable`.
 
 ## Needed a file this session does not own
 

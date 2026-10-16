@@ -13,6 +13,7 @@
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
   import { deckFocus } from "./deckFocus.svelte";
+  import SourcesBoard from "./SourcesBoard.svelte";
   import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
   import Automix from "./Automix.svelte";
@@ -2756,6 +2757,60 @@
     if (!active) throw new Error(error ?? `the interface did not open at ${frames} frames`);
   }
 
+  /**
+   * §128: the top bar is one line. When its items do not fit they condense
+   * step by step rather than wrapping — 1: icons without their words (the
+   * words stay as names and tooltips); 2: the night's readings and the
+   * guides fold behind ⋯, opened on demand; 3: only if even that does not
+   * fit the bar wraps — and then folds nothing, since folding no longer
+   * buys the one line it was for — because a control cut off is worse than
+   * a second line. That is the full toolbars (§117's opt-in): their panel and stage
+   * controls — Activities, Workspace, Layout among them — are what that mode
+   * is for, so they are never folded away; djmanzo's own bar is one line.
+   *
+   * Measured, not guessed: the widths of a reading, a theme's name and a
+   * device's name are the DJ's, so no breakpoint could be right for all of
+   * them. A wider bar starts again from the full words; content that grows
+   * on a bar of the same width moves one step on.
+   */
+  /** §128: the ⚙ board of sources, open. */
+  let sourcesOpen = $state(false);
+  let topbar = $state<HTMLElement>();
+  let fit = $state(0);
+  let unfolded = $state(false);
+  let fitting = false;
+  let fittedWidth = -1;
+  const overflowing = () => !!topbar && topbar.scrollWidth > topbar.clientWidth + 1;
+  async function refit(from: number) {
+    if (!topbar || fitting) return;
+    fitting = true;
+    try {
+      for (let level = from; level <= 3; level++) {
+        fit = level;
+        await tick();
+        if (!overflowing()) break;
+      }
+      fittedWidth = topbar.clientWidth;
+    } finally {
+      fitting = false;
+    }
+  }
+  $effect(() => {
+    const bar = topbar;
+    if (!bar || typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(() => {
+      if (fitting || unfolded) return;
+      if (bar.clientWidth !== fittedWidth) void refit(0);
+      else if (overflowing() && fit < 3) void refit(fit + 1);
+    });
+    watch.observe(bar);
+    for (const child of Array.from(bar.children)) watch.observe(child);
+    return () => watch.disconnect();
+  });
+  $effect(() => {
+    if (fit !== 2) unfolded = false;
+  });
+
   async function connect() {
     try {
       active = await openDevice(selectedDevice, selectedCueDevice, bufferFrames);
@@ -2859,7 +2914,15 @@
     it twice.
   -->
   <h1 class="offscreen">djmanzo — the booth</h1>
-  <header class="topbar">
+  <header
+    class="topbar"
+    class:condensed={fit >= 1}
+    class:folded={fit === 2}
+    class:wrapped={fit >= 3}
+    class:unfolded
+    data-fit={fit}
+    bind:this={topbar}
+  >
     <!--
       The DJ's own logo, if they set one. A booth screen carrying someone
       else's product name all night is a small daily insult, so the
@@ -2877,7 +2940,7 @@
           <img src={logoUrl(logoVersion)} alt="Your DJ logo" />
         {:else}
           <span class="brand-mark" aria-hidden="true">✦</span>
-          <span data-dj-name>{djName || "DJ MANZO"}</span>
+          <span class="word" data-dj-name>{djName || "DJ MANZO"}</span>
         {/if}
       </button>
       {#if logo}
@@ -2962,6 +3025,15 @@
       {/if}
     </div>
 
+    <!-- §128: where songs, lyrics, covers and the rest come from — one press. -->
+    <button
+      type="button"
+      class="cog"
+      aria-label="Sources and connections"
+      title="Sources and connections — where songs, lyrics, covers and similar songs come from"
+      onclick={() => (sourcesOpen = true)}>⚙</button
+    >
+
     <!--
       §5's Mission Bar. `dj_app::mission` decides what is on it, what each
       reading says and which of them is worth a colour; this only places it.
@@ -2979,7 +3051,7 @@
       it belongs with the device that produces it — so it stays here, beside
       the bar rather than inside it.
     -->
-    <div class="status mono">
+    <div class="status mono foldable">
       <MissionBar onOpenRoom={() => toggleSurface("room")} />
       {#if split}
         <!--
@@ -3061,8 +3133,8 @@
           everything else, so the room above the decks goes to the activity.
         -->
         <nav class="go-group slim" aria-label="Where you are">
-          <button type="button" class="dash" onclick={() => void toggleDashboard()} title="Everything else, on one screen — activities, panels, presets, themes, workspaces (0)">
-            <Icon name="table-cells" size="0.95rem" /> Launcher <kbd>0</kbd>
+          <button type="button" class="dash" aria-label="Launcher" onclick={() => void toggleDashboard()} title="Everything else, on one screen — activities, panels, presets, themes, workspaces (0)">
+            <Icon name="table-cells" size="0.95rem" /> <span class="word">Launcher</span> <kbd>0</kbd>
           </button>
           {@render boardMenu()}
           {#if activeBoard}
@@ -3081,8 +3153,8 @@
             {/if}
           </span>
           {/if}
-          <button type="button" class="keys-hint" onclick={() => leader.start()} title="Every key from here, one word at a time">
-            <kbd>Space</kbd> keys
+          <button type="button" class="keys-hint" aria-label="Keys" onclick={() => leader.start()} title="Every key from here, one word at a time">
+            <kbd>Space</kbd> <span class="word">keys</span>
           </button>
         </nav>
       {:else if activityMode && activityState}
@@ -3416,6 +3488,10 @@
         them: the groups before them can gain a panel or a layout without
         moving these two.
       -->
+      <!-- §128: wrapped, the set's controls, the guides and the proposer have
+           a line of their own, as they always had — so a proposal arriving
+           never wraps the bar (§115). -->
+      <span class="go-break" aria-hidden="true"></span>
       <div class="go-group set" role="group" aria-label="This set">
         {#if setRecording}
           <button
@@ -3516,6 +3592,8 @@
         §118a: the assistant's guides, one per topic -- the next record, the
         mix, and while a night is on, its plans for trouble.
       -->
+      <!-- §128: folded behind ⋯ with the readings when the bar is short of room. -->
+      <div class="foldable fold-guides">
       <Guides
         send={(action) => send(action)}
         decks={deckCount}
@@ -3529,11 +3607,31 @@
           if (!isOpen("practice")) void toggleSurface("practice");
         }}
       />
+      </div>
       {#if liveId}
         <Tonight id={liveId} onEnd={() => void endNight()} bind:deciding={tonightDeciding} />
       {/if}
       <Whisper offered={snapshot?.whisper} send={(action) => send(action)} decks={deckCount} />
     </div>
+    {#if sourcesOpen}
+      <SourcesBoard
+        onclose={() => (sourcesOpen = false)}
+        onsetup={() => {
+          sourcesOpen = false;
+          if (!isOpen("settings")) void toggleSurface("settings");
+        }}
+      />
+    {/if}
+    {#if fit === 2}
+      <button
+        type="button"
+        class="more"
+        aria-expanded={unfolded}
+        aria-label="The night's readings and the guides"
+        title="The night's readings and the guides"
+        onclick={() => (unfolded = !unfolded)}>⋯</button
+      >
+    {/if}
   </header>
 
   <!--
@@ -4604,15 +4702,133 @@
     color: var(--bg);
   }
 
+  /*
+    §128: one line. Nothing wraps unless the fitting in the script gives up
+    (`wrapped`); before that the items condense (`condensed`) and the
+    night's readings and the guides fold behind ⋯ (`folded`).
+  */
   .topbar {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
+    gap: 0.8rem;
+    flex-wrap: nowrap;
     background: var(--panel);
     border: 1px solid var(--frame);
     border-radius: 10px;
-    padding: 0.7rem 0.9rem;
+    padding: 0.3rem 0.7rem;
+    min-width: 0;
+  }
+
+  .topbar > :global(*) {
+    flex-shrink: 0;
+  }
+
+  .topbar.wrapped,
+  .topbar.wrapped .go,
+  .topbar.wrapped .go-group {
+    flex-wrap: wrap;
+  }
+
+  /* Wrapped, the places are fixed: the bar's own line, ⋯ at its end, and the
+     toolbars on the line under it — so a strip that is shorter than the
+     toolbars it replaces (§109) leaves the decks where they were. */
+  .topbar.wrapped .more {
+    order: 1;
+  }
+
+  .topbar.wrapped .go {
+    order: 2;
+    flex-basis: 100%;
+  }
+
+  .go-break {
+    display: none;
+  }
+
+  .topbar.wrapped .go-break {
+    display: block;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  /* Hidden from the eye only: the word is still the button's name for a
+     screen reader, a test and a voice. */
+  .topbar.condensed .word,
+  .topbar.condensed .go :global(.label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* §109's strip, condensed: the digit beside each activity goes (the key
+     still works, and the tab's title says it), so the strip and the set's
+     own controls share one line, as the toolbars they replace do. */
+  .topbar.condensed :global([data-activity-strip] kbd.key) {
+    display: none;
+  }
+
+  /* The theme's dot without its name. */
+  .topbar.condensed :global(.switcher > .icon) {
+    font-size: 0;
+    gap: 0;
+  }
+
+  /* The device's name is read, not squeezed: short of room, the bar folds
+     something else away instead. */
+  .topbar .device:not(.choosing) {
+    flex-shrink: 0;
+  }
+
+  .topbar.condensed .device-brief {
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Folded: off the line. On ⋯ the bar shows everything again, on as many
+     rows as that takes, until ⋯ folds it back. */
+  .topbar.folded:not(.unfolded) .foldable {
+    display: none;
+  }
+
+  .topbar.unfolded,
+  .topbar.unfolded .go,
+  .topbar.unfolded .go-group {
+    flex-wrap: wrap;
+  }
+
+  .cog {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 1.05rem;
+    line-height: 1;
+    transition: transform var(--motion-enter) var(--ease);
+  }
+
+  .cog:hover {
+    transform: rotate(45deg);
+  }
+
+  .more {
+    margin-left: auto;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .more[aria-expanded="true"] {
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   .brand {
@@ -4779,18 +4995,15 @@
       wherever the twelfth control happened to land.
     */
     gap: 1.3rem;
-    flex-wrap: wrap;
-    /* Sits under the readouts and above the decks, so the eye meets "how it is
-       going" and then "where to go" in that order -- which is the order a DJ
-       asks them in. */
-    padding-top: 0.35rem;
+    /* §128: on the bar's one line now, after the readings. */
+    flex-wrap: nowrap;
   }
 
   .go-group {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   /* §117: the slim header's one group — where you are, and the two ways on. */

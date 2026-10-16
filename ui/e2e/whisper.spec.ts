@@ -60,7 +60,7 @@ test.describe("§115: the quiet proposer", () => {
     // stay where they were.
     const long = {
       ...clipping,
-      says: `${clipping.says} It has been at the ceiling for most of the last minute, on every kick and every snare, and the room is hearing it.`,
+      says: `${clipping.says} It has been at the ceiling for most of the last minute, on every kick and every snare, and the room is hearing it — the limiter has been holding it down the whole time.`,
     };
     await propose(page, long);
     const line = page.locator('.whisper[data-whisper="clipping"]');
