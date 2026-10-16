@@ -927,6 +927,157 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#fdf7f8cc",
     },
   },
+  // Malecón Night. Havana's sea wall after dark: a night sea rather than black, coral
+  // for what is pressed, and sea glass as the second colour, so the two never
+  // read as one under a street lamp. The light variant is the pastel of the
+  // facades across the road.
+  "pkg-malecon": {
+    dark: {
+      "--bg": "#06101c",
+      "--panel": "#0b1828",
+      "--panel-raised": "#112236",
+      "--panel-hover": "#182d45",
+      "--border": "#1a3049",
+      "--border-strong": "#2c4f74",
+      "--text": "#eef6ff",
+      "--text-dim": "#9fb3c8",
+      "--accent": "#ff8a65",
+      "--accent-2": "#7fdbd0",
+      "--warn": "#ffc857",
+      "--danger": "#ff5c7a",
+      "--on-accent": "#1c0b05",
+      "--scrim": "#06101ccc",
+    },
+    light: {
+      "--bg": "#fbf7f2",
+      "--panel": "#ffffff",
+      "--panel-raised": "#f4ece2",
+      "--panel-hover": "#ecdfd0",
+      "--border": "#eadccb",
+      "--border-strong": "#c4a88a",
+      "--text": "#14202c",
+      "--text-dim": "#55606b",
+      "--accent": "#b23c17",
+      "--accent-2": "#00676b",
+      "--warn": "#8a5a00",
+      "--danger": "#b0123a",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fbf7f2cc",
+    },
+  },
+  // Carnaval. The vejigante masks: yellow, green and red on black. Yellow is
+  // what is pressed, green the second colour, and red is left to danger alone
+  // — three loud colours a DJ has to tell apart in a hurry are only useful
+  // if one of them always means stop.
+  "pkg-carnaval": {
+    dark: {
+      "--bg": "#0c0a07",
+      "--panel": "#16130d",
+      "--panel-raised": "#211c13",
+      "--panel-hover": "#2c2619",
+      "--border": "#2e281b",
+      "--border-strong": "#51462e",
+      "--text": "#fff8e6",
+      "--text-dim": "#c7b896",
+      "--accent": "#ffcf33",
+      "--accent-2": "#4cd97b",
+      "--warn": "#ff8c42",
+      "--danger": "#ff4d4d",
+      "--on-accent": "#1a1200",
+      "--scrim": "#0c0a07cc",
+    },
+    light: {
+      "--bg": "#fffbef",
+      "--panel": "#ffffff",
+      "--panel-raised": "#fff3d1",
+      "--panel-hover": "#ffe9b0",
+      "--border": "#f2e3b8",
+      "--border-strong": "#cfb26a",
+      "--text": "#1d1708",
+      "--text-dim": "#5e5235",
+      "--accent": "#7d5700",
+      "--accent-2": "#17703a",
+      "--warn": "#a34200",
+      "--danger": "#b3121f",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fffbefcc",
+    },
+  },
+  // Bioluminescent Bay. Vieques at night, when the water glows where it is
+  // touched: one cyan light on a black-blue sea, violet as the second colour.
+  // Still — a bay that glows does so where something moves, and on a screen
+  // that is the DJ's hand, not a shimmer.
+  "pkg-biobay": {
+    dark: {
+      "--bg": "#020a14",
+      "--panel": "#06121f",
+      "--panel-raised": "#0b1b2c",
+      "--panel-hover": "#102538",
+      "--border": "#12283b",
+      "--border-strong": "#1f4766",
+      "--text": "#e6f6ff",
+      "--text-dim": "#8fb0c4",
+      "--accent": "#3fe0ff",
+      "--accent-2": "#c58bff",
+      "--warn": "#ffd166",
+      "--danger": "#ff6b8b",
+      "--on-accent": "#021018",
+      "--scrim": "#020a14cc",
+    },
+    light: {
+      "--bg": "#f4fbff",
+      "--panel": "#ffffff",
+      "--panel-raised": "#e6f4fb",
+      "--panel-hover": "#d4ebf6",
+      "--border": "#d0e6f1",
+      "--border-strong": "#8fbad0",
+      "--text": "#04182a",
+      "--text-dim": "#465a69",
+      "--accent": "#005f7a",
+      "--accent-2": "#6a2fb0",
+      "--warn": "#8a5f00",
+      "--danger": "#b0123a",
+      "--on-accent": "#ffffff",
+      "--scrim": "#f4fbffcc",
+    },
+  },
+  // Bachata Rosa. A rose and a little gold on deep plum, for a night of
+  // bachata. The danger red is kept apart from the rose by going orange-ward
+  // rather than pink, so stop never reads as pressed.
+  "pkg-rosa": {
+    dark: {
+      "--bg": "#14070d",
+      "--panel": "#1e0b14",
+      "--panel-raised": "#2a111c",
+      "--panel-hover": "#371726",
+      "--border": "#3a1828",
+      "--border-strong": "#64304a",
+      "--text": "#fff0f5",
+      "--text-dim": "#d3a6ba",
+      "--accent": "#ff7eb3",
+      "--accent-2": "#f2c14e",
+      "--warn": "#ff9a4d",
+      "--danger": "#ff4d5e",
+      "--on-accent": "#26050f",
+      "--scrim": "#14070dcc",
+    },
+    light: {
+      "--bg": "#fff7fa",
+      "--panel": "#ffffff",
+      "--panel-raised": "#fdebf2",
+      "--panel-hover": "#f9dbe7",
+      "--border": "#f2d9e3",
+      "--border-strong": "#d49ab1",
+      "--text": "#2a0b17",
+      "--text-dim": "#6b4555",
+      "--accent": "#a3165a",
+      "--accent-2": "#7a5a00",
+      "--warn": "#9a4a00",
+      "--danger": "#b0122f",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fff7facc",
+    },
+  },
 };
 
 export function applyPackagePalette(pkgId: string, resolved: ResolvedTheme) {

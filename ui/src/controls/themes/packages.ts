@@ -485,6 +485,50 @@ export const PkgVelvet: ThemePackage = {
   effects: [],
 };
 
+export const PkgMalecon: ThemePackage = {
+  id: "pkg-malecon",
+  name: "Malecón Night",
+  category: "organic",
+  setting: "venue",
+  when: "A sea-front night: dark, warm, and the water just beyond the screen.",
+  geometry: GeometryStone,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
+export const PkgCarnaval: ThemePackage = {
+  id: "pkg-carnaval",
+  name: "Carnaval",
+  category: "organic",
+  setting: "venue",
+  when: "A carnival night: loud colour, and the screen reads in a glance.",
+  geometry: GeometryCircle,
+  behaviors: [AudioReactiveStroke],
+  effects: [],
+};
+
+export const PkgBioBay: ThemePackage = {
+  id: "pkg-biobay",
+  name: "Bioluminescent Bay",
+  category: "minimalist",
+  setting: "venue",
+  when: "A dark room where the screen should glow, not shine.",
+  geometry: GeometryCircle,
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgRosa: ThemePackage = {
+  id: "pkg-rosa",
+  name: "Bachata Rosa",
+  category: "organic",
+  setting: "venue",
+  when: "A bachata night: warm, close, and a little romantic.",
+  geometry: GeometryStone,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
 export const themePackages = [
   PkgDaylight,
   PkgStudio,
@@ -509,4 +553,8 @@ export const themePackages = [
   PkgNeon,
   PkgSpotlight,
   PkgVelvet,
+  PkgMalecon,
+  PkgCarnaval,
+  PkgBioBay,
+  PkgRosa,
 ];

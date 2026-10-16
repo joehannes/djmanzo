@@ -6,6 +6,13 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **Four Caribbean themes.** *Malecón Night* (Havana's sea wall after dark:
+  a night-sea navy, coral and sea glass; its light variant the pastel
+  facades), *Carnaval* (the vejigante masks: yellow and green on black, red
+  kept for danger), *Bioluminescent Bay* (Vieques at night: a cyan glow on a
+  black-blue sea, violet beside it) and *Bachata Rosa* (rose and gold on a
+  deep plum). Each in light and dark.
+
 - **Emoji from the room, held back.** With *Emoji from phones on the
   singers' screen* on (Singers panel; off until the host turns it on), the
   room's page shows a row of six emoji — 👏 ❤️ 🔥 😂 🎤 🙌. Each tap shows
@@ -15,6 +22,13 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B1 built**: four rows in `dj_app::theme::ALL` (now 29; the extras test
+  names them), packages `pkg-malecon`, `pkg-carnaval`, `pkg-biobay`,
+  `pkg-rosa` in `packages.ts` and their palettes in both modes in
+  `colors.ts`. Held by the existing contrast and table tests
+  (`themes.test.ts`, `theme::tests`); a Carnaval light accent made too pale
+  fails the 4.5:1 test. Looked at in the browser, all four.
 
 - **B2 built** (§126/§127, "live comments of the crowd on the karaoke lyrics
   screen as they input emoticons … don't overdo the visual influences"):
@@ -43,6 +57,12 @@ seconds. It is off until you turn it on.
 ## For the next session (HANDOFF.md)
 
 ## Needed a file this session does not own
+
+- B1 re-blessed three Rust-generated goldens, `ui/e2e/themes.json`,
+  `ui/e2e/leader.json` and `ui/e2e/dashboards.json`, because they list every
+  theme. At the merge, if A changed them too, take either side and run
+  `DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture` on the merged
+  tree.
 
 - `crates/dj-app/src/crowd.rs`, to record the room's taps in the night's
   crowd log. Not done.

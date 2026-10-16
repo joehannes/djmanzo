@@ -73,7 +73,7 @@ pub struct Theme {
 }
 
 /// §32's sixteen, and the two djmanzo ships that §32 did not name.
-pub const ALL: [Theme; 25] = [
+pub const ALL: [Theme; 29] = [
     Theme {
         title: "Studio Neutral",
         about: "Long evenings at a desk. Easy on the eyes for hours at a time.",
@@ -303,6 +303,38 @@ pub const ALL: [Theme; 25] = [
         asked: false,
         world: false,
     },
+    Theme {
+        title: "Malecón Night",
+        about: "Havana's sea wall after dark: a night-sea navy, coral for what is pressed and a sea-glass second colour.",
+        pack: Some("pkg-malecon"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Carnaval",
+        about: "The vejigante masks of Puerto Rico's carnival: yellow and green on black, the reds kept for danger.",
+        pack: Some("pkg-carnaval"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Bioluminescent Bay",
+        about: "Vieques at night, when the water glows: cyan light on a black-blue sea, violet as the second colour.",
+        pack: Some("pkg-biobay"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Bachata Rosa",
+        about: "A Dominican bachata night: rose for what is pressed and gold beside it, on a deep plum.",
+        pack: Some("pkg-rosa"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
 ];
 
 /// The row a package id belongs to, or `None` for an id nothing ships.
@@ -495,8 +527,9 @@ mod tests {
         // and each for a stated reason: two are rooms §32's list happens not
         // to name, the third is §33's -- a palette chosen by measurement
         // rather than for a room at all -- the next three are §113's,
-        // designed from what a colour does, and the last three are the rooms
-        // karaoke happens in, asked for with the karaoke build.
+        // designed from what a colour does, the next three are the rooms
+        // karaoke happens in, asked for with the karaoke build, and the last
+        // four are the karaoke beta's Caribbean nights.
         let extras: Vec<&str> = ALL.iter().filter(|t| !t.asked).map(|t| t.title).collect();
         assert_eq!(
             extras,
@@ -509,7 +542,11 @@ mod tests {
                 "Aurora",
                 "Karaoke Neon",
                 "Spotlight",
-                "Velvet"
+                "Velvet",
+                "Malecón Night",
+                "Carnaval",
+                "Bioluminescent Bay",
+                "Bachata Rosa"
             ]
         );
     }
