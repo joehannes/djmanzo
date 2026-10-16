@@ -17058,13 +17058,19 @@ pub async fn guests_song(
     let guest = journal
         .get(&id)
         .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
-    let evening = events_dir(&state)
+    let night = events_dir(&state)
         .ok()
-        .and_then(|dir| crate::gig::live(&dir).and_then(|live| crate::gig::load(&dir, &live)))
-        .map(|gig| gig.genres)
+        .and_then(|dir| crate::gig::live(&dir).and_then(|live| crate::gig::load(&dir, &live)));
+    let evening = night
+        .as_ref()
+        .map(|gig| gig.genres.clone())
         .unwrap_or_default();
-    let brief =
-        crate::guests::brief(guest, &language, &keywords, &date, evening).ok_or_else(|| {
+    let kit = state
+        .config_dir()
+        .and_then(|config| crate::kit::load(&config));
+    let brief = crate::guests::brief(guest, &language, &keywords, &date, evening)
+        .map(|brief| crate::guests::with_night(brief, night.as_ref(), kit.as_ref()))
+        .ok_or_else(|| {
             if guest.sang.is_empty() {
                 format!("{} has not sung yet", guest.name)
             } else {
