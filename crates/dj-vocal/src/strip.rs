@@ -528,15 +528,33 @@ pub enum Preset {
     Mc,
     /// A guitar or a keyboard: no gate and no de-esser to chop it up.
     Instrument,
+    /// Karaoke beta B4: the arena — a long, wide room behind the voice and a
+    /// little more push, for the anthem and the big chorus.
+    Stadium,
+    /// Karaoke beta B4: the voice through a small speaker — the lows and the
+    /// highs cut, the middle forward, squeezed hard and dry. For a spoken
+    /// verse, an intro, a joke.
+    RadioVoice,
+    /// Karaoke beta B4: a long echo that repeats, over a little room — for a
+    /// ballad's last line.
+    BigEcho,
+    /// Karaoke beta B4: two singers sharing a song — gentler compression so
+    /// neither is pushed over the other, a touch of air so each cuts through,
+    /// and a little less room so the two stay clear.
+    Duet,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 5] = [
+    pub const ALL: [Preset; 9] = [
         Preset::Singer,
         Preset::SoftSinger,
         Preset::LoudSinger,
         Preset::Mc,
         Preset::Instrument,
+        Preset::Stadium,
+        Preset::RadioVoice,
+        Preset::BigEcho,
+        Preset::Duet,
     ];
 
     /// The name a host reads on the row.
@@ -548,6 +566,10 @@ impl Preset {
             Preset::LoudSinger => "Loud singer",
             Preset::Mc => "MC",
             Preset::Instrument => "Instrument",
+            Preset::Stadium => "Stadium",
+            Preset::RadioVoice => "Radio voice",
+            Preset::BigEcho => "Big echo",
+            Preset::Duet => "Duet",
         }
     }
 
@@ -599,6 +621,69 @@ impl Preset {
                     makeup_db: 0.0,
                 }),
                 reverb: None,
+                ..singer
+            },
+            Preset::Stadium => StripSettings {
+                high_pass_hz: 120.0,
+                compressor: Some(CompressorSettings {
+                    threshold_db: -22.0,
+                    ratio: 4.0,
+                    makeup_db: 4.0,
+                }),
+                echo: Some(EchoSettings {
+                    delay_ms: 120.0,
+                    feedback: 0.15,
+                    level: 0.12,
+                }),
+                reverb: Some(ReverbSettings {
+                    seconds: 3.5,
+                    level: 0.32,
+                }),
+                ..singer
+            },
+            Preset::RadioVoice => StripSettings {
+                high_pass_hz: 300.0,
+                eq: Some(EqSettings {
+                    low_db: -12.0,
+                    mid_db: 6.0,
+                    mid_hz: 1_800.0,
+                    high_db: -10.0,
+                }),
+                compressor: Some(CompressorSettings {
+                    threshold_db: -26.0,
+                    ratio: 8.0,
+                    makeup_db: 8.0,
+                }),
+                echo: None,
+                reverb: None,
+                ..singer
+            },
+            Preset::BigEcho => StripSettings {
+                echo: Some(EchoSettings {
+                    delay_ms: 420.0,
+                    feedback: 0.45,
+                    level: 0.35,
+                }),
+                reverb: Some(ReverbSettings {
+                    seconds: 2.0,
+                    level: 0.2,
+                }),
+                ..singer
+            },
+            Preset::Duet => StripSettings {
+                eq: Some(EqSettings {
+                    high_db: 2.0,
+                    ..EqSettings::default()
+                }),
+                compressor: Some(CompressorSettings {
+                    threshold_db: -20.0,
+                    ratio: 2.5,
+                    makeup_db: 3.0,
+                }),
+                reverb: Some(ReverbSettings {
+                    level: 0.12,
+                    ..ReverbSettings::default()
+                }),
                 ..singer
             },
         };
@@ -1369,6 +1454,69 @@ mod tests {
                 preset.name()
             );
         }
+    }
+
+    /// **Karaoke beta B4: each karaoke preset is what its name says**, next
+    /// to a plain singer's — the stadium's room longer and louder, the radio
+    /// voice narrow, squeezed and dry, the big echo repeating, the duet
+    /// gentler and less roomy — and none of them is the MC's talkover.
+    #[test]
+    fn the_karaoke_presets_are_what_they_say() {
+        let set = StripSettings {
+            open: true,
+            gain_db: -3.0,
+            ..StripSettings::default()
+        };
+        let singer = Preset::Singer.applied_to(&set);
+        let room = |s: &StripSettings| s.reverb.map_or((0.0, 0.0), |r| (r.seconds, r.level));
+        let squeeze = |s: &StripSettings| s.compressor.map_or(1.0, |c| c.ratio);
+
+        let stadium = Preset::Stadium.applied_to(&set);
+        assert!(room(&stadium).0 > room(&singer).0 && room(&stadium).1 > room(&singer).1);
+
+        let radio = Preset::RadioVoice.applied_to(&set);
+        assert!(radio.reverb.is_none() && radio.echo.is_none(), "dry");
+        assert!(radio.high_pass_hz >= 250.0, "the lows cut");
+        let eq = radio.eq.expect("shaped");
+        assert!(
+            eq.low_db < 0.0 && eq.high_db < 0.0 && eq.mid_db > 0.0,
+            "the middle forward"
+        );
+        assert!(squeeze(&radio) > squeeze(&singer));
+
+        let echo = Preset::BigEcho.applied_to(&set).echo.expect("an echo");
+        assert!(
+            echo.feedback >= 0.3 && echo.delay_ms >= 300.0,
+            "it repeats, long"
+        );
+        assert!(singer.echo.is_none());
+
+        let duet = Preset::Duet.applied_to(&set);
+        assert!(squeeze(&duet) < squeeze(&singer));
+        assert!(room(&duet).1 < room(&singer).1);
+
+        for preset in [
+            Preset::Stadium,
+            Preset::RadioVoice,
+            Preset::BigEcho,
+            Preset::Duet,
+        ] {
+            let applied = preset.applied_to(&set);
+            assert_eq!(applied.preset, preset);
+            assert!(!applied.talkover, "{}", preset.name());
+            assert!(
+                applied.open && (applied.gain_db + 3.0).abs() < f32::EPSILON,
+                "the row is the host's"
+            );
+            assert_ne!(
+                applied.chain(),
+                singer.chain(),
+                "{} is a singer's",
+                preset.name()
+            );
+        }
+        let names: std::collections::HashSet<_> = Preset::ALL.iter().map(|p| p.name()).collect();
+        assert_eq!(names.len(), Preset::ALL.len(), "every name its own");
     }
 
     /// **A singer's microphone leaves the music alone; the MC's pulls it

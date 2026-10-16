@@ -6,6 +6,22 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **Four karaoke presets for a microphone.** *Stadium* (a long, wide room
+  and a little more push, for the big chorus), *Radio voice* (the lows and
+  highs cut, the middle forward, squeezed hard and dry — for a spoken verse
+  or an intro), *Big echo* (a long echo that repeats, for a ballad's last
+  line) and *Duet* (gentler compression and a little less room, so two
+  singers stay clear of each other). In each microphone's *is for* menu.
+
+- **The singers' screen, between and within the words.** An instrumental
+  break of six seconds or more — the intro, a line with no words, the
+  silence after a line — is a thin bar filling to the next line, with the
+  seconds left beside it. The word being sung glows softly. In a duet (two
+  or more singers on the microphones), each singer's name is shown in their
+  microphone's colour and lit while their microphone hears them, and a line
+  that begins with a singer's name ("Ana: …") is wiped in their colour,
+  without the name.
+
 - **The guide voice, offered for a song new to the singer.** When the
   singer up next has never sung their song in the guest book (by its title,
   however it was written, or by the record), the up-next card offers *Guide
@@ -39,6 +55,43 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B4 built**: `dj_vocal::Preset::{Stadium, RadioVoice, BigEcho, Duet}`
+  (`radio-voice`, `big-echo` on the wire), chain settings only, inside
+  `LIMITS` (the existing `held_settings_stay_inside_the_limits` covers them
+  through `Preset::ALL`). Held by `the_karaoke_presets_are_what_they_say`
+  (7 mutants fail it) and `e2e/vocal-presets.spec.ts` (the menu, drawn from
+  Rust's list, has them; choosing one sends `radio-voice`). Nothing here
+  can say how they *sound*: no microphone or speaker in this container.
+  Not done: an echo timed to the deck's tempo (an idea in `Resume.md`, not
+  in B4).
+
+- **B3 built**: `ui/src/lyricBreak.ts` (`breakAt`, `partOf`; pure, held
+  by `lyricBreak.test.ts`, 3) and `SingerScreen.svelte` (the break bar, the
+  glow — a `drop-shadow` filter, since a text-shadow would paint over the
+  wipe clipped to the letters — and the duet: who is on which microphone
+  from `vocals_state`, asked with the rotation every three seconds while
+  any input is open). Held by `e2e/lyric-visuals.spec.ts` (4); 4 unit and
+  6 interface mutants fail them. Looked at: the theme's two accents were
+  two greens a singer could not tell apart; and across all 29 themes an
+  amber theme's accent and warning hue are as little as 3° apart. So the
+  microphones wear the theme's accent, second accent, warning and danger
+  tokens in the order that keeps them farthest apart in hue
+  (`ui/src/micColours.ts`, `spread`; `micColours.test.ts`, 2), the first
+  always the voice's own accent.
+- **Driven** (16 October, the app built with `custom-protocol` under Xvfb,
+  a 70 s demo record with a timed `.lrc` beside it): B7's offer on the
+  up-next card in Rust's words, ticked; *Load on 2* left deck 2 on *Guide*
+  (its header says *Guide vocal*); the singers' screen, playing, showed the
+  intro bar counting down with "You'll hear the original singer quietly
+  underneath", then the break after a sung line ("4s"). B6's picker said
+  no skin is made for the theme in use; B2's switch was there, off. Not
+  caught in a driven screenshot: the glow mid-word, and a duet (two singers
+  on open microphones) — the browser suite holds both.
+- Not yet: a duet whose lines carry no names is shown only by the names
+  lit while heard; the words then keep the voice's colour. Marking parts
+  in an `.lrc` is by the singer's name, which the host types; "M:"/"F:"
+  conventions are not read.
 
 - **B7 built** (§128): `dj_app::guide_offer` (`offer`, `sung_before`,
   `for_up_next`; command `karaoke_guide_offer`) decides; `ui/src/guideOffer.ts`
@@ -84,8 +137,8 @@ Only session B edits this file.
   mutants fail them. The session that began B2 left four fragments (two
   test modules, the end of the browser spec, the end of the component's
   styles); this was built to match them exactly.
-- Not yet driven in the running application (WebKitGTK); the browser suite
-  and a real-socket test hold it.
+- Driven only as far as the host's switch (see B3's entry); a tap from a
+  phone needs the room's page served, which was not driven.
 - Not yet: the room's taps are not written to the night's crowd log
   (`crowd::Reaction { source: Room }`) — `crowd.rs` is in neither column.
 
@@ -99,6 +152,16 @@ seconds. It is off until you turn it on.
 **The guide voice.** When the song up next is new to the singer, the
 up-next card shows *Guide voice*, already ticked. Load as usual and the
 original singer stays quietly under them; untick it if they know the song.
+
+**Duets.** Put each singer on their microphone (Singers panel, *Mic 1*,
+*Mic 2*). Their names appear on the singers' screen in their own colours,
+lit while they sing; a lyric line starting with a name ("Ana: …") is
+wiped in that singer's colour.
+
+**Karaoke presets.** Each microphone's *is for* menu now has *Stadium*,
+*Radio voice*, *Big echo* and *Duet* beside *Singer*. They change only the
+sound of the voice; the fader, pan and where it is sent stay as you set
+them.
 
 ## For the next session (HANDOFF.md)
 
@@ -117,3 +180,11 @@ original singer stays quietly under them; untick it if they know the song.
 
 - `crates/dj-app/src/crowd.rs`, to record the room's taps in the night's
   crowd log. Not done.
+
+- B4 re-blessed `ui/e2e/vocals.json` (the preset list). Same as B1's
+  goldens: at the merge, bless again on the merged tree.
+
+- `ui/src/api.ts`: `VocalPreset` names five presets; Rust now sends nine.
+  Nothing breaks (the menu is drawn from Rust's list and sends its ids
+  back), but the type should name `stadium`, `radio-voice`, `big-echo` and
+  `duet` at the merge.
