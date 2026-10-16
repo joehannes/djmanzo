@@ -8,7 +8,7 @@ What each feature is and why it works the way it does is in
 
 | Your computer | Download |
 |---|---|
-| A Mac with an Intel processor, macOS 10.13 (High Sierra) or later — including 2011 MacBooks | **djmanzo Karaoke** `.dmg` (x86_64) |
+| A Mac with an Intel processor, macOS 10.13 (High Sierra) or later — including 2011 MacBooks | **djmanzo Karaoke**: `djmanzo.Karaoke_<version>_x64.dmg` on the [releases page](https://github.com/joehannes/djmanzo/releases/latest) |
 | A newer Mac, or Windows, or Linux | the ordinary **djmanzo** download — it has every karaoke feature, and more |
 
 *About This Mac* (the Apple menu) says which macOS a Mac runs. A 2011

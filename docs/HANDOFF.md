@@ -1457,7 +1457,9 @@ the release builds it beside the others as *macOS Karaoke (Intel, 10.13+)*,
 reading the bundle's minimums, symbols and frameworks before it ships.
 [BUILDING.md](BUILDING.md#the-karaoke-build-for-intel-macs-back-to-macos-1013)
 has the how and [KARAOKE-NIGHT.md](KARAOKE-NIGHT.md) is the page for the
-person hosting. **Nothing has run it on a 10.13 Mac.** What would break it
+person hosting. It first shipped in **v0.43.0** (16 October) as
+`djmanzo.Karaoke_0.43.0_x64.dmg`, every platform's build green; its release
+check read 10.13 in `Info.plist` and in the binary. **Nothing has run it on a 10.13 Mac.** What would break it
 there first: a new dependency that links a framework newer than 10.13 (the
 release check names the usual ones), a C++ library using
 `std::filesystem` or aligned `new`, or interface code calling a browser

@@ -911,6 +911,149 @@
   {/if}
 
   <!--
+    Who is after them, and the form that adds to the queue, straight under
+    the card: the three things a host reads between every song, above the
+    settings of the night. They were below the break music, the versus
+    teams and the quiz, a scroll away on a laptop.
+  -->
+  {#if waiting.length > 1}
+    <ol class="order" aria-label="Calling order">
+      {#each waiting.slice(1) as person, index (person.name)}
+        <li
+          draggable="true"
+          class:carried={carrying === person.name}
+          class:landing={landing === person.name && carrying !== person.name}
+          title="Drag to another singer's place"
+          ondragstart={(event) => carrySinger(event, person.name)}
+          ondragend={() => {
+            carrying = null;
+            landing = null;
+          }}
+          ondragover={(event) => overSinger(event, person.name)}
+          ondragleave={() => {
+            if (landing === person.name) landing = null;
+          }}
+          ondrop={(event) => void dropSinger(event, person.name)}
+        >
+          <span class="pos mono">{index + 2}</span>
+          <span class="name"
+            >{person.name}{#if person.from_phone}<span
+                class="badge"
+                title="Put their own name down from their phone">phone</span
+              >{/if}</span
+          >
+          <span class="song">{person.songs[0].title}</span>
+          {#if asked(person.songs[0])}
+            <span class="asked" data-asks>{asked(person.songs[0])}</span>
+            <button
+              class="quiet"
+              aria-label="Take what {person.name} asks for"
+              title="Take it"
+              onclick={() => void change(karaokeTake(person.name))}>✓</button
+            >
+            <button
+              class="quiet"
+              aria-label="Refuse what {person.name} asks for"
+              title="No thanks"
+              onclick={() => void change(karaokeRefuse(person.name))}>✗</button
+            >
+          {/if}
+          {#if person.songs[0].key !== 0}
+            <span class="mono k">{signed(person.songs[0].key)}</span>
+          {/if}
+          {#if person.songs.length > 1}
+            <span class="more" title="More songs waiting for later turns">+{person.songs.length - 1}</span>
+          {/if}
+          <button
+            class="quiet"
+            aria-label="{person.name} sings next"
+            title="Sings next"
+            onclick={() => void singNext(person.name)}>⤒</button
+          >
+          <button
+            class="quiet"
+            aria-label="Move {person.name} up"
+            title="Move up"
+            onclick={() => void moveUp(person.name, waiting[index].name)}>↑</button
+          >
+          <button
+            class="quiet"
+            aria-label="{person.name} leaves"
+            title="Leaves — their keys are remembered"
+            onclick={() => void change(karaokeLeave(person.name))}>×</button
+          >
+        </li>
+      {/each}
+    </ol>
+  {/if}
+
+  <form
+    class="ask"
+    class:song-over={songOver}
+    onsubmit={(event) => {
+      event.preventDefault();
+      void add();
+    }}
+    ondragover={(event) => {
+      if (!carriesTrack(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      songOver = true;
+    }}
+    ondragleave={(event) => {
+      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) songOver = false;
+    }}
+    ondrop={dropSong}
+  >
+    <input bind:value={singer} placeholder="Singer" aria-label="Singer's name" />
+    <div class="song-box">
+      <input
+        bind:value={song}
+        placeholder="Song — searches your collection"
+        aria-label="Song"
+        oninput={() => (picked = null)}
+      />
+      {#if matches.length > 0}
+        <ul class="matches" aria-label="Songs in your collection">
+          {#each matches as track, at (track.id)}
+            <li>
+              <button type="button" onclick={() => pick(track, at)}
+                >{label(track)}{#if fitWords(fits[at])}<span class="fit" data-fit={fits[at]?.fit}
+                    >{fitWords(fits[at])}</span
+                  >{/if}</button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+    <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
+    {#if typedRange}
+      <button type="button" class="quiet" onclick={() => void suggest()}>Songs for {singer.trim()}</button>
+    {/if}
+  </form>
+  {#if songsFor}
+    <!-- K8: records that fit the singer, as recorded first. -->
+    <section class="songs-for" aria-label="Songs for {singer.trim()}">
+      {#if songsFor.length === 0}
+        <p class="hint">Nothing separated in the collection fits {singer.trim()} yet.</p>
+      {:else}
+        <ul>
+          {#each songsFor as found (found.track)}
+            <li>
+              <button type="button" onclick={() => void askFor(found)}
+                >{found.artist ? `${found.artist} – ${found.title}` : found.title}<span class="fit"
+                  >{fitWords(found.offer)}</span
+                ></button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  {/if}
+
+  <!--
     The vocal, per deck. Beside the rotation rather than on the deck, because
     this is where the host decides it; the deck says so too, once it is set.
   -->
@@ -1147,142 +1290,6 @@
     </section>
   {/if}
 
-  {#if waiting.length > 1}
-    <ol class="order" aria-label="Calling order">
-      {#each waiting.slice(1) as person, index (person.name)}
-        <li
-          draggable="true"
-          class:carried={carrying === person.name}
-          class:landing={landing === person.name && carrying !== person.name}
-          title="Drag to another singer's place"
-          ondragstart={(event) => carrySinger(event, person.name)}
-          ondragend={() => {
-            carrying = null;
-            landing = null;
-          }}
-          ondragover={(event) => overSinger(event, person.name)}
-          ondragleave={() => {
-            if (landing === person.name) landing = null;
-          }}
-          ondrop={(event) => void dropSinger(event, person.name)}
-        >
-          <span class="pos mono">{index + 2}</span>
-          <span class="name"
-            >{person.name}{#if person.from_phone}<span
-                class="badge"
-                title="Put their own name down from their phone">phone</span
-              >{/if}</span
-          >
-          <span class="song">{person.songs[0].title}</span>
-          {#if asked(person.songs[0])}
-            <span class="asked" data-asks>{asked(person.songs[0])}</span>
-            <button
-              class="quiet"
-              aria-label="Take what {person.name} asks for"
-              title="Take it"
-              onclick={() => void change(karaokeTake(person.name))}>✓</button
-            >
-            <button
-              class="quiet"
-              aria-label="Refuse what {person.name} asks for"
-              title="No thanks"
-              onclick={() => void change(karaokeRefuse(person.name))}>✗</button
-            >
-          {/if}
-          {#if person.songs[0].key !== 0}
-            <span class="mono k">{signed(person.songs[0].key)}</span>
-          {/if}
-          {#if person.songs.length > 1}
-            <span class="more" title="More songs waiting for later turns">+{person.songs.length - 1}</span>
-          {/if}
-          <button
-            class="quiet"
-            aria-label="{person.name} sings next"
-            title="Sings next"
-            onclick={() => void singNext(person.name)}>⤒</button
-          >
-          <button
-            class="quiet"
-            aria-label="Move {person.name} up"
-            title="Move up"
-            onclick={() => void moveUp(person.name, waiting[index].name)}>↑</button
-          >
-          <button
-            class="quiet"
-            aria-label="{person.name} leaves"
-            title="Leaves — their keys are remembered"
-            onclick={() => void change(karaokeLeave(person.name))}>×</button
-          >
-        </li>
-      {/each}
-    </ol>
-  {/if}
-
-  <form
-    class="ask"
-    class:song-over={songOver}
-    onsubmit={(event) => {
-      event.preventDefault();
-      void add();
-    }}
-    ondragover={(event) => {
-      if (!carriesTrack(event)) return;
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-      songOver = true;
-    }}
-    ondragleave={(event) => {
-      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) songOver = false;
-    }}
-    ondrop={dropSong}
-  >
-    <input bind:value={singer} placeholder="Singer" aria-label="Singer's name" />
-    <div class="song-box">
-      <input
-        bind:value={song}
-        placeholder="Song — searches your collection"
-        aria-label="Song"
-        oninput={() => (picked = null)}
-      />
-      {#if matches.length > 0}
-        <ul class="matches" aria-label="Songs in your collection">
-          {#each matches as track, at (track.id)}
-            <li>
-              <button type="button" onclick={() => pick(track, at)}
-                >{label(track)}{#if fitWords(fits[at])}<span class="fit" data-fit={fits[at]?.fit}
-                    >{fitWords(fits[at])}</span
-                  >{/if}</button
-              >
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-    <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
-    {#if typedRange}
-      <button type="button" class="quiet" onclick={() => void suggest()}>Songs for {singer.trim()}</button>
-    {/if}
-  </form>
-  {#if songsFor}
-    <!-- K8: records that fit the singer, as recorded first. -->
-    <section class="songs-for" aria-label="Songs for {singer.trim()}">
-      {#if songsFor.length === 0}
-        <p class="hint">Nothing separated in the collection fits {singer.trim()} yet.</p>
-      {:else}
-        <ul>
-          {#each songsFor as found (found.track)}
-            <li>
-              <button type="button" onclick={() => void askFor(found)}
-                >{found.artist ? `${found.artist} – ${found.title}` : found.title}<span class="fit"
-                  >{fitWords(found.offer)}</span
-                ></button
-              >
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-  {/if}
 
   <!--
     K4: a line of the host's own under the words on the singers' screen.
