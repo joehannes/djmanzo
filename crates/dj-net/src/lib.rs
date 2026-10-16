@@ -19,6 +19,7 @@ pub mod phone;
 pub mod photo;
 pub mod quiz;
 pub mod quiz_page;
+pub mod reactions;
 pub mod room;
 pub mod secure;
 pub mod server;

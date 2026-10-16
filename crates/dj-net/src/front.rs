@@ -40,6 +40,8 @@ pub struct Front {
     stage: Mutex<Stage>,
     /// K7: the third — answers to the quiz.
     quiz: Mutex<QuizBook>,
+    /// Karaoke beta B2: emoji from the room, for the singers' screen.
+    reactions: Mutex<crate::reactions::Reactions>,
 }
 
 impl Default for Front {
@@ -53,6 +55,7 @@ impl Default for Front {
             show_playing: AtomicBool::new(true),
             stage: Mutex::new(Stage::new()),
             quiz: Mutex::new(QuizBook::new()),
+            reactions: Mutex::new(crate::reactions::Reactions::new()),
         }
     }
 }
@@ -173,6 +176,14 @@ impl Front {
         self.stage.lock().ok().map(|mut stage| change(&mut stage))
     }
 
+    /// Karaoke beta B2: read or change the room's emoji. `None` when poisoned.
+    pub fn reactions<T>(
+        &self,
+        change: impl FnOnce(&mut crate::reactions::Reactions) -> T,
+    ) -> Option<T> {
+        self.reactions.lock().ok().map(|mut book| change(&mut book))
+    }
+
     /// K7: read or change the quiz's book. `None` when it is poisoned.
     pub fn quiz<T>(&self, change: impl FnOnce(&mut QuizBook) -> T) -> Option<T> {
         self.quiz.lock().ok().map(|mut quiz| change(&mut quiz))
@@ -232,6 +243,15 @@ impl Doorman {
             open: self.front.is_open(),
             sing: self.sing_view(request, &phone),
             quiz: self.front.quiz(|quiz| quiz.is_on()).unwrap_or(false),
+            react: self
+                .front
+                .reactions(|book| book.is_on())
+                .unwrap_or(false)
+                .then(|| crate::reactions::Row {
+                    reacted: request
+                        .param("reacted")
+                        .and_then(crate::reactions::Reacted::by_tag),
+                }),
         }))
     }
 
@@ -402,6 +422,20 @@ impl Doorman {
         Reply::see_other(if ready { "/?sang=ready#sing" } else { "/#sing" })
     }
 
+    /// Karaoke beta B2: a tap on one of the room's emoji.
+    fn react(&self, request: &Incoming) -> Reply {
+        let phone = Self::phone(request);
+        let emoji = request
+            .field("emoji")
+            .and_then(|index| index.parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+        let reacted = self
+            .front
+            .reactions(|book| book.react(&phone, emoji, SystemTime::now()))
+            .unwrap_or(crate::reactions::Reacted::Off);
+        Reply::see_other(format!("/?reacted={}", reacted.tag()))
+    }
+
     fn take(&self, request: &Incoming) -> Reply {
         if !self.front.is_open() {
             // No message. The page it lands on already says requests are shut,
@@ -445,6 +479,7 @@ impl Handler for Doorman {
         match (request.method, request.path.as_str()) {
             (Method::Get, "/") => self.show(request),
             (Method::Post, "/request") => self.take(request),
+            (Method::Post, "/react") => self.react(request),
             (Method::Post, "/sing") => self.sing(request),
             (Method::Post, "/ready") => self.ready(request),
             (Method::Post, "/photo") => self.photo(request),
@@ -495,6 +530,30 @@ mod tests {
                 body.len()
             ),
         )
+    }
+
+    /// Karaoke beta B2: **a tap on the room's page reaches the screen's book
+    /// only while the host has them on**, over a real socket — the row is not
+    /// on the page while off, a tap then is refused, and once on the row is
+    /// there and a tap is taken, a second at once told to wait.
+    #[test]
+    fn a_tap_from_the_room_reaches_the_book_only_when_on() {
+        let (server, front) = serving();
+        assert!(!get(server.address(), "/").contains("action=\"/react\""));
+        let off = post_to(server.address(), "/react", "emoji=0");
+        assert!(off.contains("Location: /?reacted=off"), "{off}");
+
+        front.reactions(|book| book.set_on(true));
+        assert!(get(server.address(), "/").contains("action=\"/react\""));
+        let sent = post_to(server.address(), "/react", "emoji=2");
+        assert!(sent.contains("Location: /?reacted=sent"), "{sent}");
+        let soon = post_to(server.address(), "/react", "emoji=2");
+        assert!(soon.contains("Location: /?reacted=soon"), "{soon}");
+        let taken = front
+            .reactions(|book| book.since(0, std::time::SystemTime::now()))
+            .expect("the book");
+        assert_eq!(taken.iter().map(|r| r.emoji).collect::<Vec<_>>(), [2]);
+        assert!(get(server.address(), "/?reacted=soon").contains("a couple of seconds"));
     }
 
     /// **A phone types a song and the DJ can read it.**

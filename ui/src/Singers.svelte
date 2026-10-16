@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { roomReactions, roomReactionsSet } from "./roomReactions";
   import { carriesTrack, droppedTrack } from "./trackdrag";
   /**
    * §107: the singer rotation, as a karaoke host works it.
@@ -739,6 +740,22 @@
   function signed(key: number): string {
     return key > 0 ? `+${key}` : `${key}`;
   }
+
+  /**
+   * Karaoke beta B2: emoji from the room's phones on the singers' screen.
+   * Off until the host turns it on; Rust keeps the switch and the rates.
+   */
+  let roomEmojiOn = $state(false);
+  void roomReactions(0)
+    .then((answer) => (roomEmojiOn = answer.on))
+    .catch(() => {});
+  async function setRoomEmoji(on: boolean) {
+    try {
+      roomEmojiOn = (await roomReactionsSet(on)).on;
+    } catch (problem) {
+      error = String(problem);
+    }
+  }
 </script>
 
 <div class="singers" data-singers>
@@ -1409,6 +1426,26 @@
       </ul>
     </details>
   {/if}
+
+  <section class="room-emoji-switch" aria-label="Emoji from the room">
+    <label class="switch">
+      <input
+        type="checkbox"
+        checked={roomEmojiOn}
+        onchange={(event) => void setRoomEmoji(event.currentTarget.checked)}
+      />
+      Emoji from phones on the singers' screen
+    </label>
+    <p class="hint">
+      {#if roomEmojiOn}
+        On: the room's page shows a row of emoji; each tap shows small in a corner of
+        the singers' screen and fades within seconds — never over the words, a few at
+        a time, a couple of seconds between taps from one phone.
+      {:else}
+        Off: the room's page shows no row, and the singers' screen draws none.
+      {/if}
+    </p>
+  </section>
 
   <Microphones
     live={vocals}

@@ -59,6 +59,7 @@
   } from "./api";
   import { lyricsAt } from "./lyricsAt";
   import Visuals from "./Visuals.svelte";
+  import RoomEmoji from "./RoomEmoji.svelte";
 
   let {
     decks,
@@ -459,6 +460,9 @@
   {#if logo !== null}
     <img class="logo" src={logoUrl(logo)} alt="" data-logo onerror={() => (logo = null)} />
   {/if}
+
+  <!-- Karaoke beta B2: the room's emoji, small and in the corner. -->
+  <RoomEmoji />
 </div>
 
 <style>

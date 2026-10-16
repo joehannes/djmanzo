@@ -133,6 +133,7 @@ pub mod workers;
 pub mod world;
 // Karaoke beta, session B (docs/karaoke_beta_release.md §4): its modules
 // go between these two lines, and nothing else does.
+pub mod reactions;
 // End of session B's modules.
 pub mod youtube;
 
@@ -1151,6 +1152,8 @@ pub fn run() {
             presets::save_rack_preset,
             // Karaoke beta, session B (docs/karaoke_beta_release.md §4): its
             // commands go between these two lines, and nothing else does.
+            reactions::room_reactions,
+            reactions::room_reactions_set,
             // End of session B's commands.
         ])
         .run(tauri::generate_context!())
