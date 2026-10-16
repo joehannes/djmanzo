@@ -3,7 +3,7 @@
   "productName": "djmanzo Karaoke",
   "identifier": "app.djmanzo.karaoke",
   "build": {
-    "beforeBuildCommand": "node dj-app/build-ui.cjs build:karaoke"
+    "beforeBuildCommand": "node dj-app/build-ui.cjs build:karaoke && node dj-app/build-listen.cjs"
   },
   "app": {
     "windows": [
@@ -19,10 +19,11 @@
     ]
   },
   "bundle": {
+    "externalBin": ["binaries/djmanzo-listen"],
     "macOS": {
       "minimumSystemVersion": "10.13"
     },
     "shortDescription": "djmanzo for karaoke nights",
-    "longDescription": "djmanzo built for karaoke nights: the singers' screen, the queue, vocals out, lyrics and the room's sign-up page, for older Macs back to macOS 10.13 (High Sierra)."
+    "longDescription": "djmanzo built for karaoke nights: the singers' screen, the queue, vocals out, lyrics and the room's sign-up page, for older Macs back to macOS 10.13 (High Sierra), with speech recognition switched on by itself on a Mac that can run it."
   }
 }

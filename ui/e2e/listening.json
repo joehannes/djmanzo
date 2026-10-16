@@ -1,0 +1,22 @@
+{
+  "built_in": {
+    "how": "built-in",
+    "off": false,
+    "why": null
+  },
+  "helper": {
+    "how": "helper",
+    "off": false,
+    "why": null
+  },
+  "off": {
+    "how": "helper",
+    "off": true,
+    "why": null
+  },
+  "old_mac": {
+    "how": null,
+    "off": false,
+    "why": "this Mac runs macOS 10.13, and djmanzo's speech recognition needs 10.15 or later; lyrics from LRCLIB and the record's own tags still work"
+  }
+}

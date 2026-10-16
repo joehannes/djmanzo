@@ -9514,6 +9514,30 @@ pub struct RehearsalDto {
     pub shape: ShapeDto,
 }
 
+/// Whether djmanzo can listen here — speech recognition for words in time
+/// and spoken commands — how, and whether the DJ switched it off. See
+/// [`crate::listening`].
+#[tauri::command]
+#[must_use]
+pub fn listening_status() -> crate::listening::Status {
+    crate::listening::status()
+}
+
+/// Switch speech recognition off, or back to automatic.
+#[tauri::command]
+pub fn listening_set(state: State<'_, AppState>, off: bool) -> crate::listening::Status {
+    state.set_listening(crate::listening::Setting { off });
+    crate::listening::status()
+}
+
+/// Ask the machine again, as on the first question of the run.
+#[tauri::command]
+#[must_use]
+pub fn listening_check() -> crate::listening::Status {
+    crate::listening::recheck();
+    crate::listening::status()
+}
+
 /// Rehearse the held transition, and hear it.
 ///
 /// §69's practice surface: "two tracks can be explored **without altering the
@@ -17298,7 +17322,7 @@ fn word_timing_dto(
         progress,
         budget_seconds: crate::wordtimes::BUDGET_SECONDS,
         folder: models.root.display().to_string(),
-        cpu: crate::whispercpp::cpu_can_run().err(),
+        cpu: crate::whispercpp::can_listen().err(),
         old_whisperx: old_whisperx(app).map(|tools| folder_bytes(&tools)),
         aligner: aligner_dto(models, speed),
     }
@@ -24297,7 +24321,7 @@ fn hear_take(app: &tauri::AppHandle, state: &AppState, samples: &[f32]) -> crate
         Err(why) => return crate::voice::Said::refused("", why),
     };
     if let Some(why) = cannot_hear(
-        crate::whispercpp::cpu_can_run(),
+        crate::whispercpp::can_listen(),
         models.for_commands().is_some(),
     ) {
         return crate::voice::Said::refused("", why);

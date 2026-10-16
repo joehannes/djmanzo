@@ -34,9 +34,9 @@ custom-protocol = ["tauri/custom-protocol"]
 
 # §122: whisper.cpp compiled in, for word timing and spoken commands. On by
 # default; the karaoke build for macOS 10.13 turns it off
-# (`--no-default-features`), and then `whispercpp::cpu_can_run` says so and
-# everything that would listen refuses with that sentence.
-whisper = ["dep:whisper-rs"]
+# (`--no-default-features`) and ships `djmanzo-listen` beside itself instead,
+# which `listening::can` runs where the machine can — see `dj-whisper`.
+whisper = ["dj-whisper/whisper"]
 default = ["whisper"]
 
 [dependencies]
@@ -71,10 +71,10 @@ base64 = { workspace = true }
 zip = { workspace = true }
 sha2 = { workspace = true }
 ring = { workspace = true }
-# Optional so the karaoke build for older Macs can leave it out: whisper.cpp
-# needs `std::filesystem`, which Apple's C++ library has only from 10.15
-# (Catalina), and a 2011 laptop stops at 10.13. See `whisper` below.
-whisper-rs = { workspace = true, optional = true }
+# whisper.cpp, in-process with the `whisper` feature, and the helper's
+# protocol without it. whisper.cpp needs `std::filesystem`, which Apple's C++
+# library has only from 10.15 (Catalina), and a 2011 laptop stops at 10.13.
+dj-whisper = { workspace = true }
 rtrb = { workspace = true }
 # Fetching a streamed track to the cache before it reaches a deck. See
 # `sources::resolve_source_track` for why it lands on disk first.

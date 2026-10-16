@@ -1,0 +1,33 @@
+[package]
+name = "dj-whisper"
+description = "whisper.cpp, called in-process or served by a helper program for builds that cannot link it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+# whisper.cpp compiled in. Without it the crate is the protocol and the
+# processor check alone, which is what the karaoke build for macOS 10.13
+# links: it talks to the helper rather than to whisper.cpp.
+whisper = ["dep:whisper-rs"]
+default = ["whisper"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# whisper.cpp needs `std::filesystem`, which Apple's C++ library has only from
+# 10.15 (Catalina). Optional, so a build for 10.13 can leave it out.
+whisper-rs = { workspace = true, optional = true }
+
+# The helper: whisper.cpp in a process of its own, for an application built
+# without it. Only with whisper.cpp, which is the whole of what it is for.
+[[bin]]
+name = "djmanzo-listen"
+path = "src/main.rs"
+required-features = ["whisper"]
+
+[lints]
+workspace = true

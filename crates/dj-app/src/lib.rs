@@ -61,6 +61,7 @@ pub mod lens;
 pub mod level;
 pub mod library;
 pub mod listen;
+pub mod listening;
 pub mod live;
 pub mod looks;
 pub mod memory;
@@ -869,6 +870,9 @@ pub fn run() {
             commands::transition_adjust,
             commands::transition_styles,
             commands::practice_rehearse,
+            commands::listening_status,
+            commands::listening_set,
+            commands::listening_check,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_save,

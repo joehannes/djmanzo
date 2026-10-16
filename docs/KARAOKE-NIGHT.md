@@ -99,16 +99,22 @@ and *Velvet*.
 **If anything goes wrong:** the **SAFE** button in the top bar takes every
 control back, clears every effect and flattens the sound.
 
-## What this build leaves out, and why
+## Listening: on by itself where the Mac can
 
-Built to reach a 2011 laptop, it leaves out two things that need a newer
-Mac:
+Two things listen — **timing the words by listening** (*Words in time*, on the
+Singers panel) and **spoken commands** — and they need macOS 10.15 (Catalina)
+or later and a processor from about 2013 on. You do not need to know which
+Mac it is: djmanzo checks when it starts and switches them on by itself if
+the Mac can run them.
 
-- **Timing the words by listening** (whisper.cpp needs macOS 10.15). Lyrics
-  that come already timed — most of LRCLIB's, a timed `.lrc` or the file's
-  own — still follow the song line by line; lyrics with no times are shown
-  as they are, without the wipe.
-- **Spoken commands**, for the same reason.
+- **On a Mac that can**, *Words in time* offers the speech models to download
+  (Base, about 60 MB, is the one to take) and times the words of any record.
+- **On a Mac that cannot** — a 2011 MacBook stops at macOS 10.13 — it says
+  why, and offers nothing to download. Lyrics that come already timed — most
+  of LRCLIB's, a timed `.lrc` or the file's own — still follow the song line
+  by line; lyrics with no times are shown as they are, without the wipe.
+- **Settings → Speech recognition** says what it found, has *Check again*, and
+  can turn it **Off** if you would rather it never listened.
 
 Taking the voice out uses djmanzo's built-in separator; the neural one the
 newer builds carry has no version for Intel Macs.

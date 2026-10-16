@@ -1447,6 +1447,7 @@ dependencies = [
  "dj-sources",
  "dj-stems",
  "dj-vocal",
+ "dj-whisper",
  "dj-world",
  "getrandom 0.3.4",
  "lofty",
@@ -1466,7 +1467,6 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "webkit2gtk",
- "whisper-rs",
  "zip",
 ]
 
@@ -1707,6 +1707,15 @@ dependencies = [
  "rtrb",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "dj-whisper"
+version = "0.44.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "whisper-rs",
 ]
 
 [[package]]

@@ -37,10 +37,14 @@
     type RailControl,
     type Remembered,
     type Setup,
+    type ListeningStatus,
     type Spend,
     type Standing,
     type WaveformLayer,
     type Colouring,
+    listeningCheck,
+    listeningSet,
+    listeningStatus,
   } from "./api";
   import {
     remembers,
@@ -591,6 +595,36 @@
         // would be the second description the table exists to prevent.
       });
   });
+
+  /**
+   * Speech recognition on this machine, and the DJ's switch for it.
+   *
+   * Automatic by default: on wherever this computer was found to run it —
+   * the karaoke build for older Macs finds out by running its helper — and
+   * off where it cannot, with Rust's reason. Every sentence about the
+   * machine is Rust's (`dj_app::listening`); this block only says which.
+   */
+  let listening = $state<ListeningStatus | null>(null);
+  let listeningAsking = $state(false);
+  void listeningStatus()
+    .then((status) => (listening = status))
+    .catch(() => (listening = null));
+
+  async function answerListening(asked: Promise<ListeningStatus>) {
+    listeningAsking = true;
+    try {
+      listening = await asked;
+    } catch {
+      // The block keeps what it last knew rather than inventing a state.
+    } finally {
+      listeningAsking = false;
+    }
+  }
+
+  /** Rust's reason as a sentence of its own. */
+  function sentence(why: string): string {
+    return `${why.charAt(0).toUpperCase()}${why.slice(1)}.`;
+  }
 
   /**
    * §8's seven levels, and where djmanzo stands on them.
@@ -1214,6 +1248,55 @@
           </li>
         {/each}
       </ul>
+    {/if}
+  </div>
+
+  <div class="block" data-block="listening">
+    <h3>Speech recognition</h3>
+    <p class="hint">
+      Words in time and spoken commands listen with whisper.cpp, on this
+      computer and nowhere else. Automatic turns it on wherever this computer
+      can run it, and leaves it off where it cannot.
+    </p>
+    <div class="row listening-choice" role="radiogroup" aria-label="Speech recognition">
+      <label>
+        <input
+          type="radio"
+          name="listening"
+          checked={listening !== null && !listening.off}
+          disabled={listening === null || listeningAsking}
+          onchange={() => void answerListening(listeningSet(false))}
+        />
+        Automatic
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="listening"
+          checked={listening?.off === true}
+          disabled={listening === null || listeningAsking}
+          onchange={() => void answerListening(listeningSet(true))}
+        />
+        Off
+      </label>
+      <button
+        type="button"
+        disabled={listeningAsking}
+        onclick={() => void answerListening(listeningCheck())}>Check again</button>
+    </div>
+    {#if listening}
+      <p class="hint listening-found" role="status">
+        {#if listening.off}
+          Off: nothing listens.
+          {#if listening.how}This computer could.{/if}
+        {:else if listening.how === "built-in"}
+          This computer listens: speech recognition is part of this build.
+        {:else if listening.how === "helper"}
+          This computer listens, through djmanzo's speech recognition helper.
+        {:else if listening.why}
+          {sentence(listening.why)}
+        {/if}
+      </p>
     {/if}
   </div>
 

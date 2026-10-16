@@ -1356,6 +1356,9 @@ export const ANSWERS: Record<string, unknown> = {
   // stub answers per style below, because the whole of what this panel does is
   // tell four renders of one pair apart.
   practice_rehearse: null,
+  // A build with whisper.cpp in it, which is what every test machine runs.
+  listening_status: { off: false, how: "built-in", why: null },
+  listening_check: { off: false, how: "built-in", why: null },
   transition_current: null,
   transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
@@ -3837,6 +3840,16 @@ export async function openShell(
           // A rehearsal, answered per style. Fixed answers would make four
           // renders of the same pair indistinguishable, and telling them apart
           // is the whole of what the practice panel is for.
+          // The speech recognition switch: what was sent, answered as Rust
+          // would — the machine as it was, the switch as asked.
+          if (cmd === "listening_set") {
+            ((win.__listeningSet ??= []) as unknown[]).push(args.off);
+            const now = (answers.listening_status ?? {}) as Record<string, unknown>;
+            return Promise.resolve({ ...now, off: args.off });
+          }
+          if (cmd === "listening_check") {
+            win.__listeningChecked = ((win.__listeningChecked as number) ?? 0) + 1;
+          }
           if (cmd === "practice_rehearse") {
             const offered = (answers.transition_styles ?? []) as {
               name: string;

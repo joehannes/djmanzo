@@ -1451,7 +1451,11 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
 **The karaoke build for older Macs (15–16 October).** The owner asked for a
 karaoke-ready djmanzo a friend could run on a 2011 MacBook, whose last macOS
 is 10.13. It is the same application built differently — `whisper` is a
-default cargo feature it turns off, `tauri.karaoke.conf.json` names it and
+default cargo feature it turns off (and since 16 October whisper.cpp ships
+beside it instead, as `djmanzo-listen` from the `dj-whisper` crate, built for
+10.15 and run only where `listening::can` finds the Mac runs it — the owner
+asked for it to check and switch itself on rather than be left out for every
+Mac), `tauri.karaoke.conf.json` names it and
 sets 10.13, `npm run build:karaoke` lowers the interface to Safari 13 — and
 the release builds it beside the others as *macOS Karaoke (Intel, 10.13+)*,
 reading the bundle's minimums, symbols and frameworks before it ships.

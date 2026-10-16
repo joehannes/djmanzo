@@ -31,3 +31,6 @@ crates/dj-app/onnxruntime/
 
 # Python bytecode, from checking the WhisperX helper compiles.
 __pycache__/
+
+# The karaoke app's speech recognition helper, built by crates/dj-app/build-listen.cjs.
+crates/dj-app/binaries/

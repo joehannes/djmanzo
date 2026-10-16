@@ -94,17 +94,31 @@ each download half the size, and a DJ knows which Mac they have.
 The ordinary build needs macOS 10.15, because whisper.cpp uses
 `std::filesystem`, which Apple's C++ library has only from Catalina. A 2011
 MacBook stops at 10.13 (High Sierra). The karaoke build reaches it by leaving
-whisper.cpp out — word timing by listening and spoken commands — and nothing
-else:
+whisper.cpp out of the application — word timing by listening and spoken
+commands — and carrying it **beside** the application instead, as a helper
+built for 10.15 (`djmanzo-listen`, the `dj-whisper` crate). The application
+asks the helper at run time whether it runs on this Mac and listens through it
+where it does, so one download listens on a newer Mac and says why not on a
+2011 one:
 
 ```sh
 MACOSX_DEPLOYMENT_TARGET=10.13 cargo tauri build --target x86_64-apple-darwin \
   --config tauri.karaoke.conf.json -- --no-default-features
 ```
 
-- `--no-default-features` turns off the `whisper` feature;
-  `whispercpp::cpu_can_run` then says so, and everything that would listen
-  refuses with that sentence.
+- `--no-default-features` turns off the `whisper` feature, so the
+  application has no whisper.cpp in it.
+- The config's `beforeBuildCommand` also runs `build-listen.cjs`, which builds
+  the helper for 10.15 into `target/listen/` (its own folder, so the 10.13 and
+  10.15 builds do not rebuild each other's dependencies) and puts it in
+  `crates/dj-app/binaries/` under the name Tauri's `bundle.externalBin`
+  expects. It ends up at `Contents/MacOS/djmanzo-listen`.
+- At run time `dj_app::listening::can` finds the helper beside the executable
+  and asks it: macOS older than 10.15 is said as itself (from `sw_vers`),
+  otherwise the helper's own `--probe` answers ready or why not (a processor
+  without AVX2). Settings has *Speech recognition: Automatic / Off* and
+  *Check again*. Run in its own process, a crash in whisper.cpp is a failed
+  transcription rather than a silent room.
 - `tauri.karaoke.conf.json` names it *djmanzo Karaoke*, gives it its own
   identifier (so its settings sit apart from the ordinary build's), sets the
   minimum to 10.13 and builds the interface with `npm run build:karaoke`.
@@ -120,7 +134,13 @@ The release workflow builds it as *macOS Karaoke (Intel, 10.13+)*, or alone
 with **karaoke** chosen on the Run form, and before it ships reads from the
 bundle what can be read without a 10.13 Mac: the minimum in `Info.plist` and
 in the binary, no `std::filesystem` or whisper symbol, and no framework newer
-than 10.13 linked unconditionally. Nothing has run it on a 10.13 Mac.
+than 10.13 linked unconditionally — and that the helper is in the bundle,
+built for 10.15, and answers its probe on the runner. Nothing has run it on a
+10.13 Mac.
+
+The same arrangement works on any system: a build without the `whisper`
+feature with `djmanzo-listen` beside its executable listens through it. That is
+how it was driven here, on Linux.
 
 ## The one thing a plain `cargo build --release` gets wrong
 

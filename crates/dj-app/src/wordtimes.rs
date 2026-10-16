@@ -374,7 +374,7 @@ pub fn time_words(
     if !models.installed(model) {
         return Err(format!("{} is not downloaded yet", model.name));
     }
-    crate::whispercpp::cpu_can_run()?;
+    crate::whispercpp::can_listen()?;
     let began = Instant::now();
     let decoded = dj_decode::decode_file(path).map_err(|e| e.to_string())?;
     let buffer = decoded.buffer;

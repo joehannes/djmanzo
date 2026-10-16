@@ -3225,6 +3225,24 @@ export interface Rehearsal {
 export const practiceRehearse = (style?: string) =>
   invoke<Rehearsal>("practice_rehearse", { style: style ?? null });
 
+/**
+ * Speech recognition — words in time and spoken commands — on this machine:
+ * the DJ's switch, and what the machine was found to do whatever it says.
+ * See `dj_app::listening`.
+ */
+export interface ListeningStatus {
+  off: boolean;
+  /** `built-in` or `helper` where this machine can listen; null where not. */
+  how: "built-in" | "helper" | null;
+  /** Rust's reason this machine cannot, when it cannot. */
+  why: string | null;
+}
+
+export const listeningStatus = () => invoke<ListeningStatus>("listening_status");
+export const listeningSet = (off: boolean) => invoke<ListeningStatus>("listening_set", { off });
+/** Ask the machine again, as on the run's first question. */
+export const listeningCheck = () => invoke<ListeningStatus>("listening_check");
+
 /** One style, and what it does. */
 export interface TransitionStyleInfo {
   /**

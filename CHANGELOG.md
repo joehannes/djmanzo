@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The karaoke build listens wherever the Mac can.** It used to leave
+  speech recognition — timing the words by listening, and spoken commands —
+  out for every Mac, because a 2011 laptop cannot run it. Now it carries it
+  beside itself as a helper, checks the Mac when it starts, and switches it
+  on by itself on macOS 10.15 or later with a processor from about 2013 on;
+  on an older Mac it says why. *Settings → Speech recognition* shows what it
+  found, can check again, and can turn it off. Running apart, a crash in it
+  can no longer take the decks down.
+
 - **A lesson held back says what is holding it.** In an activity set for
   playing, with nothing playing, the learning guide and the coach said *Not
   while you are mixing*. They now say *Not in an activity set for playing.

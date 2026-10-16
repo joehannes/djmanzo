@@ -1689,6 +1689,46 @@ fn the_browser_fixture_has_the_guides() {
     );
 }
 
+/// The Settings block for speech recognition, as Rust answers it: a build
+/// with whisper.cpp in it, the karaoke build on a Mac that runs the helper,
+/// the same on a 2011 Mac's macOS, and switched off on a Mac that could —
+/// so the sentences the browser checks are Rust's.
+#[test]
+fn the_browser_fixture_has_the_listening_status() {
+    use dj_app::listening::{Status, decide, too_old};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/listening.json");
+    let helper =
+        std::path::PathBuf::from("/Applications/djmanzo Karaoke.app/Contents/MacOS/djmanzo-listen");
+    let runs = || Some((helper.clone(), Ok(())));
+    let fixture = serde_json::json!({
+        "built_in": Status::of(false, decide(false, Some(Ok(())), None)),
+        "helper": Status::of(false, decide(false, None, runs())),
+        "old_mac": Status::of(
+            false,
+            decide(false, None, Some((helper.clone(), too_old((10, 13))))),
+        ),
+        "off": Status::of(true, decide(false, None, runs())),
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("the statuses serialise");
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the statuses");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/listening.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}
+
 /// §118d: the press kit, as Rust answers it.
 ///
 /// A kit begun from the welcome, a whole one with a night booked, its

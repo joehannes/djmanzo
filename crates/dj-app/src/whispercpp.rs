@@ -50,7 +50,8 @@
 //! 2013 has — AVX2, FMA, F16C (`.cargo/config.toml`) — and not for the
 //! machine that built the package, which would crash on any processor
 //! lacking the builder's instructions. One without them is told so
-//! ([`cpu_can_run`]) rather than crashed.
+//! ([`dj_whisper::processor_can_run`], through [`can_listen`]) rather than
+//! crashed.
 
 use crate::wordtimes::{Known, Segment, TimedWord};
 use serde::Serialize;
@@ -359,32 +360,18 @@ pub fn estimate(model: &Model, record_seconds: f64, rates: &Rates, cores: usize)
 /// Whether whisper.cpp is in this build. The karaoke build for macOS 10.13
 /// leaves it out (the `whisper` feature): it needs a C++ library that Mac
 /// has not got.
-pub const BUILT_IN: bool = cfg!(feature = "whisper");
+pub const BUILT_IN: bool = dj_whisper::BUILT_IN;
 
 /// What djmanzo says where it would have listened, in a build without it.
 pub const NOT_BUILT_IN: &str = "this build of djmanzo has no speech recognition (word timing and spoken commands need macOS 10.15 or later); lyrics from LRCLIB and the record's own tags still work";
 
-/// Whether this processor can run the whisper.cpp djmanzo was built with.
+/// Whether djmanzo can listen here — compiled in, or through the helper on
+/// a machine that runs it, and not switched off. See [`crate::listening`].
 ///
 /// # Errors
-/// An x86-64 processor without AVX2, FMA and F16C, which the build assumes.
-pub fn cpu_can_run() -> Result<(), String> {
-    if !BUILT_IN {
-        return Err(NOT_BUILT_IN.to_owned());
-    }
-    #[cfg(target_arch = "x86_64")]
-    {
-        if !(std::arch::is_x86_feature_detected!("avx2")
-            && std::arch::is_x86_feature_detected!("fma")
-            && std::arch::is_x86_feature_detected!("f16c"))
-        {
-            return Err(
-                "this processor lacks AVX2, which djmanzo's word timing needs (every Intel and AMD processor since about 2013 has it)"
-                    .to_owned(),
-            );
-        }
-    }
-    Ok(())
+/// Why not, in the sentence every panel shows.
+pub fn can_listen() -> Result<(), String> {
+    crate::listening::can().map(|_| ())
 }
 
 /// Download `file` into `models`, reporting bytes as they arrive, and check
@@ -524,15 +511,9 @@ pub async fn download_speed(http: &reqwest::Client) -> Option<f64> {
     (got > 0 && seconds > 0.0).then(|| got as f64 / seconds)
 }
 
-/// One token as Whisper gave it: its text, whether it is one of Whisper's
-/// own markers rather than a word, and when it was heard.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    pub text: String,
-    pub special: bool,
-    /// Where Whisper's attention placed it, in seconds.
-    pub at: f64,
-}
+/// One token as Whisper gave it — from whisper.cpp in-process or from the
+/// helper, the same type either way.
+pub use dj_whisper::Token;
 
 /// Whether `word` is Whisper saying what it heard rather than a sung word:
 /// `[Music]`, `(applause)`, `♪`.
@@ -805,37 +786,16 @@ pub struct Heard {
     pub listen_seconds: f64,
 }
 
-/// As the build with whisper.cpp, which this one is not: it says so.
-///
-/// # Errors
-/// Always, with [`NOT_BUILT_IN`].
-#[cfg(not(feature = "whisper"))]
-#[allow(clippy::needless_pass_by_value)]
-pub fn listen(
-    path: &Path,
-    model: &Model,
-    audio: &[f32],
-    language: Option<&str>,
-    prompt: Option<&str>,
-    threads: usize,
-    progress: impl FnMut(i32) + 'static,
-) -> Result<Heard, String> {
-    let _ = (
-        &path, &model, &audio, &language, &prompt, &threads, progress,
-    );
-    Err(NOT_BUILT_IN.to_owned())
-}
-
 /// Listen to `audio` — sixteen-kilohertz mono — with the model at `path`.
 ///
 /// `language` a two-letter code, or `None` for Whisper to tell; `prompt`
 /// the words already known, which steer its spelling. `progress` is told
 /// the percentage done. On a worker thread: this takes seconds to minutes.
+/// Whichever way djmanzo listens here ([`crate::listening::can`]), the
+/// answer goes through [`words_heard`].
 ///
 /// # Errors
-/// A processor that cannot run it, a model that would not load, or a run
-/// that failed.
-#[cfg(feature = "whisper")]
+/// A machine that cannot, a model that would not load, or a run that failed.
 pub fn listen(
     path: &Path,
     model: &Model,
@@ -845,120 +805,49 @@ pub fn listen(
     threads: usize,
     progress: impl FnMut(i32) + 'static,
 ) -> Result<Heard, String> {
-    use whisper_rs::{
-        DtwMode, DtwModelPreset, DtwParameters, FullParams, SamplingStrategy, WhisperContext,
-        WhisperContextParameters,
+    let ask = dj_whisper::Ask {
+        mode: dj_whisper::Mode::Words,
+        model: path.to_path_buf(),
+        id: model.id.to_owned(),
+        name: model.name.to_owned(),
+        language: language.map(str::to_owned),
+        prompt: prompt.map(str::to_owned),
+        threads,
     };
-    cpu_can_run()?;
-    whisper_rs::install_logging_hooks();
-    let began = std::time::Instant::now();
-    let preset = match model.id {
-        "tiny" => DtwModelPreset::Tiny,
-        "base" => DtwModelPreset::Base,
-        "small" => DtwModelPreset::Small,
-        "medium" => DtwModelPreset::Medium,
-        _ => DtwModelPreset::LargeV3Turbo,
-    };
-    let context = WhisperContextParameters {
-        dtw_parameters: DtwParameters {
-            mode: DtwMode::ModelPreset {
-                model_preset: preset,
-            },
-            ..DtwParameters::default()
-        },
-        ..WhisperContextParameters::default()
-    };
-    let path_text = path
-        .to_str()
-        .ok_or_else(|| format!("{} is not a path whisper.cpp can open", path.display()))?;
-    let whisper = WhisperContext::new_with_params(path_text, context)
-        .map_err(|e| format!("{} would not load: {e}", model.name))?;
-    let mut state = whisper
-        .create_state()
-        .map_err(|e| format!("{} would not start: {e}", model.name))?;
-    let load_seconds = began.elapsed().as_secs_f64();
-
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_n_threads(i32::try_from(threads.max(1)).unwrap_or(4));
-    params.set_language(Some(language.unwrap_or("auto")));
-    params.set_token_timestamps(true);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-    params.set_print_special(false);
-    if let Some(prompt) = prompt.filter(|prompt| !prompt.trim().is_empty()) {
-        params.set_initial_prompt(prompt);
-    }
-    params.set_progress_callback_safe(progress);
-    let began = std::time::Instant::now();
-    state
-        .full(params, audio)
-        .map_err(|e| format!("{} could not listen: {e}", model.name))?;
-    let listen_seconds = began.elapsed().as_secs_f64();
-
-    let end_of_text = whisper.token_eot();
-    let mut segments = Vec::new();
-    for segment in state.as_iter() {
-        let start = segment.start_timestamp() as f64 / 100.0;
-        let end = segment.end_timestamp() as f64 / 100.0;
-        let tokens: Vec<Token> = (0..segment.n_tokens())
-            .filter_map(|index| segment.get_token(index))
-            .map(|token| Token {
-                text: token
-                    .to_str_lossy()
-                    .map(|text| text.into_owned())
-                    .unwrap_or_default(),
-                special: token.token_id() >= end_of_text,
-                at: token.token_data().t_dtw as f64 / 100.0,
-            })
-            .collect();
-        let words = words_of(&tokens, start);
-        if words.is_empty() {
-            continue;
-        }
-        let text = words
-            .iter()
-            .map(|word| word.word.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
-        segments.push(Segment {
-            start: Some(start),
-            end: Some(end),
-            text,
-            words,
-        });
-    }
-    let language = language.map_or_else(
-        || {
-            whisper_rs::get_lang_str(state.full_lang_id_from_state())
-                .unwrap_or("en")
-                .to_owned()
-        },
-        str::to_owned,
-    );
-    Ok(Heard {
-        language,
-        segments: drop_loops(segments),
-        load_seconds,
-        listen_seconds,
-    })
+    raw_of(ask, audio, progress).map(words_heard)
 }
 
-/// As the build with whisper.cpp, which this one is not: it says so.
-///
-/// # Errors
-/// Always, with [`NOT_BUILT_IN`].
-#[cfg(not(feature = "whisper"))]
-#[allow(clippy::needless_pass_by_value)]
-pub fn command(
-    path: &Path,
-    model: &Model,
-    audio: &[f32],
-    prompt: Option<&str>,
-    threads: usize,
-) -> Result<Heard, String> {
-    let _ = (&path, &model, &audio, &prompt, &threads);
-    Err(NOT_BUILT_IN.to_owned())
+/// Whisper's pieces as sung words: tokens joined into words with their
+/// times, pieces with no words left out, and Whisper's loops dropped.
+#[must_use]
+pub fn words_heard(raw: dj_whisper::Raw) -> Heard {
+    let segments = raw
+        .pieces
+        .into_iter()
+        .filter_map(|piece| {
+            let words = words_of(&piece.tokens, piece.start);
+            if words.is_empty() {
+                return None;
+            }
+            let text = words
+                .iter()
+                .map(|word| word.word.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            Some(Segment {
+                start: Some(piece.start),
+                end: Some(piece.end),
+                text,
+                words,
+            })
+        })
+        .collect();
+    Heard {
+        language: raw.language,
+        segments: drop_loops(segments),
+        load_seconds: raw.load_seconds,
+        listen_seconds: raw.listen_seconds,
+    }
 }
 
 /// A2: the words of a spoken command — seconds long, sixteen-kilohertz
@@ -974,7 +863,6 @@ pub fn command(
 ///
 /// # Errors
 /// As [`listen`].
-#[cfg(feature = "whisper")]
 pub fn command(
     path: &Path,
     model: &Model,
@@ -982,61 +870,71 @@ pub fn command(
     prompt: Option<&str>,
     threads: usize,
 ) -> Result<Heard, String> {
-    use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
-    cpu_can_run()?;
-    whisper_rs::install_logging_hooks();
-    let began = std::time::Instant::now();
-    let path_text = path
-        .to_str()
-        .ok_or_else(|| format!("{} is not a path whisper.cpp can open", path.display()))?;
-    let whisper = WhisperContext::new_with_params(path_text, WhisperContextParameters::default())
-        .map_err(|e| format!("{} would not load: {e}", model.name))?;
-    let mut state = whisper
-        .create_state()
-        .map_err(|e| format!("{} would not start: {e}", model.name))?;
-    let load_seconds = began.elapsed().as_secs_f64();
+    let ask = dj_whisper::Ask {
+        mode: dj_whisper::Mode::Command,
+        model: path.to_path_buf(),
+        id: model.id.to_owned(),
+        name: model.name.to_owned(),
+        language: None,
+        prompt: prompt.map(str::to_owned),
+        threads,
+    };
+    raw_of(ask, audio, |_| {}).map(command_heard)
+}
 
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_n_threads(i32::try_from(threads.max(1)).unwrap_or(4));
-    params.set_language(Some("auto"));
-    params.set_single_segment(true);
-    params.set_no_context(true);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-    params.set_print_special(false);
-    if let Some(prompt) = prompt.filter(|prompt| !prompt.trim().is_empty()) {
-        params.set_initial_prompt(prompt);
-    }
-    let began = std::time::Instant::now();
-    state
-        .full(params, audio)
-        .map_err(|e| format!("{} could not listen: {e}", model.name))?;
-    let listen_seconds = began.elapsed().as_secs_f64();
-    let text = state
-        .as_iter()
-        .map(|segment| {
-            segment
-                .to_str_lossy()
-                .map(|text| text.into_owned())
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    let language = whisper_rs::get_lang_str(state.full_lang_id_from_state())
-        .unwrap_or("en")
-        .to_owned();
-    Ok(Heard {
-        language,
+/// A command's one piece as the one segment the parser reads.
+#[must_use]
+pub fn command_heard(raw: dj_whisper::Raw) -> Heard {
+    let text = raw
+        .pieces
+        .first()
+        .map(|piece| piece.text.trim().to_owned())
+        .unwrap_or_default();
+    Heard {
+        language: raw.language,
         segments: vec![Segment {
             start: Some(0.0),
             end: None,
-            text: text.trim().to_owned(),
+            text,
             words: Vec::new(),
         }],
-        load_seconds,
-        listen_seconds,
-    })
+        load_seconds: raw.load_seconds,
+        listen_seconds: raw.listen_seconds,
+    }
+}
+
+/// whisper.cpp's answer, from wherever it runs here.
+fn raw_of(
+    ask: dj_whisper::Ask,
+    audio: &[f32],
+    progress: impl FnMut(i32) + 'static,
+) -> Result<dj_whisper::Raw, String> {
+    match crate::listening::can()? {
+        crate::listening::Engine::BuiltIn => in_process(&ask, audio, Box::new(progress)),
+        crate::listening::Engine::Helper(helper) => {
+            crate::listening::through_helper(&helper, ask, audio, progress)
+        }
+    }
+}
+
+#[cfg(feature = "whisper")]
+fn in_process(
+    ask: &dj_whisper::Ask,
+    audio: &[f32],
+    progress: Box<dyn FnMut(i32)>,
+) -> Result<dj_whisper::Raw, String> {
+    dj_whisper::transcribe(ask, audio, progress)
+}
+
+/// Never reached: [`crate::listening::decide`] names the built-in engine
+/// only in a build that has it.
+#[cfg(not(feature = "whisper"))]
+fn in_process(
+    _: &dj_whisper::Ask,
+    _: &[f32],
+    _: Box<dyn FnMut(i32)>,
+) -> Result<dj_whisper::Raw, String> {
+    Err(NOT_BUILT_IN.to_owned())
 }
 
 /// The known words as Whisper's prompt: the start of them, which is as much
@@ -1067,7 +965,7 @@ mod tests {
     #[cfg(not(feature = "whisper"))]
     #[test]
     fn a_build_without_whisper_says_so() {
-        assert_eq!(cpu_can_run(), Err(NOT_BUILT_IN.to_owned()));
+        assert_eq!(can_listen(), Err(NOT_BUILT_IN.to_owned()));
         let model = recommended();
         let path = Path::new("/nowhere");
         assert_eq!(
@@ -1388,12 +1286,15 @@ mod tests {
     }
 
     /// **The karaoke build reaches a 2011 Mac, and so leaves whisper.cpp
-    /// out.** Its config names 10.13 (High Sierra, the last such a laptop
-    /// runs); the release compiles it for 10.13 and without the `whisper`
-    /// feature, since whisper.cpp needs 10.15's C++ library. A build that
-    /// named 10.13 and kept whisper would fail to compile, or worse, compile
-    /// and not start; one that dropped the minimum back to 10.15 would not
-    /// open on the laptop at all.
+    /// out of itself — and carries it beside itself, for a Mac that can.**
+    /// Its config names 10.13 (High Sierra, the last such a laptop runs); the
+    /// release compiles it for 10.13 and without the `whisper` feature, since
+    /// whisper.cpp needs 10.15's C++ library. A build that named 10.13 and
+    /// kept whisper would fail to compile, or worse, compile and not start;
+    /// one that dropped the minimum back to 10.15 would not open on the
+    /// laptop at all. The helper is built apart for 10.15
+    /// (`build-listen.cjs`), named where Tauri bundles it, and checked by the
+    /// release for being there, for 10.15, and answering its probe.
     #[test]
     fn the_karaoke_mac_is_built_for_high_sierra_without_whisper() {
         let config: serde_json::Value =
@@ -1404,9 +1305,22 @@ mod tests {
         );
         assert_eq!(
             config["build"]["beforeBuildCommand"].as_str(),
-            Some("node dj-app/build-ui.cjs build:karaoke"),
-            "the interface lowered to Safari 13's WebKit"
+            Some("node dj-app/build-ui.cjs build:karaoke && node dj-app/build-listen.cjs"),
+            "the interface lowered to Safari 13's WebKit, and the helper built"
         );
+        assert_eq!(
+            config["bundle"]["externalBin"],
+            serde_json::json!([format!("binaries/{}", dj_whisper::HELPER)]),
+            "the helper is bundled under the name the application looks for"
+        );
+        let builds = include_str!("../build-listen.cjs");
+        for needed in [
+            "MACOSX_DEPLOYMENT_TARGET: '10.15'",
+            "-p dj-whisper --bin djmanzo-listen",
+            "path.join(__dirname, 'binaries')",
+        ] {
+            assert!(builds.contains(needed), "build-listen.cjs lacks {needed}");
+        }
         let release = include_str!("../../../.github/workflows/release.yml");
         let entry = release
             .lines()
@@ -1419,6 +1333,17 @@ mod tests {
             "\"karaoke\":\"yes\"",
         ] {
             assert!(entry.contains(needed), "the karaoke entry lacks {needed}");
+        }
+        for needed in [
+            "The karaoke app carries its speech recognition helper",
+            "Contents/MacOS/djmanzo-listen",
+            "(minos|version) 10\\.15",
+            "--probe",
+        ] {
+            assert!(
+                release.contains(needed),
+                "the release does not check {needed}"
+            );
         }
         let ui = include_str!("../../../ui/package.json");
         assert!(ui.contains("\"build:karaoke\": \"svelte-check --tsconfig ./tsconfig.json && vite build --mode karaoke\""));

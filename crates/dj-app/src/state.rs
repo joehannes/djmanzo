@@ -1129,6 +1129,9 @@ impl AppState {
         if let Ok(mut slot) = self.config_dir.lock() {
             *slot = Some(dir.clone());
         }
+        // Before anything can listen: a DJ who switched it off is never
+        // listened to, not even for the moment it takes to read the file.
+        crate::listening::set_off(self.listening().off);
         let layouts = dir.join("layouts");
         if let Err(error) = std::fs::create_dir_all(&layouts) {
             tracing::warn!(%error, ?layouts, "no layout directory; only the built-in layouts");
@@ -1427,6 +1430,34 @@ impl AppState {
         };
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "your waveform will not survive a restart");
+        }
+    }
+
+    fn listening_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("listening.json"))
+    }
+
+    /// Whether the DJ has switched speech recognition off. Automatic on a
+    /// fresh install or an unreadable file: it listens wherever it can.
+    #[must_use]
+    pub fn listening(&self) -> crate::listening::Setting {
+        self.listening_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the choice, and act on it at once.
+    pub fn set_listening(&self, setting: crate::listening::Setting) {
+        crate::listening::set_off(setting.off);
+        let Some(path) = self.listening_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(&setting) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the speech recognition switch will not survive a restart");
         }
     }
 

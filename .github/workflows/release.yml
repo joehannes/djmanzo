@@ -292,6 +292,33 @@ jobs:
           done
           echo "Built for 10.13: minimum, symbols and frameworks checked."
 
+      # Speech recognition is whisper.cpp in a helper beside the app, built for
+      # 10.15, which the app runs only where this Mac can (`dj_app::listening`).
+      # So it must be in the bundle, built for 10.15, and start and answer: on
+      # this runner that is the probe's "ready", or its refusal where the
+      # processor lacks AVX2 — either is the helper running; silence is not.
+      - name: The karaoke app carries its speech recognition helper
+        if: matrix.karaoke == 'yes'
+        run: |
+          set -euo pipefail
+          app="target/${{ matrix.target }}/release/bundle/macos/djmanzo Karaoke.app"
+          helper="$app/Contents/MacOS/djmanzo-listen"
+          test -x "$helper" || { echo "::error::$helper is not in the app"; exit 1; }
+          file "$helper" | tee /tmp/helper-file.txt
+          grep -q x86_64 /tmp/helper-file.txt || { echo "::error::the helper is not x86_64"; exit 1; }
+          otool -l "$helper" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | tee /tmp/helper-min.txt
+          grep -qE '(minos|version) 10\.15' /tmp/helper-min.txt || { echo "::error::the helper is not built for 10.15"; exit 1; }
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            said="$(arch -x86_64 "$helper" --probe </dev/null)"
+          else
+            said="$("$helper" --probe </dev/null)"
+          fi
+          echo "The helper said: $said"
+          case "$said" in
+            '"ready"'|'{"refused":'*) echo "The helper starts and answers." ;;
+            *) echo "::error::the helper did not answer its probe"; exit 1 ;;
+          esac
+
       - name: The Windows installers carry ONNX Runtime
         if: matrix.onnxruntime == 'windows'
         shell: bash
