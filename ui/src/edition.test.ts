@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { firstActivity } from "./edition";
+import { firstActivity, productName } from "./edition";
 
 describe("where a build opens", () => {
   it("the karaoke build opens on Karaoke, once, and then where its DJ left it", () => {
@@ -21,5 +21,12 @@ describe("how hard a build works the machine at first", () => {
     const { startingTier } = await import("./performance.svelte");
     expect(startingTier("karaoke")).toBe("Eco");
     expect(startingTier("full")).toBe("Ultra");
+  });
+});
+
+describe("what a build calls itself", () => {
+  it("the karaoke build says so where it introduces itself", () => {
+    expect(productName("karaoke")).toBe("djmanzo Karaoke");
+    expect(productName("full")).toBe("djmanzo");
   });
 });

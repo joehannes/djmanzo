@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A machine that cannot listen is offered nothing to download.** Where
+  whisper.cpp cannot run — the karaoke build, or a processor without AVX2,
+  such as a 2011 Mac's — *Words in time* says why and offers no model, and
+  a spoken command says the same instead of pointing at a download.
+- **The karaoke build introduces itself as djmanzo Karaoke** in its welcome.
+
 ## v0.43.0 — djmanzo Karaoke for older Macs, and the karaoke host's kit
 
 - **djmanzo Karaoke, for older Macs (back to a 2011 MacBook).** A build for

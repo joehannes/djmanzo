@@ -1331,8 +1331,16 @@ fn the_browser_fixture_has_word_timing() {
     };
     let fresh_status = status(&[], None, None);
     let ready = status(&["base", "small"], Some("small"), Some(6_250_000.0));
+    // The karaoke build for older Macs, which has no whisper.cpp: Rust's own
+    // sentence for it, where a processor without AVX2 would say its own.
+    let cannot = {
+        let mut cannot = status(&[], None, None);
+        cannot.cpu = Some(dj_app::whispercpp::NOT_BUILT_IN.to_owned());
+        cannot
+    };
     let fresh = serde_json::to_string_pretty(&serde_json::json!({
         "status": fresh_status,
+        "cannot": cannot,
         "ready": ready,
         "within": report(71.4),
         "over": report(131.0),

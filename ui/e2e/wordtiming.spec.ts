@@ -39,6 +39,19 @@ async function singers(page: Page, answers: Record<string, unknown> = {}) {
 
 test.describe("§122: words in time, by whisper.cpp", () => {
   /**
+   * A machine that cannot listen says why and is offered nothing to
+   * download: the karaoke build for older Macs has no whisper.cpp, and a
+   * model there would be hundreds of megabytes that never do anything.
+   */
+  test("a machine that cannot listen is offered no model", async ({ page }) => {
+    await singers(page, { word_timing: wordTiming.cannot });
+    await expect(section(page).getByRole("alert")).toHaveText(wordTiming.cannot.cpu!);
+    await expect(section(page).getByText("Choose a model to download")).toHaveCount(0);
+    await expect(section(page).getByRole("button", { name: /^Download/ })).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The load-bearing one.** Nothing is downloaded until the DJ asks. The
    * list says, for every model, its size, how long it would take to fetch
    * here once the connection is measured, how well it hears, and how long a

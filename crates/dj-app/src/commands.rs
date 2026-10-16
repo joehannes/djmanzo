@@ -23964,6 +23964,26 @@ mod voice_tests {
     /// to show it. A take that runs its eight seconds with the key still down
     /// puts the strip back by itself. A microphone not open is refused, by
     /// name.
+    /// A spoken command on a machine that cannot listen says why — not
+    /// "download a model", which would never help there.
+    #[test]
+    fn a_take_that_cannot_be_heard_says_the_machine_before_the_model() {
+        let machine = || Err::<(), String>("no speech recognition here".to_owned());
+        assert_eq!(
+            super::cannot_hear(machine(), false).as_deref(),
+            Some("no speech recognition here")
+        );
+        assert_eq!(
+            super::cannot_hear(machine(), true).as_deref(),
+            Some("no speech recognition here")
+        );
+        assert_eq!(
+            super::cannot_hear(Ok(()), false).as_deref(),
+            Some(super::NO_COMMAND_MODEL)
+        );
+        assert_eq!(super::cannot_hear(Ok(()), true), None);
+    }
+
     #[test]
     fn push_to_talk_holds_the_strip_out_of_the_room_and_puts_it_back() {
         let dir = tempfile::tempdir().expect("a folder");
@@ -24171,16 +24191,36 @@ pub fn spawn_words(app: tauri::AppHandle) -> std::sync::mpsc::Sender<Vec<f32>> {
     send
 }
 
+/// The model a spoken command would be heard with is missing.
+const NO_COMMAND_MODEL: &str =
+    "No Whisper model is downloaded to hear it with: download Base under Singers, Words in time.";
+
+/// Why a take cannot be heard, before anything is tried: the machine first
+/// — the karaoke build for older Macs has no whisper.cpp, and a processor
+/// without AVX2 cannot run the one built in — and only then a missing
+/// model, since pointing a DJ at a download that could never be used is
+/// worse than saying why.
+fn cannot_hear(machine: Result<(), String>, has_model: bool) -> Option<String> {
+    match machine {
+        Err(why) => Some(why),
+        Ok(()) if !has_model => Some(NO_COMMAND_MODEL.to_owned()),
+        Ok(()) => None,
+    }
+}
+
 fn hear_take(app: &tauri::AppHandle, state: &AppState, samples: &[f32]) -> crate::voice::Said {
     let models = match word_models(app) {
         Ok(models) => models,
         Err(why) => return crate::voice::Said::refused("", why),
     };
+    if let Some(why) = cannot_hear(
+        crate::whispercpp::cpu_can_run(),
+        models.for_commands().is_some(),
+    ) {
+        return crate::voice::Said::refused("", why);
+    }
     let Some(model) = models.for_commands() else {
-        return crate::voice::Said::refused(
-            "",
-            "No Whisper model is downloaded to hear it with: download Base under Singers, Words in time.",
-        );
+        return crate::voice::Said::refused("", NO_COMMAND_MODEL);
     };
     let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     // No prompt: given the words commands are made of, the tiny model wrote

@@ -140,7 +140,13 @@
     </p>
   {/if}
 
-  {#if timing}
+  <!--
+    A machine that cannot listen is offered nothing to download for it: the
+    karaoke build for older Macs has no whisper.cpp at all, and a processor
+    without AVX2 cannot run the one built in. Either way a model would be a
+    download that never does anything, and the sentence above says why.
+  -->
+  {#if timing && !timing.cpu}
     <details class="picker" bind:open={picking}>
       <summary>
         {#if chosen}

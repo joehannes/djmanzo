@@ -158,6 +158,17 @@ fn words_of(line: &str, offset: f64) -> (String, Vec<Word>) {
 mod tests {
     use super::*;
 
+    /// LRCLIB writes a space between each stamp and its line; the line is
+    /// its words, not the space.
+    #[test]
+    fn a_space_after_the_stamp_is_not_part_of_the_line() {
+        let lines = parse("[00:08.86] First line\n[00:18.60] Second line");
+        assert_eq!(lines.len(), 2);
+        assert!((lines[0].at - 8.86).abs() < 1e-9);
+        assert_eq!(lines[0].text, "First line");
+        assert_eq!(lines[1].text, "Second line");
+    }
+
     /// **The plain case: each line at its time, in order, tags skipped.**
     #[test]
     fn lines_come_at_their_times() {

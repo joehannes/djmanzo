@@ -10,6 +10,13 @@ export type Edition = "full" | "karaoke";
 
 export const EDITION: Edition = import.meta.env.VITE_EDITION === "karaoke" ? "karaoke" : "full";
 
+/** What this build is called where it introduces itself. */
+export const PRODUCT = productName(EDITION);
+
+export function productName(edition: Edition): string {
+  return edition === "karaoke" ? "djmanzo Karaoke" : "djmanzo";
+}
+
 /**
  * The activity a build opens on when its DJ has never chosen one: the
  * karaoke build's is Karaoke, the whole application's is none (the full

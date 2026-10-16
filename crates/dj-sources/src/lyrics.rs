@@ -185,6 +185,55 @@ mod tests {
         (stub, source)
     }
 
+    /// **LRCLIB's answer as it is served today** (asked on 16 October; the
+    /// words replaced, the shape kept): the fields added since the
+    /// documented shape — `id`, `name`, `hasWordSync`, `lyricsfile` — are
+    /// read past, the duration is a float, and each timed line has a space
+    /// after its stamp. Until that day only the documented shape had been
+    /// tested, because the service could not be reached from here.
+    #[test]
+    fn an_answer_as_lrclib_serves_it_is_read() {
+        let body = json!({
+            "id": 3_934_227,
+            "name": "A Song",
+            "trackName": "A Song",
+            "artistName": "An Artist",
+            "albumName": "Bonus Tracks",
+            "duration": 254.0,
+            "instrumental": false,
+            "hasWordSync": false,
+            "plainLyrics": "First line\nSecond line",
+            "syncedLyrics": "[00:08.86] First line\n[00:18.60] Second line",
+            "lyricsfile": "version: '1.0'\nmetadata:\n  title: A Song\n",
+        });
+        let lyrics = parse(&body).expect("an answer with words");
+        assert_eq!(lyrics.plain, "First line\nSecond line");
+        assert_eq!(
+            lyrics.synced.as_deref(),
+            Some("[00:08.86] First line\n[00:18.60] Second line")
+        );
+        assert!(!lyrics.instrumental);
+    }
+
+    /// The service itself, asked as djmanzo asks it. Ignored by default: it
+    /// needs the network. Run with `cargo test -p dj-sources -- --ignored
+    /// the_live_service` where lrclib.net can be reached.
+    #[tokio::test]
+    #[ignore = "asks lrclib.net over the network"]
+    async fn the_live_service_answers_as_read() {
+        let http = crate::http::ReqwestClient::new().expect("a client");
+        let source = LyricsSource::new(Arc::new(http) as Arc<dyn HttpClient>);
+        let lyrics = source
+            .words_for("Juan Luis Guerra", "Bachata Rosa", None, 254)
+            .await
+            .unwrap_or_else(|e| panic!("LRCLIB knows this recording: {e:?}"));
+        assert!(!lyrics.plain.trim().is_empty());
+        assert!(
+            lyrics.synced.as_deref().is_some_and(|s| s.starts_with('[')),
+            "timed lines, LRC"
+        );
+    }
+
     /// **The request carries the duration, so the wrong edit cannot answer.**
     #[test]
     fn the_request_names_the_recording_not_just_the_song() {
