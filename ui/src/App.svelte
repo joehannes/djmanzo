@@ -2775,6 +2775,26 @@
    */
   /** §128: the ⚙ board of sources, open. */
   let sourcesOpen = $state(false);
+
+  /**
+   * §128: *Set up →* on the board — Settings, at the block where that kind
+   * of source is set up, rather than at its top. The panel may be mounting,
+   * so the block is looked for over a few frames.
+   */
+  async function setUpSource(where: "sources" | "assistant") {
+    sourcesOpen = false;
+    if (!isOpen("settings")) await toggleSurface("settings");
+    const block = where === "assistant" ? "ai" : "sources";
+    for (let frame = 0; frame < 30; frame++) {
+      await tick();
+      const found = document.querySelector(`[data-settings="${block}"]`);
+      if (found) {
+        found.scrollIntoView({ block: "start" });
+        return;
+      }
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+    }
+  }
   let topbar = $state<HTMLElement>();
   let fit = $state(0);
   let unfolded = $state(false);
@@ -3616,10 +3636,7 @@
     {#if sourcesOpen}
       <SourcesBoard
         onclose={() => (sourcesOpen = false)}
-        onsetup={() => {
-          sourcesOpen = false;
-          if (!isOpen("settings")) void toggleSurface("settings");
-        }}
+        onsetup={(where) => void setUpSource(where)}
       />
     {/if}
     {#if fit === 2}

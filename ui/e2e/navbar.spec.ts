@@ -151,7 +151,12 @@ test.describe("§128: a one-line top bar", () => {
     await expect(dialog.getByRole("button", { name: "Set up →" })).toHaveCount(2);
     await search.getByRole("button", { name: "Set up →" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.locator('[data-surface="settings"], [aria-label="Settings"]').first()).toBeVisible();
+    // Settings, at its Sources block — not at its top.
+    await expect(page.locator('[data-settings="sources"]')).toBeInViewport();
+    // And the assistant's row goes to the AI block.
+    await page.locator("header.topbar").getByRole("button", { name: "Sources and connections" }).click();
+    await dialog.getByRole("region", { name: "Songs like this one" }).getByRole("button", { name: "Set up →" }).click();
+    await expect(page.locator('[data-settings="ai"]')).toBeInViewport();
     // And closes on its ✕.
     await page.locator("header.topbar").getByRole("button", { name: "Sources and connections" }).click();
     await page.getByRole("button", { name: "Close sources and connections" }).click();

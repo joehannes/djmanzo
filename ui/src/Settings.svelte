@@ -1803,7 +1803,7 @@
     <Downloads />
   </div>
 
-  <div class="block">
+  <div class="block" data-settings="sources">
     <h3>Sources</h3>
     {#if !persist}
       <p class="warning">
