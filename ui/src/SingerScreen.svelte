@@ -60,6 +60,7 @@
   import { lyricsAt } from "./lyricsAt";
   import Visuals from "./Visuals.svelte";
   import RoomEmoji from "./RoomEmoji.svelte";
+  import { isGuide } from "./guideOffer";
 
   let {
     decks,
@@ -189,6 +190,11 @@
     words && deck ? lyricsAt(words.lines, deck.position_seconds, deck.effective_bpm ?? null) : null,
   );
   const current = $derived(moment && words && moment.index >= 0 ? words.lines[moment.index] : null);
+  /**
+   * B7: the singer's deck playing with the guide under them, before their
+   * first line — the intro and the count-in, and gone once they sing.
+   */
+  const guided = $derived(Boolean(deck?.playing && isGuide(deck.voice) && moment && moment.index < 0));
   const following = $derived(moment && words ? (words.lines[moment.index + 1] ?? null) : null);
 
   /**
@@ -365,6 +371,9 @@
   {/if}
 
   <div class="words" aria-live="polite">
+    {#if guided}
+      <p class="guided" data-guided>You'll hear the original singer quietly underneath</p>
+    {/if}
     {#if moment?.countIn != null}
       <p class="count" role="img" data-count-in={moment.countIn} aria-label="{moment.countIn} beats to go">
         {#each Array.from({ length: 4 }, (_, i) => i) as dot (dot)}
@@ -597,6 +606,13 @@
 
   .word.sung {
     --fill: 100%;
+  }
+
+  .guided {
+    margin: 0;
+    font-size: 2.6vh;
+    opacity: 0.75;
+    color: var(--stem-vocal);
   }
 
   .count {

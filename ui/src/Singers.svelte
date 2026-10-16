@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { GUIDE_LEVEL, karaokeGuideOffer, type GuideOffer } from "./guideOffer";
   import { roomReactions, roomReactionsSet } from "./roomReactions";
   import SkinPicker from "./SkinPicker.svelte";
   import { carriesTrack, droppedTrack } from "./trackdrag";
@@ -432,8 +433,12 @@
     const next = rotation?.singers.find((s) => s.name === rotation?.up_next)?.songs[0];
     if (!next?.path) return;
     error = "";
+    // B7: what was offered for this song, read before the load moves the
+    // rotation on.
+    const guide = guideOffer !== null && guideTaken;
     try {
       rotation = await karaokeLoad(deck);
+      if (guide) await dispatch(`deck ${deck} voice ${GUIDE_LEVEL}`);
     } catch (e) {
       error = String(e);
     }
@@ -442,6 +447,35 @@
     // K6: and loading separates it, which is what reads its line.
     lineAsked += 1;
   }
+
+  /**
+   * B7: the guide, offered where the song is new to the singer up next — Rust
+   * decides when (`dj_app::guide_offer`). Ticked when offered; on *Load on N*
+   * the deck's voice goes to the guide. Asked again when who is up next, or
+   * their song, changes.
+   */
+  let guideOffer = $state<GuideOffer | null>(null);
+  let guideTaken = $state(true);
+  const guideFor = $derived.by(() => {
+    const up = rotation?.singers.find((s) => s.name === rotation?.up_next);
+    const song = up?.songs[0];
+    return up && song ? `${up.name}\n${song.title}\n${song.voice ?? ""}` : "";
+  });
+  $effect(() => {
+    const asking = guideFor;
+    guideTaken = true;
+    if (!enabled || asking === "") {
+      guideOffer = null;
+      return;
+    }
+    void karaokeGuideOffer()
+      .then((offer) => {
+        if (asking === guideFor) guideOffer = offer;
+      })
+      .catch(() => {
+        guideOffer = null;
+      });
+  });
 
   /**
    * K6: the line the up-next song's voice sings, read from its separated
@@ -859,6 +893,12 @@
           onclick={() => void change(karaokeKey(upNext.name, next.key + 1))}>+</button
         >
       </div>
+      {#if guideOffer && next.path}
+        <label class="guide-offer" data-guide-offer>
+          <input type="checkbox" bind:checked={guideTaken} />
+          <span><strong>Guide voice</strong> — {guideOffer.line}</span>
+        </label>
+      {/if}
       <div class="actions">
         {#if next.path}
           {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
@@ -1976,6 +2016,16 @@
     align-items: center;
     gap: 0.4rem;
     margin: 0.25rem 0;
+  }
+  .guide-offer {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    margin: 0.3rem 0;
+    padding: 0.35rem 0.5rem;
+    border-left: 3px solid var(--stem-vocal);
+    background: color-mix(in srgb, var(--stem-vocal) 8%, transparent);
+    border-radius: 4px;
   }
   .asks span,
   .asked {

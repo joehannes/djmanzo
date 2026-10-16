@@ -6,6 +6,15 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **The guide voice, offered for a song new to the singer.** When the
+  singer up next has never sung their song in the guest book (by its title,
+  however it was written, or by the record), the up-next card offers *Guide
+  voice*, ticked: *Load on N* then leaves the original singer quietly
+  underneath (a quarter, about −12 dB). Untick it to load as the deck is
+  set. A singer who already chose a voice from their phone is not asked
+  again. On the singers' screen, before the first line, a short line says
+  they will hear the original singer quietly underneath.
+
 - **Skins over a theme.** Faint artwork over the whole interface, in the
   theme's own accent colour: *Palm shadows*, *Waves*, *Papel picado*,
   *Halftone*, *Trash polka* and *Glowing plankton*, two or three offered with
@@ -30,6 +39,19 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B7 built** (§128): `dj_app::guide_offer` (`offer`, `sung_before`,
+  `for_up_next`; command `karaoke_guide_offer`) decides; `ui/src/guideOffer.ts`
+  asks; `Singers.svelte` draws the offer on the up-next card, ticked, and
+  *Load on N* sends `deck N voice 0.25` after Rust's load while it is ticked;
+  `SingerScreen.svelte` says it before the first line while the singer's
+  deck plays at the guide's level. Held by 2 Rust tests and
+  `e2e/guide-offer.spec.ts` (4); 4 Rust and 5 interface mutants fail them.
+- Not yet: the plan's "marked *not sure* on the form or phone" — no such
+  mark exists on the room's form or the phone page, and adding one is a
+  change to the phone's request (`dj_net` form, `karaoke::Request`), larger
+  than B7. A phone that asks for the guide (K4, *May ask for the guide
+  vocal*) is already applied on load and is not asked again.
 
 - **B6 built** (§129): `ui/src/skins/skins.ts` (six pure-SVG tiles drawn as
   a CSS mask in `--accent` over `body::after`, `pointer-events: none`,
@@ -73,6 +95,10 @@ Only session B edits this file.
 the singers' screen*. Guests then see a row of emoji on the room's page;
 each tap shows small in the corner of the singers' screen and fades within
 seconds. It is off until you turn it on.
+
+**The guide voice.** When the song up next is new to the singer, the
+up-next card shows *Guide voice*, already ticked. Load as usual and the
+original singer stays quietly under them; untick it if they know the song.
 
 ## For the next session (HANDOFF.md)
 
