@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.44.0 — Karaoke, made safer on older machines
+
 - **A machine that cannot listen is offered nothing to download.** Where
   whisper.cpp cannot run — the karaoke build, or a processor without AVX2,
   such as a 2011 Mac's — *Words in time* says why and offers no model, and
