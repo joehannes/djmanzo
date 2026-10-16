@@ -62,7 +62,7 @@ Only session A edits this file.
   away would hide what that mode is for, and §109's and §115's tests caught
   exactly that — the decks moving when the activity strip or a proposal
   came in. Held by `e2e/navbar.spec.ts` (3 mutants fail it); the whole
-  browser suite passes (868, with `whisper.spec.ts`'s too-long sentence
+  browser suite's last full run: 868 passed, 1 failed (§115's proposer, then fixed and confirmed with 84 layout tests and `whisper.spec.ts`; no second full run), with `whisper.spec.ts`'s too-long sentence
   made a little longer: the bar's slimmer padding gave it just enough room
   to fit, which was the one thing that test assumes it cannot do).
 - **A6 built** (§128, "a cogwheel in the navbar and ... a configuration
