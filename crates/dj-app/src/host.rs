@@ -124,10 +124,12 @@ const TIMECODE_CHANNELS: u16 = 2;
 
 /// The widest output djmanzo opens, however many sockets an interface has.
 ///
-/// Eight, because that is the widest arrangement anything asks for: four
-/// stereo stems, which is [`dj_engine::STEM_OUT_CHANNELS`]. Beyond it the
-/// extra channels would be buffer allocated to carry silence.
-const MAX_OUTPUT_CHANNELS: u16 = dj_engine::STEM_OUT_CHANNELS as u16;
+/// The widest arrangement anything asks for ([`dj_engine::WIDEST_OUTPUT`]):
+/// a monitor for each singer, the shared monitor's pair and one more per
+/// microphone. It was eight — four stereo stems — until K9's wedges, which
+/// that cap made unreachable on every interface. Beyond it the extra
+/// channels would be buffer allocated to carry silence.
+const MAX_OUTPUT_CHANNELS: u16 = dj_engine::WIDEST_OUTPUT as u16;
 
 /// What opening produced.
 ///
@@ -1247,8 +1249,9 @@ mod tests {
         let (host, _bus, _reg) = host();
         let devices = host.list_devices().unwrap();
         // A master, a stand-in headphone device so the split path has somewhere
-        // to split to, and a wide one so the eight-channel paths are reachable.
-        assert_eq!(devices.len(), 3);
+        // to split to, a wide one so the eight-channel paths are reachable,
+        // and a wider one for a monitor per singer.
+        assert_eq!(devices.len(), 4);
         assert!(devices[0].is_default);
     }
 
@@ -1269,6 +1272,25 @@ mod tests {
             outcome.master.channels, 8,
             "an eight-output interface was opened at {} channels",
             outcome.master.channels
+        );
+    }
+
+    /// K9: **an interface with sixteen sockets gets sixteen opened.** The
+    /// cap was eight, the widest the stems needed, and a monitor per singer
+    /// needs ten or more — so the split was reachable in the engine's tests
+    /// and on no interface at all.
+    #[test]
+    fn a_singers_interface_opens_every_pair_for_their_monitors() {
+        let (host, _bus, _reg) = host();
+        let outcome = host
+            .open(Some(DeviceId::new("null-singers")), None, 128)
+            .unwrap();
+        assert_eq!(outcome.master.channels, 16);
+        assert!(
+            dj_engine::BusLayout::for_channels(16)
+                .with_wedges(dj_vocal::MOST_STRIPS)
+                .wedges
+                >= 2
         );
     }
 

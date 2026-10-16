@@ -81,6 +81,13 @@ code and an address appear, and anyone on the same Wi-Fi can put
 themselves in the queue with a song from your music. Nothing they ask for
 plays until you load it.
 
+**A monitor for each singer** (an interface with ten outputs or more).
+Under *Microphones*, tick *A monitor for each singer*: Mic 1's singer hears
+outputs 7–8, Mic 2's 9–10, and so on. Press a singer's name for *Their
+monitor* — more of themselves, less of the others, less of the song —
+and djmanzo keeps it with them. With eight outputs there is one monitor,
+7–8, that everyone shares.
+
 **Between singers.** Tick *Break music between singers* and choose a
 playlist: music plays while the next singer gets ready, and leads into
 their song.

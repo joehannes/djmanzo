@@ -459,7 +459,7 @@ piece of this document lands among them.
 | Scored singing, from the separated vocal | K3, M6 | **K6** | built (§9) |
 | A quiz made from the collection | K4, M6 | **K7** | built (§10) |
 | A singer's range, and the key to sing in | K3, K6 | **K8** | built (§11) |
-| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | recorded performances and pitch correction built; the other three wait on hardware, a licence or a secure page (§12) |
+| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | recorded performances, pitch correction and per-singer monitors built; the other two wait on a licence or a secure page (§12) |
 
 ---
 
@@ -1969,6 +1969,69 @@ A mix of their own per singer is one more output pair per strip, so an
 interface with that many — rare in the booths this is for. Built when a
 DJ has one to try it on; until then the one wedge stands.
 
+**Built (16 October 2026), ahead of that interface**, as K3 was built
+before any microphone reached this container, and asked for as part of
+a complete karaoke version. What it is:
+
+- **Asked for, never assumed.** *A monitor for each singer* (`monitor
+  split_on`, `monitor split_off` — actions, so a controller or a script
+  reaches it too) is offered only where the output has a pair for two or
+  more singers: ten outputs or more. Eight outputs keep the one shared
+  wedge however it is asked, and a host with a ten-output interface and one
+  wedge on 7–8 hears nothing change until they choose it. The choice
+  outlasts the interface being opened again — at a smaller buffer for
+  singing, say — because the new engine reads it from the parameter table,
+  which outlives every engine.
+- **Mic *n*'s singer on the *n*-th pair from 7–8 on.** Mic 1 keeps 7–8,
+  Mic 2 gets 9–10, and so on while the outputs last
+  (`BusLayout::with_wedges`). A microphone past the last pair has no wedge
+  of its own; it is one of the others in everyone's, and the panel says so
+  by name. One wedge for the first of several singers is never given: the
+  rest would hear themselves only as somebody's *others*.
+- **Three shares of what is already there**, because what a singer asks
+  for at a sound check is *more me* or *less of everyone else*:
+  *Themselves* — their voice at their strip's monitor send; *The
+  others* — each other singer at theirs; *The music* — at the monitor's
+  level. Each 0 to 1, starting at all of themselves, half of the others
+  (about 6 dB under) and all of the song (`dj_vocal::WedgeMix`). The
+  listener's choice, not the singer's: a loud duet partner is turned down
+  in *my* wedge without being turned down in theirs.
+- **Kept with the singer.** The mix is part of the chain
+  (`dj_vocal::Chain`), so it travels exactly as a compressor setting does:
+  on the guest's record when they agreed to be kept, on their place in
+  tonight's rotation otherwise, on the strip in `vocal.json` when nobody is
+  on it — and a preset leaves it alone, as it leaves pitch correction.
+- **Each wedge behind a limiter of its own**, as the shared one is — for
+  the singer's ears, and because the limiter's look-ahead keeps every
+  wedge in time with the PA behind them. Sixteen are made when the engine
+  is, so splitting never allocates (`rt_safety` runs it on sixteen
+  outputs, shared then split then shared).
+- **On screen:** the switch under the monitor's music; when split, each
+  singer's monitor by name, its outputs and its meter; and *Their monitor*
+  behind a singer's name, the three shares.
+
+Held by a `dj-vocal` test of the mix (one singer at the listener's share
+of them; two at their own and nobody else's, adding to the shared
+monitor; everyone wanting everyone, each wedge the whole), one of the
+layout (which pairs, how many, never fewer than two, never one another
+bus has), one of the engine on ten outputs with three singers (each heard
+alone in turn — in their own wedge, at half in the first's, never in the
+second's, the third in neither as their own), the audio thread counted
+with it, and a browser test. Driven in WebKitGTK on a sixteen-output null
+interface with the null input singing into Mic 1: Mic 1 on outputs 7–8 and
+Mic 2 on 9–10, both meters moving; Mic 1's *Themselves* at nothing emptied
+Mic 1's meter and left Mic 2's, which hears Mic 1 at Mic 2's share for the
+others; and the split, Mic 1's mix and the open microphones all came back
+after the interface was opened again. The drive found two faults the
+tests had not: djmanzo never opened more than eight outputs (the stems'
+width), so no interface could have given a second wedge — now the widest
+arrangement's, `dj_engine::WIDEST_OUTPUT`, held by a host test on a new
+sixteen-channel null device — and the wedge list's names took a class the
+row already used, which put each wedge on three lines; the browser test
+now measures the line. **What it sounds like in a singer's ears is
+for a person to hear**: this container has no interface with ten outputs,
+nor ears.
+
 ### Duet parts, lead apart from backing — not yet
 
 Needs a separation model that splits a lead vocal from the backing ones.
@@ -1991,8 +2054,8 @@ be worth: good enough for scoring, too late for the PA.
 1. **Recorded performances** — the fourth question, the stream per strip,
    *Record their song*, the file on the guest's record.
 2. **Pitch correction** — designed in full, then built.
-3. **Per-singer monitors**, when an interface with the outputs is there to
-   try it on.
+3. **Per-singer monitors** — built ahead of the interface to try it on
+   (16 October 2026), above.
 
 Driven, as K6 was, with the null input singing into a strip and a record
 playing; what a recording sounds like is for a person to hear.

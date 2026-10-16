@@ -43,7 +43,12 @@
       "talkover": false,
       "to_cue": 0.0,
       "to_main": 1.0,
-      "to_monitor": 1.0
+      "to_monitor": 1.0,
+      "wedge": {
+        "music": 1.0,
+        "others": 0.5,
+        "own": 1.0
+      }
     },
     "inputs": 0,
     "limits": {
@@ -142,6 +147,18 @@
       "to_monitor": [
         0.0,
         1.0
+      ],
+      "wedge.music": [
+        0.0,
+        1.0
+      ],
+      "wedge.others": [
+        0.0,
+        1.0
+      ],
+      "wedge.own": [
+        0.0,
+        1.0
       ]
     },
     "on": [],
@@ -215,7 +232,12 @@
       "talkover": false,
       "to_cue": 0.0,
       "to_main": 1.0,
-      "to_monitor": 1.0
+      "to_monitor": 1.0,
+      "wedge": {
+        "music": 1.0,
+        "others": 0.5,
+        "own": 1.0
+      }
     },
     "inputs": 2,
     "limits": {
@@ -312,6 +334,18 @@
         1.0
       ],
       "to_monitor": [
+        0.0,
+        1.0
+      ],
+      "wedge.music": [
+        0.0,
+        1.0
+      ],
+      "wedge.others": [
+        0.0,
+        1.0
+      ],
+      "wedge.own": [
         0.0,
         1.0
       ]
@@ -373,7 +407,12 @@
         "talkover": false,
         "to_cue": 0.0,
         "to_main": 1.0,
-        "to_monitor": 1.0
+        "to_monitor": 1.0,
+        "wedge": {
+          "music": 1.0,
+          "others": 0.5,
+          "own": 1.0
+        }
       },
       {
         "compressor": {
@@ -401,7 +440,12 @@
         "talkover": true,
         "to_cue": 0.0,
         "to_main": 1.0,
-        "to_monitor": 1.0
+        "to_monitor": 1.0,
+        "wedge": {
+          "music": 1.0,
+          "others": 0.5,
+          "own": 1.0
+        }
       }
     ],
     "working": 1
@@ -450,7 +494,12 @@
       "talkover": false,
       "to_cue": 0.0,
       "to_main": 1.0,
-      "to_monitor": 1.0
+      "to_monitor": 1.0,
+      "wedge": {
+        "music": 1.0,
+        "others": 0.5,
+        "own": 1.0
+      }
     },
     "inputs": 2,
     "limits": {
@@ -547,6 +596,18 @@
         1.0
       ],
       "to_monitor": [
+        0.0,
+        1.0
+      ],
+      "wedge.music": [
+        0.0,
+        1.0
+      ],
+      "wedge.others": [
+        0.0,
+        1.0
+      ],
+      "wedge.own": [
         0.0,
         1.0
       ]
@@ -611,7 +672,12 @@
         "talkover": false,
         "to_cue": 0.0,
         "to_main": 1.0,
-        "to_monitor": 1.0
+        "to_monitor": 1.0,
+        "wedge": {
+          "music": 0.75,
+          "others": 0.25,
+          "own": 1.0
+        }
       },
       {
         "compressor": {
@@ -639,7 +705,12 @@
         "talkover": true,
         "to_cue": 0.0,
         "to_main": 1.0,
-        "to_monitor": 1.0
+        "to_monitor": 1.0,
+        "wedge": {
+          "music": 1.0,
+          "others": 0.5,
+          "own": 1.0
+        }
       }
     ],
     "working": 1

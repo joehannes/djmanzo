@@ -1084,6 +1084,9 @@
       "starved_frames": 0.0,
       "strips": [],
       "monitor_music_db": null,
+      "monitor_split": false,
+      "monitor_pairs": 0,
+      "monitor_wedges": 0,
       "settings_rev": 0.0
     },
     "automix": {

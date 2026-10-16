@@ -159,6 +159,23 @@ impl NullBackend {
         }
     }
 
+    /// K9: a fourth, wide enough for a monitor per singer.
+    ///
+    /// The same argument again, found the same way: a wedge per singer needs
+    /// ten outputs or more, and with the widest null device at eight the
+    /// split was reachable in the engine's tests and nowhere else. Sixteen,
+    /// like a rack interface in a karaoke bar: the shared monitor's pair and
+    /// four more, five singers with a wedge each.
+    fn singers_device_info() -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId::new("null-singers"),
+            name: "Null 16-channel output (no hardware)".to_owned(),
+            max_output_channels: 16,
+            default_sample_rate: SampleRate::DEFAULT,
+            is_default: false,
+        }
+    }
+
     /// A virtual capture device.
     ///
     /// Same argument as the wide output above, one layer along: until this
@@ -190,6 +207,9 @@ impl NullBackend {
         match id {
             Some(wanted) if wanted == &Self::cue_device_info().id => Self::cue_device_info(),
             Some(wanted) if wanted == &Self::wide_device_info().id => Self::wide_device_info(),
+            Some(wanted) if wanted == &Self::singers_device_info().id => {
+                Self::singers_device_info()
+            }
             _ => Self::device_info(),
         }
     }
@@ -205,6 +225,7 @@ impl AudioBackend for NullBackend {
             Self::device_info(),
             Self::cue_device_info(),
             Self::wide_device_info(),
+            Self::singers_device_info(),
         ])
     }
 
@@ -526,11 +547,12 @@ mod tests {
     }
 
     #[test]
-    fn null_backend_reports_a_default_and_two_more_devices() {
+    fn null_backend_reports_a_default_and_three_more_devices() {
         let devices = NullBackend::new().output_devices().unwrap();
-        // Three: one to split *to*, and one wide enough for the arrangements
-        // four channels cannot hold.
-        assert_eq!(devices.len(), 3);
+        // Four: one to split *to*, one wide enough for the arrangements four
+        // channels cannot hold, and one for a monitor per singer.
+        assert_eq!(devices.len(), 4);
+        assert_eq!(devices[3].max_output_channels, 16);
         assert!(devices[0].is_default);
         assert!(devices[0].supports_split_output());
         assert!(!devices[1].is_default);

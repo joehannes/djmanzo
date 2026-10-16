@@ -442,6 +442,15 @@ pub struct VocalsSnapshot {
     /// output device has no pair for one (fewer than eight channels, or the
     /// decks going out on pairs of their own).
     pub monitor_music_db: Option<f32>,
+    /// K9: the host has asked for a monitor per singer (docs/KARAOKE.md
+    /// §12) — whether or not the output can give them.
+    pub monitor_split: bool,
+    /// K9: how many wedges the output could carry, one per pair from the
+    /// singers' monitor's on — two or more is what the split is offered for.
+    pub monitor_pairs: u8,
+    /// K9: how many singers have a wedge of their own now, Mic 1 on the
+    /// monitor's pair and each next on the pair after; zero while shared.
+    pub monitor_wedges: u8,
     /// How many times the host has changed a strip's settings: a screen
     /// showing them asks for them again when this moves.
     pub settings_rev: f64,
@@ -460,6 +469,9 @@ pub struct VocalStripSnapshot {
     pub working: bool,
     /// K6: the pitch last heard on it, in cents above A4, when one was.
     pub pitch: Option<f32>,
+    /// K9: the peak of its singer's own wedge, 0..=1 — zero while the
+    /// singers share the monitor.
+    pub wedge: f32,
 }
 
 /// One deck's stem playing over another's mix.
@@ -1052,10 +1064,16 @@ impl Snapshot {
                                 working: strip(index, VocalParam::Working) >= 0.5,
                                 pitch: (strip(index, VocalParam::Sung) >= 0.5)
                                     .then(|| strip(index, VocalParam::Pitch)),
+                                wedge: strip(index, VocalParam::Wedge),
                             })
                             .collect(),
                         monitor_music_db: (get(GlobalParam::MonitorAvailable) >= 0.5)
                             .then(|| get(GlobalParam::MonitorMusicDb)),
+                        monitor_split: get(GlobalParam::MonitorSplit) >= 0.5,
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        monitor_pairs: get(GlobalParam::MonitorPairs).clamp(0.0, 255.0) as u8,
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        monitor_wedges: get(GlobalParam::MonitorWedges).clamp(0.0, 255.0) as u8,
                         settings_rev: f64::from(get(GlobalParam::VocalSettingsRev)),
                     }
                 },

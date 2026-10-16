@@ -2206,8 +2206,16 @@ fn the_browser_fixture_has_the_singers_microphones() {
         open: true,
         ..dj_vocal::StripSettings::default()
     });
-    // K3: Ana on Mic 1, through the soft singer's chain kept on her record.
-    let ana = dj_vocal::Preset::SoftSinger.applied_to(&dj_vocal::StripSettings::default());
+    // K3: Ana on Mic 1, through the soft singer's chain kept on her record —
+    // and, K9, less of everyone else and of the song in a monitor of her own.
+    let ana = dj_vocal::StripSettings {
+        wedge: dj_vocal::WedgeMix {
+            own: 1.0,
+            others: 0.25,
+            music: 0.75,
+        },
+        ..dj_vocal::Preset::SoftSinger.applied_to(&dj_vocal::StripSettings::default())
+    };
     let fixture = serde_json::json!({
         "closed": dj_app::commands::vocals_for(0, 0, 0, Vec::new(), Vec::new(), 0.006),
         "open": dj_app::commands::vocals_for(

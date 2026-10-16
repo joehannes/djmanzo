@@ -11,7 +11,7 @@
    * A change sends the strip's whole settings, which Rust holds to the same
    * limits, keeps and hands to the engine.
    */
-  import type { StripSettings, VocalLimits } from "./api";
+  import type { StripSettings, VocalLimits, WedgeMix } from "./api";
 
   let {
     index,
@@ -20,6 +20,7 @@
     everyStage,
     pulledTo = null,
     latencyMs,
+    wedge = null,
     onchange,
   }: {
     index: number;
@@ -30,6 +31,12 @@
     pulledTo?: string | null;
     /** K9: what pitch correction adds to the voice, in milliseconds, Rust's. */
     latencyMs: number;
+    /**
+     * K9: the outputs this strip's singer has a monitor of their own on
+     * ("7–8"), while the singers' monitor is split; `null` while it is shared
+     * or there is no pair left for them — and then there is nothing to set.
+     */
+    wedge?: string | null;
     onchange: (settings: StripSettings) => void;
   } = $props();
 
@@ -118,6 +125,24 @@
   function setTop(key: Top, value: number) {
     onchange({ ...strip, [key]: value });
   }
+
+  /**
+   * K9: what the singer hears in their own monitor — a share of each of the
+   * three things in it. Kept with their chain, so a singer who wanted less
+   * of everyone else gets that again next time.
+   */
+  const MIX: { key: keyof WedgeMix; label: string }[] = [
+    { key: "own", label: "Themselves" },
+    { key: "others", label: "The others" },
+    { key: "music", label: "The music" },
+  ];
+  /** A strip kept before the split existed has Rust's starting mix. */
+  const mix = $derived(strip.wedge ?? everyStage.wedge);
+
+  function setMix(key: keyof WedgeMix, value: number) {
+    if (!mix) return;
+    onchange({ ...strip, wedge: { ...mix, [key]: value } });
+  }
 </script>
 
 <div class="chain" role="group" aria-label="Mic {index + 1}'s chain">
@@ -151,6 +176,29 @@
       <span>Talks over the music</span>
     </label>
   </fieldset>
+  {#if wedge && mix}
+    <fieldset data-stage="wedge">
+      <legend>Their monitor <small class="late">outputs {wedge}</small></legend>
+      {#each MIX as control (control.key)}
+        {@const range = limit(`wedge.${control.key}`)}
+        {#if range}
+          <label>
+            <span>{control.label}</span>
+            <input
+              type="range"
+              min={range[0]}
+              max={range[1]}
+              step="0.05"
+              value={mix[control.key]}
+              aria-label="Mic {index + 1} monitor {control.label}"
+              onchange={(e) => setMix(control.key, Number(e.currentTarget.value))}
+            />
+            <output>{shown(`wedge.${control.key}`, mix[control.key], "")}</output>
+          </label>
+        {/if}
+      {/each}
+    </fieldset>
+  {/if}
   {#each STAGES as { stage, name } (stage)}
     {@const settings = strip[stage] as Record<string, number> | null}
     <fieldset data-stage={stage} data-on={settings !== null}>

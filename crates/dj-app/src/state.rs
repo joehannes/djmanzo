@@ -3090,8 +3090,8 @@ mod tests {
         let devices = state.host().list_devices().unwrap();
         assert_eq!(
             devices.len(),
-            3,
-            "null backend exposes a master, a headphone device and a wide one"
+            4,
+            "null backend exposes a master, a headphone device, a wide one and one for a monitor per singer"
         );
     }
 }

@@ -172,6 +172,15 @@ pub struct Engine {
     /// third bus, and for the same second reason: a singer's own voice at
     /// full send over the music can go past full scale, into their ears.
     monitor_limiter: Limiter,
+    /// K9: whether the host asked for a wedge per singer
+    /// (docs/KARAOKE.md §12). Given in [`BusLayout::with_wedges`] each block,
+    /// where the output and the singers are known.
+    monitor_split: bool,
+    /// K9: a limiter for each singer's wedge, as the shared one has — made
+    /// here for every strip there could be, so a split never allocates.
+    wedge_limiters: Vec<Limiter>,
+    /// K9: each wedge's peak this block, for the host's meters.
+    wedge_peaks: [f32; dj_vocal::MOST_STRIPS],
 
     /// Sources we could not hand back because the retirement queue was full.
     /// Held rather than dropped -- dropping here is exactly what the queue
@@ -197,6 +206,11 @@ impl Engine {
     ) -> Self {
         let deck_count = deck_count.min(MAX_DECKS);
         let sr = sample_rate.as_f64() as f32;
+        // K9: what the host last asked for, from the registry, which outlives
+        // an engine: opening the interface again — at a smaller buffer for
+        // singing, say — must not quietly put every singer back on the one
+        // shared wedge.
+        let monitor_split = registry.get(ParamId::Global(GlobalParam::MonitorSplit)) >= 0.5;
 
         let engine = Self {
             decks: (0..deck_count)
@@ -251,6 +265,11 @@ impl Engine {
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
             monitor_limiter: Limiter::new(sr),
+            monitor_split,
+            wedge_limiters: (0..dj_vocal::MOST_STRIPS)
+                .map(|_| Limiter::new(sr))
+                .collect(),
+            wedge_peaks: [0.0; dj_vocal::MOST_STRIPS],
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
             // 1024 frames of window, a transform every 512 — 94 Hz, comfortably
@@ -989,6 +1008,20 @@ impl Engine {
                     self.monitor_music_db,
                 );
             }
+            Action::Mixer(MixerAction::MonitorSplit(split)) => {
+                if split != self.monitor_split {
+                    // Each wedge's look-ahead still holds whatever it last
+                    // carried, maybe a song ago; let it start from silence
+                    // rather than play five stale milliseconds into an ear.
+                    for limiter in &mut self.wedge_limiters {
+                        limiter.reset();
+                    }
+                    self.monitor_limiter.reset();
+                }
+                self.monitor_split = split;
+                self.registry
+                    .set_bool(ParamId::Global(GlobalParam::MonitorSplit), split);
+            }
             Action::Mixer(MixerAction::MasterGainDb(db)) => {
                 self.master_gain_db = db.clamp(-24.0, 24.0);
                 self.master_gain
@@ -1154,6 +1187,7 @@ impl Engine {
                     0.0
                 },
             );
+            publish(VocalParam::Wedge, self.wedge_peaks[index]);
         }
     }
 
@@ -1806,7 +1840,13 @@ impl AudioCallback for Engine {
         } else if let Some(decks) = self.deck_out {
             layout = layout.with_deck_out(decks);
         }
+        // K9: a wedge per singer, after the decks and the stems have had
+        // what they take — the singers' monitor among it.
+        if self.monitor_split {
+            layout = layout.with_wedges(self.vocals.as_ref().map_or(0, |vocals| vocals.inputs()));
+        }
         let layout = layout;
+        self.wedge_peaks = [0.0; dj_vocal::MOST_STRIPS];
         let channels = layout.channels;
         self.registry
             .set_bool(ParamId::Global(GlobalParam::CueAvailable), layout.has_cue());
@@ -1814,6 +1854,17 @@ impl AudioCallback for Engine {
             ParamId::Global(GlobalParam::MonitorAvailable),
             layout.monitor.is_some(),
         );
+        #[allow(clippy::cast_precision_loss)]
+        {
+            self.registry.set(
+                ParamId::Global(GlobalParam::MonitorPairs),
+                layout.wedge_pairs() as f32,
+            );
+            self.registry.set(
+                ParamId::Global(GlobalParam::MonitorWedges),
+                layout.wedges as f32,
+            );
+        }
 
         // Decks add into the shared buffer -- master post-fader, cue pre-fader
         // -- so no per-deck scratch is needed.
@@ -1990,13 +2041,29 @@ impl AudioCallback for Engine {
             // echo thrown over the room does not land in a singer's ears.
             let monitor = self.monitor_music.next_value();
             if let Some((monitor_l, monitor_r)) = layout.monitor {
+                let music_l = frame[main_l];
                 let music_r = if layout.is_mono() {
                     frame[main_l]
                 } else {
                     frame[main_r]
                 };
-                frame[monitor_l] = frame[main_l].mul_add(monitor, voices.monitor[0]);
-                frame[monitor_r] = music_r.mul_add(monitor, voices.monitor[1]);
+                if layout.wedges == 0 {
+                    frame[monitor_l] = music_l.mul_add(monitor, voices.monitor[0]);
+                    frame[monitor_r] = music_r.mul_add(monitor, voices.monitor[1]);
+                } else if let Some(vocals) = self.vocals.as_ref() {
+                    // K9: split, each singer's wedge is the mix they asked
+                    // for — the music at the monitor's level times their
+                    // share of it, and the singers as `Vocals::wedge` has
+                    // them.
+                    for index in 0..layout.wedges {
+                        if let Some((left, right)) = layout.wedge(index) {
+                            let singers = vocals.wedge(index);
+                            let music = monitor * vocals.wedge_music(index);
+                            frame[left] = music_l.mul_add(music, singers[0]);
+                            frame[right] = music_r.mul_add(music, singers[1]);
+                        }
+                    }
+                }
             }
 
             // Master first: everything downstream is derived from it.
@@ -2120,7 +2187,24 @@ impl AudioCallback for Engine {
             // The singers' wedge, through a limiter of its own — which also
             // delays it exactly as much as the master, so the wedge and the
             // PA a singer hears behind them do not flam.
-            if let Some((monitor_l, monitor_r)) = layout.monitor {
+            if layout.wedges > 0 {
+                // K9: each singer's wedge through a limiter of its own, for
+                // both reasons — their ears, and the PA behind them.
+                for (index, limiter) in self
+                    .wedge_limiters
+                    .iter_mut()
+                    .enumerate()
+                    .take(layout.wedges)
+                {
+                    if let Some((left, right)) = layout.wedge(index) {
+                        let (out_l, out_r) = limiter.process_frame(frame[left], frame[right]);
+                        frame[left] = out_l.clamp(-1.0, 1.0);
+                        frame[right] = out_r.clamp(-1.0, 1.0);
+                        self.wedge_peaks[index] =
+                            self.wedge_peaks[index].max(out_l.abs()).max(out_r.abs());
+                    }
+                }
+            } else if let Some((monitor_l, monitor_r)) = layout.monitor {
                 let (out_l, out_r) = self
                     .monitor_limiter
                     .process_frame(frame[monitor_l], frame[monitor_r]);
@@ -5598,6 +5682,26 @@ mod mic_tests {
             )
         }
 
+        /// K9: render across `channels` and give back every channel's peak.
+        fn render_channels(&mut self, frames: usize, channels: usize) -> Vec<f32> {
+            let mut out = vec![0.0; frames * channels];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels,
+                    sample_rate: SR,
+                },
+            );
+            (0..channels)
+                .map(|channel| {
+                    out.chunks_exact(channels)
+                        .map(|f| f[channel].abs())
+                        .fold(0.0, f32::max)
+                })
+                .collect()
+        }
+
         fn get(&self, param: GlobalParam) -> f32 {
             self.registry.get(ParamId::Global(param))
         }
@@ -6484,6 +6588,116 @@ mod mic_tests {
         // Six channels: no pair for it, and the snapshot is told.
         rig.render_monitor(64, 6);
         assert!(rig.get(GlobalParam::MonitorAvailable).abs() < f32::EPSILON);
+    }
+    /// K9: **split, each singer hears the mix they asked for in a wedge of
+    /// their own** (docs/KARAOKE.md §12). Ten outputs carry two wedges, on
+    /// 7–8 and 9–10, and three singers are on microphones. The first wants
+    /// the song and half of everyone else; the second only their own voice.
+    /// The third has no pair left and is one of the others in both. Each
+    /// singer is heard alone in turn: in their own wedge at their send, in
+    /// the first's at half, never in the second's. Split off, the singers
+    /// share 7–8 again and 9–10 falls silent; eight outputs have one pair,
+    /// so asking changes nothing there.
+    #[test]
+    fn a_split_monitor_gives_each_singer_the_mix_they_asked_for() {
+        const VOICE: f32 = 0.3;
+        const WIDE: usize = 10;
+        let mut rig = rig();
+        rig.play_music(0.5);
+        let mut vocals = dj_vocal::Vocals::new(SR.get() as f32, 3);
+        let (mut ring, consumer) = rtrb::RingBuffer::new(48_000 * 3 * 2);
+        vocals.set_input(Some(consumer));
+        rig.send(Command::Vocals {
+            rack: Some(Box::new(vocals)),
+        });
+        let (singer, _) = strips();
+        let wants = |own, others, music| dj_vocal::StripSettings {
+            wedge: dj_vocal::WedgeMix { own, others, music },
+            ..singer
+        };
+        for (strip, settings) in [
+            (0, wants(1.0, 0.5, 1.0)),
+            (1, wants(1.0, 0.0, 0.0)),
+            (2, singer),
+        ] {
+            rig.send(Command::VocalStrip { strip, settings });
+        }
+        let mut sing = |rig: &mut Rig, voices: [f32; 3], blocks: usize| {
+            let mut peaks = Vec::new();
+            for _ in 0..blocks {
+                for _ in 0..2_048 {
+                    for voice in voices {
+                        ring.push(voice).expect("ring full");
+                    }
+                }
+                peaks = rig.render_channels(2_048, WIDE);
+            }
+            peaks
+        };
+        let centred = VOICE * std::f32::consts::FRAC_1_SQRT_2;
+        let near = |heard: f32, wanted: f32| (heard - wanted).abs() < 0.01;
+
+        // Shared: everyone on 7–8, nothing on 9–10.
+        let peaks = sing(&mut rig, [VOICE, 0.0, 0.0], 10);
+        let music = sing(&mut rig, [0.0; 3], 10)[6];
+        assert!(music > 0.2, "no music in the monitor ({music})");
+        assert!(near(peaks[6], music + centred), "{peaks:?}");
+        assert!(peaks[8] < 1e-6, "a wedge nobody asked for: {peaks:?}");
+        assert!(rig.get(GlobalParam::MonitorWedges).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MonitorPairs) - 2.0).abs() < f32::EPSILON);
+
+        rig.act(Action::Mixer(MixerAction::MonitorSplit(true)));
+        let wedge = |rig: &Rig, index: u8| {
+            rig.registry
+                .get(ParamId::Vocal(index, dj_core::param::VocalParam::Wedge))
+        };
+        // The first singer: their own wedge in full, nothing in the second's.
+        let peaks = sing(&mut rig, [VOICE, 0.0, 0.0], 10);
+        assert!((rig.get(GlobalParam::MonitorSplit) - 1.0).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MonitorWedges) - 2.0).abs() < f32::EPSILON);
+        assert!(near(peaks[6], music + centred), "first alone: {peaks:?}");
+        assert!(peaks[8] < 1e-6, "the second heard the first: {peaks:?}");
+        assert!(near(wedge(&rig, 0), peaks[6]));
+        // The second: themselves, without the song, in their own; half of
+        // them in the first's.
+        let peaks = sing(&mut rig, [0.0, VOICE, 0.0], 10);
+        assert!(
+            near(peaks[6], music + centred * 0.5),
+            "second alone: {peaks:?}"
+        );
+        assert!(near(peaks[8], centred), "second alone: {peaks:?}");
+        assert!(near(wedge(&rig, 1), centred));
+        // The third, with no wedge of their own: one of the others in both.
+        let peaks = sing(&mut rig, [0.0, 0.0, VOICE], 10);
+        assert!(
+            near(peaks[6], music + centred * 0.5),
+            "third alone: {peaks:?}"
+        );
+        assert!(peaks[8] < 1e-6, "third alone: {peaks:?}");
+        assert!(wedge(&rig, 2).abs() < f32::EPSILON, "a wedge for the third");
+
+        // Split off: shared again.
+        rig.act(Action::Mixer(MixerAction::MonitorSplit(false)));
+        let peaks = sing(&mut rig, [0.0, VOICE, 0.0], 10);
+        assert!(near(peaks[6], music + centred), "shared again: {peaks:?}");
+        assert!(peaks[8] < 1e-6, "shared again: {peaks:?}");
+        assert!(rig.get(GlobalParam::MonitorWedges).abs() < f32::EPSILON);
+
+        // Eight outputs: one pair, which is the shared monitor however asked.
+        rig.act(Action::Mixer(MixerAction::MonitorSplit(true)));
+        rig.render_channels(64, 8);
+        assert!(rig.get(GlobalParam::MonitorWedges).abs() < f32::EPSILON);
+        assert!((rig.get(GlobalParam::MonitorPairs) - 1.0).abs() < f32::EPSILON);
+
+        // The interface opened again is a new engine on the same registry:
+        // still split, as the host left it.
+        let (_commands, commands) = rtrb::RingBuffer::new(4);
+        let (retired, _retired) = rtrb::RingBuffer::new(4);
+        let again = Engine::new(2, SR, commands, retired, Arc::clone(&rig.registry));
+        assert!(
+            again.monitor_split,
+            "opening the interface again undid the split"
+        );
     }
 }
 

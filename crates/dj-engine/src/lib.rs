@@ -27,7 +27,7 @@ pub mod rack;
 pub mod record;
 pub mod sampler;
 
-pub use bus::{BusLayout, BusRouting, STEM_OUT_CHANNELS};
+pub use bus::{BusLayout, BusRouting, STEM_OUT_CHANNELS, WIDEST_OUTPUT};
 pub use command::{Command, Retired};
 pub use deck::{Deck, DeckLevels};
 pub use engine::{Engine, MONITOR_MUSIC_OFF_DB};

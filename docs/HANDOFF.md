@@ -119,6 +119,18 @@ in its own arguments — the build or test chain after it silently never runs
 (exit 144). Stop the app with `pkill -x djmanzo`, which matches the process
 name only. Cost two gate runs on 15 October.
 
+**With `DJMANZO_DEMO` the bar names the remembered device but the default
+one is open.** The demo opens the default output (four null channels)
+before the interface reads its remembered choice, and the top bar shows the
+choice. Anything that depends on the width — the singers' monitor, a wedge
+per singer, stem or deck outputs — then reads as absent. Press the device
+name, then *Reconnect* (it empties the decks). The choice itself lives in
+WebKit's localStorage (`~/.local/share/app.djmanzo.desktop/localstorage/`,
+key `djmanzo.audio`, UTF-16 JSON), which is the only way to pick a device
+here: a native `select` does not answer synthetic input under Xvfb. The
+sixteen-channel null device (`null-singers`) exists for K9's wedges.
+Found 16 October.
+
 **A karaoke-mode `dist/` is not the one the browser tests expect.** `npm run
 build:karaoke` writes the same `ui/dist` as `npm run build`, lowered to
 Safari 13 and opening on Karaoke. Run `npm run build` (and read `✓ built`)
@@ -1470,6 +1482,14 @@ release check names the usual ones), a C++ library using
 function Safari 13 lacks — `src/legacy.ts` is where such a function is
 filled in, and CI's es-check catches new *syntax* but not a missing
 *function*.
+
+**Karaoke's milestones (16 October).** K1–K8 are built, and K9 is three of
+five: recorded performances, pitch correction and — since 16 October — a
+monitor for each singer ([KARAOKE.md §12](KARAOKE.md#12-what-k9-holds-and-the-order-k9)).
+The two left wait on things this container cannot supply: duet parts on a
+separation model whose licence ADR-0002 admits, and phones as microphones
+on a secure page. Nothing in K1–K9 has been heard by a person through a
+real interface; that is the next step that matters, and it needs hardware.
 
 `DIRECTIVE-STATUS.md` holds the live count; re-run its script rather than
 trusting a number written anywhere else, including here.

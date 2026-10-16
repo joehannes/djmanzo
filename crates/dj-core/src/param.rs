@@ -760,6 +760,15 @@ pub enum GlobalParam {
     /// K3: the music's level in the singers' monitor, in dB, apart from what
     /// the room hears. Each singer's own voice there is their strip's send.
     MonitorMusicDb,
+    /// K9: 1.0 while the host has asked for a wedge per singer
+    /// (docs/KARAOKE.md §12) — whether or not the output can give them.
+    MonitorSplit,
+    /// K9: how many wedges the output could carry, one per pair from the
+    /// singers' monitor's on: what the split is offered for.
+    MonitorPairs,
+    /// K9: how many singers have a wedge of their own now; zero while they
+    /// share the one monitor.
+    MonitorWedges,
 }
 
 impl DeckParam {
@@ -959,7 +968,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since, two for §22's audition, and five for K3's singers.
-    pub const COUNT: usize = 144;
+    pub const COUNT: usize = 147;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1114,6 +1123,9 @@ impl GlobalParam {
             VocalSettingsRev,
             MonitorAvailable,
             MonitorMusicDb,
+            MonitorSplit,
+            MonitorPairs,
+            MonitorWedges,
         ]
     }
 }
@@ -1139,10 +1151,13 @@ pub enum VocalParam {
     Pitch,
     /// K6: 1.0 while the last reading of the strip's voice found a pitch.
     Sung,
+    /// K9: the peak of the strip's singer's own wedge in the last block,
+    /// 0..=1 — silent while the monitor is shared.
+    Wedge,
 }
 
 impl VocalParam {
-    pub const COUNT: usize = 6;
+    pub const COUNT: usize = 7;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1158,6 +1173,7 @@ impl VocalParam {
             VocalParam::Working,
             VocalParam::Pitch,
             VocalParam::Sung,
+            VocalParam::Wedge,
         ]
     }
 
@@ -1169,6 +1185,7 @@ impl VocalParam {
             VocalParam::Working => "working",
             VocalParam::Pitch => "pitch",
             VocalParam::Sung => "sung",
+            VocalParam::Wedge => "wedge",
         }
     }
 }
@@ -1492,6 +1509,9 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::VocalSettingsRev => "vocal_settings_rev",
         GlobalParam::MonitorAvailable => "monitor_available",
         GlobalParam::MonitorMusicDb => "monitor_music_db",
+        GlobalParam::MonitorSplit => "monitor_split",
+        GlobalParam::MonitorPairs => "monitor_pairs",
+        GlobalParam::MonitorWedges => "monitor_wedges",
         GlobalParam::Quantize => "quantize",
     }
 }

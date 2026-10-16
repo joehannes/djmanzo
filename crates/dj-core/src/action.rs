@@ -613,6 +613,10 @@ pub enum MixerAction {
     BoothGainDb(f32),
     /// K3: the music's level in the singers' monitor, apart from the room's.
     MonitorMusicDb(f32),
+    /// K9: a wedge per singer (`true`) or one monitor they share
+    /// (docs/KARAOKE.md §12). Asked for; given where the output has a pair
+    /// for at least two singers.
+    MonitorSplit(bool),
     /// Snap beat jumps -- and later cues and loops -- to the grid.
     ///
     /// Global rather than per-deck because it is a way of *working*, not a
@@ -803,6 +807,8 @@ impl Action {
                 "music" => Ok(Action::Mixer(MixerAction::MonitorMusicDb(parse_f32(
                     words.next(),
                 )?))),
+                "split_on" => Ok(Action::Mixer(MixerAction::MonitorSplit(true))),
+                "split_off" => Ok(Action::Mixer(MixerAction::MonitorSplit(false))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
             // `sampler 3 trigger` addresses a pad; `sampler bank 2` addresses
@@ -1572,6 +1578,8 @@ impl fmt::Display for Action {
                 write!(f, "monitor music {}", number(f64::from(*v)))
             }
             Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
+            Action::Mixer(MixerAction::MonitorSplit(true)) => write!(f, "monitor split_on"),
+            Action::Mixer(MixerAction::MonitorSplit(false)) => write!(f, "monitor split_off"),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
             Action::Mixer(MixerAction::SetRecording(true)) => write!(f, "record on"),
@@ -2483,6 +2491,8 @@ mod tests {
             Action::Mixer(MixerAction::SplitCue(true)),
             Action::Mixer(MixerAction::BoothGainDb(-6.0)),
             Action::Mixer(MixerAction::MonitorMusicDb(-9.5)),
+            Action::Mixer(MixerAction::MonitorSplit(true)),
+            Action::Mixer(MixerAction::MonitorSplit(false)),
             Action::Mixer(MixerAction::Crossfader(-0.25)),
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),
             Action::Mixer(MixerAction::Listen(true)),

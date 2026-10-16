@@ -370,14 +370,15 @@ fn the_headphone_cue_path_never_allocates() {
 
 /// K3: the singers' microphones on the audio thread. Eight strips with their
 /// chains, singing and falling silent, settings changed mid-set, the rack
-/// replaced and then taken away, on eight outputs so the singers' monitor
-/// runs too — none of it may allocate. The racks are built before the count,
+/// replaced and then taken away, on sixteen outputs so the singers' monitor
+/// runs too, shared and then split a wedge per singer (K9) — none of it may
+/// allocate. The racks are built before the count,
 /// where the host builds them.
 #[test]
 fn the_singers_microphones_never_allocate() {
     const STRIPS: usize = 8;
-    // Eight outputs, so the singers' monitor pair and its limiter run too.
-    let mut rig = rig_with_channels(4, 256, 8);
+    // Sixteen outputs: the shared monitor, and five wedges once it is split.
+    let mut rig = rig_with_channels(4, 256, 16);
     for n in 1..=2u8 {
         rig.load_and_play(n, 2_000_000);
     }
@@ -431,6 +432,10 @@ fn the_singers_microphones_never_allocate() {
             }
             if block == 200 {
                 rig.act(Action::Mixer(MixerAction::MonitorMusicDb(-9.0)));
+            }
+            // K9: a wedge per singer for a while, and back to one.
+            if block == 100 || block == 350 {
+                rig.act(Action::Mixer(MixerAction::MonitorSplit(block == 100)));
             }
             if block == 300
                 && let Some(ring) = returned_ring.take()

@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A monitor for each singer.** On an audio interface with ten outputs or
+  more, *A monitor for each singer* (under the monitor's music, in
+  *Microphones*) gives Mic 1's singer outputs 7–8, Mic 2's 9–10, and on.
+  Behind a singer's name, *Their monitor* sets how much they hear of
+  themselves, of everyone else and of the song — kept with them like the
+  rest of their sound. Eight outputs keep the one monitor everyone shares.
+  Controllers and scripts reach it as `monitor split_on` and
+  `monitor split_off`; the assistant is now also told about
+  `monitor music`, which it never was.
+
 - **The karaoke build listens wherever the Mac can.** It used to leave
   speech recognition — timing the words by listening, and spoken commands —
   out for every Mac, because a 2011 laptop cannot run it. Now it carries it

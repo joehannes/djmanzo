@@ -39,7 +39,7 @@ pub use dynamics::{Compressor, DeEsser, Gate};
 pub use space::{Echo, LONGEST_ECHO_SECONDS, LONGEST_REVERB_SECONDS, Reverb};
 pub use strip::{
     Chain, CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, LIMITS,
-    Preset, ReverbSettings, Strip, StripFrame, StripSettings, range,
+    Preset, ReverbSettings, Strip, StripFrame, StripSettings, WedgeMix, range,
 };
 pub use tune::{
     CorrectionSettings, Corrector, LATENCY_SECONDS as CORRECTION_LATENCY_SECONDS, Scale,
@@ -136,6 +136,11 @@ pub struct Vocals {
     /// through its chain, echo and room, panned and sent — kept apart from
     /// the others' for a recording of one singer's song.
     mains: [[f32; 2]; MOST_STRIPS],
+    /// K9: each strip's own share of the singers' monitor in the last frame,
+    /// and all of them summed — what a wedge of one singer's own is mixed
+    /// from ([`Self::wedge`]).
+    monitors: [[f32; 2]; MOST_STRIPS],
+    monitor: [f32; 2],
     /// K6: each strip's voice for the listening, once [`Self::listen`] has
     /// made the rings. Empty until then.
     taps: Vec<Tap>,
@@ -160,6 +165,8 @@ impl Vocals {
             starved: 0,
             voices: [0.0; MOST_STRIPS],
             mains: [[0.0; 2]; MOST_STRIPS],
+            monitors: [[0.0; 2]; MOST_STRIPS],
+            monitor: [0.0; 2],
             taps: Vec::new(),
             unheard: 0,
             sample_rate,
@@ -223,6 +230,37 @@ impl Vocals {
     #[must_use]
     pub fn main_of(&self, index: usize) -> [f32; 2] {
         self.mains.get(index).copied().unwrap_or([0.0; 2])
+    }
+
+    /// K9: the singers in wedge `index` in the last frame, left and right —
+    /// the wedge of the singer on strip `index`, once the monitor is split
+    /// one per singer (docs/KARAOKE.md §12). Their own voice at their monitor
+    /// send times their [`WedgeMix::own`], and every other strip's at its
+    /// send times their [`WedgeMix::others`]: what *they* asked to hear of
+    /// everyone else, not what everyone else asked to be heard at. The music
+    /// is the engine's to add, at [`Self::wedge_music`].
+    #[must_use]
+    pub fn wedge(&self, index: usize) -> [f32; 2] {
+        let own = self.monitors.get(index).copied().unwrap_or([0.0; 2]);
+        let mix = self.wedge_mix(index);
+        // own · own_share + (all − own) · others_share, with one multiply
+        // fewer: a wedge per singer is up to sixteen of these a frame.
+        [0, 1].map(|side| own[side].mul_add(mix.own - mix.others, self.monitor[side] * mix.others))
+    }
+
+    /// K9: the share of the monitor's music in wedge `index` — its singer's
+    /// [`WedgeMix::music`].
+    #[must_use]
+    pub fn wedge_music(&self, index: usize) -> f32 {
+        self.wedge_mix(index).music
+    }
+
+    /// What the singer on strip `index` asked to hear; a singer's defaults
+    /// for a strip that is not there.
+    fn wedge_mix(&self, index: usize) -> WedgeMix {
+        self.strips
+            .get(index)
+            .map_or_else(WedgeMix::default, |strip| strip.settings().wedge)
     }
 
     /// How many strips there are.
@@ -298,6 +336,9 @@ impl Vocals {
             if let Some(main) = self.mains.get_mut(index) {
                 *main = out.main;
             }
+            if let Some(monitor) = self.monitors.get_mut(index) {
+                *monitor = out.monitor;
+            }
             for side in 0..2 {
                 frame.main[side] += out.main[side];
                 frame.cue[side] += out.cue[side];
@@ -305,6 +346,7 @@ impl Vocals {
             }
             frame.music_gain = frame.music_gain.min(out.music_gain);
         }
+        self.monitor = frame.monitor;
         // Inputs beyond the last strip: read, so the next frame starts where
         // it should, and let go.
         if whole && let Some(input) = self.input.as_mut() {
@@ -545,6 +587,95 @@ mod tests {
         assert!(room > 1e-3, "no tail to tell the voice from ({room})");
         assert!(voice < 1e-4, "the room was in the voice ({voice})");
         assert!(vocals.voice(MOST_STRIPS + 3).abs() < f32::EPSILON);
+    }
+
+    /// **Each singer's wedge is the mix they asked for** (K9). Two
+    /// microphones, the first singing and the second not: in the first
+    /// singer's wedge they are at their own share and in the second's at the
+    /// second singer's share *for the others* — the listener's choice, not
+    /// the singer's. Then both sing, and with nobody wanting anyone else the
+    /// two wedges are each one voice and add up to the shared monitor, while
+    /// with everyone wanting everyone each wedge is the shared monitor
+    /// whole. The music's share is the wedge's singer's own.
+    #[test]
+    fn each_singers_wedge_is_the_mix_they_asked_for() {
+        let mut vocals = Vocals::new(RATE, 2);
+        let mix = |own, others, music| StripSettings {
+            wedge: WedgeMix { own, others, music },
+            ..singer()
+        };
+        vocals.strip_mut(0).unwrap().apply(&mix(0.3, 0.9, 1.0));
+        vocals.strip_mut(1).unwrap().apply(&mix(1.0, 0.5, 0.4));
+        let (mut producer, consumer) = rtrb::RingBuffer::new(48_000 * 4);
+        vocals.set_input(Some(consumer));
+        let close = |a: [f32; 2], b: [f32; 2]| (0..2).all(|side| (a[side] - b[side]).abs() < 1e-6);
+        let scaled = |a: [f32; 2], by: f32| [a[0] * by, a[1] * by];
+        let mut heard = 0.0f32;
+        for n in 0..12_000 {
+            #[allow(clippy::cast_precision_loss)]
+            let t = n as f32 / RATE;
+            producer
+                .push((std::f32::consts::TAU * 220.0 * t).sin() * 0.3)
+                .unwrap();
+            producer.push(0.0).unwrap();
+            let frame = vocals.next_frame();
+            heard = heard.max(frame.monitor[0].abs());
+            assert!(close(vocals.wedge(0), scaled(frame.monitor, 0.3)), "at {n}");
+            assert!(close(vocals.wedge(1), scaled(frame.monitor, 0.5)), "at {n}");
+        }
+        assert!(heard > 0.05, "nobody was in the monitor ({heard})");
+        assert!((vocals.wedge_music(0) - 1.0).abs() < f32::EPSILON);
+        assert!((vocals.wedge_music(1) - 0.4).abs() < f32::EPSILON);
+        assert!((vocals.wedge_music(MOST_STRIPS) - 1.0).abs() < f32::EPSILON);
+
+        // Both sing, two different notes.
+        let both = |vocals: &mut Vocals, producer: &mut rtrb::Producer<f32>| {
+            let mut apart = (0.0f32, 0.0f32);
+            for n in 0..12_000 {
+                #[allow(clippy::cast_precision_loss)]
+                let t = n as f32 / RATE;
+                producer
+                    .push((std::f32::consts::TAU * 220.0 * t).sin() * 0.3)
+                    .unwrap();
+                producer
+                    .push((std::f32::consts::TAU * 330.0 * t).sin() * 0.3)
+                    .unwrap();
+                let frame = vocals.next_frame();
+                apart = (
+                    apart.0.max(vocals.wedge(0)[0].abs()),
+                    apart.1.max(vocals.wedge(1)[0].abs()),
+                );
+                let (first, second) = (vocals.wedge(0), vocals.wedge(1));
+                let sum = [first[0] + second[0], first[1] + second[1]];
+                if !close(sum, frame.monitor) {
+                    return Err(n);
+                }
+            }
+            Ok(apart)
+        };
+        vocals.strip_mut(0).unwrap().apply(&mix(1.0, 0.0, 1.0));
+        vocals.strip_mut(1).unwrap().apply(&mix(1.0, 0.0, 1.0));
+        let (first, second) = both(&mut vocals, &mut producer).expect("each wedge one voice");
+        assert!(
+            first > 0.05 && second > 0.05,
+            "a voice went missing ({first}, {second})"
+        );
+
+        vocals.strip_mut(0).unwrap().apply(&mix(1.0, 1.0, 1.0));
+        vocals.strip_mut(1).unwrap().apply(&mix(1.0, 1.0, 1.0));
+        for n in 0..4_800 {
+            #[allow(clippy::cast_precision_loss)]
+            let t = n as f32 / RATE;
+            producer
+                .push((std::f32::consts::TAU * 220.0 * t).sin() * 0.3)
+                .unwrap();
+            producer
+                .push((std::f32::consts::TAU * 330.0 * t).sin() * 0.3)
+                .unwrap();
+            let frame = vocals.next_frame();
+            assert!(close(vocals.wedge(0), frame.monitor), "at {n}");
+            assert!(close(vocals.wedge(1), frame.monitor), "at {n}");
+        }
     }
 
     /// **A ring that runs dry is silence and a count**, never half a frame:

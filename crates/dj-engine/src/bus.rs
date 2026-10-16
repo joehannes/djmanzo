@@ -24,6 +24,11 @@ pub struct BusLayout {
     /// singer's microphone at its monitor send, for the wedge facing the
     /// stage. Needs eight channels: the pair after the cue.
     pub monitor: Option<(usize, usize)>,
+    /// K9: how many singers have a wedge of their own — zero while the
+    /// singers share the one monitor. When there are any, singer *n*'s is
+    /// the *n*-th pair from the monitor's on ([`Self::wedge`]), so the first
+    /// singer's wedge is the shared monitor's pair. See [`Self::with_wedges`].
+    pub wedges: usize,
     /// Where each separated stem goes, when a deck is being sent out in parts.
     ///
     /// `None` normally, which is every set that is not being fed through an
@@ -43,6 +48,15 @@ pub struct BusLayout {
 /// and no honest way to send three of four.
 pub const STEM_OUT_CHANNELS: usize = 8;
 
+/// Where the singers' monitor's pair starts: after the master, the booth and
+/// the headphones.
+const MONITOR_FIRST: usize = 6;
+
+/// K9: the widest output any arrangement uses — the singers' monitor's pair
+/// and one after it for every other microphone there could be, a monitor
+/// per singer ([`BusLayout::with_wedges`]).
+pub const WIDEST_OUTPUT: usize = MONITOR_FIRST + 2 * dj_vocal::MOST_STRIPS;
+
 impl BusLayout {
     /// Work out the layout for a device with `channels` outputs.
     ///
@@ -60,6 +74,7 @@ impl BusLayout {
                 cue: None,
                 booth: None,
                 monitor: None,
+                wedges: 0,
                 stems: None,
                 decks_out: None,
             },
@@ -69,6 +84,7 @@ impl BusLayout {
                 cue: None,
                 booth: None,
                 monitor: None,
+                wedges: 0,
                 stems: None,
                 decks_out: None,
             },
@@ -78,6 +94,7 @@ impl BusLayout {
                 cue: Some((2, 3)),
                 booth: None,
                 monitor: None,
+                wedges: 0,
                 stems: None,
                 decks_out: None,
             },
@@ -86,7 +103,9 @@ impl BusLayout {
                 main: (0, 1),
                 booth: Some((2, 3)),
                 cue: Some((4, 5)),
-                monitor: (channels >= 8).then_some((6, 7)),
+                monitor: (channels >= MONITOR_FIRST + 2)
+                    .then_some((MONITOR_FIRST, MONITOR_FIRST + 1)),
+                wedges: 0,
                 stems: None,
                 decks_out: None,
             },
@@ -110,7 +129,42 @@ impl BusLayout {
         self.stems = Some([(0, 1), (2, 3), (4, 5), (6, 7)]);
         // The stems are on the monitor's pair now.
         self.monitor = None;
+        self.wedges = 0;
         self
+    }
+
+    /// K9: how many wedges the outputs from the singers' monitor's pair on
+    /// could carry — one per pair, zero with no monitor. What the host is
+    /// offered the split for.
+    #[must_use]
+    pub fn wedge_pairs(&self) -> usize {
+        self.monitor
+            .map_or(0, |(left, _)| self.channels.saturating_sub(left) / 2)
+    }
+
+    /// K9: split the singers' monitor one per singer, for `singers`
+    /// microphones (docs/KARAOKE.md §12) — a wedge each for as many of them
+    /// as the outputs have pairs for, from the monitor's pair on.
+    ///
+    /// Returns the layout unchanged when that would be fewer than two: one
+    /// wedge for one singer is the shared monitor, and one wedge for the
+    /// first of several singers would leave the rest hearing themselves only
+    /// as somebody else's *others*. A singer beyond the last pair has no
+    /// wedge of their own and is one of the others in everyone's.
+    #[must_use]
+    pub fn with_wedges(mut self, singers: usize) -> Self {
+        let wedges = self.wedge_pairs().min(singers);
+        if wedges >= 2 {
+            self.wedges = wedges;
+        }
+        self
+    }
+
+    /// K9: singer `index`'s own wedge, while the monitor is split.
+    #[must_use]
+    pub fn wedge(&self, index: usize) -> Option<(usize, usize)> {
+        let (left, _) = self.monitor?;
+        (index < self.wedges).then(|| (left + index * 2, left + index * 2 + 1))
     }
 
     /// True when a deck is being sent out in parts.
@@ -142,6 +196,7 @@ impl BusLayout {
         // No master chain runs with the decks going out apart, so there is
         // no wedge to feed — and on eight channels its pair is deck four's.
         self.monitor = None;
+        self.wedges = 0;
         self
     }
 
@@ -248,6 +303,7 @@ impl BusRouting {
             cue: self.cue,
             booth: self.booth,
             monitor: None,
+            wedges: 0,
             stems: None,
             decks_out: None,
         })
@@ -308,6 +364,47 @@ mod tests {
                 "buses overlap at {channels} channels: {used:?}"
             );
         }
+    }
+
+    /// **A singer's wedge is a pair of their own, from the monitor's on**
+    /// (K9). Ten outputs carry two wedges and sixteen five; the split takes
+    /// no more wedges than there are singers, never fewer than two, and
+    /// never a pair another bus has — nor one past the last output. Sending
+    /// the decks or the stems out takes the monitor, and the wedges with it.
+    #[test]
+    fn a_split_monitor_gives_each_singer_a_pair_of_their_own() {
+        assert_eq!(BusLayout::for_channels(6).wedge_pairs(), 0);
+        assert_eq!(BusLayout::for_channels(8).wedge_pairs(), 1);
+        assert_eq!(BusLayout::for_channels(10).wedge_pairs(), 2);
+        assert_eq!(BusLayout::for_channels(16).wedge_pairs(), 5);
+        assert_eq!(BusLayout::for_channels(17).wedge_pairs(), 5);
+        // One pair is the shared monitor, however many sing.
+        assert_eq!(BusLayout::for_channels(8).with_wedges(4).wedges, 0);
+        // One singer has the shared monitor to themselves already.
+        assert_eq!(BusLayout::for_channels(16).with_wedges(1).wedges, 0);
+        assert_eq!(BusLayout::for_channels(16).with_wedges(3).wedges, 3);
+        let split = BusLayout::for_channels(16).with_wedges(8);
+        assert_eq!(split.wedges, 5);
+        assert_eq!(split.wedge(0), Some((6, 7)));
+        assert_eq!(split.wedge(4), Some((14, 15)));
+        assert_eq!(split.wedge(5), None);
+        assert_eq!(BusLayout::for_channels(16).wedge(0), None, "not split");
+        let mut used = vec![split.main.0, split.main.1];
+        used.extend(split.booth.map(|(l, r)| [l, r]).into_iter().flatten());
+        used.extend(split.cue.map(|(l, r)| [l, r]).into_iter().flatten());
+        for index in 0..split.wedges {
+            let (l, r) = split.wedge(index).expect("a wedge");
+            assert!(r < split.channels);
+            used.extend([l, r]);
+        }
+        let unique: std::collections::HashSet<_> = used.iter().copied().collect();
+        assert_eq!(unique.len(), used.len(), "a wedge shares a pair: {used:?}");
+        assert_eq!(split.with_stem_out().wedges, 0);
+        assert_eq!(split.with_deck_out(4).wedges, 0);
+        let routed = BusRouting::new((0, 1), Some((2, 3)), None)
+            .layout(16)
+            .expect("fits");
+        assert_eq!(routed.with_wedges(8).wedges, 0, "no monitor, no wedges");
     }
 
     #[test]

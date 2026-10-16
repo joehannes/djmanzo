@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 87] = [
+static VOCABULARY: [VerbSpec; 90] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -681,6 +681,30 @@ static VOCABULARY: [VerbSpec; 87] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "monitor music",
+        argument: ArgSpec::Number {
+            min: -60.0,
+            max: 12.0,
+        },
+        help: "the music's level in the singers' monitor in decibels, apart from the room's; the bottom is off",
+        example: "monitor music -6",
+    },
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "monitor split_on",
+        argument: ArgSpec::None,
+        help: "a monitor of their own for each singer, where the output has a pair for each",
+        example: "monitor split_on",
+    },
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "monitor split_off",
+        argument: ArgSpec::None,
+        help: "the singers share one monitor again",
+        example: "monitor split_off",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "cue mix",
         argument: ArgSpec::Number { min: 0.0, max: 1.0 },
         help: "headphone blend; 0 is all cue, 1 is all master",
@@ -889,6 +913,9 @@ mod tests {
             "loop_recall",
             "master gain",
             "booth gain",
+            "monitor music",
+            "monitor split_on",
+            "monitor split_off",
             "cue mix",
             "cue split_on",
             "cue split_off",

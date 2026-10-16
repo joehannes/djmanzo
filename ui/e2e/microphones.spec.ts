@@ -582,6 +582,92 @@ test.describe("K3: the singers' microphones", () => {
   });
 
   /**
+   * **K9: a monitor for each singer** (docs/KARAOKE.md §12). Offered only
+   * where Rust says the output has a pair for two or more; asked for as the
+   * action a controller would send. Split, each singer's monitor is listed
+   * on its outputs with its meter, a microphone past the last pair is told
+   * it has none, and what a singer hears in theirs — Rust's mix kept with
+   * Ana's chain — is set behind her name and sent with her strip.
+   */
+  test("each singer can have a monitor of their own, with their own mix", async ({ page }) => {
+    await singers(page, { vocals_opened: vocals.singing });
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    const split = here.getByRole("checkbox", { name: "A monitor for each singer" });
+
+    // One pair: the shared monitor, and nothing to split.
+    await readings(page, { ...TWO, monitor_music_db: 0, monitor_pairs: 1 });
+    await expect(here.getByRole("slider", { name: "Music in the singers' monitor" })).toBeVisible();
+    await expect(split).toHaveCount(0);
+
+    // Two pairs: offered, and asked for.
+    await readings(page, { ...TWO, monitor_music_db: 0, monitor_pairs: 2 });
+    await split.check();
+    await expect.poll(() => dispatched(page)).toContain("monitor split_on");
+
+    // Rust gives them: Ana on 7–8, Mic 2 on 9–10, each with its meter.
+    const given = {
+      ...TWO,
+      monitor_music_db: 0,
+      monitor_pairs: 2,
+      monitor_split: true,
+      monitor_wedges: 2,
+      strips: TWO.strips.map((strip, i) => ({ ...strip, wedge: i === 0 ? 0.4 : 0 })),
+    };
+    await readings(page, given);
+    const monitors = here.getByRole("list", { name: "Each singer's monitor" }).getByRole("listitem");
+    await expect(monitors).toHaveCount(2);
+    await expect(monitors.nth(0)).toContainText("Ana");
+    await expect(monitors.nth(0)).toContainText("outputs 7–8");
+    await expect(monitors.nth(0).locator(".fill")).toHaveAttribute("style", /width: 40%/);
+    await expect(monitors.nth(1)).toContainText("Mic 2");
+    await expect(monitors.nth(1)).toContainText("outputs 9–10");
+    // One line each: who, their outputs and their meter side by side — in the
+    // application a class shared with the row put them on three.
+    for (const part of [".wedge-singer", ".outs", ".meter"]) {
+      const [name, other] = await Promise.all([
+        monitors.nth(0).locator(".wedge-singer").boundingBox(),
+        monitors.nth(0).locator(part).boundingBox(),
+      ]);
+      expect(name && other && Math.abs(name.y + name.height / 2 - (other.y + other.height / 2))).toBeLessThan(6);
+      expect(other?.width ?? 0).toBeGreaterThan(20);
+    }
+    await expect(here.locator("[data-unwedged]")).toHaveCount(0);
+
+    // Behind Ana's name, her mix as Rust keeps it; a move sends it with her strip.
+    const first = here.getByRole("list", { name: "Singers' microphones" }).getByRole("listitem").nth(0);
+    await first.getByRole("button", { name: "Ana", exact: true }).click();
+    const theirs = first.locator('fieldset[data-stage="wedge"]');
+    await expect(theirs).toContainText("Their monitor");
+    await expect(theirs).toContainText("outputs 7–8");
+    const others = theirs.getByRole("slider", { name: "Mic 1 monitor The others" });
+    await expect(others).toHaveValue("0.25");
+    await expect(theirs.getByRole("slider", { name: "Mic 1 monitor The music" })).toHaveValue("0.75");
+    await others.fill("0.5");
+    await expect
+      .poll(async () => (await calls(page)).filter((c) => c.cmd === "vocal_strip_set").at(-1)?.settings?.wedge)
+      .toEqual({ own: 1, others: 0.5, music: 0.75 });
+
+    // A third microphone, with no pair left for it.
+    await readings(page, {
+      ...given,
+      inputs: 3,
+      strips: [...given.strips, { level: 0, gate_open: false, compression_db: 0, working: false, wedge: 0 }],
+    });
+    await expect(here.locator("[data-unwedged]")).toContainText(
+      "Mic 3 has no monitor of their own — the outputs run out at 10",
+    );
+
+    // Shared again: no list, and nothing behind the name to set.
+    await split.uncheck();
+    await expect.poll(() => dispatched(page)).toContain("monitor split_off");
+    await readings(page, { ...TWO, monitor_music_db: 0, monitor_pairs: 2 });
+    await expect(here.getByRole("list", { name: "Each singer's monitor" })).toHaveCount(0);
+    await expect(theirs).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **K8: a singer's range, from the microphone they are on.** Asked for
    * on their row, counted down while they sing, and said in notes once
    * Rust has read it — the reading itself is `dj_app::range`'s.

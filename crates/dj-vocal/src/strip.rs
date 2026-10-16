@@ -55,6 +55,58 @@ pub struct StripSettings {
     /// K9: the voice pulled toward the song's key (docs/KARAOKE.md §12) —
     /// after the gate, before the EQ; off unless chosen.
     pub correction: Option<crate::CorrectionSettings>,
+    /// K9: what the singer on this strip hears in a wedge of their own, once
+    /// the singers' monitor is split one per singer.
+    pub wedge: WedgeMix,
+}
+
+/// K9: a singer's own monitor mix (docs/KARAOKE.md §12, *per-singer monitor
+/// mixes*) — used only where the output has a pair for each singer and the
+/// host has split the monitor; with one wedge for everyone, the strip's
+/// monitor send and the music's level are all there is.
+///
+/// What a singer asks for at a sound check is *more me* or *less of
+/// everyone else*, so it is three shares of what is already there rather
+/// than a mixer of its own: their own voice at their strip's monitor send,
+/// every other singer at theirs, the music at the monitor's level — each
+/// times a share from 0 to 1. Kept with the singer's chain, because it is
+/// about them.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WedgeMix {
+    /// Their own voice.
+    pub own: f32,
+    /// Every other singer.
+    pub others: f32,
+    /// The music.
+    pub music: f32,
+}
+
+impl Default for WedgeMix {
+    /// Themselves and the song in full, the others at half — about 6 dB
+    /// under — so a duet partner is there to sing with and never louder than
+    /// the voice being listened for.
+    fn default() -> Self {
+        Self {
+            own: 1.0,
+            others: 0.5,
+            music: 1.0,
+        }
+    }
+}
+
+impl WedgeMix {
+    /// Held to [`range::SEND`], a share that is not a number put back to a
+    /// singer's.
+    #[must_use]
+    pub fn held(&self) -> Self {
+        let start = Self::default();
+        Self {
+            own: hold(self.own, range::SEND, start.own),
+            others: hold(self.others, range::SEND, start.others),
+            music: hold(self.music, range::SEND, start.music),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -183,6 +235,7 @@ impl Default for StripSettings {
             echo: None,
             reverb: Some(ReverbSettings::default()),
             correction: None,
+            wedge: WedgeMix::default(),
         }
     }
 }
@@ -230,7 +283,7 @@ pub mod range {
 
 /// Every number a strip takes, by the name the interface knows it by — a
 /// stage's numbers as `stage.number` — with its range from [`range`].
-pub const LIMITS: [(&str, (f32, f32)); 24] = [
+pub const LIMITS: [(&str, (f32, f32)); 27] = [
     ("gain_db", range::GAIN_DB),
     ("pan", range::PAN),
     ("to_main", range::SEND),
@@ -255,6 +308,9 @@ pub const LIMITS: [(&str, (f32, f32)); 24] = [
     ("reverb.level", range::LEVEL),
     ("correction.strength", range::CORRECTION_STRENGTH),
     ("correction.speed_ms", range::CORRECTION_SPEED_MS),
+    ("wedge.own", range::SEND),
+    ("wedge.others", range::SEND),
+    ("wedge.music", range::SEND),
 ];
 
 /// `value` inside `(min, max)`; `fallback` when it is not a number at all.
@@ -369,6 +425,7 @@ impl StripSettings {
                 }
             }),
             correction: self.correction.map(crate::CorrectionSettings::held),
+            wedge: self.wedge.held(),
         }
     }
 
@@ -386,6 +443,7 @@ impl StripSettings {
             echo: self.echo,
             reverb: self.reverb,
             correction: self.correction,
+            wedge: self.wedge,
         }
     }
 
@@ -405,6 +463,7 @@ impl StripSettings {
             echo: chain.echo,
             reverb: chain.reverb,
             correction: chain.correction,
+            wedge: chain.wedge,
             ..*self
         }
     }
@@ -429,6 +488,9 @@ pub struct Chain {
     pub reverb: Option<ReverbSettings>,
     #[serde(default)]
     pub correction: Option<crate::CorrectionSettings>,
+    /// K9: what this singer hears in a wedge of their own.
+    #[serde(default)]
+    pub wedge: WedgeMix,
 }
 
 impl Default for Chain {
@@ -540,11 +602,13 @@ impl Preset {
                 ..singer
             },
         };
-        // A preset is about the room and the dynamics; pitch correction is
-        // the singer's own choice, and stays as it was.
+        // A preset is about the room and the dynamics; pitch correction and
+        // what they hear in their wedge are the singer's own choices, and
+        // stay as they were.
         settings.with_chain(&Chain {
             preset: self,
             correction: settings.correction,
+            wedge: settings.wedge,
             ..chain.chain()
         })
     }
@@ -1088,6 +1152,11 @@ mod tests {
                 strength: value,
                 speed_ms: value,
             }),
+            wedge: WedgeMix {
+                own: value,
+                others: value,
+                music: value,
+            },
             ..StripSettings::default()
         };
         let limit = |name: &str| {
@@ -1162,8 +1231,9 @@ mod tests {
             ..StripSettings::default()
         });
         // A singer who sounded best soft, with an echo, a brighter top, a
-        // lower cut and the de-esser higher — and a row of their own that
-        // must not come with them.
+        // lower cut and the de-esser higher, who wanted less of everyone else
+        // in their monitor — and a row of their own that must not come with
+        // them.
         let singer = StripSettings {
             open: false,
             gain_db: 6.0,
@@ -1182,6 +1252,10 @@ mod tests {
                 ..DeEsserSettings::default()
             }),
             correction: Some(crate::CorrectionSettings::default()),
+            wedge: WedgeMix {
+                others: 0.1,
+                ..WedgeMix::default()
+            },
             ..Preset::SoftSinger.applied_to(&StripSettings::default())
         };
         let laid = rig.with_chain(&singer.chain());
@@ -1253,7 +1327,8 @@ mod tests {
     /// **A preset changes the chain and keeps the host's hands.** Choosing
     /// MC on an open strip at −6 dB panned left keeps it open, at −6 dB,
     /// left — and turns talkover on and the room off; choosing Singer again
-    /// gives the room back and talkover up, and every preset has a name.
+    /// gives the room back and talkover up, and every preset has a name. No
+    /// preset touches what the singer hears in their own monitor.
     #[test]
     fn a_preset_is_the_chain_and_leaves_the_hosts_settings_alone() {
         let set = StripSettings {
@@ -1276,6 +1351,24 @@ mod tests {
         let soft = Preset::SoftSinger.applied_to(&set).compressor.unwrap();
         assert!(loud.ratio > soft.ratio && soft.makeup_db > loud.makeup_db);
         assert!(Preset::ALL.iter().all(|preset| !preset.name().is_empty()));
+        // K9: what the singer hears in their own monitor is theirs, as their
+        // pitch correction is; no preset is about it.
+        let mixed = StripSettings {
+            wedge: WedgeMix {
+                own: 0.8,
+                others: 0.1,
+                music: 0.3,
+            },
+            ..set
+        };
+        for preset in Preset::ALL {
+            assert_eq!(
+                preset.applied_to(&mixed).wedge,
+                mixed.wedge,
+                "{}",
+                preset.name()
+            );
+        }
     }
 
     /// **A singer's microphone leaves the music alone; the MC's pulls it

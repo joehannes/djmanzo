@@ -782,6 +782,8 @@ export interface VocalStripState {
   working: boolean;
   /** K6: the pitch last heard on it, in cents above A4, when one was. */
   pitch?: number | null;
+  /** K9: the peak of its singer's own monitor, 0–1; 0 while the singers share one. */
+  wedge?: number;
 }
 
 /** K3: the singers' microphones, live. See `dj_app::snapshot::VocalsSnapshot`. */
@@ -798,6 +800,12 @@ export interface VocalsState {
    * the music is off and the wedge carries only the voices.
    */
   monitor_music_db: number | null;
+  /** K9: the host asked for a monitor per singer (`monitor split_on`), whether or not the output can give them. */
+  monitor_split?: boolean;
+  /** K9: how many monitors the output could carry, one per pair from 7–8 on; two or more offers the split. */
+  monitor_pairs?: number;
+  /** K9: how many singers have a monitor of their own now — Mic 1 on 7–8, Mic 2 on 9–10, … — 0 while shared. */
+  monitor_wedges?: number;
   /**
    * How many times the host has changed a strip's settings — from a key, a
    * controller, the Booth's microphone panel, a singer put on a microphone.
@@ -833,6 +841,20 @@ export interface StripSettings {
   de_esser: { frequency_hz: number; threshold_db: number } | null;
   echo: { delay_ms: number; feedback: number; level: number } | null;
   reverb: { seconds: number; level: number } | null;
+  /**
+   * K9: what the singer on this strip hears in a monitor of their own, once
+   * the singers' monitor is split — their own voice, everyone else, the
+   * music, each a share 0–1. Optional for settings kept before it existed;
+   * Rust gives a singer's defaults then. See `dj_vocal::WedgeMix`.
+   */
+  wedge?: WedgeMix;
+}
+
+/** K9: a singer's own monitor mix. See `dj_vocal::WedgeMix`. */
+export interface WedgeMix {
+  own: number;
+  others: number;
+  music: number;
 }
 
 /**

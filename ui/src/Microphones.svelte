@@ -293,6 +293,24 @@
   function monitorMusic(db: number) {
     dispatch(`monitor music ${db}`).catch((e) => (error = String(e)));
   }
+
+  /**
+   * K9: a monitor for each singer (docs/KARAOKE.md §12) — offered where the
+   * output has a pair for two or more and two or more microphones are open.
+   * Rust says how many singers have one: Mic 1 on outputs 7–8, Mic 2 on
+   * 9–10, and on; a microphone past the last pair is one of the others in
+   * everyone's.
+   */
+  const pairs = $derived(live?.monitor_pairs ?? 0);
+  const split = $derived(live?.monitor_split ?? false);
+  const wedges = $derived(live?.monitor_wedges ?? 0);
+  const splittable = $derived(pairs >= 2 && count >= 2);
+  /** Output numbers as written on the interface, counted from 1. */
+  const outputs = (wedge: number) => `${7 + wedge * 2}–${8 + wedge * 2}`;
+
+  function splitMonitor(on: boolean) {
+    dispatch(`monitor split_${on ? "on" : "off"}`).catch((e) => (error = String(e)));
+  }
 </script>
 
 <section class="mics" aria-labelledby="singers-mics">
@@ -463,6 +481,7 @@
               everyStage={vocals.every_stage}
               pulledTo={sungKey}
               latencyMs={vocals.correction_latency_ms}
+              wedge={split && i < wedges ? outputs(i) : null}
               onchange={(settings) => void set(i, settings)}
             />
           {/if}
@@ -483,6 +502,45 @@
         />
         <output for="singers-monitor-music">{level(monitor)}</output>
       </div>
+      {#if splittable}
+        <label class="split">
+          <input
+            type="checkbox"
+            checked={split}
+            aria-label="A monitor for each singer"
+            onchange={(e) => splitMonitor(e.currentTarget.checked)}
+          />
+          <span>A monitor for each singer</span>
+        </label>
+        {#if split && wedges > 0}
+          <ul class="wedges" aria-label="Each singer's monitor">
+            {#each Array.from({ length: wedges }, (_, w) => w) as w (w)}
+              {@const on = vocals?.on[w] ?? null}
+              <li data-wedge={w + 1}>
+                <span class="wedge-singer">{on ? on.singer : `Mic ${w + 1}`}</span>
+                <span class="outs">outputs {outputs(w)}</span>
+                <span class="meter" aria-hidden="true">
+                  <span class="fill" style:width="{Math.min(1, live?.strips[w]?.wedge ?? 0) * 100}%"></span>
+                </span>
+              </li>
+            {/each}
+          </ul>
+          {#if count > wedges}
+            <p class="hint" data-unwedged>
+              {count > wedges + 1 ? `Mics ${wedges + 1}–${count} have` : `Mic ${count} has`} no monitor of their own
+              — the outputs run out at {6 + wedges * 2} — and {count > wedges + 1 ? "are" : "is"} heard in everyone's,
+              as one of the others.
+            </p>
+          {/if}
+          <p class="hint">
+            What each singer hears — themselves, the others, the music — is behind their name, under <em
+              >Their monitor</em
+            >, and kept with them.
+          </p>
+        {:else if split}
+          <p class="hint" data-unwedged>Waiting for the output to give each singer a pair…</p>
+        {/if}
+      {/if}
     {:else}
       <p class="hint">
         No singers' monitor on this output — an interface with eight outputs or more gives them a wedge of their own,
@@ -497,6 +555,39 @@
 </section>
 
 <style>
+  .split {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9em;
+  }
+
+  .wedges {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(3rem, 6rem);
+    gap: 0.2rem 0.6rem;
+    align-items: center;
+    font-size: 0.85em;
+  }
+
+  .wedges li {
+    display: contents;
+  }
+
+  /* Not `.who`: that is the row's own, and spans the whole grid. */
+  .wedges .wedge-singer {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wedges .outs {
+    color: var(--text-dim);
+  }
+
   .mics {
     display: flex;
     flex-direction: column;
@@ -581,7 +672,7 @@
       grid-template-columns: max-content max-content minmax(3rem, 1fr) minmax(5.5rem, 7rem);
     }
 
-    .meter {
+    .strip .meter {
       grid-column: 3;
       grid-row: 2;
     }
