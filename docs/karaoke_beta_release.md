@@ -47,6 +47,9 @@ whatever is finished.
 | **A2** | **Auto-advance and repeat.** Per deck: *Next when this ends* loads (and plays) the queue's next record when the deck runs out; *Repeat* starts the queue over. That makes a deck a filler deck: jingles and fillers going round. | Rust decides what comes next; a test of the end-of-record step; driven with two short records |
 | **A3** | **Karaoke focus: one deck slim, the other big.** A press on a deck makes it a slim strip — title, play/pause, level, its drawer tab — and gives the other deck the room, its drawer open. A deck can be named the *filler* deck (A2 on, repeat on) from the same place. | Interface state remembered per deck; a browser test of the layout at 1280×800; driven |
 | **A4** | Playlist extras, if time: running length and the key/BPM flow of a playlist in its header; *Shuffle* in the drawer | Each its own small commit |
+| **A5** | **A one-line navbar** (§128): the top bar one row high; what is rarely needed behind an expander; items condensing to icon-only buttons (with their names as tooltips and accessible names) when the row does not fit. | A browser test at 1280×800 and at 1024 wide that the bar is one row and nothing is cut off; driven |
+| **A6** | **A cogwheel and a Sources dashboard** (§128): a ⚙ in the navbar opens one view of every source djmanzo can use — song search, playing, buying, lyrics, similar songs, artist background and imagery — each with what it needs (a key, an account, nothing), whether it is connected, and its licence note. Built on what `dj_sources` and Settings already hold; no new service is called without the DJ's press. | Rust lists the sources from the existing tables (one list, the view draws it); browser test; driven |
+| **A7** | **Finding the song a singer cannot name** (§128), a *Find a song* surface built on `dj_app::memory` (words, a description, a hum): the hum also compared against the stored melody contours (`dj_library::melody`, K6) so a hummed tune ranks records whose voice line matches, not only their key and tempo; a guided "what do you remember?" — the words, the decade, a man or a woman singing, the language, where they heard it — each answer narrowing the list as it is given; *Like this one* (by artist, genre, tempo and key, melody) for any record or for tonight; fast search modes over the collection, its lyrics and the external sources (§124). | Rust tests of the ranking; browser test; driven with the null voice humming |
 
 ## 3. Session B — the singers' screen, the room, themes, a song for the singer
 
@@ -59,7 +62,13 @@ in §5. Same rule: each milestone committed and pushed when green.
 | **B2** | **Emoji from the room on the singers' screen, held back.** A row of emoji on the room's phone page; each appears small, in a corner away from the words, fades within seconds; a cap per second and per phone; a host switch, off by default. Never over the line being sung. | Rust rate-limits and carries them; a browser test that they never overlap the lyric lines; driven |
 | **B3** | **Lyric visuals**: a bar showing how long an instrumental break lasts; a soft glow on the word being sung; a colour per singer in a duet (from the strip they sing on). | Browser tests; driven with a timed `.lrc` |
 | **B4** | **Karaoke vocal presets**: *Stadium*, *Radio voice*, *Big echo*, *Duet*, as more `dj_vocal::Preset`s — chain settings only. | `dj-vocal` tests; the presets in the strip's menu |
+| **B6** | **Skins** (§129): a third layer over a theme — artwork drawn over the whole interface at 10–20 % opacity, `pointer-events: none` so it never takes a press, two or three per theme (e.g. *Trash polka* — black, red, brush strokes and halftone), chosen or switched off in the theme picker; reduced or off under the OS's reduced-motion and high-contrast settings. Pure CSS/SVG, no images to download. | A browser test that every control under a skin still takes its press and the words on the singers' screen keep their contrast; driven |
+| **B7** | **Guide vocal proposed for a song the singer does not know well** (§128): when the host loads a singer's song, the up-next card offers *Guide* where the song is new to them (never sung by them in the guest book, or marked *not sure* on the form or phone), and the singers' screen says, briefly, that they will hear the original voice quietly underneath. | Rust decides when it is proposed; tests; driven |
+| **B8** | **Karaoke screens, more beautiful and playful** (§128): the Singers panel, the up-next card and the singers' screen given a design pass — motion on the count-in and on a singer's name coming up, a celebratory moment at *Sang*, clearer hierarchy — inside ADR-0008/0009's vocabulary and never over the words. | Browser tests of layout; screenshots; driven |
 | **B5** | **A song for the singer, sent.** The song brief also draws on the venue, the night's genre and the DJ's branding (`kit`, `brand.rs`); one press copies lyrics and style for Suno's window; *Send their song*: the host pastes the suno.com link and djmanzo opens WhatsApp to that guest (only with their contact consent) with a personal message ready. | Rust builds the brief and the `wa.me` address; tests of both; driven up to the WhatsApp window |
+
+**Order for session B:** B1, B2, B6, B7, B3, B4, B5, B8 — the visible and
+the asked-for first. **Session A:** A1–A3 done here; then A5, A6, A7, A4.
 
 ## 4. How the two sessions stay out of each other's way
 
@@ -80,6 +89,8 @@ finds it needs one, it writes that in its session notes for §6 instead.
 | `crates/dj-library/` (playlist queries) | `crates/dj-net/` (the room's page, emoji) |
 | `crates/dj-app/src/snapshot.rs`, `ui/e2e/snapshot.json` — **only A changes the snapshot** | new `crates/dj-app/src/reactions.rs` (or similar) for emoji |
 | `crates/dj-core/src/action.rs`, `vocabulary.rs` — **only A adds verbs** | `crates/dj-assistant/` (the song brief) |
+| `ui/src/MissionBar.svelte`, `ui/src/Settings.svelte`, new `ui/src/Sources*.svelte` / `ui/src/Find*.svelte` (A5–A7) | `ui/src/StripChain.svelte`, `ui/src/Microphones.svelte` (B4) |
+| `crates/dj-app/src/memory.rs`, `crates/dj-sources/` (A6–A7) | new `ui/src/skins/` and `ui/src/Skin*.svelte` (B6); the karaoke panels' styles (B8) |
 
 **Shared files with a block each.** Two files every session must touch to
 register new code. Each has two marked blocks far apart; a session adds
@@ -117,8 +128,9 @@ mutation test of the new test, and is driven in the app where it shows.
   `main`'s `5e883b2`).
 - **Session A:** `claude/vigilant-tesla-xdqpmf`.
 - **Session B:** any new branch from the base commit.
-- **Merging:** either may merge into `main` first; the second merges
-  cleanly by §4. Then §6.
+- **Merging:** session B pushes its own branch only and does **not** merge
+  into `main` or into session A's branch. Session A does §6 — merges both
+  into `main`, folds the notes, runs the gates — once B says it is done.
 
 ## 6. After both: folding in and the release
 

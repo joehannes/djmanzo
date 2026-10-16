@@ -2727,3 +2727,25 @@ Added by the owner in conversation, 2026-10-16. Quoted as written.
 
 *Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md): the themes in session B, the rest in session A.*
 
+---
+# 128. ASKED SINCE: FINDING THE SONG A SINGER CANNOT NAME, SOURCES IN ONE PLACE, A ONE-LINE NAVBAR
+Added by the owner in conversation, 2026-10-16. Quoted as written.
+> as of karaoke, sometimes singers migth want to sing a song but don't know the name of the song or singer/songwriter. add features:
+>
+> * to find the song: - by humming or something else the tune/melody into the mic, analysing this short sample input and finding similar songs, - if the singer has logic connotations/partial memories of the song, guide him through a social/human useful and helpful way to come closer to the real song/singers name and try to locate the actual song and similar candidates by those partials, - other known or intelligent ways that seem useful and doable
+> * to find similar songs to a song, by artist, by melody/genre/singer, by whatever suits and is useful .. similar to a song, genre, an example, a night, a ....
+> * in the case of putting on a song the karaoke singer doesn't know that well, auto-propose the vocal "guide" mode and let the karaoke singer know he/she will be able to hear the original voice (but not very loud) ...
+> * add different fast search modes to find songs for karaoke from different sources easily
+> * add a cogwheel in the navbar and create a configuration dashboard/screen/view that allows for connecting sources for song search, song playing, buying, lyrics search, similar song search, artist background and imagery ... all useful stuff
+> * refresh the navbar design ... hide huge things we usually don't need and make them expandable on demand... make the navbar a one-liner as of its height, and auto-condense the items into symbol only buttons if they don't fit ... stylishly also
+> * do a GUI/usability and beauty and playfulness as of the GUI beauty and interaction in a useful way for the karaoke widgets, screens, view
+
+*Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md) (A5–A7, B7–B8). Already there: `dj_app::memory`, finding a record from what is remembered — sung or typed words against fetched lyrics, a description handed to the assistant, and a hum narrowed by its key and tempo.*
+
+---
+# 129. ASKED SINCE: SKINS OVER THE THEMES
+Added by the owner in conversation, 2026-10-16. Quoted as written.
+> as of the themes: I want another additional theme layer, not only the base colors, fx, ... but also a 10 - 20% transparent top skin that doesn't block any functionality. it's basic visual artwork that can be applied on top of a colorful theme and might be called skin. eg.: trash polka visual elements and fx. design 2 or 3 skins per theme the user can choose or disable.
+
+*Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md) (B6).*
+
