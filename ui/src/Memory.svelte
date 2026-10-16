@@ -40,6 +40,7 @@
     type WordsProgress,
   } from "./api";
   import { onMount } from "svelte";
+  import FindSong from "./FindSong.svelte";
 
   interface Props {
     enabled: boolean;
@@ -264,6 +265,16 @@
   {#if error}
     <p class="error">{error}</p>
   {/if}
+
+  <!-- §128: the guided questions, for a singer who cannot name it. -->
+  <FindSong
+    {enabled}
+    {onFind}
+    onAsk={(text) => {
+      description = text;
+      void askAssistant();
+    }}
+  />
 
   <!-- Words --------------------------------------------------------------- -->
   <section>

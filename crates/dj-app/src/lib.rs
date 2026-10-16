@@ -27,6 +27,7 @@ pub mod asks;
 // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its modules
 // go between these two lines, and nothing else does.
 pub mod deck_queue;
+pub mod find_song;
 pub mod sources_board;
 // End of session A's modules.
 pub mod assistant;
@@ -705,6 +706,7 @@ pub fn run() {
             deck_queue::deck_queue_set,
             deck_queue::deck_queue_load,
             sources_board::sources_board,
+            find_song::find_song,
             // End of session A's commands.
             commands::list_devices,
             commands::list_inputs,

@@ -18,6 +18,11 @@ Only session A edits this file.
 - **A one-line top bar.** The bar at the top is one line now; on a smaller
   screen its buttons become icons, and ⋯ shows the night's readings and the
   guides when you want them.
+- **A song the singer cannot name.** In the library's *From memory*, *What
+  do they remember?* asks when it is from, how fast, who sings, the kind of
+  music, who it sounds like, the language and where they heard it; each
+  answer narrows your collection at once, and one press asks the
+  assistant with all of it.
 - **⚙ Sources and connections.** One press shows everything djmanzo can
   find, play, buy, fetch lyrics or covers from, what works now, and where
   to set up the rest.
@@ -76,9 +81,30 @@ Only session A edits this file.
   one after a fix: whether a key is set is now its own function, tested
   on an in-memory store) and a browser test (1 mutant). Not yet: *Set up →*
   opens Settings at its top, not at the section.
-- Not yet: A4 (shuffle, BPM/key flow), A7 (finding a song a singer cannot
-  name — see the plan; `dj_app::memory` already does words, a description
-  and a hum by key and tempo).
+- **A6's Set up →** now opens Settings at the right block (Sources, or the
+  AI assistant), held by the same browser test.
+- **A7 built** (§128, "guide him ... to come closer to the real song ... by
+  those partials"). Found first: most of A7 already existed — *From
+  memory* in the Library finds a record by its words, by a description
+  for the assistant, and by a hum against its key, tempo **and the stored
+  melody contours** (`search_melody`). What was missing was the guiding:
+  *What do they remember?* at the top of *From memory* asks what a host
+  can ask across a booth — when (60s–20s), how fast, who sings, the kind
+  of music, who it sounds like, the language, where they heard it, any
+  words — each a few short replies, pressed again to take back. Each
+  answer narrows the collection at once by what its tags know
+  (`dj_app::find_song`: year, genre family, tempo, artist; a
+  contradiction rules a record out, a missing tag does not); who sings and
+  the language are in no tag, so they go to the assistant only, and the
+  panel says so. *Ask the assistant with all of this* hands every answer
+  as one sentence to the description guess the panel already makes — the
+  one way to a song nobody owns. 3 Rust tests (5 mutants; one survived
+  first and showed a guard was dead code, now removed) and
+  `e2e/findsong.spec.ts` (3 mutants). Not driven in the app: the demo
+  records have no year or genre tags to narrow by.
+- Not yet: A4 (shuffle, BPM/key flow); a way into *Find a song* from the
+  Singers panel (Session B's file — a link there to the Library's *From
+  memory* would do it).
 
 ## For the host (KARAOKE-NIGHT.md)
 
@@ -103,6 +129,10 @@ and plays it.
   one that must never fold away must not carry `foldable`.
 
 ## Needed a file this session does not own
+
+- `ui/src/Memory.svelte` (the Library's *From memory*, in neither list):
+  one import and one `<FindSong>` tag at its top for A7. Session B has no
+  reason to touch it.
 
 - `crates/dj-app/src/lib.rs` outside the marked blocks: one call in the
   snapshot pump, `crate::deck_queue::tick`, beside `tick_breaks`. Session B
