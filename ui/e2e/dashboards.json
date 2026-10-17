@@ -472,6 +472,34 @@
             "key": null,
             "label": "Velvet",
             "run": "switch theme pkg-velvet"
+          },
+          {
+            "about": "Havana's sea wall after dark: a night-sea navy, coral for what is pressed and a sea-glass second colour.",
+            "id": "theme:pkg-malecon",
+            "key": null,
+            "label": "Malecón Night",
+            "run": "switch theme pkg-malecon"
+          },
+          {
+            "about": "The vejigante masks of Puerto Rico's carnival: yellow and green on black, the reds kept for danger.",
+            "id": "theme:pkg-carnaval",
+            "key": null,
+            "label": "Carnaval",
+            "run": "switch theme pkg-carnaval"
+          },
+          {
+            "about": "Vieques at night, when the water glows: cyan light on a black-blue sea, violet as the second colour.",
+            "id": "theme:pkg-biobay",
+            "key": null,
+            "label": "Bioluminescent Bay",
+            "run": "switch theme pkg-biobay"
+          },
+          {
+            "about": "A Dominican bachata night: rose for what is pressed and gold beside it, on a deep plum.",
+            "id": "theme:pkg-rosa",
+            "key": null,
+            "label": "Bachata Rosa",
+            "run": "switch theme pkg-rosa"
           }
         ],
         "title": "Themes"
@@ -1150,6 +1178,34 @@
             "key": null,
             "label": "Velvet",
             "run": "switch theme pkg-velvet"
+          },
+          {
+            "about": "Havana's sea wall after dark: a night-sea navy, coral for what is pressed and a sea-glass second colour.",
+            "id": "theme:pkg-malecon",
+            "key": null,
+            "label": "Malecón Night",
+            "run": "switch theme pkg-malecon"
+          },
+          {
+            "about": "The vejigante masks of Puerto Rico's carnival: yellow and green on black, the reds kept for danger.",
+            "id": "theme:pkg-carnaval",
+            "key": null,
+            "label": "Carnaval",
+            "run": "switch theme pkg-carnaval"
+          },
+          {
+            "about": "Vieques at night, when the water glows: cyan light on a black-blue sea, violet as the second colour.",
+            "id": "theme:pkg-biobay",
+            "key": null,
+            "label": "Bioluminescent Bay",
+            "run": "switch theme pkg-biobay"
+          },
+          {
+            "about": "A Dominican bachata night: rose for what is pressed and gold beside it, on a deep plum.",
+            "id": "theme:pkg-rosa",
+            "key": null,
+            "label": "Bachata Rosa",
+            "run": "switch theme pkg-rosa"
           }
         ],
         "title": "Themes"
@@ -1828,6 +1884,34 @@
             "key": null,
             "label": "Velvet",
             "run": "switch theme pkg-velvet"
+          },
+          {
+            "about": "Havana's sea wall after dark: a night-sea navy, coral for what is pressed and a sea-glass second colour.",
+            "id": "theme:pkg-malecon",
+            "key": null,
+            "label": "Malecón Night",
+            "run": "switch theme pkg-malecon"
+          },
+          {
+            "about": "The vejigante masks of Puerto Rico's carnival: yellow and green on black, the reds kept for danger.",
+            "id": "theme:pkg-carnaval",
+            "key": null,
+            "label": "Carnaval",
+            "run": "switch theme pkg-carnaval"
+          },
+          {
+            "about": "Vieques at night, when the water glows: cyan light on a black-blue sea, violet as the second colour.",
+            "id": "theme:pkg-biobay",
+            "key": null,
+            "label": "Bioluminescent Bay",
+            "run": "switch theme pkg-biobay"
+          },
+          {
+            "about": "A Dominican bachata night: rose for what is pressed and gold beside it, on a deep plum.",
+            "id": "theme:pkg-rosa",
+            "key": null,
+            "label": "Bachata Rosa",
+            "run": "switch theme pkg-rosa"
           }
         ],
         "title": "Themes"

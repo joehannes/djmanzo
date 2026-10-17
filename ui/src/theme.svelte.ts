@@ -29,6 +29,7 @@ export type ResolvedTheme = "dark" | "light";
 
 import { themePackages, type ThemePackage } from "./controls/themes/packages";
 import { applyPackagePalette } from "./controls/themes/colors";
+import { installSkins, isSingersScreen, skinsFor, type Skin } from "./skins/skins";
 import {
   BASIC,
   FULL,
@@ -47,6 +48,16 @@ const STORAGE_KEY = "djmanzo.theme";
 const PKG_STORAGE_KEY = "djmanzo.themePackage";
 /** §121: which parts of the chosen theme are worn. */
 const PARTS_STORAGE_KEY = "djmanzo.themeParts";
+/** Karaoke beta B6: the skin worn over the theme, if any. */
+const SKIN_STORAGE_KEY = "djmanzo.skin";
+
+function loadSkin(): string | null {
+  try {
+    return localStorage.getItem(SKIN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The system query, held once.
@@ -106,6 +117,27 @@ class Theme {
 
   /** §121: which parts of it are worn, and from where. */
   #parts = $state<Parts>(loadParts());
+
+  /** Karaoke beta B6: the skin chosen, worn only with a theme it suits. */
+  #skin = $state<string | null>(loadSkin());
+
+  /** The skins offered with the theme as chosen. */
+  skins = $derived<Skin[]>(skinsFor(this.#pkgId));
+
+  /** The skin worn: the one chosen, while the theme is one it suits. */
+  get skin(): string | null {
+    return this.skins.some((one) => one.id === this.#skin) ? this.#skin : null;
+  }
+
+  /** Wear a skin, or none. Remembered across restarts. */
+  setSkin(id: string | null) {
+    this.#skin = id;
+    try {
+      if (id) localStorage.setItem(SKIN_STORAGE_KEY, id);
+      else localStorage.removeItem(SKIN_STORAGE_KEY);
+    } catch {}
+    this.#apply();
+  }
 
   /** The theme chosen: its palette, and every part at full. */
   chosen = $derived<ThemePackage>(
@@ -248,6 +280,13 @@ class Theme {
     const root = document.documentElement;
     root.dataset.theme = this.resolved;
     root.style.colorScheme = this.resolved;
+    // Karaoke beta B6: the skin, never on the singers' screen.
+    try {
+      installSkins(document);
+      const skin = isSingersScreen(location.search) ? null : this.skin;
+      if (skin) root.dataset.skin = skin;
+      else delete root.dataset.skin;
+    } catch {}
     try {
       applyPackagePalette(this.activePackage.id, this.resolved);
     } catch {}

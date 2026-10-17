@@ -244,6 +244,8 @@ pub struct View<'a> {
     pub sing: Option<SingView>,
     /// K7: a quiz round is running, and the page says where to play.
     pub quiz: bool,
+    /// Karaoke beta B2: the row of emoji, while the host has them on.
+    pub react: Option<crate::reactions::Row>,
 }
 
 /// The most rows the page shows.
@@ -268,6 +270,9 @@ pub fn request_page(view: &View) -> String {
     html.push_str(w.title);
     html.push_str("</title>\n<style>\n");
     html.push_str(STYLE);
+    if view.react.is_some() {
+        html.push_str(crate::reactions::ROW_STYLE);
+    }
     if view.quiz {
         // K7: the invitation's own look, only on a page that carries it.
         html.push_str(crate::quiz_page::QUIZ_STYLE);
@@ -284,6 +289,10 @@ pub fn request_page(view: &View) -> String {
         html.push_str("</span> ");
         html.push_str(&escape(playing));
         html.push_str("</p>\n");
+    }
+
+    if let Some(row) = view.react {
+        html.push_str(&crate::reactions::row_html(w.tag, row));
     }
 
     if let Some(said) = view.said {
@@ -963,6 +972,7 @@ mod tests {
             open: true,
             sing: None,
             quiz: false,
+            react: None,
         }
     }
 

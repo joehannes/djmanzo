@@ -422,17 +422,26 @@ own, not a copy of somebody else's — and the style and each version are cut, a
 line, to a length a music service's boxes take. The words are kept on the
 guest's song and copied with one press each.
 
-**Making it, and sending it.** *Open Suno* opens suno.com in a window of its
-own, where the DJ signs in, pastes the words and the style, uploads the voice
-— *Show their voice file* shows the newest recording in the file manager, or
-opens its folder where no file manager answers — and makes the song. djmanzo
-does not work Suno's page: Suno has no public API and its terms forbid robots
-and scraping, and the window has no way into djmanzo either, because no
-capability names it and Tauri lets remote content reach no command without
-one. With the song made, the DJ pastes its link and presses *WhatsApp* or
-*Mail*: the message opens written and addressed to the guest — only one who
-agreed to be contacted, at the number or address on their record — and the
-DJ reads it and sends it. WhatsApp needs the number with its country code.
+**Making it, and sending it.** *Fill in Suno's form* opens suno.com in a
+window of djmanzo's own and fills its Custom form with the words (in the
+language chosen) and the style — as an autofill does, and no more: the DJ
+checks them and presses Create, and uploads the voice themselves (*Show
+their voice file* shows the newest recording in the file manager). Suno has
+no public API and its terms forbid robots, so djmanzo never presses Create
+and never reads Suno's page; the owner chose this line on 16 October. A DJ
+not yet signed in signs in in that window, and the form fills itself once
+Create opens, for fifteen minutes, leaving anything the DJ typed alone;
+Suno's page says what was filled or what was not found, and the words are on
+the clipboard too. Once the DJ opens the finished song in that window, its
+link comes into the card by itself — djmanzo reads only the window's address.
+*In djmanzo's window* then opens WhatsApp Web in a window of djmanzo's own at
+the chat with the guest, the message and link written; *WhatsApp* opens the
+app instead, and *Mail* the DJ's mail. Either way the DJ reads it and sends
+it, and only to a guest who agreed to be contacted, at the number or address
+on their record. Neither window has a capability, so neither page has any
+way into djmanzo. WhatsApp needs the number with its country code. When no
+prepared event names the night's music, the words take the DJ's own genres
+from the press kit (`guests::with_night`).
 
 ---
 

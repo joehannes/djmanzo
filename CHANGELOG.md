@@ -16,6 +16,108 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.45.0 — The karaoke beta
+
+- **A playlist under every deck.** A tab on each deck's bottom edge opens
+  that deck's playlist: choose one of your lists, press a record to load it
+  on that deck, or ▶ to load and play it. The one on the deck and the one
+  next are marked, with the list's running time.
+- **A deck that goes on by itself — a filler deck.** In the same drawer,
+  *Next when this ends* loads and plays the next record when the deck runs
+  out, and *Repeat* goes round again: jingles and fillers on one deck while
+  the other carries the singers. A deck you pause is left alone. Each deck's
+  choice is kept for next time.
+- **A one-line top bar.** The bar at the top is one line now; on a smaller
+  screen its buttons become icons, and ⋯ shows the night's readings and the
+  guides when you want them.
+- **A song the singer cannot name.** In the library's *From memory*, *What
+  do they remember?* asks when it is from, how fast, who sings, the kind of
+  music, who it sounds like, the language and where they heard it; each
+  answer narrows your collection at once, and one press asks the
+  assistant with all of it.
+- **⚙ Sources and connections.** One press shows everything djmanzo can
+  find, play, buy, fetch lyrics or covers from, what works now, and where
+  to set up the rest.
+- **Shuffle, and a playlist's flow.** The deck's playlist drawer can
+  shuffle — every record once before any twice — and shows each record's
+  tempo and key, and the list's tempo range.
+- **One deck slim, the other big.** ⇤ in a deck's header makes it a slim
+  strip — the record, the time left, play — and gives the other deck the
+  room, its playlist open. *Full size* puts both back.
+
+- **The karaoke screens, livelier and clearer.** The singers' screen
+  names who is singing, rising in when it is someone new; the count-in's
+  dots pulse on each beat; the next singer's name rises in at the foot;
+  and at *Sang* the screen cheers — "¡Bravo, Ana!", the song and its score,
+  a burst of confetti in the theme's colours — for a few seconds, above the
+  words and never over them. The Singers panel's up-next card reads as a
+  card: *Up next*, the name large, the record under it, *Load on N* filled
+  as the main press, *Sang* outlined, *Not here* quiet, and a moment's
+  "✓ Ana sang …" when *Sang* is pressed. Nothing a host presses moves; with
+  reduced motion, everything only fades.
+
+- **A guest's song, from Suno to WhatsApp, in djmanzo's own windows.**
+  *Fill in Suno's form* (a guest's song card) opens djmanzo's Suno window
+  and fills its Custom form with the words chosen and the style, like an
+  autofill; the DJ checks them and presses Create — djmanzo never does, as
+  Suno's terms forbid it. Not signed in yet? The form fills itself once the
+  DJ has signed in and Create opens, leaving anything the DJ typed alone.
+  Suno's page says what was filled. Once the DJ opens the finished song in
+  that window, its link comes into the card by itself. *In djmanzo's
+  window* then opens WhatsApp Web in a window of djmanzo's own at the chat
+  with the guest, the message and link written; the DJ presses send. Only
+  for a guest who agreed to be contacted. The *WhatsApp* button still opens
+  the app. With no prepared event, the song's words take the DJ's own
+  genres from the press kit as the night's music.
+
+- **Four karaoke presets for a microphone.** *Stadium* (a long, wide room
+  and a little more push, for the big chorus), *Radio voice* (the lows and
+  highs cut, the middle forward, squeezed hard and dry — for a spoken verse
+  or an intro), *Big echo* (a long echo that repeats, for a ballad's last
+  line) and *Duet* (gentler compression and a little less room, so two
+  singers stay clear of each other). In each microphone's *is for* menu.
+
+- **The singers' screen, between and within the words.** An instrumental
+  break of six seconds or more — the intro, a line with no words, the
+  silence after a line — is a thin bar filling to the next line, with the
+  seconds left beside it. The word being sung glows softly. In a duet (two
+  or more singers on the microphones), each singer's name is shown in their
+  microphone's colour and lit while their microphone hears them, and a line
+  that begins with a singer's name ("Ana: …") is wiped in their colour,
+  without the name.
+
+- **The guide voice, offered for a song new to the singer.** When the
+  singer up next has never sung their song in the guest book (by its title,
+  however it was written, or by the record), the up-next card offers *Guide
+  voice*, ticked: *Load on N* then leaves the original singer quietly
+  underneath (a quarter, about −12 dB). Untick it to load as the deck is
+  set. A singer who already chose a voice from their phone is not asked
+  again. On the singers' screen, before the first line, a short line says
+  they will hear the original singer quietly underneath.
+
+- **Skins over a theme.** Faint artwork over the whole interface, in the
+  theme's own accent colour: *Palm shadows*, *Waves*, *Papel picado*,
+  *Halftone*, *Trash polka* and *Glowing plankton*, two or three offered with
+  each theme they suit (every Caribbean theme has some). A skin never takes
+  a press, is fainter with reduced motion, off with high contrast, and never
+  on the singers' screen. Chosen under *Skin over the theme* in the Singers
+  panel.
+
+- **Four Caribbean themes.** *Malecón Night* (Havana's sea wall after dark:
+  a night-sea navy, coral and sea glass; its light variant the pastel
+  facades), *Carnaval* (the vejigante masks: yellow and green on black, red
+  kept for danger), *Bioluminescent Bay* (Vieques at night: a cyan glow on a
+  black-blue sea, violet beside it) and *Bachata Rosa* (rose and gold on a
+  deep plum). Each in light and dark.
+
+- **Emoji from the room, held back.** With *Emoji from phones on the
+  singers' screen* on (Singers panel; off until the host turns it on), the
+  room's page shows a row of six emoji — 👏 ❤️ 🔥 😂 🎤 🙌. Each tap shows
+  small in a corner of the singers' screen, rises a little and fades within
+  three seconds (only fades with reduced motion), never over the words and
+  never taking a press; five at most at once, one tap per phone every two
+  seconds, six a second for the whole room.
+
 - **A monitor for each singer.** On an audio interface with ten outputs or
   more, *A monitor for each singer* (under the monitor's music, in
   *Microphones*) gives Mic 1's singer outputs 7–8, Mic 2's 9–10, and on.
