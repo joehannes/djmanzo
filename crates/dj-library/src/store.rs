@@ -469,6 +469,54 @@ impl Library {
         })
     }
 
+    /// Every stored cue with what its record says about where it sits, each
+    /// weighed by how recently its record was played (§12's cue conventions,
+    /// [`crate::conventions`]).
+    ///
+    /// `now` is seconds since 1970, passed in so a test is not a race with the
+    /// clock.
+    pub fn cue_evidence(&self, now: i64) -> Result<Vec<crate::conventions::CueSeen>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.slot, c.frame, c.label, c.colour,
+                        t.bpm, t.grid_anchor, t.phrase_beats, t.phrase_anchor,
+                        t.duration_frames, t.sample_rate, t.last_played, t.added_at
+                 FROM cues c JOIN tracks t ON t.id = c.track_id
+                 ORDER BY c.slot",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                let bpm: Option<f64> = row.get(4)?;
+                let anchor: Option<f64> = row.get(5)?;
+                let phrase_beats: Option<u32> = row.get(6)?;
+                let phrase_anchor: Option<i64> = row.get(7)?;
+                let duration: i64 = row.get(8)?;
+                let rate: i64 = row.get(9)?;
+                let last_played: Option<i64> = row.get(10)?;
+                let added: i64 = row.get(11)?;
+                let grid = match (bpm, anchor) {
+                    (Some(bpm), Some(anchor)) if bpm > 0.0 && rate > 0 => {
+                        Some(crate::conventions::Grid {
+                            anchor,
+                            frames_per_beat: 60.0 / bpm * rate as f64,
+                            phrase: phrase_beats.zip(phrase_anchor),
+                        })
+                    }
+                    _ => None,
+                };
+                Ok(crate::conventions::CueSeen {
+                    slot: row.get(0)?,
+                    frame: row.get(1)?,
+                    label: row.get(2)?,
+                    colour: row.get(3)?,
+                    grid,
+                    duration_frames: duration as f64,
+                    weight: crate::learned::recency(last_played.unwrap_or(added), now),
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
     /// Replace a track's saved loops. Wholesale, for the same reason as cues.
     pub fn set_loops(&self, id: TrackId, loops: &[StoredLoop]) -> Result<()> {
         let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
@@ -3964,6 +4012,58 @@ mod tests {
     }
 
     // -- cues and loops ----------------------------------------------------
+
+    /// **§12's cue evidence, from the database**: each cue with its record's
+    /// grid when it has one, weighed by when the record was last played — or
+    /// added, if never — on `learned::recency`'s curve.
+    #[test]
+    fn cue_evidence_carries_each_records_grid_and_recency() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Gridded", "A")).unwrap();
+        lib.upsert_track(&track(2, "Loose", "B")).unwrap();
+        let grid = Beatgrid::new(
+            FramePos::new(1_000.0),
+            Bpm::new(120.0).unwrap(),
+            Confidence::new(0.9),
+        );
+        lib.set_analysis(id(1), &StoredAnalysis::default().with_beatgrid(grid))
+            .unwrap();
+        let cue = |slot, frame| StoredCue {
+            slot,
+            frame,
+            label: Some("Intro".into()),
+            colour: None,
+        };
+        lib.set_cues(id(1), &[cue(1, 1_000.0)]).unwrap();
+        lib.set_cues(id(2), &[cue(1, 0.0)]).unwrap();
+        let now = 1_700_000_000 + 180 * 86_400;
+        lib.record_play(id(1), now, None).unwrap();
+
+        let seen = lib.cue_evidence(now).unwrap();
+        assert_eq!(seen.len(), 2);
+        let gridded = seen.iter().find(|c| c.frame == 1_000.0).unwrap();
+        let loose = seen.iter().find(|c| c.frame == 0.0).unwrap();
+        let rate = f64::from(SampleRate::DEFAULT.get());
+        let held = gridded.grid.expect("a gridded record's cue has its grid");
+        assert!((held.frames_per_beat - rate / 2.0).abs() < 1e-6, "{held:?}");
+        assert_eq!(held.anchor, 1_000.0);
+        assert_eq!(
+            crate::conventions::place(gridded),
+            Some(crate::conventions::Place::Start)
+        );
+        assert_eq!(loose.grid, None, "no grid, no place");
+        assert!(
+            (gridded.weight - 1.0).abs() < 1e-9,
+            "played just now: {}",
+            gridded.weight
+        );
+        assert!(
+            (loose.weight - 0.5).abs() < 1e-6,
+            "never played, added a half-life ago: {}",
+            loose.weight
+        );
+        assert_eq!(gridded.label.as_deref(), Some("Intro"));
+    }
 
     #[test]
     fn cues_survive_the_round_trip() {

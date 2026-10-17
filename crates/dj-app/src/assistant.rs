@@ -312,7 +312,52 @@ fn context_lines(state: &AppState) -> Vec<String> {
     if let Ok(context) = crate::context::gather_from(state, &snapshot) {
         lines.extend(crate::context::told(&context));
     }
+    lines.extend(habit_lines(state, &log));
     lines
+}
+
+/// §12's habits the briefing had not been told: which effects the DJ runs
+/// together tonight, which pad holds which kind of cue across their records,
+/// and what they did with tonight's staged transactions — counts and
+/// conventions, never preferences (§13), each `none` until there is one.
+fn habit_lines(state: &AppState, log: &[dj_control::TimedEvent]) -> Vec<String> {
+    let together: Vec<String> = crate::signals::effect_combinations(log)
+        .iter()
+        .map(|pair| {
+            format!(
+                "{} with {} ({} times)",
+                pair.first.name(),
+                pair.second.name(),
+                pair.times
+            )
+        })
+        .collect();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+        });
+    let pads = crate::commands::library(state)
+        .ok()
+        .and_then(|db| db.cue_evidence(now).ok())
+        .map(|seen| dj_library::conventions::words(&dj_library::conventions::conventions(&seen)))
+        .unwrap_or_default();
+    let verdicts = state.night().verdicts().words();
+    let said = |text: String| {
+        if text.is_empty() {
+            "none".to_owned()
+        } else {
+            text
+        }
+    };
+    vec![
+        format!(
+            "effects run together tonight: {}",
+            said(together.join(", "))
+        ),
+        format!("cue pads: {}", said(pads)),
+        format!("staged transactions tonight: {}", said(verdicts)),
+    ]
 }
 
 /// The planned set, in order, with the one that is next marked.
@@ -624,6 +669,34 @@ mod tests {
     /// §40: **the briefing reads the room from the room**, and only while it
     /// is watched -- nothing seen yet says nothing is watching, and a reading
     /// that has just arrived says it is (too little yet to give a direction).
+    #[test]
+    fn the_briefing_tells_the_djs_habits_as_counts() {
+        let state = AppState::new(true);
+        let line = |state: &AppState, label: &str| {
+            context_lines(state)
+                .into_iter()
+                .find(|line| line.starts_with(label))
+                .unwrap_or_else(|| panic!("{label} has a line"))
+        };
+        assert_eq!(
+            line(&state, "effects run together tonight:"),
+            "effects run together tonight: none"
+        );
+        assert_eq!(line(&state, "cue pads:"), "cue pads: none");
+        assert_eq!(
+            line(&state, "staged transactions tonight:"),
+            "staged transactions tonight: none"
+        );
+        state.night().note_verdict(crate::staged::Verdict::Rejected);
+        state
+            .night()
+            .note_verdict(crate::staged::Verdict::AcceptedChanged);
+        assert_eq!(
+            line(&state, "staged transactions tonight:"),
+            "staged transactions tonight: 0 accepted as offered, 1 accepted after changing them, 1 rejected"
+        );
+    }
+
     #[test]
     fn the_briefing_reads_the_context_engines_one_object() {
         let state = AppState::new(true);
