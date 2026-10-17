@@ -37,6 +37,12 @@ def main():
     files = sorted(f for f in os.listdir(f"{WORK}/shots") if re.match(r"^[a-z]+--[a-z0-9-]+(--[a-z0-9-]+)?\.png$", f))
     index = {}
     for name in files:
+        # A launch that found no interface draws a white page saying so.
+        mean = subprocess.run(["convert", f"{WORK}/shots/{name}", "-colorspace", "gray", "-format", "%[fx:mean]", "info:"],
+                              capture_output=True, text=True, check=True).stdout
+        if float(mean) > 0.8:
+            print("not filed, the interface did not load:", name)
+            continue
         screen, slug = name[:-4].split("--", 1)
         where = group(slug)
         if screen in ("launcher", "palette", "guides", "settings", "effects"):

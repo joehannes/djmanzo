@@ -8,8 +8,10 @@ the interface bundled:
 ```sh
 npm --prefix ui run build                                  # confirm "✓ built"
 cargo build --bin djmanzo --features dj-app/custom-protocol
-Xvfb :95 -screen 0 1920x1080x24 &
 export WORK=/tmp/djmanzo-shots DISPLAY=:95
+mkdir -p $WORK && cp target/debug/djmanzo $WORK/djmanzo   # a copy: see below
+export DJMANZO=$WORK/djmanzo
+Xvfb :95 -screen 0 1920x1080x24 &
 
 python3 -I scripts/screenshots/make_music.py $WORK/music   # the demo collection
 python3 -I scripts/screenshots/prime.py                    # a home with it in the library
@@ -38,3 +40,7 @@ python3 -I scripts/screenshots/finish.py                   # clean, file, index
   typing into the palette lags; a shorter wait sends Enter before the palette
   has an answer, and the keys after it land in the palette.
 - **The welcome is answered in the home**, so it never covers a screen.
+- **Shoot with a copy of the binary.** `cargo test --all-targets` and
+  `cargo clippy` rebuild `target/debug/djmanzo` *without* the bundled
+  interface, and every launch after that shows "Could not connect to
+  localhost". It happened once, mid-run, and cost 42 pictures.

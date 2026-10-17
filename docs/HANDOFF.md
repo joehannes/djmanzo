@@ -113,6 +113,13 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 
+**`cargo test --all-targets` and `cargo clippy` rebuild `target/debug/djmanzo`
+without the bundled interface.** Anything launching that binary afterwards
+(the Xvfb rig, `scripts/screenshots/`) opens on "Could not connect to
+localhost". Launch a copy taken right after
+`cargo build --features dj-app/custom-protocol`; it cost 42 screenshots
+once, mid-run.
+
 **From the two parallel sessions of 17 October** (their notes, kept here):
 
 - **An `$effect` that fetches "until there is something" loops forever when
