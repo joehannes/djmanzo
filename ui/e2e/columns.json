@@ -55,6 +55,11 @@
     "about": "Whether there is a lead sitting where a singer sits, at the record's most vocal moment. A centred synth lead reads the same way."
   },
   {
+    "slug": "breakdown",
+    "heading": "Break",
+    "about": "Where the first breakdown starts: the low end dropping well below the record's own middle for four bars or more. A dash when it has none."
+  },
+  {
     "slug": "phrases",
     "heading": "Phrase",
     "about": "How many beats a phrase runs for, when the structure is clear enough to say."

@@ -384,6 +384,173 @@ pub fn effects_used(events: &[TimedEvent]) -> Vec<EffectKind> {
     used
 }
 
+/// Two effects the DJ ran together, and how often.
+///
+/// §12's *FX combinations*. A fact about tonight, not a preference: "echo with
+/// a filter, five times" is what happened; "this DJ likes echo with a filter"
+/// is a claim §13 makes wait for more than one night.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Combination {
+    /// The two, in the order effects are offered ([`EffectKind::ALL`]).
+    pub first: EffectKind,
+    pub second: EffectKind,
+    /// How many times the DJ brought one in while the other was running.
+    pub times: usize,
+}
+
+/// Which effects the DJ ran together tonight, most often first.
+///
+/// Together means **in one rack** — one deck's chain, or the master's — because
+/// that is what a listener hears as one sound: a reverb on deck 1 and an echo
+/// on deck 2 are two records' effects, not a combination. A pair is counted
+/// when the DJ's hand brings an effect into the room (the rule
+/// [`effects_used`] uses) while another slot of the same rack is already on
+/// with an effect in it. djmanzo's own throws make no pair, but are followed,
+/// so an echo the automix left running is still running when the DJ adds a
+/// filter to it.
+#[must_use]
+pub fn effect_combinations(events: &[TimedEvent]) -> Vec<Combination> {
+    type Rack = Option<DeckId>;
+    let mut held: BTreeMap<(Rack, u8), EffectKind> = BTreeMap::new();
+    let mut on: BTreeMap<(Rack, u8), bool> = BTreeMap::new();
+    let mut pairs: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    let place = |kind: EffectKind| EffectKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    for entry in events {
+        let (slot, change) = match entry.event {
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Fx { slot, change },
+            }) => ((Some(deck), slot), change),
+            SessionEvent::Action(Action::Mixer(MixerAction::Fx { slot, change })) => {
+                ((None, slot), change)
+            }
+            _ => continue,
+        };
+        let was_on = on.get(&slot).copied().unwrap_or(false);
+        let heard = match change {
+            FxChange::Select(kind) => {
+                held.insert(slot, kind);
+                was_on
+            }
+            FxChange::SetEnabled(now) => {
+                on.insert(slot, now);
+                now && !was_on
+            }
+            FxChange::ToggleEnabled => {
+                on.insert(slot, !was_on);
+                !was_on
+            }
+            _ => false,
+        };
+        if !heard || entry.by != By::Hand {
+            continue;
+        }
+        let Some(kind) = held
+            .get(&slot)
+            .copied()
+            .filter(|kind| *kind != EffectKind::None)
+        else {
+            continue;
+        };
+        for (other, other_kind) in &held {
+            let running = on.get(other).copied().unwrap_or(false);
+            if *other == slot || other.0 != slot.0 || !running || *other_kind == EffectKind::None {
+                continue;
+            }
+            let (a, b) = (place(kind), place(*other_kind));
+            *pairs.entry((a.min(b), a.max(b))).or_default() += 1;
+        }
+    }
+    let mut out: Vec<Combination> = pairs
+        .into_iter()
+        .map(|((a, b), times)| Combination {
+            first: EffectKind::ALL[a],
+            second: EffectKind::ALL[b],
+            times,
+        })
+        .collect();
+    // Most often first; ties keep the order effects are offered in.
+    out.sort_by_key(|pair| std::cmp::Reverse(pair.times));
+    out
+}
+
+/// §12's *how quickly the DJ changes plans*, as the log can honestly show it.
+///
+/// A plan, here, is the record the DJ cued: loaded on a deck that has not
+/// played it yet. Changing the plan is loading another record on that deck
+/// before pressing play — a fact in the log, not a reading of anybody's mind.
+/// Counted out of the records they loaded by hand, with how long the replaced
+/// record sat cued at the middle of them, so "quickly" is a number of seconds
+/// and not an adjective.
+///
+/// **Only the DJ's hand on both sides.** A record djmanzo cued and the DJ
+/// replaced is a rejected suggestion, which §44's verdicts count already; a
+/// record the DJ cued and djmanzo replaced is the automix's doing. Loading the
+/// same record again is a re-cue, not a change of plan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Swaps {
+    /// Records the DJ cued and replaced before they played.
+    pub swapped: usize,
+    /// Records the DJ loaded by hand.
+    pub loaded: usize,
+    /// How long a replaced record sat cued, at the middle of them; `None`
+    /// when nothing was replaced.
+    pub sat: Option<Duration>,
+}
+
+impl Swaps {
+    /// As the night's row keeps it: `"swapped,loaded,seconds"`, or `None`
+    /// before anything was loaded by hand.
+    #[must_use]
+    pub fn stored(&self) -> Option<String> {
+        (self.loaded > 0).then(|| {
+            format!(
+                "{},{},{}",
+                self.swapped,
+                self.loaded,
+                self.sat.map_or(0, |sat| sat.as_secs())
+            )
+        })
+    }
+}
+
+/// Read tonight's swaps off the log; see [`Swaps`].
+#[must_use]
+pub fn swaps(events: &[TimedEvent]) -> Swaps {
+    // Per deck: the record cued and not yet played, when, and by whose hand.
+    let mut cued: BTreeMap<DeckId, (Duration, dj_core::TrackId, By)> = BTreeMap::new();
+    let mut out = Swaps::default();
+    let mut sat: Vec<Duration> = Vec::new();
+    for entry in events {
+        match entry.event {
+            SessionEvent::Load { deck, track } => {
+                if entry.by == By::Hand {
+                    out.loaded += 1;
+                    if let Some((when, before, By::Hand)) = cued.get(&deck).copied()
+                        && before != track
+                    {
+                        out.swapped += 1;
+                        sat.push(entry.at.saturating_sub(when));
+                    }
+                }
+                cued.insert(deck, (entry.at, track, entry.by));
+            }
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Play | DeckAction::PlayPause,
+            }) => {
+                // Played: whatever happens to the deck now is a new record
+                // after this one, not a change of mind about it.
+                cued.remove(&deck);
+            }
+            _ => {}
+        }
+    }
+    sat.sort_unstable();
+    out.sat = sat.get(sat.len() / 2).copied();
+    out
+}
+
 /// The gesture an event is, if it is one of §14's — also what §119 draws a
 /// night's actions by (`crate::crowd::moves`).
 pub(crate) fn did(event: &SessionEvent) -> Option<Did> {
@@ -505,6 +672,63 @@ mod tests {
         )
     }
 
+    fn load(secs: f64, n: u8, track: u8, by: By) -> TimedEvent {
+        TimedEvent {
+            at: Duration::from_secs_f64(secs),
+            event: SessionEvent::Load {
+                deck: deck(n),
+                track: dj_core::TrackId::from_bytes([track; 32]),
+            },
+            by,
+        }
+    }
+
+    fn play(secs: f64, n: u8) -> TimedEvent {
+        at(
+            secs,
+            Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            },
+        )
+    }
+
+    /// **A cued record replaced before it played is a change of plan, and
+    /// nothing else is.** Not a record replaced after it played, not the same
+    /// record loaded again, not a record djmanzo cued or replaced; and the
+    /// time it sat is counted at the middle, in seconds.
+    #[test]
+    fn a_cued_record_replaced_before_it_played_is_a_change_of_plan() {
+        let log = [
+            // Deck 1: cued, thought better of after 30 s, then 50 s, then played.
+            load(0.0, 1, 1, By::Hand),
+            load(30.0, 1, 2, By::Hand),
+            load(80.0, 1, 3, By::Hand),
+            play(90.0, 1),
+            // Played, then the next record: not a change of plan.
+            load(300.0, 1, 4, By::Hand),
+            // The same record again: a re-cue.
+            load(310.0, 1, 4, By::Hand),
+            // Deck 2: djmanzo cued it and the DJ replaced it — a verdict, not
+            // a swap — and then djmanzo replaced the DJ's: the automix's.
+            load(0.0, 2, 5, By::Machine),
+            load(20.0, 2, 6, By::Hand),
+            load(40.0, 2, 7, By::Machine),
+            // Deck 2 again, the DJ's own, replaced after 10 s.
+            load(50.0, 2, 8, By::Hand),
+            load(60.0, 2, 9, By::Hand),
+        ];
+        let read = swaps(&log);
+        assert_eq!(read.swapped, 3, "{read:?}");
+        assert_eq!(read.loaded, 8, "{read:?}");
+        assert_eq!(read.sat, Some(Duration::from_secs(30)), "{read:?}");
+        assert_eq!(read.stored().as_deref(), Some("3,8,30"));
+
+        assert_eq!(swaps(&[]).stored(), None);
+        let none = swaps(&[load(0.0, 1, 1, By::Hand), play(5.0, 1)]);
+        assert_eq!(none.stored().as_deref(), Some("0,1,0"));
+    }
+
     const PEAK: fn(Duration) -> Option<SessionPhase> = |_| Some(SessionPhase::Peak);
     const UNREAD: fn(Duration) -> Option<SessionPhase> = |_| None;
 
@@ -605,6 +829,58 @@ mod tests {
             effects_used(&log),
             vec![EffectKind::Echo, EffectKind::Echo, EffectKind::Flanger]
         );
+    }
+
+    /// **§12's FX combinations: two effects in one rack, the DJ bringing one
+    /// in while the other runs.** Two decks' effects are not a combination;
+    /// djmanzo's own throw makes no pair but is still running when the DJ adds
+    /// to it; switching off ends a pair; the same effect twice in a rack is a
+    /// pair of one kind.
+    #[test]
+    fn effects_run_together_in_one_rack_by_the_djs_hand() {
+        use FxChange::{Select, SetEnabled, ToggleEnabled};
+        let on_deck = |n: u8, secs: f64, slot: u8, change: FxChange| {
+            at(
+                secs,
+                Action::Deck {
+                    deck: deck(n),
+                    action: DeckAction::Fx { slot, change },
+                },
+            )
+        };
+        let machine = |mut entry: TimedEvent| {
+            entry.by = By::Machine;
+            entry
+        };
+        let log = [
+            // The automix leaves an echo running on deck 1.
+            machine(on_deck(1, 0.0, 1, Select(EffectKind::Echo))),
+            machine(on_deck(1, 1.0, 1, SetEnabled(true))),
+            // The DJ adds a filter to it: echo with filter, once.
+            on_deck(1, 2.0, 2, Select(EffectKind::Filter)),
+            on_deck(1, 3.0, 2, ToggleEnabled),
+            // A reverb on deck 2 while deck 1's two run: not a combination.
+            on_deck(2, 4.0, 1, Select(EffectKind::Reverb)),
+            on_deck(2, 5.0, 1, SetEnabled(true)),
+            // Filter off and on again over the echo: echo with filter, twice.
+            on_deck(1, 6.0, 2, ToggleEnabled),
+            on_deck(1, 7.0, 2, ToggleEnabled),
+            // Echo off; filter off and on: nothing running beside it.
+            on_deck(1, 8.0, 1, SetEnabled(false)),
+            on_deck(1, 9.0, 2, ToggleEnabled),
+            on_deck(1, 10.0, 2, ToggleEnabled),
+            // The machine's own throw beside a running filter makes no pair.
+            machine(on_deck(1, 11.0, 1, SetEnabled(true))),
+        ];
+        assert_eq!(
+            effect_combinations(&log),
+            vec![Combination {
+                first: EffectKind::Echo,
+                second: EffectKind::Filter,
+                times: 2,
+            }]
+        );
+        assert!(effect_combinations(&[]).is_empty());
     }
 
     /// The master rack is a rack too, and djmanzo's own throws are its own:

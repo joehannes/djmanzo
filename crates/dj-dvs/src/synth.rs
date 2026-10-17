@@ -100,6 +100,19 @@ impl Synth {
         }
     }
 
+    /// One stereo frame of the signal, `cycles` into the record — the left
+    /// channel and the right a quarter cycle behind it, as [`Self::render`]
+    /// writes them. For a caller whose speed changes from one frame to the
+    /// next, which is every caller with a hand on the record.
+    #[must_use]
+    pub fn frame_at(&self, cycles: f64) -> [f32; 2] {
+        let period = f64::from(self.format.period());
+        [
+            self.sample_at(cycles, period),
+            self.sample_at(cycles - 0.25, period),
+        ]
+    }
+
     /// One sample of the signal, `cycles` into the record.
     fn sample_at(&self, cycles: f64, period: f64) -> f32 {
         let bit_index = cycles.rem_euclid(period);

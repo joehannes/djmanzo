@@ -168,6 +168,32 @@ pub fn build(
             .collect(),
     });
 
+    // §117's "the §118 guides and welcome on it": the assistant's guides,
+    // each opened as its button in the top bar opens it, and the welcome.
+    sections.push(Section {
+        title: "Guides".to_owned(),
+        tiles: arranged(
+            crate::guide::Topic::ALL
+                .into_iter()
+                .map(|topic| {
+                    tile(
+                        format!("guide:{}", topic.slug()),
+                        topic.title(),
+                        topic.about(),
+                        format!("guide {}", topic.slug()),
+                    )
+                })
+                .chain([tile(
+                    "welcome".to_owned(),
+                    "Welcome",
+                    "How you play, what you are learning, and your first steps — asked again.",
+                    "welcome".to_owned(),
+                )])
+                .collect(),
+            uses,
+        ),
+    });
+
     sections.push(Section {
         title: "Panels".to_owned(),
         tiles: arranged(
@@ -352,5 +378,34 @@ mod tests {
         interface.uses.insert("surface:booth".to_owned(), u32::MAX);
         interface.used("surface:booth");
         assert_eq!(interface.uses["surface:booth"], u32::MAX);
+    }
+
+    /// **§117's guides and welcome on the dashboard**: every one of §118's
+    /// guides by its own title, then the welcome, each a run the leader
+    /// accepts — and a guide djmanzo does not have is refused.
+    #[test]
+    fn the_guides_and_the_welcome_are_on_the_dashboard() {
+        let dashboard = build_with(None, &Interface::default());
+        let guides = dashboard
+            .sections
+            .iter()
+            .find(|section| section.title == "Guides")
+            .expect("a section of guides");
+        let runs: Vec<&str> = guides.tiles.iter().map(|tile| tile.run.as_str()).collect();
+        assert_eq!(
+            runs,
+            [
+                "guide next",
+                "guide mix",
+                "guide energy",
+                "guide request",
+                "guide learn",
+                "guide trouble",
+                "welcome"
+            ]
+        );
+        assert_eq!(guides.tiles[2].label, "The energy of the night");
+        assert!(crate::leader::runnable("guide nothing", &[]).is_err());
+        assert!(crate::leader::runnable("welcome now", &[]).is_err());
     }
 }

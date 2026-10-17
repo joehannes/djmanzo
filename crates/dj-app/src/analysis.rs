@@ -43,7 +43,14 @@ use std::sync::{Arc, Mutex};
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
 ///
-/// Bumped to 6 for §25's `stems` layer: the section's single voice reading
+/// Bumped to 7 because the breakdown finder changed its answer: it asked for
+/// two thin windows, which at a thirty-two-beat phrase is sixteen bars, and now
+/// asks for sixteen beats whatever the window. Nothing in the schema moved, and
+/// that is the case this rule is for -- a version 6 record deserialises
+/// perfectly and says an eight-bar breakdown is not there, and the library's
+/// breakdown column, filled from the deck's cached reading, believed it.
+///
+/// Six was §25's `stems` layer: the section's single voice reading
 /// became the four currents' shares, so a version 5 record's sections do not
 /// deserialise at all -- which is the failure mode this number is for, and is
 /// better than the one before it.
@@ -61,7 +68,7 @@ use std::sync::{Arc, Mutex};
 /// field added here is a version bump**, every time, even when the field is
 /// optional: optional means "a reader may find it missing", not "a writer may
 /// forget it".
-const CACHE_VERSION: u32 = 6;
+const CACHE_VERSION: u32 = 7;
 
 /// What the analyser found, in a form that survives a restart.
 ///

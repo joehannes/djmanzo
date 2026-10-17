@@ -1,0 +1,623 @@
+# Session 2 — Intelligence: notes
+
+See [../PARALLEL-SESSIONS.md](../PARALLEL-SESSIONS.md). Kept current after every item: built, not built and why, changelog lines, DIRECTIVE-STATUS text, changes needed in files owned by the other session, HANDOFF traps.
+
+**Base.** This branch (`claude/peaceful-dirac-5ptpkm`) is `main` at `cbfdd12`
+(v0.45.0, both karaoke sessions merged and folded) with Session 1's
+`14c93b7` merged in — the owner's choice on 17 October, rather than a reset to
+`14c93b7`, which would have dropped the karaoke fold from this branch. **The
+karaoke fold is already on `main`**: Session 1's item 5 is done, and Session 1's
+branch wants `main` merged in before its own fold.
+
+**Owner's rule for this session (17 October):** only Session 2's files and new
+files. Every edit needed in `commands.rs`, `state.rs`, `control.rs`, `host.rs`,
+`dj-audio`, `dj-control`'s bus, `dj-core`, Session 1's or karaoke files is
+written under *Needed* below for the fold.
+
+## Status
+
+- **§40 built** — the briefing reads the context engine's one object.
+- **§12/§14 built, in part** — effects run together, cue conventions, and
+  the transaction's Modify/Reject counted and told to the assistant; the
+  Modify/Reject count waits on three lines in `commands.rs` (below).
+- **§16 built, waiting on the fold for the picker** — thirteen more packs
+  (`pack::READY`) and the three fields no table owned (tempo window, arc,
+  transition preferences), each held to the library's own tables. The
+  picker shows them, and the rail and planner read the new fields, once the
+  fold makes the changes listed under *Needed*.
+- **§34/§36 built against stand-ins** — eight more signals from the room
+  surface's camera and microphone, each placed against its own night on its
+  own line with its own confidence (`dj_assistant::floor`). Proven against
+  drawn footage and generated sound in Chromium and run in the shipped
+  webview under Xvfb with WebKitGTK's mock devices; **nothing here has been
+  near a real room**, a real camera or a real microphone.
+- **§106 built: a controller and a turntable that are not there** — a
+  stand-in controller driving raw MIDI through the port's own callback body,
+  and a stand-in turntable rendering a deck under a scripted hand. Each found
+  a real defect, now fixed: a 14-bit fader stepping backwards, and a
+  timecode decoder that found no place at all on a record below full scale
+  and read a stopped platter as still turning. **Unproven against real
+  hardware**: no controller, turntable, control record or MIDI service has
+  touched any of it.
+
+## Round 2 (from 17 October, on `main` at `04c9e67`)
+
+**Owner's choices (17 October):** Session 1 has finished and merged to
+`main`, so this round edits Session 1's files directly where it needs to
+(`commands.rs`, `columns.rs`, `Library.svelte`, the null audio host,
+`control.rs`, `shell.ts`) instead of leaving notes, folds its own notes into
+the shared documents, merges into `main` and releases v0.46.0. Session 1's
+leftovers (the ROADMAP/FEATURES truth pass, closing §115/§118/§121) are not
+this round's.
+
+### Round 2 status
+
+**Folded on 17 October** into CHANGELOG (v0.46.0), DIRECTIVE-STATUS (§12,
+§25, §34, §36, §75, §106 and the library-quality row) and HANDOFF (traps and
+where the work stands), merged into `main` and released as v0.46.0. The
+sections below are kept as the record of what was folded.
+
+- **1. §12 across nights — built.** Three more figures kept on each night's
+  row (migration 22: `pair`, `verdicts`, `swaps`), written by
+  `night_setting` (its body now `commands::note_tonight`, so a test drives
+  it through `AppState`) and read back by `profile` with `learned::recency`'s
+  decay: the two effects run together (by agreement, as the other figures),
+  what was done with staged moves (weighed shares, nothing on fewer than
+  twelve moves), and **how quickly the DJ changes plans** — new,
+  `signals::swaps`: a record the DJ loaded by hand and replaced on the same
+  deck before pressing play, counted out of the records they loaded, with how
+  long the replaced one sat cued at the middle of them (nothing on fewer than
+  twelve loads). A record djmanzo cued, or one djmanzo replaced, or the same
+  record loaded again, is not a change of the DJ's plan. All three reach the
+  profile's sentence and its DTO; tonight's swaps reach the assistant's
+  briefing. Held by `signals::tests::a_cued_record_replaced_before_it_played_is_a_change_of_plan`,
+  `profile::tests` (four new), `store::tests::a_nights_pair_verdicts_and_swaps_are_kept`
+  and `commands::persistence_tests::a_nights_verdicts_and_swaps_reach_its_row`;
+  eleven mutants fail them. Not driven under Xvfb: a profile needs three
+  nights of a setting and the change is a sentence in a panel that a fresh
+  install leaves empty.
+
+- **2. Breakdowns column (§20/§75) — built, and driving it found a defect in
+  the analysis.** `columns::Column::Breakdown` ("Break"): where the record's
+  first breakdown starts, a dash when it has none, blank when it was never
+  measured. Stored on the track (migration 23, `tracks.breakdown`, frames at
+  the record's rate, `dj_library::NO_BREAKDOWN` for *measured, none*) by
+  `library::stored_analysis` from the trajectory, sent as
+  `commands::BreakdownReading`, sorted by start with *none* after every
+  record that has one and the unmeasured last. **The column showed a dash for
+  a record with an obvious eight-bar breakdown**, and the column was right:
+  `energy::trajectory` asked for two thin windows, and a window is the
+  record's phrase — at a thirty-two-beat phrase that was a sixteen-bar
+  breakdown or nothing. It now asks for sixteen beats whatever the window
+  (`energy::AT_LEAST_BEATS`, `windows_for`). **And then the column still
+  showed a dash**, because the deck's analysis cache (`analysis::CACHE_VERSION`)
+  held the old answer and the deck load writes it into the library; its own
+  doc says an analyser that changes its answer is a version bump, so it is
+  7 now, and the running application re-analysed and read **0:30** for a
+  breakdown at 31 s. Held by `store::tests::a_records_breakdown_keeps_its_three_answers`,
+  `library::tests::the_stored_breakdown_is_the_first_and_none_is_not_absence`,
+  `commands::breakdown_tests`, `energy::trajectory_tests::an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase`
+  and `e2e/columns.spec.ts`'s breakdown test; ten mutants fail them (seven on
+  the column and its storage, three on the window rule).
+
+- **3. §34/§36, what was left — built, against stand-ins only.** Four more
+  lines on the floor, each placed against its own night like the first
+  eight, none added to another. **Occupied picture** (§34's *occupancy*, a
+  proxy): the share of the picture more than 24 luma from the room's look,
+  learned as a running average — the plain average for the first looks, so a
+  camera switched on with somebody in view does not hold them as the empty
+  room, then two per cent a look, so a crowd that keeps moving never settles
+  into it and a lamp left on does. **Packed together** (§34's *crowd
+  density*, a proxy): for each occupied four-pixel block, the share of the
+  blocks within two of it that are occupied too. **Lighting moving**: how
+  far the centre of the picture's brightest pixels moved across the same
+  sixth of a second movement is read over — distinct from scene change by
+  construction, since a sweeping beam moves its light and leaves the
+  brightness histogram as it was. **Voices over the music** (§36's *vocal
+  response*): the microphone's mid band on a second running fit against the
+  master's level, split from the broadband room over the music, so a room
+  singing and the low end rattling are two readings. There is no master
+  band meter, so the fit is against the whole mix's level, and the line's
+  stated blind spot says the record's own vocal lifts it too. Each line says
+  what it is confused with (a still person fades into the room, one figure
+  near the lens packs like a crowd, a white shirt moves the light, two
+  beams cancel). Held by `floor::tests::voices_over_the_music_are_the_voice_band_alone`,
+  the widened `each_signal_is_placed_against_its_own_night_and_said_alone`,
+  seven new `floor.test.ts` cases and `e2e/floor.spec.ts`'s new test, which
+  plays drawn footage through Chromium's fake camera: two figures against
+  thirty (occupancy 0.03 against 0.22, density 0.16 against 0.71), a
+  sweeping beam against the lights snapping on (lighting about 0.9 with the
+  scene under 0.06, against a scene change of 1 with the lighting at 0).
+  Eleven mutants fail them; three survived the first tests (the early plain
+  average, the quarter-of-a-block rule, the fewest bright pixels) and each
+  has a test now. **Not driven under Xvfb**: the webview there has no camera
+  or microphone, so the room surface cannot look, and the lines are the
+  same generic list the first eight use. Nothing here is a claim about a
+  real room.
+
+- **4. §106 in the running application — built and driven under Xvfb.**
+  `DJMANZO_STANDIN_TIMECODE=<deck>` (with `DJMANZO_NULL_AUDIO`): once an
+  output is open, `crate::standin` renders `dj_dvs::turntable::Turntable::perform`
+  under a scripted hand (about twenty-five seconds: play, brake to a stop,
+  start, baby scratch, spin back, lift, drop forty seconds in, +8 %), has the
+  null inputs play it (`dj_audio::null::play_into_inputs`, new: interleaved,
+  channel for channel, **only at its own rate**, because a control record
+  resampled by repeating samples reports the wrong speed), and puts the deck
+  on it through `timecode::start` — `start_timecode`'s body, now shared, so
+  the stand-in uses the door a DJ uses. `DJMANZO_STANDIN_CONTROLLER=<stem>`:
+  `ControlHub::open_standin` wires a `dj_hid::standin::StandIn`, `status`
+  reports it as the open port (`STANDIN_PORT`, `standin: true`) so §53's
+  reach reads it, and `controller_standin_press` plays every control's
+  presses into it and posts the actions to the drain a real port posts to.
+  **Driving it found the panel hiding it**: the Controllers panel drew the
+  open controller only inside the branch for a machine with MIDI ports, so
+  on this machine — no MIDI service — the stand-in was open in Rust and
+  absent on screen; the open block now stands outside that branch. Seen in
+  the running application: the deck header's BPM following the hand (123.8,
+  0.2 at the stop, about 134 at +8 %, passing values through the brake,
+  scratch and spin), the timecode panel reading *reading (90 %) at 1.01× …
+  0.00× … −0.42× · djmanzo 1 kHz · relative · Null input*, the Controllers
+  panel showing *Stand-in controller (no hardware) · Generic 2-deck* under
+  *MIDI is not available on this machine*, with its reach (2 decks, 2 jogs,
+  17 knobs and faders, 8 pads, no stem controls — and the stem module opened
+  on the deck for it, §53's adaptation), and *Press every control* reporting
+  *92 messages sent, 56 actions reached: deck 1 play_pause, deck 1 cue, …*
+  with every EQ, filter, pitch and the crossfader left where a full sweep
+  leaves them. Held by `null::tests::a_recording_reaches_the_inputs_channel_for_channel_at_its_own_rate`,
+  `control::tests::a_stand_in_controller_opens_like_a_port_and_its_presses_reach_the_drain`,
+  `standin::tests::the_stand_in_record_is_followed_through_the_hands_moves`
+  and `e2e/hands.spec.ts`'s stand-in test; six mutants fail them. Nothing
+  here says a real turntable or controller behaves like the stand-in.
+
+### Round 2 changelog lines
+
+- **What the DJ does, kept across nights.** The effects they run together,
+  what they do with what djmanzo stages (taken as offered, changed, turned
+  down), and how often they change the record they have cued before playing
+  it — and how soon — are now kept with each night and read back into "how
+  you play here", fading on the same curve as everything else learned.
+  Counts, never a preference: nothing here changes what djmanzo stages next.
+- **A breakdowns column.** The library table can show where each record's
+  first breakdown starts, a dash for a record with none, and sorts by it.
+- **Fixed: a breakdown shorter than sixteen bars was missed on any record
+  with thirty-two-beat phrases.** The finder asked for two of its windows,
+  and a window is a phrase. It now asks for four bars whatever the window.
+  Records already analysed are analysed again on their next load.
+- **Four more of the floor's signals.** How much of the picture is
+  occupied, how tightly it packs, whether the lighting is moving (a sweeping
+  beam, which is not a change of scene), and whether the room's voices rise
+  above the music on their own. Each on its own line beside its blind spot,
+  measured from the same frames and sound the room surface already reads.
+  Built and tested against drawn footage and generated sound only.
+- **Stand-ins for a turntable and a controller in the running
+  application** (development only): `DJMANZO_STANDIN_TIMECODE=1` puts deck 1
+  on a scripted control record on a machine with no turntable, and
+  `DJMANZO_STANDIN_CONTROLLER=generic-2-deck` opens a controller that is not
+  there, with a button to press every control of it.
+- **Fixed: the Controllers panel hid an open controller on a machine with no
+  MIDI service.**
+
+### Round 2 DIRECTIVE-STATUS text
+
+- **§12**, replacing *"Not yet: the effect pairs and verdicts are tonight's
+  and not yet kept across nights (…); *how quickly the DJ changes plans* is
+  not built."*: **Kept across nights, and *how quickly the DJ changes plans*
+  built (17 October).** Each night's row keeps the pair, the verdicts and the
+  swaps (migration 22), written by `night_setting` and read back by
+  `profile` on `learned::recency`: the pair by agreement, the verdicts as
+  weighed shares on twelve moves or more, the swaps likewise on twelve loads.
+  *How quickly the DJ changes plans* is `signals::swaps`: a record the DJ
+  loaded by hand and replaced on that deck before it played, out of the
+  records they loaded, with the middle of how long the replaced ones sat
+  cued — a fact in the log, not a reading of intent; a record djmanzo cued
+  or replaced is the verdicts' business or the automix's. Held by
+  `signals::tests::a_cued_record_replaced_before_it_played_is_a_change_of_plan`,
+  four `profile::tests`, `store::tests::a_nights_pair_verdicts_and_swaps_are_kept`
+  and `commands::persistence_tests::a_nights_verdicts_and_swaps_reach_its_row`;
+  eleven mutants fail them.
+- **Library quality** (the row after §121), replacing *"where a record's
+  breakdowns are is `energy::trajectory` (§75) and is drawn on the overview
+  but is not a column, which is a different and smaller piece of work than
+  the one this row used to describe"*: **where a record's breakdowns are is
+  `energy::trajectory` (§75) and is now §20's *breakdown* column too (17
+  October)**: the first breakdown's start, a dash for *measured, none* and a
+  blank for *never measured*, sorted with *none* after every record that has
+  one. Building it found the finder missing every breakdown shorter than
+  sixteen bars on a thirty-two-beat record — see §25/§75. The column count
+  in this row's first sentence becomes sixteen.
+- **§25 and §75**, in each place they say *a run of at least two windows*:
+  **a run of thin windows covering at least sixteen beats** — two windows at
+  the default eight-beat window, one at a thirty-two-beat phrase. It said two
+  windows until 17 October, and at a thirty-two-beat phrase that was sixteen
+  bars, so the breakdowns column read a dash for a record with an obvious
+  eight-bar breakdown. `energy::trajectory_tests::an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase`.
+- **§34 and §36**, replacing what each row says is left (*an occupancy
+  proxy, a crowd-density proxy, lighting motion as distinct from scene
+  change; vocal response split from the room over the music*): **built (17
+  October), against stand-ins only.** Twelve lines now: *Occupied picture*
+  (difference from a learned look of the room), *Packed together* (how
+  closely the occupied blocks sit), *Lighting moving* (the brightest
+  pixels' centre, across the same sixth of a second movement is read over,
+  which a sweeping beam moves and a scene change does not), and *Voices over
+  the music* (the mid band on a second fit against the master's level — the
+  whole mix's level, since there is no master band meter, which the line's
+  blind spot says). Each placed against its own night, none combined, each
+  beside what it is confused with. `floor::tests::voices_over_the_music_are_the_voice_band_alone`,
+  `floor.test.ts`, `e2e/floor.spec.ts` (two figures against thirty, a beam
+  against a cut, through Chromium's fake camera). Nothing about a real room
+  is claimed: what remains for both rows is a camera and a microphone in
+  one.
+- **§106**, adding to what the row says of the stand-ins: **and they run in
+  the application (17 October).** `DJMANZO_STANDIN_TIMECODE` and
+  `DJMANZO_STANDIN_CONTROLLER` (`crate::standin`) put a deck on the stand-in
+  turntable through `timecode::start` and open the stand-in controller in
+  place of a port, so the timecode panel, the deck and §53's reach can be
+  watched following them under Xvfb — which found the Controllers panel
+  hiding an open controller on a machine with no MIDI service. Still
+  stand-ins: a pressed record, a cartridge and a real controller are what
+  would prove the rest.
+
+### Round 2 HANDOFF traps
+
+- A night's row figures are text on purpose (`"5,2,1"`, `"3,18,40"`), read
+  back by `profile::counts_of`, which refuses a row with the wrong number of
+  parts rather than reading it as zeros. A new figure follows the same rule.
+
+## Changelog lines (for CHANGELOG.md, under Unreleased)
+
+- **The assistant is told what the context engine knows.** Besides what is on
+  the decks, its briefing now carries §11's music context (the tempo the room
+  is hearing, its key, how many decks are playing and ready, how far apart the
+  playing tempos are), the machine (sample rate, output latency, the
+  controller, MIDI, a cue output), how the DJ is working tonight (gestures a
+  minute, the commonest gesture, suggestions taken and let pass), the
+  attention budget, and whether djmanzo is keeping up (audio load, dropouts,
+  the limiter, the background threads) — one list rather than two that drift.
+
+- **What the DJ does, told to the assistant.** Which effects the DJ runs
+  together tonight (two in one deck's chain, brought in by hand), which pad
+  holds which kind of cue across their records (the record's start, a
+  phrase start, the last fifth; their own labels and colours — a pad says
+  nothing until it holds a cue on four records and one kind is most of
+  them, and recent records weigh more), and what they did with tonight's
+  staged transactions (accepted as offered, accepted after changing,
+  rejected) — counted, never turned into a preference.
+
+- **Thirteen more knowledge packs, and the three things a pack could not
+  say.** Bachata, Merengue, Dembow, Reggaeton, Salsa, Caribbean, Afro /
+  Afrobeats, R&B, EDM, Wedding, Beach / Resort, Club and Practice /
+  Education join the eight, each built from what djmanzo already knows (one
+  family of the genre map with its parent's curriculum, or a §81 occasion
+  with the whole catalogue up to practised moves). Every pack now also says
+  how close two tempos have to be to count as a direct mix in that music
+  (techno three percent, house four), the set shape that kind of night
+  usually takes, and the joins it reaches for when the records leave the
+  choice open — never an echo, which is djmanzo's answer to a key clash,
+  and never instead of the cut a tempo that does not work demands.
+
+- **The room surface reads eight more things, each on its own line.** The
+  room's sound in three bands (low, mid, high), applause-like clicks (sharp
+  clicks that keep to no beat — a hi-hat does not count), the room over the
+  music (how much louder the microphone is than the music djmanzo is sending
+  explains, which is how a crowd's noise is told from the record), uneven
+  movement and moving together (a coarse optical flow across the picture),
+  and the picture changing as a whole. Each is compared only with the same
+  room earlier tonight, says how far it can be trusted, and says beside every
+  reading what it is easily confused with. Nothing adds them up: there is no
+  crowd score, by §36's own rule. Built and tested against drawn footage and
+  generated sound; not yet against a real room.
+
+- **Timecode vinyl at an ordinary level, and stopping when the record
+  does.** A control record arriving below full scale, as it does through a
+  normally set preamp, was never found on the record at all; now it is, down
+  to −12 dBFS and below. A platter stopped by hand read as still turning
+  slowly and the track crept on; it now stops within a twentieth of a second.
+  Tested against a stand-in turntable — playing, braked, scratched, lifted and
+  dropped, with wow, flutter, rumble, hiss and hum — not yet against a real
+  deck.
+- **High-resolution faders no longer step backwards.** A pitch fader sent as
+  two control changes, as Pioneer's are, jumped back a fraction each time it
+  crossed a step while being pushed one way; a slow push now reads one way.
+
+## DIRECTIVE-STATUS text
+
+- **§40**, replacing the row's last sentence (*"…§11's `musicContext`,
+  `hardwareContext` and `djBehaviorContext` are gathered now … which the
+  briefing does not yet read …"*): **The two lists are joined (17 October).**
+  The briefing (`assistant::context_lines`) now reads §11's object —
+  `context::gather_from`, built from the same snapshot the briefing reads, so
+  its decks and its context are one moment — and tells every field the §40
+  list does not already carry, one line per field under §11's own name
+  (`context::told`, rendered from the serialised object so a field added to a
+  context struct is told without anyone remembering to). The phase, the
+  occasion and the room stay with §40's own items (`context::TOLD_BY_SIGHT`),
+  told once: the room keeps its *only while watched* rule. Held by
+  `context::tests::every_field_of_the_object_is_told_or_carried_by_a_named_item`
+  (every leaf of the object reaches the briefing, walked independently of the
+  renderer; every field told by a §40 item names an item that exists; none
+  told twice) and `assistant::tests::the_briefing_reads_the_context_engines_one_object`
+  (through `AppState`); six mutants fail them. §11's consumer table now names
+  `assistant.rs` reading `context::gather_from`. What is left: the library,
+  out by design.
+- **§11**: the *assistant* consumer reads the object in `assistant.rs` now, not
+  only through `commands.rs`'s `dj_context`.
+
+- **§12**, replacing *"Not learned — … FX combinations and cue conventions
+  … and which suggestions are manually modified or which staged actions are
+  overridden (§44's transaction has Modify and Reject, and neither is
+  counted yet)"*: **FX combinations, cue conventions and the transaction's
+  verdicts are counted (17 October).** *FX combinations*:
+  `signals::effect_combinations` — two effects in one rack (one deck's chain
+  or the master's: two decks' effects are two records' effects), counted when
+  the DJ's hand brings one in while the other runs; djmanzo's own throws make
+  no pair but are followed. *Cue conventions*: `dj_library::conventions` over
+  `Library::cue_evidence` — each stored cue's place on its record's grid (the
+  record's start, a phrase start within a quarter beat, the last fifth,
+  elsewhere), the DJ's label and colour; a slot says nothing until it holds a
+  cue on four records (`ENOUGH`) and one kind is 60 % of its weighted evidence
+  (`MOST`), each record weighed on `learned::recency` by its last play (or its
+  adding); every stored cue is the DJ's own, since djmanzo never places one.
+  *Verdicts*: `staged::Verdict` — accepted as offered, accepted after
+  changing a move (a no-op is not a change), rejected — tallied on the night
+  (`Night::note_verdict`); counts only, on this row's and §14's grounds, and
+  nothing here changes what is staged next. All three reach the assistant's
+  briefing (`assistant::habit_lines`), `none` until there is one. Held by
+  `signals::tests::effects_run_together_in_one_rack_by_the_djs_hand`,
+  `conventions::tests` (3), `store::tests::cue_evidence_carries_each_records_grid_and_recency`,
+  `staged::tests::a_transactions_verdict_says_whether_the_dj_changed_it`
+  and `assistant::tests::the_briefing_tells_the_djs_habits_as_counts`; eleven
+  mutants fail them. **Not yet:** the verdicts are counted only once
+  `commands.rs` reports them (see *Needed*), so in the running application the
+  line reads `none` until the fold; the effect pairs and verdicts are
+  tonight's and not yet kept across nights (they would go beside the gesture
+  counts in the `nights` table, written by `commands::night_setting`); *how
+  quickly the DJ changes plans* is not built.
+
+- **§16**, replacing *"What is left for this row: the remaining twenty-two
+  packs, and the §16 fields no table yet owns (energy curves, allowed BPM
+  relationships, transition preferences)"*: **Twenty-one packs, and the
+  three fields owned (17 October).** Thirteen more — Bachata, Merengue,
+  Dembow, Reggaeton, Salsa, Caribbean, Afro / Afrobeats, R&B, EDM, Wedding,
+  Beach / Resort, Club, Practice / Education — written to the same rule as
+  the eight: a genre pack is one family of `dj_core::genre` (or the few a DJ
+  names together) with its parent's curriculum, an occasion pack is a §81
+  setting with the catalogue up to practised moves. *Allowed BPM
+  relationships*: `Pack::tempo_window`, only ever a narrowing of the
+  scorer's `suggest::TEMPO_TOLERANCE` (techno and Beginner 3 %, house 4 %),
+  read by `suggest::wider_than_pack` — which reads only the scorer's
+  `TempoFits`, leaving half time to `half_time` and a far tempo to
+  `TempoFar`. *Energy curves*: `Pack::arc`, a `setlist::Arc` by name
+  (`Arc::from_name`, `None` for a name it does not know rather than the
+  default journey), offered and never imposed — the arc stays the DJ's to
+  say, which is §11's refusal above. *Transition preferences*:
+  `Pack::transitions`, only styles `plan`'s `STYLE_IS_TASTE` lets a profile
+  choose (cut, fade, blend) — never `Echo`, the music's answer to a key
+  clash — so the planner's refusal to blend records that cannot be blended
+  stays the planner's. Held by `pack::tests` (every family and setting
+  exists, ids distinct across both lists, transition preferences are taste
+  and said once, the waiting packs are not chosen by slug before the fold),
+  `setting::tests::every_packs_tempo_window_and_arc_are_the_libraries_own`,
+  `suggest::tests::a_packs_tempo_window_narrows_only_the_fit` and
+  `setlist::tests::an_arc_is_named_and_read_back_by_the_same_word`; twelve
+  mutants fail them. What is left: the other nine of §16's thirty (Private
+  Event, Lounge, Festival, Mobile DJ, Karaoke / MC, VJ / Video, DVS, CDJ,
+  Stem / Remix), whose curriculum nobody here has checked — the module docs'
+  reason, unchanged.
+
+- **§34**, replacing *"What is left is most of §34's list … they are not
+  built: room activity in the low, mid and high bands, applause-like
+  transients, crowd noise told apart from the music, optical-flow variance,
+  an occupancy proxy, a crowd-density proxy, lighting motion and scene
+  change."*: **Five of them built (17 October), against stand-ins.**
+  `dj_assistant::floor` places each of eight signals against its own night
+  (`Floor::line`, the room's `Against` scale, `ENOUGH` looks in the last three
+  minutes, `SETTLED` before a placement stops being *early*), one line each,
+  always — a signal with nothing to say says *not yet* and why. Measured by
+  the room surface from the frames and window of sound it already reads
+  (`ui/src/floor.ts`, numbers only cross to Rust): *room activity in three
+  bands* (`bands`, power summed across each band's bins of the analyser's own
+  spectrum, smoothing turned off so a look hears its own moment);
+  *applause-like transients* (`clicks`, sharp slices of the window's first
+  difference, discounted by how much they keep to one gap — a hi-hat on the
+  grid scores nothing); *crowd noise told apart from the music*
+  (`Signal::OverMusic`: the microphone's loudness against the master's level,
+  a running straight-line fit over the night in Rust, which refuses while the
+  music has not moved two decibels or the microphone does not follow it);
+  *optical-flow variance* (`flow`, 8-pixel blocks of the 64×48 frame matched
+  within 3 pixels, a move counted only where it fits clearly better than
+  staying put); *scene change* (`sceneChange`, the brightness histogram
+  against the last look's). Held by `floor::tests` (6, in `dj-assistant`),
+  `dj_app::floor::tests` (3), `ui/src/floor.test.ts` (14) and
+  `ui/e2e/floor.spec.ts` (5: through Chromium's stand-in camera and
+  microphone — a bass tone sits in the low band and a hi-hat in the high one;
+  a room clapping reads 0.52 where the equally sharp hi-hat reads 0.00; a pan
+  moves together at 0.88 where scattered figures read 0.36 and twice as
+  uneven; a lighting cut reads a scene change of 1.0 where the pan reads
+  0.05; a sound that switches from bass to hats lets go of the bass within
+  the look); sixteen mutants fail them, and a seventeenth — the wrong FFT length passed at the call site — was made impossible by reading it off the spectrum. Driven in the shipped webview under
+  Xvfb with WebKitGTK's mock camera and microphone (`DJMANZO_MOCK_CAPTURE`):
+  the eight lines appear under *Beyond light, movement and loudness*. **None
+  of it has been near a real room.** What is left: an occupancy proxy, a
+  crowd-density proxy and lighting motion (as distinct from scene change).
+- **§36**, replacing *"What §36's `AudienceContext` names and djmanzo does not
+  read is cohesion … vocal response … and visual change"*: **Cohesion and
+  visual change are read (17 October), against stand-ins.** *Cohesion* is
+  `Signal::Together` — how much of the picture's movement goes one way (the
+  length of the blocks' summed movement over the sum of their lengths);
+  *visual change* is `Signal::Scene`. Each on its own line beside the room's
+  three, with its own confidence and its blind spot said beside it (a
+  sweeping light moves the whole picture one way; the lighting rig changing
+  looks like the room changing), and nothing combines them — a test holds
+  that each line speaks only of its own signal, and another that no line
+  names a mood. The notable ones reach the assistant's briefing, only while
+  somebody is looking (`dj_app::floor::briefing`, the room's rule). What is
+  left: *vocal response* — the room over the music in the voice band only —
+  is not split out; `OverMusic` is broadband.
+- **§106**, after *"…through a stand-in of the same kind"*: §34/§36's
+  signals have stand-ins of their own (`ui/e2e/floor/media.ts`: a pan,
+  scattered figures, a lighting cut, a room clapping, a hi-hat on the grid,
+  a bass tone, and one that switches from the bass to the hats).
+
+- **§106**, replacing *"What is not here yet: the other hardware djmanzo
+  reads that this container has none of — controllers and timecode vinyl —
+  through a stand-in of the same kind."*: **Controllers and timecode vinyl
+  have stand-ins now (17 October), and each found a defect.** *A controller*:
+  this container has no MIDI service (no ALSA sequencer, so not even a
+  virtual port), so `dj_hid::standin::StandIn` starts one step in, handing
+  raw bytes to the very function a real port's callback runs
+  (`port::deliver`, the callback's body moved out for this) — the learning
+  intercept, the mapping's script, the table — and `standin::presses` spells
+  every control of a mapping as the bytes the hardware sends (note-on, the
+  velocity-zero note-on most controllers send as a release, a 14-bit
+  fader's pair, an encoder's steps). Every control of all eight bundled
+  mappings reaches an action the vocabulary accepts; a shift key changes a
+  pad through the script; learning describes rather than acts; clock, sysex,
+  aftertouch and cut-short messages are ignored. **It found 14-bit faders
+  stepping backwards**: the high byte arrived with the last move's low byte
+  still held, so the DDJ-SR's pitch fader pushed up read −0.7357 then −0.7468
+  at a step; now the low byte is taken at the new step's near edge until its
+  own arrives (MIDI 1.0's zeroing alone still steps back on the way down).
+  *Timecode vinyl*: `dj_dvs::turntable::Turntable` renders what a working
+  deck puts out under a scripted hand (`Move`: play, ramp, scratch, lift,
+  drop) through textbook impairments (`Deck::WORKING`: −6 dBFS, a decibel of
+  imbalance, wow 0.1 %, flutter 0.05 %, rumble, hiss, hum), with the truth at
+  every frame, fed to the decoder a 256-frame callback at a time. **It found
+  the decoder reading no place at all on that deck** — a one was a peak over
+  three quarters of *full scale*, so a record at −6 dBFS read every bit as a
+  zero — and **a stopped platter reading as still turning at 7 %**, because
+  speed is measured at crossings and a stopped record sends none. The
+  threshold is now three quarters of an envelope of recent peaks, with no
+  bit read until a register's width of cycles has passed since the signal
+  returned (a maximal sequence never runs more zeros than that, so the
+  envelope has seen a one; without the wait, a needle dropped onto a run of
+  zeros reported a wrong place); the speed is bounded by the time since the
+  last crossing. Now: playing, speed within 3 % and place within 10 ms with
+  no block lost; braked, stopped within 50 ms; dropped elsewhere, found
+  there; no wrong place reported anywhere in the set; below −20 dBFS, no
+  place rather than a wrong one. Held by `standin::tests` (5),
+  `turntable::tests` (7) and the decoder's own; eleven mutants fail them.
+  **None of it has met real hardware**: the bytes are each mapping's own
+  description played back, and the deck is textbook figures, not a measured
+  cartridge — no RIAA curve, warp, skating or stylus resonance.
+
+## Needed in files this session does not own
+
+- `crates/dj-app/src/commands.rs`, `dj_context`: its body is now
+  `crate::context::gather_from(&state, &snapshot_now(&state))` — the same
+  gathering, written once in `context.rs`. Until the fold the two are copies;
+  replace the body with that call.
+
+- `crates/dj-app/src/commands.rs`, §12's verdicts — three lines:
+  - `staged_accept`, before the moves run:
+    `state.night().note_verdict(staged.accepted());`
+  - `staged_reject`, before `state.clear_staged()`:
+    `if state.staged().is_some() { state.night().note_verdict(crate::staged::Verdict::Rejected); }`
+  - (`staged_choose` needs nothing: `Staged::choose` counts the change.)
+- Optional, for §12 across nights: `nights` columns for the effect pairs and
+  verdicts (a migration in `dj-library`, this session's), filled by
+  `commands::night_setting` — not built, since its writer is `commands.rs`.
+
+- **§16 at the fold** (all in files this session does not own):
+  - `crates/dj-assistant/src/pack.rs` is this session's, but the move is the
+    fold's: append `READY`'s thirteen to `ALL` (`ALL: [Pack; 21]`), delete
+    `READY` and `every()` (or keep `every()` as `ALL.iter()`), and delete
+    `the_waiting_packs_are_not_chosen_by_slug_before_the_fold`. Do it in the
+    same commit as the next two lines, or `packs.spec` fails.
+  - `ui/e2e/packs.spec.ts:55`: `toHaveCount(8)` → `toHaveCount(21)`.
+  - `ui/e2e/packs.json`: re-bless with
+    `DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture`.
+  - `commands.rs`, `KnowledgePackDto` (≈19799) and `knowledge_packs`: append
+    `tempo_window: f64`, `arc: String` (empty for none) and
+    `transitions: Vec<String>` (lower-case style names); `api.ts`'s
+    `KnowledgePack` gets the same three at the end. Optional for the picker:
+    a line under each pack, e.g. *"holds tempo within 3 % · journey · blends"*.
+  - `commands.rs`, `with_pack` (≈10850): after `also_in_pack`, when
+    `dj_library::suggest::wider_than_pack(&s, pack.tempo_window)`, take the
+    `TempoFits` credit back and push a new `Reason::TempoWiderThanPack
+    { window }` (dj-library's `Reason`, this session's — but adding the
+    variant breaks the three exhaustive matches in `commands.rs` at ≈11809,
+    ≈11881 and ≈11953, so the variant and its three wordings land
+    together at the fold: *"wider than this pack holds (3 %)"*, rank 2,
+    *"wider than the pack"*). The take-back is `also_in_pack`'s pattern.
+  - The planner's `usual` (`commands.rs` ≈9942, `ghost.rs`, `autopilot.rs`,
+    `transition.rs`, all Session 1's or shared): when the DJ's profile has no
+    usual style, pass `pack.transitions.first().copied()`. `choose_style`
+    already applies it only where tempos and keys agree and only if
+    `STYLE_IS_TASTE` contains it, so no pack can override a cut or an echo.
+  - The set planner (`commands.rs` ≈9163 parses the arc name): when the DJ
+    has not said an arc, the interface may *offer* the pack's
+    (`Arc::from_name(pack.arc?)`), never default to it silently.
+
+- **§34/§36 at the fold**: nothing is required — `RoomSense.svelte` and the
+  new `floor.ts` are this session's, the commands are registered inside
+  `lib.rs`'s *Parallel, session 2* marker block (`floor::floor_saw`,
+  `floor::floor_read`; module `pub mod floor;` in the modules block), and the
+  floor lives on `Night` (this session's), not on `AppState`. Optional: answer
+  `floor_saw`/`floor_read` in `ui/e2e/shell.ts` so other specs that open the
+  room can see the lines; until then the shell answers both with `null`, and
+  the surface draws nothing for a `null`.
+
+- **§106 at the fold** (optional, to drive the stand-ins through the running
+  application under Xvfb rather than only in tests):
+  - `crates/dj-audio` (null host): with `DJMANZO_STANDIN_TIMECODE=<deck>`,
+    feed `dj_dvs::turntable::Turntable::perform`'s audio as that deck's
+    timecode input, so the timecode panel and the deck follow a scripted
+    hand with no turntable.
+  - `crates/dj-app/src/control.rs`: with `DJMANZO_STANDIN_CONTROLLER=<mapping
+    file stem>`, wire a `dj_hid::standin::StandIn` in place of a port, so
+    the controllers panel and §53's reach can be seen with a "controller"
+    attached, and a debug command can play `standin::presses` into it.
+
+## HANDOFF traps
+
+- `cargo fmt` re-wraps a long line between an edit script's read and its next
+  match: re-read after every `cargo fmt` before matching text in an edit.
+- A §16 pack's `transitions` is taste in `plan`'s sense, which includes
+  `Cut` and excludes `Echo` (`STYLE_IS_TASTE`): echo is the planner's answer
+  to a key clash. It reads backwards from DJ talk, where an echo-out is a
+  style; `pack::tests::transition_preferences_are_taste_and_said_once`
+  holds it.
+- `ui/e2e/floor/media.ts` (like `senses/media.ts`) **reuses** a file already
+  in `/tmp/djmanzo-floor`: after changing a generator, delete the directory,
+  or the test runs against the old footage.
+- `vitest run` prints a test's `console.log` only with `--reporter=verbose`;
+  without it a probe looks like it printed nothing.
+- An `AnalyserNode`'s frequency data is smoothed across reads by default
+  (`smoothingTimeConstant` 0.8). Read once a look, that carries the last
+  look's spectrum into this one for many looks; the room surface sets it to 0
+  and `floor.spec.ts`'s *switch* sound fails without it.
+- A timecode decoder's `Reading::speed` was a value held from the last zero
+  crossing; anything reading it as "now" on a stopped record saw a creep.
+  It is bounded now (`Decoder::bounded`), but a new consumer of the raw
+  smoothed field would bring the creep back — read `Reading`, not the field.
+- The controller stand-in proves a mapping's bytes reach the vocabulary
+  through the real callback; it cannot prove a controller sends what its
+  mapping says. A mapping naming the wrong note passes.
+- **An analyser that changes its answer is an `analysis::CACHE_VERSION` bump**
+  even when no field moved — the doc on it says so and it was still missed
+  once: the breakdown fix passed every test and the running application kept
+  showing the old answer, because the deck load reads the on-disk cache under
+  `~/.cache` (not under `XDG_DATA_HOME`, so a fresh data directory does not
+  clear it) and writes that into the library.
+- **`energy::Trajectory::changes` still counts in windows** (`AT_LEAST`, §116,
+  Session 1's): the same assumption the breakdown finder had, so at a
+  thirty-two-beat phrase a current has to be in or out for sixty-four beats
+  before *What changes next* names it. Not changed in round 2; it wants the
+  same beats-based rule and its own test.
+- **`e2e/floor/media.ts` reuses a file already in `$TMPDIR/djmanzo-floor`.**
+  Change how a scene is drawn and the old footage is still played until that
+  directory is removed; a new scene needs a new name or a cleared directory.
+- **The floor's occupancy reads against a running average that includes the
+  frame before it.** `RoomSense` reads `occupied` and only then `learn`s from
+  the frame: the other way round, the frame being judged is already part of
+  the look it is judged against.
+- **`dj_audio::null::play_into_inputs` is the whole backend's.** Every null
+  input opened afterwards at that rate plays the recording, a microphone
+  strip included, so with `DJMANZO_STANDIN_TIMECODE` set the singers' and
+  room inputs hear the control record. Its test opens at 44 123 Hz so no
+  other test is caught by it; a new test of the null inputs should not use
+  that rate.
+- **Under Xvfb the top bar wraps and unwraps** as its readouts change width,
+  moving everything below it about thirty pixels; an `xdotool` click aimed
+  from an older screenshot can land on the wrong control. Take the
+  screenshot right before the click.

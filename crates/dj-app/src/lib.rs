@@ -31,6 +31,12 @@ pub mod deck_queue;
 pub mod find_song;
 pub mod sources_board;
 // End of session A's modules.
+// Parallel, session 1 (docs/PARALLEL-SESSIONS.md §4): its modules go
+// between these two lines, and nothing else does.
+pub mod echo_tempo;
+pub mod practice_live;
+pub mod room_taps;
+// End of parallel session 1's modules.
 pub mod assistant;
 pub mod at_hand;
 pub mod audience;
@@ -115,6 +121,7 @@ pub mod signals;
 pub mod snapshot;
 pub mod sources;
 pub mod staged;
+pub mod standin;
 pub mod state;
 pub mod theme;
 pub mod thrift;
@@ -139,6 +146,10 @@ pub mod guide_offer;
 pub mod reactions;
 pub mod suno;
 // End of session B's modules.
+// Parallel, session 2 (docs/PARALLEL-SESSIONS.md §4): its modules
+// go between these two lines, and nothing else does.
+pub mod floor;
+// End of session 2's modules.
 pub mod youtube;
 
 pub use host::{AudioHost, HostError};
@@ -624,6 +635,10 @@ pub fn run() {
                                 crate::deck_queue::advance(&state, deck);
                             });
                         }
+                        // A singer's echo timed to the record playing.
+                        crate::echo_tempo::tick(&state, &snapshot);
+                        // The room's taps, into tonight's crowd log.
+                        crate::room_taps::tick(&state);
                         if let Some(deck) = crate::commands::tick_breaks(&state, now) {
                             let handle = handle.clone();
                             std::thread::spawn(move || {
@@ -717,6 +732,8 @@ pub fn run() {
                     crate::control::drain(app.handle().clone(), inbox);
                 }
             }
+            // §106: the stand-ins, when the environment asks for them.
+            crate::standin::open(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -728,7 +745,15 @@ pub fn run() {
             sources_board::sources_board,
             find_song::find_song,
             // End of session A's commands.
+            // Parallel, session 1 (docs/PARALLEL-SESSIONS.md §4): its
+            // commands go between these two lines, and nothing else does.
+            practice_live::practice_live,
+            practice_live::practice_live_load,
+            practice_live::practice_live_do,
+            practice_live::practice_live_eject,
+            // End of parallel session 1's commands.
             commands::list_devices,
+            standin::controller_standin_press,
             commands::list_inputs,
             commands::list_panels,
             commands::detach_panel,
@@ -1184,6 +1209,11 @@ pub fn run() {
             suno::suno_link,
             suno::guests_whatsapp_here,
             // End of session B's commands.
+            // Parallel, session 2 (docs/PARALLEL-SESSIONS.md §4): its
+            // commands go between these two lines, and nothing else does.
+            floor::floor_saw,
+            floor::floor_read,
+            // End of session 2's commands.
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

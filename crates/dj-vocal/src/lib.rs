@@ -38,8 +38,8 @@ mod tune;
 pub use dynamics::{Compressor, DeEsser, Gate};
 pub use space::{Echo, LONGEST_ECHO_SECONDS, LONGEST_REVERB_SECONDS, Reverb};
 pub use strip::{
-    Chain, CompressorSettings, DeEsserSettings, EchoSettings, EqSettings, GateSettings, LIMITS,
-    Preset, ReverbSettings, Strip, StripFrame, StripSettings, WedgeMix, range,
+    Chain, CompressorSettings, DeEsserSettings, ECHO_BEATS, EchoSettings, EqSettings, GateSettings,
+    LIMITS, Preset, ReverbSettings, Strip, StripFrame, StripSettings, WedgeMix, range,
 };
 pub use tune::{
     CorrectionSettings, Corrector, LATENCY_SECONDS as CORRECTION_LATENCY_SECONDS, Scale,
@@ -376,6 +376,7 @@ pub fn measure_chain(sample_rate: f32) -> f64 {
             delay_ms: Echo::DEFAULT_DELAY_MS,
             feedback: Echo::DEFAULT_FEEDBACK,
             level: 0.3,
+            beats: None,
         }),
         ..StripSettings::default()
     });

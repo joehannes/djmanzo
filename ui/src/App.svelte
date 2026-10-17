@@ -114,6 +114,7 @@
   import Pair from "./Pair.svelte";
   import MissionBar from "./MissionBar.svelte";
   import Whisper from "./Whisper.svelte";
+  import { readPeak } from "./peak.svelte";
   import Guides from "./Guides.svelte";
   import PressKit from "./PressKit.svelte";
   import Crowd from "./Crowd.svelte";
@@ -2049,6 +2050,9 @@
       .catch((why) => console.warn("leader tree:", why));
   });
 
+  /** The guides' button, for a dashboard tile to open one through. */
+  let guidesRef = $state<ReturnType<typeof Guides>>();
+
   /** Carry out one leaf of the tree. */
   async function runLeaf(run: string) {
     // A line of one word is all kind: `welcome`, `locks` with none on.
@@ -2102,6 +2106,9 @@
       setUpForTonight(rest.slice(at + 1), pack === "-" ? "" : pack);
     } else if (kind === "welcome") {
       await openWelcome();
+    } else if (kind === "guide") {
+      // §117: a guide from the dashboard, opened as its button opens it.
+      await guidesRef?.openTopic(rest);
     }
   }
 
@@ -2603,6 +2610,14 @@
   */
   let promoted = $state<string | null>(null);
   const phaseNow = $derived(snapshot?.context.session?.phase ?? null);
+  // §17 at the peak: the decks' effects open between mixes (`peak.svelte.ts`).
+  $effect(() => {
+    readPeak(
+      phaseNow,
+      snapshot?.context.session?.certainty ?? null,
+      (snapshot?.decks ?? []).filter((deck) => deck.playing && deck.volume > 0.01).length,
+    );
+  });
 
   $effect(() => {
     const now = phaseNow;
@@ -3615,6 +3630,7 @@
       <!-- §128: folded behind ⋯ with the readings when the bar is short of room. -->
       <div class="foldable fold-guides">
       <Guides
+        bind:this={guidesRef}
         send={(action) => send(action)}
         decks={deckCount}
         onTrouble={() => (tonightDeciding = true)}

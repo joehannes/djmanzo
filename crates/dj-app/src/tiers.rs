@@ -135,7 +135,7 @@ pub fn of_verb(verb: &str) -> Tier {
 }
 
 /// What djmanzo has to say, given room to hear it. §58's tier 3.
-const CONTEXTUAL_SURFACES: [&str; 9] = [
+const CONTEXTUAL_SURFACES: [&str; 8] = [
     "next",
     "pair",
     "plan",
@@ -143,7 +143,6 @@ const CONTEXTUAL_SURFACES: [&str; 9] = [
     "assistant",
     "night",
     "room",
-    "transition",
     "athand",
 ];
 

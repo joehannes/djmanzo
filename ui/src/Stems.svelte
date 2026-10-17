@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { peak } from "./peak.svelte";
   import { STEM_COLORS, STEM_KEYS, STEM_LABELS } from "./stems";
   import IconButton from "./controls/IconButton.svelte";
   import SvgFader from "./controls/SvgFader.svelte";
@@ -460,7 +461,7 @@
   It used to be a fold, closed on every deck unless a layout opened it, so
   muting a vocal took two presses and a scroll.
 -->
-<div class="stems" class:inline data-stems-open={open}>
+<div class="stems" class:inline class:peak={peak.now} data-stems-open={open}>
   <div class="stem-strip" role="group" aria-label="Stems on deck {deckNumber}" bind:this={stripEl}>
     {#each STEM_LABELS as name, i (name)}
       <button
@@ -683,6 +684,12 @@
     display: flex;
     align-items: stretch;
     gap: 0.3rem;
+  }
+
+  /* §17 at the peak: the chips a little bigger while it lasts. */
+  .stems.peak .stem-chip {
+    height: 1.8rem;
+    font-weight: 600;
   }
 
   .stem-chip {

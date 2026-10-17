@@ -321,6 +321,9 @@ pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAn
         // to count phrases against, which is the same absence the trajectory
         // itself reports and not a claim that nobody sings on it.
         vocal: strongest_voice(&analysis.trajectory),
+        // §20/§75: where the floor first comes out. Same absence rule as the
+        // vocal: no windows, no answer.
+        breakdown: first_breakdown(&analysis.trajectory),
         ..dj_library::StoredAnalysis::default()
     };
     if let Some(tempo) = &analysis.tempo {
@@ -353,6 +356,23 @@ fn strongest_voice(trajectory: &dj_analysis::energy::Trajectory) -> Option<f64> 
             Some(best.map_or(share, |seen| seen.max(share)))
         })
         .map(f64::from)
+}
+
+/// Where a record's first breakdown starts, in frames, as the library keeps it.
+///
+/// `None` when there were no windows to read, which is `strongest_voice`'s
+/// absence; [`dj_library::NO_BREAKDOWN`] when there were and the floor never
+/// came out — a real answer about a record, and a different one.
+fn first_breakdown(trajectory: &dj_analysis::energy::Trajectory) -> Option<f64> {
+    if trajectory.sections.is_empty() {
+        return None;
+    }
+    Some(
+        trajectory
+            .breakdowns
+            .first()
+            .map_or(dj_library::NO_BREAKDOWN, |span| span.from),
+    )
 }
 
 /// Unix seconds. One place, so every timestamp in the library agrees.
@@ -492,6 +512,52 @@ mod tests {
         assert_eq!(
             of(vec![window(None), window(Some(0.3))]),
             Some(0.3_f32.into())
+        );
+    }
+
+    /// **§20/§75: the first breakdown, and the two absences kept apart.**
+    /// No windows is no answer; windows with no breakdown in them is the
+    /// answer *none*; otherwise the first one's start, not the longest's.
+    #[test]
+    fn the_stored_breakdown_is_the_first_and_none_is_not_absence() {
+        use dj_analysis::energy::{Section, Span, Trajectory};
+
+        let window = Section {
+            at: 0.0,
+            energy: 0.5,
+            low: 0.5,
+            parts: None,
+            strikes: None,
+        };
+        let of = |sections: Vec<Section>, breakdowns: Vec<Span>| {
+            super::first_breakdown(&Trajectory {
+                sections,
+                breakdowns,
+                ..Trajectory::default()
+            })
+        };
+        assert_eq!(of(Vec::new(), Vec::new()), None, "no windows is no answer");
+        assert_eq!(
+            of(vec![window; 4], Vec::new()),
+            Some(dj_library::NO_BREAKDOWN),
+            "measured and none is an answer, and it is not absence"
+        );
+        assert_eq!(
+            of(
+                vec![window; 4],
+                vec![
+                    Span {
+                        from: 96_000.0,
+                        to: 192_000.0
+                    },
+                    Span {
+                        from: 480_000.0,
+                        to: 960_000.0
+                    },
+                ],
+            ),
+            Some(96_000.0),
+            "the first breakdown, not the longest"
         );
     }
 

@@ -23,7 +23,8 @@
 //!   suggestion to record.
 //! - **Quiet ones wait for the hands.** A proposal that is not urgent is not
 //!   shown while a hand is on a platter or the crossfader is moving, nor for
-//!   [`HANDS_SETTLE`] after.
+//!   [`HANDS_SETTLE`] after — **nor at all while the night is warming up**
+//!   (§17's *low suggestion noise*, the owner's choice of 17 October).
 //! - **Declined is declined.** *Not now* silences that kind for
 //!   [`QUIET_FOR`]; *not tonight* for the rest of the night; one ignored for
 //!   [`IGNORED_AFTER`] is taken as *not now*, so nothing sits there nagging.
@@ -296,6 +297,9 @@ impl Watcher {
             self.hands_at = Some(now);
         }
         let settled = self.hands_at.is_none_or(|at| now - at >= HANDS_SETTLE);
+        // §17's quiet warm-up, as the owner chose: early in the night only
+        // what cannot wait is said unasked.
+        let warming = crate::cockpit::warming(snapshot);
 
         let rules = reading(snapshot);
         self.since
@@ -321,7 +325,7 @@ impl Watcher {
                     .get(r.proposal.kind)
                     .is_none_or(|until| now >= *until)
             })
-            .filter(|r| r.proposal.urgent || settled)
+            .filter(|r| r.proposal.urgent || (settled && !warming))
             .min_by_key(|r| !r.proposal.urgent)
             .map(|r| r.proposal);
 
@@ -465,6 +469,48 @@ mod tests {
         let said = hold(&mut watcher, &snapshot, 51.2, 10.0).unwrap();
         assert_eq!(said.kind, "record");
         assert_eq!(said.run, "record on");
+    }
+
+    /// **§17: a warm-up is quiet.** With the night read as warm-up, two
+    /// records drifting apart is not said however settled the hands are; a
+    /// record running out with nothing after it still is; and an unsure
+    /// read of warm-up keeps nothing back.
+    #[test]
+    fn a_warm_up_hears_only_what_cannot_wait() {
+        let warm = |certainty| {
+            Some(dj_core::SessionRead {
+                phase: dj_core::SessionPhase::WarmUp,
+                certainty,
+                ..Default::default()
+            })
+        };
+        let mut watcher = Watcher::new();
+        let mut snapshot = booth();
+        for deck in &mut snapshot.decks {
+            deck.playing = true;
+            deck.can_sync = true;
+        }
+        snapshot.decks[0].effective_bpm = Some(124.0);
+        snapshot.decks[1].effective_bpm = Some(126.0);
+        snapshot.context.session = warm(dj_core::Certainty::Fair);
+        assert_eq!(
+            hold(&mut watcher, &snapshot, 0.0, 60.0),
+            None,
+            "a drift said in a warm-up"
+        );
+        snapshot.context.session = warm(dj_core::Certainty::Unsure);
+        let said =
+            hold(&mut watcher, &snapshot, 60.1, 2.0).expect("an unsure read keeps nothing back");
+        assert_eq!(said.kind, "drift");
+
+        let mut watcher = Watcher::new();
+        let mut alone = booth();
+        alone.decks[0].playing = true;
+        alone.decks[0].position_seconds = 285.0;
+        alone.decks[1].loaded = false;
+        alone.context.session = warm(dj_core::Certainty::Fair);
+        let said = hold(&mut watcher, &alone, 0.0, 1.0).expect("running out is said");
+        assert_eq!(said.kind, "running-out");
     }
 
     /// **Quiet ones wait for the hands**: two records drifting apart is not

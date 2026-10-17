@@ -34,8 +34,11 @@
 //!
 //! # Why not thirty packs
 //!
-//! §16 lists thirty and this ships eight. The eight are the ones whose content
-//! djmanzo can actually justify from tables it already has; the rest would be
+//! §16 lists thirty and this ships twenty-one (eight, then thirteen more at
+//! the parallel sessions' fold). Those are the ones whose content djmanzo can
+//! actually justify from tables it already has — a genre pack is one family of
+//! the genre map with its parent's curriculum, an occasion pack is a §81
+//! setting with the whole catalogue up to practised moves; the rest would be
 //! names with invented knowledge behind them, which is worse than an honest
 //! gap — a *Karaoke / MC* pack asserting a technique list nobody checked is a
 //! curriculum that teaches the wrong thing with confidence. The format is the
@@ -43,9 +46,10 @@
 //! somebody who does that kind of night.
 
 use crate::technique::{Difficulty, Kind};
+use dj_core::action::TransitionStyle;
 
 /// One body of DJ knowledge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pack {
     /// The slug it is stored and chosen by.
     pub id: &'static str,
@@ -82,6 +86,33 @@ pub struct Pack {
     /// about scores what an unrelated tempo scores, which is what "not part of
     /// this music" means.
     pub half_time: bool,
+    /// §16's *allowed BPM relationships*: the widest tempo difference, as a
+    /// fraction, this kind of DJing treats as a direct pairing.
+    ///
+    /// Only ever a narrowing of the scorer's own tolerance
+    /// (`dj_library::suggest::TEMPO_TOLERANCE`, held by a test in `dj-app`):
+    /// a techno set holds its tempo within a few percent, and a pack that
+    /// widened the window would be crediting mixes the scorer itself calls a
+    /// stretch.
+    pub tempo_window: f64,
+    /// §16's *energy curves*: the set shape this kind of night usually takes,
+    /// by `dj_library::setlist::Arc`'s name, or `None` where it depends on the
+    /// slot rather than the music.
+    ///
+    /// Offered, never imposed: the arc stays the DJ's to say (`dj_app::context`
+    /// records why nothing defaults it), and a pack naming one is a suggestion
+    /// for the planner's starting point.
+    pub arc: Option<&'static str>,
+    /// §16's *transition preferences*: the joins this kind of DJing reaches
+    /// for when the music leaves the choice open, best first.
+    ///
+    /// Taste only, and never a reason to blend what cannot be blended: a pack
+    /// chooses only between the styles `dj_app::plan` already lets a profile
+    /// choose (cut, fade, blend), and only where the two records' tempos and
+    /// keys agree. Never `Echo`: that is the planner's answer to a key clash,
+    /// the music's rather than anybody's taste, and the cut a mismatched tempo
+    /// demands is the planner's refusal, not a pack's to override.
+    pub transitions: &'static [TransitionStyle],
     /// The occasion whose presentation this pairs with, by §81's slug.
     ///
     /// A name rather than a copy: §54's setups own the theme, the density, the
@@ -91,7 +122,7 @@ pub struct Pack {
 }
 
 /// The packs that ship.
-pub const ALL: [Pack; 8] = [
+pub const ALL: [Pack; 21] = [
     Pack {
         id: "general",
         title: "General",
@@ -110,6 +141,9 @@ pub const ALL: [Pack; 8] = [
         // half-time pairing is ordinary. A pack that emphasises nothing should
         // not quietly rule something out.
         half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[],
         setting: None,
     },
     Pack {
@@ -126,6 +160,9 @@ pub const ALL: [Pack; 8] = [
         // read at the wrong octave rather than a move they meant, and a rail
         // that encouraged it would be teaching the mistake.
         half_time: false,
+        tempo_window: 0.03,
+        arc: None,
+        transitions: &[TransitionStyle::Blend, TransitionStyle::Fade],
         setting: Some("practice"),
     },
     Pack {
@@ -139,6 +176,9 @@ pub const ALL: [Pack; 8] = [
         // Crossing is the whole of open format, and the widest crossing there
         // is is the one between half and double time.
         half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Cut, TransitionStyle::Blend],
         setting: Some("open-format"),
     },
     Pack {
@@ -152,6 +192,9 @@ pub const ALL: [Pack; 8] = [
         // A house set that jumped to half time has stopped being a house set.
         // The floor is the four on it.
         half_time: false,
+        tempo_window: 0.04,
+        arc: Some("journey"),
+        transitions: &[TransitionStyle::Blend],
         setting: Some("club"),
     },
     Pack {
@@ -164,6 +207,9 @@ pub const ALL: [Pack; 8] = [
         // §16's half/double-time relationship for this pack.
         // The same, harder: techno is a tempo held for an hour.
         half_time: false,
+        tempo_window: 0.03,
+        arc: Some("journey"),
+        transitions: &[TransitionStyle::Blend],
         setting: Some("club"),
     },
     Pack {
@@ -177,6 +223,9 @@ pub const ALL: [Pack; 8] = [
         // Doubling a boom-bap record against a trap one at twice the tempo is
         // the ordinary way the two sit together.
         half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Cut],
         setting: None,
     },
     Pack {
@@ -203,6 +252,9 @@ pub const ALL: [Pack; 8] = [
         // Dembow at 95 under house at 128, and a merengue over a bachata at
         // double: crossing that gap is what this music does all night.
         half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Cut, TransitionStyle::Blend],
         setting: Some("latin"),
     },
     Pack {
@@ -216,9 +268,196 @@ pub const ALL: [Pack; 8] = [
         // A turntablist works against whatever is on the other deck, and
         // half-time is one of the places the scratch sits.
         half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Cut],
         setting: None,
     },
+    latin_family(
+        "bachata",
+        "Bachata",
+        "Guitar, bongo and güira, sweet and steady: the phrase decides the mix.",
+        &["bachata"],
+    ),
+    latin_family(
+        "merengue",
+        "Merengue",
+        "Fast, two-step and joyful: in and out on the phrase, never mid-line.",
+        &["merengue"],
+    ),
+    latin_family(
+        "dembow",
+        "Dembow",
+        "The Dominican riddim, short and hard: quick exits on the bar.",
+        &["dembow"],
+    ),
+    latin_family(
+        "reggaeton",
+        "Reggaeton",
+        "The dem bow rhythm under a hook: records turn over on the chorus.",
+        &["reggaeton"],
+    ),
+    latin_family(
+        "salsa",
+        "Salsa",
+        "Clave first: a mix that crosses the clave is audibly wrong.",
+        &["salsa"],
+    ),
+    latin_family(
+        "caribbean",
+        "Caribbean",
+        "The islands' records together: merengue, bachata, dembow, salsa.",
+        &[
+            "merengue",
+            "bachata",
+            "dembow",
+            "salsa",
+            "reggaeton",
+            "cumbia",
+        ],
+    ),
+    Pack {
+        id: "afro",
+        title: "Afro / Afrobeats",
+        about: "Afrobeats, amapiano and afro house: long, rolling blends.",
+        families: &[
+            "afrobeats",
+            "amapiano",
+            "afro house",
+            "gqom",
+            "kuduro",
+            "coupe decale",
+        ],
+        // House's curriculum: these are records that roll, and the blend is
+        // the move.
+        teaches: &[Kind::Blend, Kind::Shape, Kind::Structure],
+        ceiling: Difficulty::Practised,
+        // Afrobeats at 100 under afro house at 122 is a tempo change, not a
+        // half-time pairing; nothing here doubles.
+        half_time: false,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Blend],
+        setting: None,
+    },
+    Pack {
+        id: "r-and-b",
+        title: "R&B",
+        about: "Smooth records and the hip-hop beside them: vocals first.",
+        families: &["r&b", "hip hop"],
+        teaches: &[Kind::Blend, Kind::Exit, Kind::Structure],
+        ceiling: Difficulty::Practised,
+        // The same as hip-hop: a slow jam doubled against a faster record is
+        // the ordinary way the two sit together.
+        half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Blend, TransitionStyle::Fade],
+        setting: None,
+    },
+    Pack {
+        id: "edm",
+        title: "EDM",
+        about: "Builds, drops and the big room: the mix lands on the drop.",
+        families: &[
+            "house",
+            "trance",
+            "dubstep",
+            "drum and bass",
+            "hardstyle",
+            "eurodance",
+        ],
+        teaches: &[Kind::Blend, Kind::Shape, Kind::Structure, Kind::Perform],
+        ceiling: Difficulty::Practised,
+        // A dubstep half-time drop after a 140 build, and drum and bass at
+        // 174 over half-time 87: this music crosses that gap on purpose.
+        half_time: true,
+        tempo_window: 0.06,
+        arc: Some("rising"),
+        transitions: &[TransitionStyle::Blend],
+        setting: Some("club"),
+    },
+    occasion(
+        "wedding",
+        "Wedding",
+        "A room that is not there for the DJ: every generation, gently.",
+        "wedding",
+        Some("journey"),
+    ),
+    occasion(
+        "beach",
+        "Beach / Resort",
+        "Warm and unhurried: nobody is waiting for a drop.",
+        "beach",
+        Some("flat"),
+    ),
+    occasion(
+        "club",
+        "Club",
+        "A crowd that came to dance, and knows what it came for.",
+        "club",
+        None,
+    ),
+    occasion(
+        "practice",
+        "Practice / Education",
+        "Nobody is listening: everything djmanzo can teach, at your pace.",
+        "practice",
+        None,
+    ),
 ];
+
+/// A Latin family's pack: the Latin pack's curriculum, narrowed to it.
+const fn latin_family(
+    id: &'static str,
+    title: &'static str,
+    about: &'static str,
+    families: &'static [&'static str],
+) -> Pack {
+    Pack {
+        id,
+        title,
+        about,
+        families,
+        teaches: &[Kind::Structure, Kind::Exit, Kind::Blend],
+        ceiling: Difficulty::Practised,
+        half_time: true,
+        tempo_window: 0.06,
+        arc: None,
+        transitions: &[TransitionStyle::Cut, TransitionStyle::Blend],
+        setting: Some("latin"),
+    }
+}
+
+/// An occasion's pack: no family to centre on, the whole catalogue up to
+/// practised moves, and the occasion's own setting for its presentation.
+const fn occasion(
+    id: &'static str,
+    title: &'static str,
+    about: &'static str,
+    setting: &'static str,
+    arc: Option<&'static str>,
+) -> Pack {
+    Pack {
+        id,
+        title,
+        about,
+        families: &[],
+        teaches: &[Kind::Blend, Kind::Exit, Kind::Shape, Kind::Structure],
+        ceiling: Difficulty::Practised,
+        // No family, so no music to rule a pairing out of.
+        half_time: true,
+        tempo_window: 0.06,
+        arc,
+        transitions: &[TransitionStyle::Blend, TransitionStyle::Fade],
+        setting: Some(setting),
+    }
+}
+
+/// Every pack: [`ALL`].
+pub fn every() -> impl Iterator<Item = &'static Pack> {
+    ALL.iter()
+}
 
 /// A pack by its slug.
 ///
@@ -252,7 +491,7 @@ mod tests {
     #[test]
     fn every_pack_names_families_and_settings_that_exist() {
         let families: Vec<&str> = dj_core::genre::families().iter().map(|f| f.name).collect();
-        for pack in ALL {
+        for pack in every() {
             for family in pack.families {
                 assert!(
                     families.contains(family),
@@ -283,16 +522,43 @@ mod tests {
     /// against would be the second description the whole design is avoiding.
     #[test]
     fn the_packs_are_distinct_and_name_an_occasion_or_none() {
-        let mut ids: Vec<&str> = ALL.iter().map(|p| p.id).collect();
+        let mut ids: Vec<&str> = every().map(|p| p.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), ALL.len(), "two packs share an id");
 
-        for pack in ALL {
+        for pack in every() {
             if let Some(setting) = pack.setting {
                 assert!(
                     !setting.trim().is_empty(),
                     "{} pairs with an empty occasion, which `None` is for",
+                    pack.id
+                );
+            }
+        }
+    }
+
+    /// **A pack's transition preferences are taste, said once each.**
+    ///
+    /// The load-bearing rule of the field. `Echo` is the planner's answer to a
+    /// key clash (`dj_app::plan`'s `STYLE_IS_TASTE` leaves it out for that
+    /// reason), so a pack that preferred it would be claiming the music's
+    /// answer as a taste and teaching the DJ to echo records that agree; and a
+    /// style listed twice is a list whose order no longer says which comes
+    /// first.
+    #[test]
+    fn transition_preferences_are_taste_and_said_once() {
+        for pack in every() {
+            assert!(
+                !pack.transitions.contains(&TransitionStyle::Echo),
+                "{} prefers an echo, which is the planner's answer to a key \
+                 clash and not a taste",
+                pack.id
+            );
+            for (i, style) in pack.transitions.iter().enumerate() {
+                assert!(
+                    !pack.transitions[..i].contains(style),
+                    "{} lists {style:?} twice",
                     pack.id
                 );
             }
@@ -438,7 +704,7 @@ mod tests {
         // The blurbs rather than the titles: a title is one word and would
         // collide with ordinary interface text, but no file has a reason to
         // contain a whole sentence this table wrote.
-        for pack in ALL {
+        for pack in every() {
             for (name, source) in &interface {
                 assert!(
                     !source.contains(pack.about),

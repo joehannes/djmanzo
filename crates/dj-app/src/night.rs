@@ -49,6 +49,10 @@ pub struct Night {
     /// set rather than one per snapshot at sixty a second.
     arc: Mutex<Vec<(Duration, SessionPhase)>>,
     started: Instant,
+    /// §12: what the DJ did with each staged transaction tonight.
+    verdicts: Mutex<crate::staged::Verdicts>,
+    /// §34 / §36: the floor's other signals tonight (`crate::floor`).
+    floor: Mutex<dj_assistant::floor::Floor>,
 }
 
 impl Default for Night {
@@ -65,7 +69,31 @@ impl Night {
             declared: Mutex::new(None),
             arc: Mutex::new(Vec::new()),
             started: Instant::now(),
+            verdicts: Mutex::new(crate::staged::Verdicts::default()),
+            floor: Mutex::new(dj_assistant::floor::Floor::new()),
         }
+    }
+
+    /// The floor's other signals tonight (§34 / §36), held here because a
+    /// night is what they are compared against.
+    #[must_use]
+    pub const fn floor(&self) -> &Mutex<dj_assistant::floor::Floor> {
+        &self.floor
+    }
+
+    /// Count what the DJ did with a staged transaction (§12, §44).
+    pub fn note_verdict(&self, verdict: crate::staged::Verdict) {
+        if let Ok(mut held) = self.verdicts.lock() {
+            held.note(verdict);
+        }
+    }
+
+    /// Tonight's verdicts so far.
+    #[must_use]
+    pub fn verdicts(&self) -> crate::staged::Verdicts {
+        self.verdicts
+            .lock()
+            .map_or_else(|_| crate::staged::Verdicts::default(), |held| *held)
     }
 
     /// Record what the DJ's chosen occasion says about the night.

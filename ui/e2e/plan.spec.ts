@@ -89,4 +89,32 @@ test.describe("the set plan", () => {
         "only be found by reading every row",
     ).toContainText("1 seam needs a cut");
   });
+
+  /**
+   * **§16's energy curve, offered and never imposed**: with the Beach pack
+   * chosen, the plan still opens on the DJ's journey and *offers* the pack's
+   * flat night; taking it sets the shape, and a shape the DJ says themselves
+   * leaves nothing offered over it.
+   */
+  test("the chosen pack's shape is offered, never put in place", async ({ page }) => {
+    await openShell(page, "/", {}, { chosen_pack: "beach" });
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    const plan = page.locator('.surface[data-surface="plan"]');
+    const shapes = plan.getByRole("group", { name: "The shape of the night" });
+    await expect(shapes.getByRole("button", { name: "journey" })).toHaveClass(/active/);
+    const offer = plan.locator("[data-pack-arc]");
+    await expect(offer).toContainText("The Beach / Resort pack usually takes a flat night.");
+    await offer.getByRole("button", { name: "Use flat" }).click();
+    await expect(shapes.getByRole("button", { name: "flat" })).toHaveClass(/active/);
+    await expect(offer).toHaveCount(0);
+    // Another shape said by the DJ: the offer does not come back over it.
+    await shapes.getByRole("button", { name: "rising" }).click();
+    await expect(offer).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("with no pack chosen, nothing is offered", async ({ page }) => {
+    await planOpen(page);
+    await expect(page.locator('.surface[data-surface="plan"] [data-pack-arc]')).toHaveCount(0);
+  });
 });

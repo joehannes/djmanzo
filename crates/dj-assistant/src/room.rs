@@ -259,7 +259,7 @@ impl Reading {
 /// The bands are deliberately wide in the middle: a fifth of a night at each
 /// end is "notable", and the three fifths between them are the room carrying
 /// on, which is not something to interrupt a DJ about.
-fn against(fraction: f32) -> Against {
+pub(crate) fn against(fraction: f32) -> Against {
     match fraction {
         f if f < 0.10 => Against::Lowest,
         f if f < 0.30 => Against::Lower,

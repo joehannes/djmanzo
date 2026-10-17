@@ -107,6 +107,7 @@
   import SvgPad from "./controls/SvgPad.svelte";
   import { themePackages } from "./controls/themes/packages";
   import ThemeParts from "./ThemeParts.svelte";
+  import SkinPicker from "./SkinPicker.svelte";
   import { themeChosen } from "./api";
   import IconButton from "./controls/IconButton.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
@@ -669,6 +670,11 @@
    * and the copy is the one that goes stale.
    */
   let allPacks = $state<KnowledgePack[]>([]);
+  /** §16's three fields as a line: "holds the tempo within 3 % · journey · blend, fade". */
+  const packHow = (pack: KnowledgePack) =>
+    [`holds the tempo within ${Math.round(pack.tempo_window * 100)} %`, pack.arc, pack.transitions.join(", ")]
+      .filter(Boolean)
+      .join(" · ");
   /** The chosen pack's id, or empty for all of djmanzo's knowledge. */
   let pack = $state("");
 
@@ -863,6 +869,8 @@
                 ? ` · ${body.families.join(", ")}`
                 : ""}
             </span>
+            <!-- §16's three fields: how close the tempo is held, the shape offered, the mixes preferred. -->
+            <span class="pack-how">{packHow(body)}</span>
           </button>
         </li>
       {/each}
@@ -1208,6 +1216,8 @@
     </div>
     <h4>How much of it</h4>
     <ThemeParts />
+    <!-- §129: the faint artwork over a theme, chosen here as well as on the Singers panel. -->
+    <SkinPicker />
   </div>
 
   <div class="block">
@@ -2265,7 +2275,8 @@
   }
 
   .pack-about,
-  .pack-reach {
+  .pack-reach,
+  .pack-how {
     color: var(--muted);
     font-size: 0.85em;
   }

@@ -405,6 +405,8 @@ pub struct SingWords {
     pub voice_out: &'static str,
     /// Under the choices: they are asked for, not set.
     pub proposals: &'static str,
+    /// K4: the singer is not sure of the song.
+    pub unsure: &'static str,
     pub photo_heading: &'static str,
     pub photo_label: &'static str,
     /// Before the button: what happens to it, said before it is sent.
@@ -462,6 +464,7 @@ impl SingWords {
             voice_guide: "Quietly, as a guide",
             voice_out: "Taken out",
             proposals: "The DJ sees what you ask for and decides.",
+            unsure: "I'm not sure of this one",
             photo_heading: "A photo of you",
             photo_label: "Choose a photo",
             photo_note: "Shown on the screen in this room tonight, while you sing, if the DJ approves it. Not kept after tonight.",
@@ -518,6 +521,7 @@ impl SingWords {
             voice_guide: "Suave, como guía",
             voice_out: "Quitada",
             proposals: "El DJ ve lo que pides y decide.",
+            unsure: "No me la sé bien",
             photo_heading: "Una foto tuya",
             photo_label: "Elige una foto",
             photo_note: "Se muestra en la pantalla de este local esta noche, mientras cantas, si el DJ la aprueba. No se guarda después de esta noche.",
@@ -658,6 +662,8 @@ pub struct SingView {
     /// Whether the record's singer may be, and what was chosen.
     pub guide: bool,
     pub chosen_voice: Option<Voice>,
+    /// The singer said they are not sure of the song, with a search.
+    pub unsure: bool,
     /// Whether this phone's singer may send a photo.
     pub photos: bool,
     /// This phone's singer's photo: waiting (false) or approved (true).
@@ -758,6 +764,9 @@ fn sing_part(html: &mut String, sing: &SingView, w: &SingWords) {
                         html.push_str(voice.tag());
                         html.push_str("\">");
                     }
+                    if sing.unsure {
+                        html.push_str("<input type=\"hidden\" name=\"unsure\" value=\"1\">");
+                    }
                     html.push_str("<button type=\"submit\" class=\"plus\">");
                     html.push_str(w.sing_this);
                     html.push_str("</button></form></li>\n");
@@ -855,6 +864,15 @@ fn proposal_fields(html: &mut String, sing: &SingView, w: &SingWords) {
         }
         html.push_str("</select>\n");
     }
+    // Not a proposal the host may refuse: a word for them, so the guide
+    // voice can be offered (`dj_app::guide_offer`).
+    html.push_str("<label class=\"unsure\"><input type=\"checkbox\" name=\"unsure\" value=\"1\"");
+    if sing.unsure {
+        html.push_str(" checked");
+    }
+    html.push_str("> ");
+    html.push_str(w.unsure);
+    html.push_str("</label>\n");
     if sing.key || sing.guide {
         html.push_str("<p class=\"asks\">");
         html.push_str(w.proposals);

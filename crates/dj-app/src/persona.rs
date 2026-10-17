@@ -389,6 +389,9 @@ mod tests {
                     length: None,
                     loop_beats: None,
                     effect: None,
+                    pair: None,
+                    verdicts: None,
+                    swaps: None,
                 })
             })
             .collect();
@@ -579,6 +582,9 @@ mod tests {
                         length: (!length.is_empty()).then(|| length.to_owned()),
                         loop_beats: None,
                         effect: None,
+                        pair: None,
+                        verdicts: None,
+                        swaps: None,
                     })
                 })
                 .collect();

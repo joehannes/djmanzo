@@ -83,6 +83,7 @@ fn eight_singers_never_allocate() {
             delay_ms: 250.0,
             feedback: 0.4,
             level: 0.3,
+            beats: None,
         }),
         ..StripSettings::default()
     };
@@ -92,6 +93,7 @@ fn eight_singers_never_allocate() {
             delay_ms: 1_400.0,
             feedback: 0.8,
             level: 0.5,
+            beats: None,
         }),
         ..everything
     };

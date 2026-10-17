@@ -93,8 +93,21 @@
   /** The queue's record is on the deck only while the deck says so. */
   const onDeck = (i: number) => queue?.at === i && queue.entries[i]?.title === title;
 
+  /**
+   * The DJ's lists, asked once each time the drawer opens. Not "until there
+   * are some": a DJ with no plain lists — only folders and smart lists, or
+   * none — got an empty answer every time, and asking again on every empty
+   * answer asked forever (found 17 October: the page froze in the browser
+   * suite, and in the application it would be a stream of calls to Rust).
+   */
+  let listsAsked = false;
   $effect(() => {
-    if (!open || lists.length > 0) return;
+    if (!open) {
+      listsAsked = false;
+      return;
+    }
+    if (listsAsked) return;
+    listsAsked = true;
     void listPlaylists()
       .then((found) => (lists = found.filter((list) => list.kind === "list")))
       .catch((e) => (error = String(e)));

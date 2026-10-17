@@ -410,6 +410,8 @@
         return "energy";
       case "vocal":
         return "vocal";
+      case "breakdown":
+        return "breakdown";
       default:
         return slug as keyof LibraryTrack;
     }
@@ -462,6 +464,12 @@
       case "vocal":
         if (track.vocal == null) return "";
         return track.vocal.strong ? "\u25cf" : "\u2013";
+      // §20/§75: where the first breakdown starts, as minutes and seconds — a
+      // dash for a record measured and found to have none, a blank for one
+      // nobody measured. Three states, as the vocal column keeps them.
+      case "breakdown":
+        if (track.breakdown == null) return "";
+        return track.breakdown.at == null ? "\u2013" : formatTime(track.breakdown.at);
       // Beats rather than bars, because that is what the analyser measures and
       // what `phrase_beats` holds. A record whose structure is not clear enough
       // to say has none, which is a real answer.
@@ -923,6 +931,25 @@
     });
   }
 
+  /**
+   * What a row sorts by in the chosen column.
+   *
+   * The field itself, except for the two columns whose value is a reading
+   * rather than a number: the vocal sorts by its measured share, and the
+   * breakdown by where it starts, with a record measured to have none after
+   * every record that has one and before those nobody measured. Sorted as
+   * objects they all compared equal, which left the column's sort doing
+   * nothing.
+   */
+  function sortValue(track: LibraryTrack): unknown {
+    if (sortBy === "vocal") return track.vocal?.share ?? null;
+    if (sortBy === "breakdown") {
+      if (track.breakdown == null) return null;
+      return track.breakdown.at ?? Number.MAX_VALUE;
+    }
+    return track[fieldOf(sortBy)];
+  }
+
   const sorted = $derived.by(() => {
     // "More like this" is already ranked, and re-sorting it by BPM would throw
     // away the ranking that is the whole answer. The column headers still
@@ -936,9 +963,8 @@
       // found, whichever column is sorted — a near match sorted in among the
       // exact ones reads as a wrong answer rather than a second chance.
       if (Boolean(a.near) !== Boolean(b.near)) return a.near ? 1 : -1;
-      const field = fieldOf(sortBy);
-      const x = a[field];
-      const y = b[field];
+      const x = sortValue(a);
+      const y = sortValue(b);
       // Nulls last whichever way the column is sorted. An unanalysed track has
       // no BPM, and burying those among the 60s or the 180s would be worse than
       // keeping them together at the end where they can be seen.

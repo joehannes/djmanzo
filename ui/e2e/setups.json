@@ -11,7 +11,8 @@
       "Waveform: 7 of 23 layers",
       "Pad pages: cues, loops, fx",
       "Assistant: prepare",
-      "Requests: off"
+      "Requests: off",
+      "Knowledge: Club"
     ]
   },
   {
@@ -26,7 +27,8 @@
       "Waveform: 10 of 23 layers",
       "Pad pages: cues, saved",
       "Assistant: assist",
-      "Requests: on"
+      "Requests: on",
+      "Knowledge: Beach / Resort"
     ]
   },
   {
@@ -41,7 +43,8 @@
       "Waveform: 8 of 23 layers",
       "Pad pages: cues, saved, sampler",
       "Assistant: assist",
-      "Requests: on"
+      "Requests: on",
+      "Knowledge: Wedding"
     ]
   },
   {
@@ -73,7 +76,7 @@
       "Pad pages: cues, loops, roll, slicer",
       "Assistant: watch",
       "Requests: off",
-      "Knowledge: Beginner"
+      "Knowledge: Practice / Education"
     ]
   },
   {

@@ -5,6 +5,14 @@
    * skin is drawing, kept in this window's storage like the theme itself.
    */
   import { theme } from "./theme.svelte";
+
+  /**
+   * Each picker its own radio group: two on screen at once (Settings and the
+   * Singers panel) sharing one name would be one group, and a choice in one
+   * would leave the other showing nothing chosen.
+   */
+  const uid = $props.id();
+  const group = `skin-${uid}`;
 </script>
 
 <section class="skin-picker" aria-label="Skin over the theme">
@@ -14,14 +22,14 @@
   {:else}
     <div class="choices" role="radiogroup" aria-label="Skin">
       <label>
-        <input type="radio" name="skin" checked={theme.skin === null} onchange={() => theme.setSkin(null)} />
+        <input type="radio" name={group} checked={theme.skin === null} onchange={() => theme.setSkin(null)} />
         None
       </label>
       {#each theme.skins as skin (skin.id)}
         <label title={skin.about}>
           <input
             type="radio"
-            name="skin"
+            name={group}
             data-skin-choice={skin.id}
             checked={theme.skin === skin.id}
             onchange={() => theme.setSkin(skin.id)}

@@ -47,9 +47,11 @@ test.describe("§54's functional presets", () => {
 
     await wedding.getByRole("button").click();
     const will = wedding.locator(".will li");
-    await expect(will).toHaveCount(6);
+    await expect(will).toHaveCount(7);
     await expect(will.first()).toHaveText("Arrangement: Wedding / Event");
     await expect(wedding).toContainText("Pad pages: cues, saved, sampler");
+    // Since §16's thirteen: the wedding's own knowledge pack, said by name.
+    await expect(will.last()).toHaveText("Knowledge: Wedding");
 
     // Nothing has been applied: the shell never asked.
     const asked = await page.evaluate(

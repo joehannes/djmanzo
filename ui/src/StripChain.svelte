@@ -122,6 +122,26 @@
     onchange({ ...strip, [stage]: { ...current, [key]: value } });
   }
 
+  /**
+   * An echo in time with the record playing: a note length, which Rust
+   * plays at the tempo of the deck the room is hearing
+   * (`dj_app::echo_tempo`). The delay as set is what plays with nothing
+   * playing.
+   */
+  const NOTES: { beats: number; label: string }[] = [
+    { beats: 0.25, label: "¼ beat" },
+    { beats: 0.5, label: "½ beat" },
+    { beats: 0.75, label: "¾ beat" },
+    { beats: 1, label: "1 beat" },
+    { beats: 1.5, label: "1½ beats" },
+    { beats: 2, label: "2 beats" },
+  ];
+
+  function setBeats(value: string) {
+    if (!strip.echo) return;
+    onchange({ ...strip, echo: { ...strip.echo, beats: value === "" ? null : Number(value) } });
+  }
+
   function setTop(key: Top, value: number) {
     onchange({ ...strip, [key]: value });
   }
@@ -229,13 +249,36 @@
                 max={range[1]}
                 step={control.step}
                 value={settings[control.key]}
+                disabled={stage === "echo" && control.key === "delay_ms" && !!strip.echo?.beats}
+                title={stage === "echo" && control.key === "delay_ms" && strip.echo?.beats
+                  ? "In time with the record; this is the delay with nothing playing"
+                  : undefined}
                 aria-label="Mic {index + 1} {name} {control.label}"
                 onchange={(e) => setStage(stage, control.key, Number(e.currentTarget.value))}
               />
-              <output>{shown(`${stage}.${control.key}`, settings[control.key], control.unit)}</output>
+              <output
+                >{stage === "echo" && control.key === "delay_ms" && strip.echo?.beats
+                  ? "in time"
+                  : shown(`${stage}.${control.key}`, settings[control.key], control.unit)}</output
+              >
             </label>
           {/if}
         {/each}
+        {#if stage === "echo"}
+          <label>
+            <span>In time</span>
+            <select
+              value={strip.echo?.beats ? String(strip.echo.beats) : ""}
+              aria-label="Mic {index + 1} Echo in time with the record"
+              onchange={(e) => setBeats(e.currentTarget.value)}
+            >
+              <option value="">No</option>
+              {#each NOTES as note (note.beats)}
+                <option value={String(note.beats)}>{note.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         {#if stage === "correction"}
           <p class="pulled">
             {pulledTo ? `To ${pulledTo}` : "No key to pull to: the song up next has none known"}

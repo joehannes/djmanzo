@@ -591,6 +591,12 @@ impl Attention {
         if peaking {
             return (Self::performing(), Quiet::Peak);
         }
+        // §17's *low suggestion noise* in warm-up, as the owner chose (17
+        // October): the room's budget — the rail keeps its rows — with the
+        // reason said, so what speaks up unasked can hold back.
+        if warming(snapshot) {
+            return (Self::preparing(), Quiet::WarmUp);
+        }
         (Self::preparing(), Quiet::Room)
     }
 
@@ -627,6 +633,10 @@ pub enum Quiet {
     Mixing,
     /// The night is at its peak, and the reading is sure enough to act on.
     Peak,
+    /// The night is warming up, and the reading is sure enough to act on:
+    /// what was not asked for waits unless it cannot (§17, the owner's
+    /// choice of 17 October).
+    WarmUp,
     /// The DJ's focus — the activity's — lowered it.
     Focus(Focus),
 }
@@ -644,6 +654,15 @@ fn failing(snapshot: &crate::Snapshot) -> bool {
             .split_output
             .as_ref()
             .is_some_and(|split| !split.healthy)
+}
+
+/// §17: whether the night is warming up, on the same certainty the peak
+/// asks for — a guess at warm-up is not enough to keep anything back.
+#[must_use]
+pub fn warming(snapshot: &crate::Snapshot) -> bool {
+    snapshot.context.session.is_some_and(|read| {
+        read.phase == dj_core::SessionPhase::WarmUp && read.certainty >= dj_core::Certainty::Fair
+    })
 }
 
 /// How many decks the room can hear.
@@ -868,6 +887,11 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            // Also the transition examined: `Pair.svelte` draws §68's
+            // transition object — where, how long, what happens, moved and
+            // re-scored. A `transition` surface was declared beside it and
+            // never drawn; two names for one panel is the two-descriptions
+            // trap, so it went and this carries it.
             name: "pair",
             title: "Pair",
             about: "Two records side by side, and the seam between them.",
@@ -1143,22 +1167,6 @@ pub fn surfaces() -> &'static [Surface] {
             collapsible: true,
             contextual: false,
             home: Dock::Right,
-            docks: SIDE_OR_BOTTOM,
-        },
-        Surface {
-            name: "transition",
-            title: "Transition",
-            about: "One transition, examined: where, how long, and what happens.",
-            category: Category::Planning,
-            least: (420, 240),
-            prefer: (760, 400),
-            priority: 50,
-            performance_critical: false,
-            detachable: false,
-            stackable: true,
-            collapsible: true,
-            contextual: true,
-            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -2887,6 +2895,32 @@ mod tests {
         assert_eq!(
             frame(0).with_session(peak(dj_core::Certainty::Sure)).quiet,
             Quiet::Peak
+        );
+        // §17's quiet warm-up: the reason, and the room's budget unchanged —
+        // the next-record rail keeps its rows; only what speaks unasked holds.
+        let warm = |certainty| {
+            Some(dj_core::SessionRead {
+                phase: dj_core::SessionPhase::WarmUp,
+                energy: 0.3,
+                environment: dj_core::EnvironmentContext::default(),
+                certainty,
+                basis: dj_core::Basis::Agreed,
+                drift: None,
+            })
+        };
+        let warming = frame(0).with_session(warm(dj_core::Certainty::Fair));
+        assert_eq!(warming.quiet, Quiet::WarmUp);
+        assert_eq!(warming.attention, Attention::preparing());
+        assert_eq!(
+            frame(0)
+                .with_session(warm(dj_core::Certainty::Unsure))
+                .quiet,
+            Quiet::Room
+        );
+        assert_eq!(
+            frame(2).with_session(warm(dj_core::Certainty::Sure)).quiet,
+            Quiet::Mixing,
+            "a mix in warm-up is still a mix"
         );
         assert_eq!(
             frame(0)

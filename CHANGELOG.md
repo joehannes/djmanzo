@@ -16,6 +16,136 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Editions planned.** djmanzo will come in seven editions, each its own
+  download: Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full and
+  Custom. See `docs/EDITIONS.md` for what each carries and what it costs.
+
+## v0.46.0 — Two sessions at once: practice, the peak, and what djmanzo learns and reads
+
+- **A quiet warm-up.** Early in the night djmanzo's whisper line says only
+  what cannot wait (a record running out, a deck clipping); the next-record
+  list and the guides are as they were.
+- **Effects and stems come forward at the peak.** When the night reaches its
+  peak, between mixes, each deck's effects open and the stem buttons grow a
+  little. Nothing you open is ever closed, and a deck's effects you close
+  stay closed for the night.
+- **Fixed: the playlist drawer could ask for your lists forever** when you
+  had no plain playlists, freezing the drawer.
+- **Practise live, in your headphones.** The Practice panel has a deck of
+  its own that only your headphones hear: put any record on it, loop it,
+  take its stems apart, kill a band, try an effect — while the set goes on.
+  With no headphone output it stays silent rather than playing out loud.
+- **Taking a record off a deck no longer allocates on the audio thread**, a
+  small risk of a glitch every eject, found while building the practice deck.
+- **Can't name it? on the Singers panel.** The guided questions of *Find a
+  song* open under the request form, and what they find goes straight into
+  the request — the record itself when your collection has it.
+- **Like this one, beside a request.** For a song picked from your
+  collection, five records like it, with why; one press puts it in the
+  request.
+- **Three ways to search for a singer's song.** Above the request form: *By
+  name* (your collection), *By a line* (the words of your records whose
+  lyrics djmanzo has) and *Online* (every source you have connected).
+- **Not sure of it.** Tick it beside a request — or on the room's page,
+  from a singer's phone — and the guide voice is offered for that song even
+  if the singer has sung it before.
+- **The set plan offers your pack's shape.** With a knowledge pack chosen,
+  the plan says the shape that kind of night usually takes and offers it;
+  it never sets it for you.
+- **An echo in time with the record.** A singer's echo can be set in beats —
+  a quarter, half, three quarters, one, one and a half or two — and follows
+  the tempo of the record the room is hearing.
+- **Duets marked M:, F:, D:.** Lyrics that mark a duet's parts rather than
+  naming the singers give each part to a singer on a microphone, in their
+  colour; lines sung together are in nobody's.
+- **The room's emoji taps are kept** in the night's crowd log, placed
+  against the music like the rest of the room's reactions.
+- **Skins in Settings too**, under Appearance, beside the theme they are
+  worn over.
+- **The guides and the welcome on the dashboard.** Press `0`: each of the
+  assistant's guides is a tile now, and so is the welcome.
+- **The undrawn Transition panel is gone**: the Pair panel is where one
+  transition is examined.
+- **The assistant is told what the context engine knows.** Besides what is on
+  the decks, its briefing now carries §11's music context (the tempo the room
+  is hearing, its key, how many decks are playing and ready, how far apart the
+  playing tempos are), the machine (sample rate, output latency, the
+  controller, MIDI, a cue output), how the DJ is working tonight (gestures a
+  minute, the commonest gesture, suggestions taken and let pass), the
+  attention budget, and whether djmanzo is keeping up (audio load, dropouts,
+  the limiter, the background threads) — one list rather than two that drift.
+
+- **What the DJ does, told to the assistant.** Which effects the DJ runs
+  together tonight (two in one deck's chain, brought in by hand), which pad
+  holds which kind of cue across their records (the record's start, a
+  phrase start, the last fifth; their own labels and colours — a pad says
+  nothing until it holds a cue on four records and one kind is most of
+  them, and recent records weigh more), and what they did with tonight's
+  staged transactions (accepted as offered, accepted after changing,
+  rejected) — counted, never turned into a preference.
+
+- **Thirteen more knowledge packs, and the three things a pack could not
+  say.** Bachata, Merengue, Dembow, Reggaeton, Salsa, Caribbean, Afro /
+  Afrobeats, R&B, EDM, Wedding, Beach / Resort, Club and Practice /
+  Education join the eight, each built from what djmanzo already knows (one
+  family of the genre map with its parent's curriculum, or a §81 occasion
+  with the whole catalogue up to practised moves). Every pack now also says
+  how close two tempos have to be to count as a direct mix in that music
+  (techno three percent, house four), the set shape that kind of night
+  usually takes, and the joins it reaches for when the records leave the
+  choice open — never an echo, which is djmanzo's answer to a key clash,
+  and never instead of the cut a tempo that does not work demands.
+
+- **The room surface reads eight more things, each on its own line.** The
+  room's sound in three bands (low, mid, high), applause-like clicks (sharp
+  clicks that keep to no beat — a hi-hat does not count), the room over the
+  music (how much louder the microphone is than the music djmanzo is sending
+  explains, which is how a crowd's noise is told from the record), uneven
+  movement and moving together (a coarse optical flow across the picture),
+  and the picture changing as a whole. Each is compared only with the same
+  room earlier tonight, says how far it can be trusted, and says beside every
+  reading what it is easily confused with. Nothing adds them up: there is no
+  crowd score, by §36's own rule. Built and tested against drawn footage and
+  generated sound; not yet against a real room.
+
+- **Timecode vinyl at an ordinary level, and stopping when the record
+  does.** A control record arriving below full scale, as it does through a
+  normally set preamp, was never found on the record at all; now it is, down
+  to −12 dBFS and below. A platter stopped by hand read as still turning
+  slowly and the track crept on; it now stops within a twentieth of a second.
+  Tested against a stand-in turntable — playing, braked, scratched, lifted and
+  dropped, with wow, flutter, rumble, hiss and hum — not yet against a real
+  deck.
+- **High-resolution faders no longer step backwards.** A pitch fader sent as
+  two control changes, as Pioneer's are, jumped back a fraction each time it
+  crossed a step while being pushed one way; a slow push now reads one way.
+
+- **What the DJ does, kept across nights.** The effects they run together,
+  what they do with what djmanzo stages (taken as offered, changed, turned
+  down), and how often they change the record they have cued before playing
+  it — and how soon — are now kept with each night and read back into "how
+  you play here", fading on the same curve as everything else learned.
+  Counts, never a preference: nothing here changes what djmanzo stages next.
+- **A breakdowns column.** The library table can show where each record's
+  first breakdown starts, a dash for a record with none, and sorts by it.
+- **Fixed: a breakdown shorter than sixteen bars was missed on any record
+  with thirty-two-beat phrases.** The finder asked for two of its windows,
+  and a window is a phrase. It now asks for four bars whatever the window.
+  Records already analysed are analysed again on their next load.
+- **Four more of the floor's signals.** How much of the picture is
+  occupied, how tightly it packs, whether the lighting is moving (a sweeping
+  beam, which is not a change of scene), and whether the room's voices rise
+  above the music on their own. Each on its own line beside its blind spot,
+  measured from the same frames and sound the room surface already reads.
+  Built and tested against drawn footage and generated sound only.
+- **Stand-ins for a turntable and a controller in the running
+  application** (development only): `DJMANZO_STANDIN_TIMECODE=1` puts deck 1
+  on a scripted control record on a machine with no turntable, and
+  `DJMANZO_STANDIN_CONTROLLER=generic-2-deck` opens a controller that is not
+  there, with a button to press every control of it. The Controllers panel
+  now shows an open controller on a machine with no MIDI service, which is
+  where the stand-in is for.
+
 ## v0.45.0 — The karaoke beta
 
 - **A playlist under every deck.** A tab on each deck's bottom edge opens

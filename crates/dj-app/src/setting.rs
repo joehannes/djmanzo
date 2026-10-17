@@ -180,13 +180,44 @@ mod tests {
     /// nobody can apply, and nothing on screen would say so.
     #[test]
     fn every_pack_that_names_an_occasion_names_one_of_these() {
-        for pack in dj_assistant::pack::ALL {
+        for pack in dj_assistant::pack::every() {
             let Some(slug) = pack.setting else { continue };
             assert!(
                 Setting::parse(slug).is_some(),
                 "the `{}` pack pairs with `{slug}`, which is not one of §81's six",
                 pack.id
             );
+        }
+    }
+
+    /// **A pack's tempo window narrows the scorer's, and its arc is one the
+    /// planner has.**
+    ///
+    /// Both checked here for the reason the occasion is: `dj-assistant` is
+    /// below `dj-library` as well as this crate, and a copy of six percent or
+    /// of four arc names written into it would be the second description.
+    /// A window wider than the scorer's own would credit a stretch the scorer
+    /// calls uncomfortable; a zero window would refuse every pair that is not
+    /// the same tempo to the hundredth; and an arc the planner cannot read is
+    /// an offer of nothing.
+    #[test]
+    fn every_packs_tempo_window_and_arc_are_the_libraries_own() {
+        for pack in dj_assistant::pack::every() {
+            assert!(
+                pack.tempo_window > 0.0
+                    && pack.tempo_window <= dj_library::suggest::TEMPO_TOLERANCE,
+                "the `{}` pack's tempo window {} is not inside the scorer's {}",
+                pack.id,
+                pack.tempo_window,
+                dj_library::suggest::TEMPO_TOLERANCE
+            );
+            if let Some(arc) = pack.arc {
+                assert!(
+                    dj_library::setlist::Arc::from_name(arc).is_some(),
+                    "the `{}` pack offers the arc `{arc}`, which the planner does not have",
+                    pack.id
+                );
+            }
         }
     }
 

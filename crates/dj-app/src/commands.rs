@@ -1341,7 +1341,7 @@ fn lock<T>(held: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// K3: what each strip plays — the rig kept in `vocal.json`, with the chain
 /// of whoever is on it laid over its row (docs/KARAOKE.md §6).
-fn played_vocal_settings(state: &AppState) -> Vec<dj_vocal::StripSettings> {
+pub(crate) fn played_vocal_settings(state: &AppState) -> Vec<dj_vocal::StripSettings> {
     let on = lock(state.on_mics());
     played(state.read_vocal_settings(), &on)
 }
@@ -1480,7 +1480,8 @@ fn vocal_settings_changed(state: &AppState) {
 /// A2: a strip's settings as the engine is to play them — held out of the
 /// room while push-to-talk is taking from it, whatever the screen sends
 /// meanwhile, so moving its fader mid-command does not put "deck two, play"
-/// through the PA.
+/// through the PA — and with an echo timed to the record, at the record's
+/// tempo ([`crate::echo_tempo`]).
 fn as_played(
     state: &AppState,
     strip: usize,
@@ -1490,6 +1491,7 @@ fn as_played(
         .take
         .as_ref()
         .is_some_and(|take| take.strip == strip);
+    let settings = crate::echo_tempo::timed(settings);
     if taking {
         crate::voice::held_out(settings)
     } else {
@@ -1497,7 +1499,7 @@ fn as_played(
     }
 }
 
-fn send_vocal_strip(
+pub(crate) fn send_vocal_strip(
     state: &AppState,
     strip: usize,
     settings: dj_vocal::StripSettings,
@@ -2047,6 +2049,110 @@ pub async fn load_track(
     put_on_deck(&state, deck_id, decoded)
 }
 
+/// Separate a record's stems on a thread of their own, outward from wherever
+/// `position` says its playhead is now (in the record's frames), and keep the
+/// line its voice sings once the last chunk arrives. Shared by a deck's load
+/// and §69's practice deck, so a record practised on is separated the same
+/// way as one about to be played.
+///
+/// The buffer is shared, not copied. This used to `to_vec()` the whole
+/// decoded track to have something to slice in the thread -- 138 MB for a
+/// six-minute track -- beside a load that gives the analyser an `Arc` for
+/// exactly that reason. The worker copies each chunk it takes, which it has
+/// to: that one crosses a channel.
+pub(crate) fn separate_in_background(
+    state: &AppState,
+    buffer: &Arc<dj_decode::AudioBuffer>,
+    track_id: dj_core::TrackId,
+    sample_rate: dj_core::SampleRate,
+    position: impl Fn() -> f64 + Send + 'static,
+) {
+    let stems_worker = state.stems_worker();
+    let audio = Arc::clone(buffer);
+    let lock_clone = buffer.stems_lock();
+    let line_library = state.library();
+    std::thread::spawn(move || {
+        // Ten seconds of stereo audio per chunk, at the rate this track was
+        // actually decoded at -- the previous constant 44_100 made a chunk
+        // 9.2 seconds long on a 48 kHz track, and the built-in separator
+        // needs the real rate to place its band edges anyway.
+        let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
+        let interleaved = audio.as_interleaved();
+        let chunk_frames = chunk_size / dj_decode::CHANNELS;
+        let total_frames = interleaved.len() / dj_decode::CHANNELS;
+        let chunk_count = total_frames.div_ceil(chunk_frames.max(1));
+
+        // **Separate outward from the playhead, not forward from the file.**
+        //
+        // Walking 0..n is the wrong order for the one thing a DJ actually
+        // does with a fresh track: load it and cue straight to the drop. The
+        // worker would be twenty seconds in while the playhead sat at three
+        // minutes, and the stem pads would quietly do nothing there for as
+        // long as it took to grind through everything in between.
+        //
+        // So the next chunk to separate is chosen each time round, by distance
+        // from wherever the playhead is *now* -- which also means a seek
+        // mid-separation redirects the work rather than being ignored.
+        // Slightly ahead is preferred to slightly behind at equal distance,
+        // because the playhead is moving one way.
+        let here = || {
+            let position = position();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            if chunk_frames == 0 {
+                0
+            } else {
+                (position.max(0.0) / chunk_frames as f64) as usize
+            }
+        };
+        feed_chunks(
+            chunk_count,
+            here,
+            |index| lock_clone.load().has_chunk(index),
+            |next| {
+                // `process_chunk` blocks once the worker is a few chunks
+                // behind, so this thread spends most of its life asleep rather
+                // than racing ahead building a queue. That is the point of the
+                // bound -- and it is also what makes re-choosing worthwhile,
+                // because by the time it wakes the playhead has usually moved.
+                // Separated with the audio either side of it, and trimmed back
+                // to the chunk afterwards.
+                //
+                // A chunk separated alone is wrong at both edges -- the
+                // windows there have no neighbours to overlap-add with -- so
+                // butting them together put a glitch at every seam, once every
+                // ten seconds, for the whole track. See
+                // `dj_stems::stems::SEPARATION_MARGIN`.
+                let body_start = next * chunk_frames;
+                let body_end = (body_start + chunk_frames).min(total_frames);
+                let lead = body_start.min(dj_stems::stems::SEPARATION_MARGIN);
+                let from = body_start - lead;
+                let to = (body_end + dj_stems::stems::SEPARATION_MARGIN).min(total_frames);
+
+                stems_worker.process_chunk(
+                    track_id,
+                    next,
+                    &interleaved[from * dj_decode::CHANNELS..to * dj_decode::CHANNELS],
+                    lead..lead + (body_end - body_start),
+                    sample_rate.get(),
+                    Some(lock_clone.clone()),
+                );
+            },
+        );
+        // K6: every chunk asked for, the line its voice sings once the last
+        // of them arrives — for a record with words, under this separator.
+        if let Some(separator) = stems_worker.separator() {
+            keep_vocal_line(
+                &line_library,
+                track_id,
+                &lock_clone,
+                total_frames,
+                sample_rate.get(),
+                separator,
+            );
+        }
+    });
+}
+
 /// Everything a load does once the file is decoded.
 ///
 /// Split from [`load_track`] because decoding is the part that has to happen
@@ -2198,100 +2304,14 @@ pub fn put_on_deck(
     // whatever was on the deck a moment ago.
     restore_deck_state(state, deck_id, track_id, sample_rate);
 
-    // Queue stem separation in the background.
-    //
-    // The buffer is shared, not copied. This used to `to_vec()` the whole
-    // decoded track to have something to slice in the thread -- 138 MB for a
-    // six-minute track -- directly beneath the comment above explaining why
-    // the analyser gets an `Arc` instead. The worker copies each chunk it
-    // takes, which it has to: that one crosses a channel.
-    let stems_worker = state.stems_worker();
-    let audio = Arc::clone(&buffer);
-    let lock_clone = buffer.stems_lock();
+    // Queue stem separation in the background, outward from this deck's
+    // playhead.
     let registry = state.registry();
-    let line_library = state.library();
-    std::thread::spawn(move || {
-        // Ten seconds of stereo audio per chunk, at the rate this track was
-        // actually decoded at -- the previous constant 44_100 made a chunk
-        // 9.2 seconds long on a 48 kHz track, and the built-in separator
-        // needs the real rate to place its band edges anyway.
-        let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
-        let interleaved = audio.as_interleaved();
-        let chunk_frames = chunk_size / dj_decode::CHANNELS;
-        let total_frames = interleaved.len() / dj_decode::CHANNELS;
-        let chunk_count = total_frames.div_ceil(chunk_frames.max(1));
-
-        // **Separate outward from the playhead, not forward from the file.**
-        //
-        // Walking 0..n is the wrong order for the one thing a DJ actually
-        // does with a fresh track: load it and cue straight to the drop. The
-        // worker would be twenty seconds in while the playhead sat at three
-        // minutes, and the stem pads would quietly do nothing there for as
-        // long as it took to grind through everything in between.
-        //
-        // So the next chunk to separate is chosen each time round, by distance
-        // from wherever the playhead is *now* -- which also means a seek
-        // mid-separation redirects the work rather than being ignored.
-        // Slightly ahead is preferred to slightly behind at equal distance,
-        // because the playhead is moving one way.
-        let here = || {
-            let position = f64::from(registry.get(dj_core::param::ParamId::Deck(
-                deck_id,
-                dj_core::param::DeckParam::Position,
-            )));
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            if chunk_frames == 0 {
-                0
-            } else {
-                (position.max(0.0) / chunk_frames as f64) as usize
-            }
-        };
-        feed_chunks(
-            chunk_count,
-            here,
-            |index| lock_clone.load().has_chunk(index),
-            |next| {
-                // `process_chunk` blocks once the worker is a few chunks
-                // behind, so this thread spends most of its life asleep rather
-                // than racing ahead building a queue. That is the point of the
-                // bound -- and it is also what makes re-choosing worthwhile,
-                // because by the time it wakes the playhead has usually moved.
-                // Separated with the audio either side of it, and trimmed back
-                // to the chunk afterwards.
-                //
-                // A chunk separated alone is wrong at both edges -- the
-                // windows there have no neighbours to overlap-add with -- so
-                // butting them together put a glitch at every seam, once every
-                // ten seconds, for the whole track. See
-                // `dj_stems::stems::SEPARATION_MARGIN`.
-                let body_start = next * chunk_frames;
-                let body_end = (body_start + chunk_frames).min(total_frames);
-                let lead = body_start.min(dj_stems::stems::SEPARATION_MARGIN);
-                let from = body_start - lead;
-                let to = (body_end + dj_stems::stems::SEPARATION_MARGIN).min(total_frames);
-
-                stems_worker.process_chunk(
-                    track_id,
-                    next,
-                    &interleaved[from * dj_decode::CHANNELS..to * dj_decode::CHANNELS],
-                    lead..lead + (body_end - body_start),
-                    sample_rate.get(),
-                    Some(lock_clone.clone()),
-                );
-            },
-        );
-        // K6: every chunk asked for, the line its voice sings once the last
-        // of them arrives — for a record with words, under this separator.
-        if let Some(separator) = stems_worker.separator() {
-            keep_vocal_line(
-                &line_library,
-                track_id,
-                &lock_clone,
-                total_frames,
-                sample_rate.get(),
-                separator,
-            );
-        }
+    separate_in_background(state, &buffer, track_id, sample_rate, move || {
+        f64::from(registry.get(dj_core::param::ParamId::Deck(
+            deck_id,
+            dj_core::param::DeckParam::Position,
+        )))
     });
 
     // Analysis runs *after* the track is playable, on its own worker.
@@ -3714,6 +3734,15 @@ pub struct ProfileDto {
     pub genres: Vec<(String, f64)>,
     /// The sentence, written in Rust — see `crate::profile::Profile::words`.
     pub says: String,
+    /// §12: the two effects they run together here, by name.
+    pub pair: Option<[String; 2]>,
+    /// §12/§44: staged moves taken as offered, changed and turned down, as
+    /// shares that sum to one.
+    pub staged: Option<[f64; 3]>,
+    /// §12: the share of loads that replaced a cued record before it played.
+    pub swapped: Option<f64>,
+    /// §12: how many seconds a replaced record had usually sat cued.
+    pub swapped_after: Option<f64>,
 }
 
 impl ProfileDto {
@@ -3734,6 +3763,12 @@ impl ProfileDto {
             techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
             genres: p.genres().to_vec(),
             says: p.words(),
+            pair: p
+                .pair()
+                .map(|(a, b)| [a.name().to_owned(), b.name().to_owned()]),
+            staged: p.staged().map(|s| [s.offered, s.changed, s.rejected]),
+            swapped: p.changes().map(|c| c.share),
+            swapped_after: p.changes().and_then(|c| c.seconds),
         }
     }
 }
@@ -3767,6 +3802,18 @@ pub fn night_setting(
         None => None,
     };
 
+    note_tonight(&state, setting, density.as_deref())
+}
+
+/// [`night_setting`]'s body, on a plain `AppState` so a test can drive it.
+///
+/// # Errors
+/// Whatever the database says.
+pub(crate) fn note_tonight(
+    state: &AppState,
+    setting: Option<crate::setting::Setting>,
+    density: Option<&str>,
+) -> Result<SettingDto, String> {
     let posture = state
         .conduct()
         .lock()
@@ -3775,7 +3822,7 @@ pub fn night_setting(
 
     // Everything read off tonight's log, now, while there is a log -- and
     // only what the DJ's own hand did; see `profile::Tonight`.
-    let db = library(&state)?;
+    let db = library(state)?;
     let night = state.night();
     let read = crate::profile::tonight(&state.bus().log(), &|at| night.phase_at(at), &|id| {
         db.track(id).ok().flatten()?.analysis.bpm
@@ -3783,17 +3830,23 @@ pub fn night_setting(
     let joined = read.techniques.join(",");
     let length = read.length.map(|beats| beats.to_string());
     let loop_beats = read.loop_beats.map(|beats| beats.to_string());
+    // §12/§44: what the DJ did with tonight's staged transactions, kept with
+    // the night so it outlives the run (`staged::Verdicts::stored`).
+    let verdicts = night.verdicts().stored();
     db.note_night(
         &state.session_id(),
         setting.map(|s| s.slug()),
         dj_library::NightRead {
-            density: density.as_deref(),
+            density,
             style: read.style.as_deref(),
             posture: posture.as_deref(),
             techniques: (!joined.is_empty()).then_some(joined.as_str()),
             length: length.as_deref(),
             loop_beats: loop_beats.as_deref(),
             effect: read.effect.map(dj_core::fx::EffectKind::name),
+            pair: read.pair.as_deref(),
+            verdicts: verdicts.as_deref(),
+            swaps: read.swaps.as_deref(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -4435,6 +4488,9 @@ mod tests {
                     length: None,
                     loop_beats: None,
                     effect: None,
+                    pair: None,
+                    verdicts: None,
+                    swaps: None,
                 })
                 .collect();
             crate::profile::profiles(
@@ -6689,6 +6745,97 @@ mod chosen_pack_tests {
         assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
     }
 
+    /// **The DJ's own style first, the pack's only without it** (§16's
+    /// transition preferences).
+    #[test]
+    fn the_planner_takes_the_packs_style_only_where_the_dj_has_none() {
+        use dj_core::action::TransitionStyle;
+        let techno = dj_assistant::pack::pack("techno").expect("the techno pack ships");
+        let preferred = techno.transitions.first().copied();
+        assert!(
+            preferred.is_some(),
+            "the fixture is wrong: techno prefers a style"
+        );
+        assert_eq!(usual_or_pack(None, Some(techno)), preferred);
+        assert_eq!(
+            usual_or_pack(Some(TransitionStyle::Cut), Some(techno)),
+            Some(TransitionStyle::Cut),
+            "a pack overrode what this DJ does"
+        );
+        assert_eq!(usual_or_pack(None, None), None);
+    }
+
+    /// **A tempo wider apart than the pack holds loses the credit for
+    /// fitting, and says so** (§16's *allowed BPM relationships*). Techno
+    /// holds within three percent: a five-percent stretch the scorer called a
+    /// fit drops below a record with no tempo credit at all, and the reason
+    /// names the window; inside the window, or on open format's six, it keeps
+    /// its place.
+    #[test]
+    fn a_tempo_wider_than_the_pack_holds_loses_its_credit() {
+        let techno = dj_assistant::pack::pack("techno").expect("the techno pack ships");
+        assert!(
+            (techno.tempo_window - 0.03).abs() < 1e-9,
+            "the fixture is wrong"
+        );
+        let stretched = scored(
+            1,
+            5.0,
+            vec![Reason::TempoFits {
+                from: 130.0,
+                to: 136.5,
+            }],
+        );
+        let near = scored(
+            3,
+            5.0,
+            vec![Reason::TempoFits {
+                from: 130.0,
+                to: 132.0,
+            }],
+        );
+        let plain = scored(2, 4.5, vec![Reason::PhraseUnknown]);
+        let out = with_pack(vec![stretched, near, plain], Some(techno), &|_| None);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(3), id(2), id(1)],
+            "a five-percent stretch kept its credit on a techno night"
+        );
+        assert!(
+            out[2]
+                .reasons
+                .contains(&Reason::TempoWiderThanPack { window: 0.03 })
+        );
+        assert!(
+            !out[0]
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::TempoWiderThanPack { .. }))
+        );
+        assert_eq!(
+            describe_reason(&Reason::TempoWiderThanPack { window: 0.03 }),
+            "wider than this pack holds (3 %)"
+        );
+
+        let open = dj_assistant::pack::pack("open-format").expect("open format ships");
+        let kept = with_pack(
+            vec![
+                scored(
+                    1,
+                    5.0,
+                    vec![Reason::TempoFits {
+                        from: 130.0,
+                        to: 136.5,
+                    }],
+                ),
+                scored(2, 4.5, vec![Reason::PhraseUnknown]),
+            ],
+            Some(open),
+            &|_| None,
+        );
+        assert_eq!(kept[0].track, id(1), "open format holds six percent");
+    }
+
     /// **A pack that does not pair across half time drops the pairing back to
     /// where an unrelated tempo sits, and the rail re-sorts around that.**
     ///
@@ -7118,11 +7265,12 @@ mod lesson_moment_tests {
     use crate::tiers::Tier;
 
     /// Every reason a budget can give, for the tests that must hold for all.
-    const EVERY_REASON: [Quiet; 9] = [
+    const EVERY_REASON: [Quiet; 10] = [
         Quiet::Room,
         Quiet::Failing,
         Quiet::Mixing,
         Quiet::Peak,
+        Quiet::WarmUp,
         Quiet::Focus(Focus::Performing),
         Quiet::Focus(Focus::Supervising),
         Quiet::Focus(Focus::Preparing),
@@ -7638,6 +7786,44 @@ impl VocalReading {
     }
 }
 
+/// §20/§75's *breakdowns*, as the table reads it: where the record's first
+/// breakdown starts, in seconds, or `None` inside a reading that says the
+/// record was measured and has none. The reading itself is `None` when
+/// nobody measured — three answers, as the vocal column keeps them.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BreakdownReading {
+    pub at: Option<f64>,
+}
+
+impl BreakdownReading {
+    /// From the frame the library keeps, at the record's own rate.
+    #[must_use]
+    pub fn from_frame(frame: f64, rate: dj_core::SampleRate) -> Self {
+        Self {
+            at: (frame >= 0.0 && rate.as_f64() > 0.0).then(|| frame / rate.as_f64()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod breakdown_tests {
+    use super::BreakdownReading;
+    use dj_core::SampleRate;
+
+    /// **A breakdown reaches the table in seconds at the record's own rate,
+    /// and "none" stays none.**
+    #[test]
+    fn a_breakdown_is_read_in_seconds_and_none_stays_none() {
+        let at = |frame: f64, rate: u32| {
+            BreakdownReading::from_frame(frame, SampleRate::new(rate).unwrap()).at
+        };
+        assert_eq!(at(96_000.0, 48_000), Some(2.0));
+        assert_eq!(at(88_200.0, 44_100), Some(2.0));
+        assert_eq!(at(dj_library::NO_BREAKDOWN, 48_000), None);
+        assert_eq!(at(0.0, 48_000), Some(0.0), "a record that opens on one");
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LibraryTrackDto {
     pub id: String,
@@ -7678,6 +7864,8 @@ pub struct LibraryTrackDto {
     /// §124: found by the typo-tolerant pass rather than by the words as
     /// typed, so the table can say "close to what you typed" beside it.
     pub near: bool,
+    /// §20/§75: where the first breakdown starts. See [`BreakdownReading`].
+    pub breakdown: Option<BreakdownReading>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -7703,6 +7891,10 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             last_played: track.stats.last_played,
             phrase_beats: track.analysis.phrase_beats,
             near: false,
+            breakdown: track
+                .analysis
+                .breakdown
+                .map(|frame| BreakdownReading::from_frame(frame, track.sample_rate)),
         }
     }
 }
@@ -8513,9 +8705,11 @@ pub(crate) fn lesson_withheld(
             "Not while you are watching the autopilot. The lesson has room in Practice."
         }
         Quiet::Focus(_) => "Not in an activity set for playing. The lesson has room in Practice.",
-        // A budget with no reason to be small: nothing judged it, so the
-        // sentence claims nothing about why.
-        Quiet::Room => "Not now. The lesson will be here when there is room for it.",
+        // A budget with no reason to be small (warm-up leaves the room's
+        // tiers as they are): the sentence claims nothing about why.
+        Quiet::Room | Quiet::WarmUp => {
+            "Not now. The lesson will be here when there is room for it."
+        }
     })
 }
 
@@ -8674,6 +8868,10 @@ pub fn staged_choose(
 /// Throw it away. **Reject.**
 #[tauri::command]
 pub fn staged_reject(state: State<'_, AppState>) {
+    // §12: a transaction turned down is the DJ's verdict on it, counted.
+    if state.staged().is_some() {
+        state.night().note_verdict(crate::staged::Verdict::Rejected);
+    }
     state.clear_staged();
 }
 
@@ -8686,6 +8884,8 @@ pub fn staged_reject(state: State<'_, AppState>) {
 #[tauri::command]
 pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcome, String> {
     let staged = state.staged().ok_or("nothing is staged")?;
+    // §12: accepted as offered, or after the DJ changed it — counted.
+    state.night().note_verdict(staged.accepted());
     let mut done = Vec::new();
     let mut stopped = None;
     for (index, step) in staged.chosen() {
@@ -10732,15 +10932,33 @@ pub(crate) fn tonight_profile(
 /// `None` in three different situations and they are all the same answer —
 /// there is no library, the night has not been named, or djmanzo has not seen
 /// enough nights of it to say. `profile::ENOUGH_NIGHTS` and the half-agree rule
-/// own the last of those; this just asks.
+/// own the last of those; this just asks. In all three the chosen §16 pack's
+/// preferred style stands in ([`usual_or_pack`]), and with no pack either,
+/// `None` is the answer.
 ///
 /// One query and a fold per call, rather than a cached copy: the profile
 /// changes when a night ends, this is asked once per planned transition, and a
 /// second copy of an answer that has an owner is the thing this codebase keeps
 /// having to take back out.
 pub(crate) fn usual_style(state: &AppState) -> Option<dj_core::action::TransitionStyle> {
-    let db = library(state).ok()?;
-    tonight_profile(state, &db).and_then(|profile| profile.style())
+    let learned = library(state)
+        .ok()
+        .and_then(|db| tonight_profile(state, &db).and_then(|profile| profile.style()));
+    let pack = state
+        .chosen_pack()
+        .and_then(|id| dj_assistant::pack::pack(&id));
+    usual_or_pack(learned, pack)
+}
+
+/// §16's *transition preferences*, where the DJ's own are not known: what this
+/// DJ does on this kind of night first (§81), and only without it the chosen
+/// pack's preferred style. `plan::choose_style` applies either only where the
+/// tempos and keys agree, so a pack can never override a cut or an echo.
+fn usual_or_pack(
+    learned: Option<dj_core::action::TransitionStyle>,
+    pack: Option<&dj_assistant::pack::Pack>,
+) -> Option<dj_core::action::TransitionStyle> {
+    learned.or_else(|| pack.and_then(|pack| pack.transitions.first().copied()))
 }
 
 /// Fold §81's profile into a ranking, and re-sort.
@@ -10870,7 +11088,24 @@ fn with_pack(
             // is credited and the ranking is djmanzo's own. The half/double
             // rule still applies, because open format has one.
             let in_family = family_of(s.track).filter(|name| pack.families.contains(name));
-            dj_library::suggest::also_in_pack(s, in_family, pack.half_time)
+            let mut s = dj_library::suggest::also_in_pack(s, in_family, pack.half_time);
+            // §16's allowed BPM relationships: a tempo the scorer called a fit
+            // but wider apart than this kind of night holds has its credit
+            // taken back, and says so — `also_in_pack`'s pattern.
+            if dj_library::suggest::wider_than_pack(&s, pack.tempo_window)
+                && let Some(given) = s
+                    .reasons
+                    .iter()
+                    .find(|r| matches!(r, dj_library::suggest::Reason::TempoFits { .. }))
+                    .copied()
+            {
+                s.score -= given.weight();
+                s.reasons
+                    .push(dj_library::suggest::Reason::TempoWiderThanPack {
+                        window: pack.tempo_window,
+                    });
+            }
+            s
         })
         .collect();
     // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
@@ -11807,6 +12042,9 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         // it changed the answer.
         Reason::PhaseAsks(words) => format!("the night asks for {words}"),
         Reason::HalfTimeUnusual => "half/double is unusual here".to_owned(),
+        Reason::TempoWiderThanPack { window } => {
+            format!("wider than this pack holds ({:.0} %)", window * 100.0)
+        }
         // §24's answer to "why do I keep seeing these two together?", in the
         // place a DJ asks it: beside the suggestion itself.
         Reason::KeptBefore { times, on_loop } => {
@@ -11878,7 +12116,7 @@ pub fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
             // their order to whichever was pushed first would print the verdict
             // before the thing it is a verdict on whenever a caller assembled
             // the reasons in a different order.
-            Reason::HalfTimeUnusual => 2,
+            Reason::HalfTimeUnusual | Reason::TempoWiderThanPack { .. } => 2,
             Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 3,
             Reason::Loudness { .. } => 4,
             Reason::SameFamily(_) | Reason::OtherFamily { .. } => 5,
@@ -11951,6 +12189,7 @@ pub fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
             // about the phase mattered without saying what.
             Reason::PhaseAsks(words) => Some((*words).to_owned()),
             Reason::HalfTimeUnusual => Some("unusual here".to_owned()),
+            Reason::TempoWiderThanPack { .. } => Some("wider than the pack".to_owned()),
             Reason::Unanalysed => Some("not analysed".to_owned()),
         })
         .collect::<Vec<_>>()
@@ -13247,6 +13486,31 @@ fn recall_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
 mod persistence_tests {
     use super::*;
     use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+
+    /// **§12 across nights: what the night did is written to its row** —
+    /// tonight's staged verdicts and the records the DJ's hand cued and
+    /// replaced — so a profile can read them back after the run has gone.
+    #[test]
+    fn a_nights_verdicts_and_swaps_reach_its_row() {
+        let state = AppState::new(true);
+        state.night().note_verdict(crate::staged::Verdict::Accepted);
+        state.night().note_verdict(crate::staged::Verdict::Rejected);
+        let deck = DeckId::from_human(1).unwrap();
+        let bus = state.bus();
+        bus.record_load(deck, dj_core::TrackId::from_bytes([1; 32]));
+        bus.record_load(deck, dj_core::TrackId::from_bytes([2; 32]));
+        note_tonight(&state, Some(crate::setting::Setting::Club), None).unwrap();
+
+        let row = state
+            .library()
+            .get()
+            .unwrap()
+            .night(&state.session_id())
+            .unwrap()
+            .expect("tonight's row");
+        assert_eq!(row.verdicts.as_deref(), Some("1,0,1"));
+        assert_eq!(row.swaps.as_deref(), Some("1,2,0"));
+    }
 
     const SR: SampleRate = SampleRate::DEFAULT;
 
@@ -16553,6 +16817,8 @@ pub fn sing_rules_set(
 
 /// §107: somebody asks for a song. With no key, the key they sang it in last
 /// time.
+/// `unsure`: the singer is not sure of it, and the guide voice is offered
+/// for it as for a song new to them.
 ///
 /// # Errors
 /// An empty name or title.
@@ -16564,10 +16830,15 @@ pub fn karaoke_ask(
     track: Option<String>,
     path: Option<String>,
     key: Option<i32>,
+    unsure: Option<bool>,
 ) -> Result<RotationDto, String> {
     let mut taken = false;
     let dto = with_rotation(&state, |rotation| {
         taken = rotation.ask(&singer, &title, track, path, key);
+        // The host's *not sure of it*: the guide is offered for it.
+        if taken && unsure.unwrap_or(false) {
+            rotation.unsure_of_last(&singer);
+        }
         taken
     });
     if taken {
@@ -19809,6 +20080,13 @@ pub struct KnowledgePackDto {
     /// How many of the catalogue's moves it would teach — the number that says
     /// what choosing it costs, which is the thing a picker should show.
     pub teaches: usize,
+    /// §16's *allowed BPM relationships*: how far apart two tempos may be for
+    /// this kind of night to hold them together, as a fraction.
+    pub tempo_window: f64,
+    /// §16's *energy curve*: the set arc it offers, or empty for none.
+    pub arc: String,
+    /// §16's *transition preferences*, lower-case style names, preferred first.
+    pub transitions: Vec<String>,
 }
 
 /// §16's packs, and which one is chosen.
@@ -19828,6 +20106,13 @@ pub fn knowledge_packs() -> Vec<KnowledgePackDto> {
                 .iter()
                 .filter(|t| pack.teaches_move(t))
                 .count(),
+            tempo_window: pack.tempo_window,
+            arc: pack.arc.unwrap_or_default().to_owned(),
+            transitions: pack
+                .transitions
+                .iter()
+                .map(|style| style.as_str().to_owned())
+                .collect(),
         })
         .collect()
 }
@@ -21394,46 +21679,7 @@ pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
 /// an absent reading is the honest answer rather than a failure.
 #[tauri::command]
 pub fn dj_context(state: State<'_, AppState>) -> Result<crate::context::DjContext, String> {
-    let snapshot = snapshot_now(&state);
-
-    let occasion = state
-        .conduct()
-        .lock()
-        .map_err(|_| "the conduct lock is poisoned".to_owned())?
-        .occasion
-        .name()
-        .to_owned();
-
-    // §14's gestures over tonight's log, which is the only window there is:
-    // the log does not outlive the run that made it.
-    let night = state.night();
-    let log = state.bus().log();
-    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
-
-    let (taken, ignored) = state
-        .fatigue()
-        .lock()
-        .map_or((0, 0), |fatigue| (fatigue.taken(), fatigue.ignored()));
-
-    // A room nothing is watching has not been read. `Glance` is already `None`
-    // in that case, so this needs no second rule about it.
-    let audience = state
-        .room()
-        .lock()
-        .ok()
-        .and_then(|room| room.glance())
-        .map(|glance| glance.because);
-
-    Ok(crate::context::DjContext {
-        session_phase: snapshot.context.session.map(|read| read.phase),
-        occasion,
-        music: crate::context::music(&snapshot),
-        hardware: crate::context::hardware(&snapshot, &state.control().status(None)),
-        audience,
-        behaviour: crate::context::behaviour(&signals, night.elapsed(), taken, ignored),
-        attention: snapshot.attention,
-        health: crate::context::health(&snapshot, state.worker_load()),
-    })
+    crate::context::gather_from(&state, &snapshot_now(&state))
 }
 
 /// What the room has been doing, and whether it matches the night.

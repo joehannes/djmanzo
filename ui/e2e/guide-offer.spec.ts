@@ -82,6 +82,50 @@ test.describe("Karaoke beta B7: the guide, offered for a song new to the singer"
     expect(await voices(page)).toEqual([]);
   });
 
+  /**
+   * **Not sure of it**: the host's tick beside the request, sent only when
+   * ticked (Rust then offers the guide for a song sung before —
+   * `guide_offer::offer`, tested there), cleared for the next request, and
+   * the song marked on the up-next card and in the rotation.
+   */
+  test("a song the singer is not sure of is sent so and marked", async ({ page }) => {
+    const unsureLine = "Not sure of it, Ana: the guide voice keeps the original singer quietly underneath.";
+    await openShell(page, "/", {}, {
+      karaoke_rotation: { ...ROTATION, singers: [{ ...ROTATION.singers[0], songs: [{ ...ROTATION.singers[0].songs[0], unsure: true }] }] },
+    });
+    await offering(page, { line: unsureLine });
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.locator("body").click({ position: { x: 700, y: 120 } });
+    await page.keyboard.press("Space");
+    await page.keyboard.press("O");
+    await page.keyboard.press("i");
+    const panel = page.locator("[data-singers]");
+    await expect(panel).toBeVisible();
+    const up = page.getByRole("region", { name: "Up next" });
+    await expect(up.locator("[data-unsure]")).toHaveText("not sure of it");
+    await expect(up.locator("[data-guide-offer]")).toContainText(unsureLine);
+
+    const asks = () =>
+      page.evaluate(() =>
+        ((window as unknown as { __karaoke?: Record<string, unknown>[] }).__karaoke ?? []).filter((c) => c.cmd === "karaoke_ask"),
+      );
+    const tick = panel.getByRole("checkbox", { name: "Not sure of it", exact: true });
+    await expect(tick).not.toBeChecked();
+    await panel.getByRole("textbox", { name: "Singer's name" }).fill("Ben");
+    await panel.getByRole("textbox", { name: "Song" }).fill("Hey Jude");
+    await tick.check();
+    await panel.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(async () => (await asks()).at(-1)?.unsure).toBe(true);
+    await expect(tick).not.toBeChecked();
+
+    await panel.getByRole("textbox", { name: "Singer's name" }).fill("Cy");
+    await panel.getByRole("textbox", { name: "Song" }).fill("Imagine");
+    await panel.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(async () => (await asks()).length).toBe(2);
+    expect((await asks()).at(-1)).not.toHaveProperty("unsure");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   test("nothing is offered where Rust offers nothing", async ({ page }) => {
     const up = await singers(page, null);
     await expect(up).toContainText("Bachata Rosa");

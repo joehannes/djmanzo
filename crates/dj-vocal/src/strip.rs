@@ -142,6 +142,47 @@ pub struct EchoSettings {
     pub feedback: f32,
     /// How much of the echo is heard, 0 to 1.
     pub level: f32,
+    /// Timed to the record: the delay is this many beats of the record
+    /// playing, one of [`ECHO_BEATS`], and follows its tempo; `delay_ms` is
+    /// then what is played when nothing is. `None` is a delay in
+    /// milliseconds, as set. Absent from a strip kept before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beats: Option<f32>,
+}
+
+/// The note lengths an echo can be timed to, in beats: a sixteenth, an
+/// eighth, a dotted eighth, a quarter, a dotted quarter and a half note.
+pub const ECHO_BEATS: [f32; 6] = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0];
+
+impl EchoSettings {
+    /// The echo as played over a record at `bpm`: its delay `beats` of that
+    /// record when it is timed and the tempo is known, else as set.
+    ///
+    /// A note longer than the longest echo a strip holds is halved until it
+    /// fits — half the note is still on the beat, where cutting it at the
+    /// longest would put every repeat off it — and one shorter than the
+    /// shortest is doubled for the same reason.
+    #[must_use]
+    pub fn timed(self, bpm: Option<f32>) -> Self {
+        let (Some(beats), Some(bpm)) = (self.beats, bpm) else {
+            return self;
+        };
+        if !(bpm.is_finite() && bpm > 0.0) {
+            return self;
+        }
+        let (shortest, longest) = range::ECHO_DELAY_MS;
+        let mut ms = beats * 60_000.0 / bpm;
+        while ms > longest {
+            ms /= 2.0;
+        }
+        while ms < shortest {
+            ms *= 2.0;
+        }
+        Self {
+            delay_ms: ms,
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -200,6 +241,7 @@ impl Default for EchoSettings {
             delay_ms: Echo::DEFAULT_DELAY_MS,
             feedback: Echo::DEFAULT_FEEDBACK,
             level: 0.25,
+            beats: None,
         }
     }
 }
@@ -415,6 +457,8 @@ impl StripSettings {
                     delay_ms: hold(echo.delay_ms, range::ECHO_DELAY_MS, start.delay_ms),
                     feedback: hold(echo.feedback, range::ECHO_FEEDBACK, start.feedback),
                     level: hold(echo.level, range::LEVEL, start.level),
+                    // One of the note lengths, or a delay in milliseconds.
+                    beats: echo.beats.filter(|beats| ECHO_BEATS.contains(beats)),
                 }
             }),
             reverb: self.reverb.map(|reverb| {
@@ -634,6 +678,7 @@ impl Preset {
                     delay_ms: 120.0,
                     feedback: 0.15,
                     level: 0.12,
+                    beats: None,
                 }),
                 reverb: Some(ReverbSettings {
                     seconds: 3.5,
@@ -663,6 +708,7 @@ impl Preset {
                     delay_ms: 420.0,
                     feedback: 0.45,
                     level: 0.35,
+                    beats: None,
                 }),
                 reverb: Some(ReverbSettings {
                     seconds: 2.0,
@@ -1228,6 +1274,7 @@ mod tests {
                 delay_ms: value,
                 feedback: value,
                 level: value,
+                beats: None,
             }),
             reverb: Some(ReverbSettings {
                 seconds: value,
@@ -1566,5 +1613,55 @@ mod tests {
             assert!((l * l + r * r - 1.0).abs() < 1e-5);
         }
         assert!(pan(-1.0).1.abs() < 1e-6 && pan(1.0).0.abs() < 1e-6);
+    }
+
+    /// **An echo timed to the record lands on its beat at any tempo.** Half
+    /// a beat is 250 ms at 120 BPM and 300 at 100; a note longer than the
+    /// longest echo is halved onto the beat rather than cut off it; an echo
+    /// in milliseconds, or one with no tempo to follow, is left as set; and
+    /// a note length that is not one of the six is not kept.
+    #[test]
+    fn an_echo_timed_to_the_record_follows_its_tempo() {
+        let half = EchoSettings {
+            beats: Some(0.5),
+            ..EchoSettings::default()
+        };
+        assert!((half.timed(Some(120.0)).delay_ms - 250.0).abs() < 1e-3);
+        assert!((half.timed(Some(100.0)).delay_ms - 300.0).abs() < 1e-3);
+
+        // Two beats at 60 BPM is two seconds, past the longest; halved, one.
+        let long = EchoSettings {
+            beats: Some(2.0),
+            ..EchoSettings::default()
+        };
+        assert!((long.timed(Some(60.0)).delay_ms - 1_000.0).abs() < 1e-3);
+        // A sixteenth at a tempo no record has is doubled up to the shortest.
+        let short = EchoSettings {
+            beats: Some(0.25),
+            ..EchoSettings::default()
+        };
+        let fast = short.timed(Some(1_200.0)).delay_ms;
+        assert!((fast - 25.0).abs() < 1e-3, "{fast}");
+
+        // Not timed, or nothing to follow: as set.
+        let set = EchoSettings::default();
+        assert_eq!(set.timed(Some(120.0)), set);
+        assert_eq!(half.timed(None), half);
+        assert_eq!(half.timed(Some(0.0)), half);
+
+        // Held: one of the six, or none.
+        let odd = StripSettings {
+            echo: Some(EchoSettings {
+                beats: Some(0.3),
+                ..EchoSettings::default()
+            }),
+            ..StripSettings::default()
+        };
+        assert_eq!(odd.held().echo.and_then(|e| e.beats), None);
+        let kept = StripSettings {
+            echo: Some(half),
+            ..StripSettings::default()
+        };
+        assert_eq!(kept.held().echo.and_then(|e| e.beats), Some(0.5));
     }
 }

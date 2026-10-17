@@ -91,6 +91,10 @@ pub struct Staged {
     pub live_deck: u8,
     #[serde(skip)]
     live_track: Option<TrackId>,
+    /// How many times the DJ changed a move's choice — §44's *Modify*,
+    /// counted so the verdict can say whether it was accepted as offered.
+    #[serde(skip)]
+    changed: u32,
 }
 
 impl Staged {
@@ -119,8 +123,22 @@ impl Staged {
                 entry.about
             ));
         }
+        if entry.chosen != chosen {
+            self.changed += 1;
+        }
         entry.chosen = chosen;
         Ok(())
+    }
+
+    /// The verdict accepting this transaction now gives: as offered, or after
+    /// the DJ changed it.
+    #[must_use]
+    pub const fn accepted(&self) -> Verdict {
+        if self.changed == 0 {
+            Verdict::Accepted
+        } else {
+            Verdict::AcceptedChanged
+        }
     }
 
     /// The moves that will actually run, in order.
@@ -266,7 +284,68 @@ pub fn build(
         moves,
         live_deck: situation.live.human_number(),
         live_track,
+        changed: 0,
     })
+}
+
+/// What the DJ did with one transaction — §12's *which suggestions are
+/// manually modified or which staged actions are overridden*, in §44's words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Verdict {
+    /// Carried out as offered.
+    Accepted,
+    /// Carried out after the DJ turned a move on or off.
+    AcceptedChanged,
+    /// Thrown away.
+    Rejected,
+}
+
+/// Tonight's verdicts, counted.
+///
+/// Counts and nothing more, on §13's and §14's grounds: a transaction passed
+/// on is about that minute, and writing it down as a preference is how "not
+/// that one, now" becomes "never suggest this again". The counts say how this
+/// DJ treats what djmanzo stages; nothing here changes what it stages next.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Verdicts {
+    pub accepted: u32,
+    pub accepted_changed: u32,
+    pub rejected: u32,
+}
+
+impl Verdicts {
+    pub fn note(&mut self, verdict: Verdict) {
+        match verdict {
+            Verdict::Accepted => self.accepted += 1,
+            Verdict::AcceptedChanged => self.accepted_changed += 1,
+            Verdict::Rejected => self.rejected += 1,
+        }
+    }
+
+    /// As the night's row keeps it: `"offered,changed,rejected"`, or `None`
+    /// before anything was staged.
+    #[must_use]
+    pub fn stored(&self) -> Option<String> {
+        (*self != Self::default()).then(|| {
+            format!(
+                "{},{},{}",
+                self.accepted, self.accepted_changed, self.rejected
+            )
+        })
+    }
+
+    /// The briefing's sentence, or empty before anything was staged.
+    #[must_use]
+    pub fn words(&self) -> String {
+        if *self == Self::default() {
+            return String::new();
+        }
+        format!(
+            "{} accepted as offered, {} accepted after changing them, {} rejected",
+            self.accepted, self.accepted_changed, self.rejected
+        )
+    }
 }
 
 #[cfg(test)]
@@ -334,6 +413,38 @@ mod tests {
             Some(TrackId::from_bytes([1; 32])),
         )
         .expect("a situation with somewhere to go stages something")
+    }
+
+    /// **§12's Modify and Reject, counted.** A transaction accepted untouched
+    /// is *accepted*; one whose moves the DJ changed is *accepted after
+    /// changing* — even if they changed it back, since they looked and
+    /// decided; turning a move to what it already was is not a change; and
+    /// tonight's tally says all three in words, nothing before anything.
+    #[test]
+    fn a_transactions_verdict_says_whether_the_dj_changed_it() {
+        let mut staged = built(Posture::Autopilot);
+        assert_eq!(staged.accepted(), Verdict::Accepted);
+        let on = staged.moves[0].chosen;
+        staged.choose(0, on).expect("unchanged");
+        assert_eq!(
+            staged.accepted(),
+            Verdict::Accepted,
+            "a no-op is not a change"
+        );
+        staged.choose(0, !on).expect("a change");
+        staged.choose(0, on).expect("and back");
+        assert_eq!(staged.accepted(), Verdict::AcceptedChanged);
+
+        let mut tonight = Verdicts::default();
+        assert_eq!(tonight.words(), "");
+        tonight.note(Verdict::Accepted);
+        tonight.note(staged.accepted());
+        tonight.note(Verdict::Rejected);
+        tonight.note(Verdict::Rejected);
+        assert_eq!(
+            tonight.words(),
+            "1 accepted as offered, 1 accepted after changing them, 2 rejected"
+        );
     }
 
     /// §44's example, as a bundle: the load, the cue, the trim, sync and the

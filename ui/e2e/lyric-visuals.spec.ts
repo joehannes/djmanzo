@@ -178,6 +178,50 @@ test.describe("Karaoke beta B3: the singers' screen's lyric visuals", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **A duet marked by part rather than named** ("F:", "M:", "D:" — the
+   * karaoke `.lrc` convention): the first part the song gives goes to the
+   * first singer on a microphone, the other to the second; the mark is not
+   * drawn, nor sung as a timed word; a line sung together is nobody's colour.
+   */
+  test("a duet marked by part gives each part to a singer, in turn", async ({ page }) => {
+    const marked = {
+      lines: [
+        { at: 10, text: "F: she starts", words: [] },
+        {
+          at: 13,
+          text: "M: he answers",
+          words: [
+            [13, "M:"],
+            [13.2, "he"],
+            [13.6, "answers"],
+          ],
+        },
+        { at: 16, text: "D: together", words: [] },
+      ],
+      plain: [],
+      instrumental: false,
+    };
+    await openShell(page, "/?panel=singers", {}, { singer_lyrics: marked, karaoke_rotation: ROTATION });
+    await expect(page.locator(SCREEN)).toBeVisible();
+    await onMics(page, ["Ana", "Ben"]);
+    await at(page, 11, [0.5, 0]);
+    const now = page.locator(`${SCREEN} [data-line="now"]`);
+    const next = page.locator(`${SCREEN} [data-line="next"]`);
+    await expect(now).toHaveAttribute("data-part", "1", { timeout: 5_000 });
+    await expect(now).toHaveText("she starts");
+    await expect(next).toHaveAttribute("data-part", "2");
+    await expect(next).toHaveText("he answers");
+    await at(page, 13.4, [0, 0.6]);
+    await expect(now).toHaveAttribute("data-part", "2");
+    await expect(now).toHaveText(/^\s*he answers\s*$/);
+    await at(page, 16.5, [0.5, 0.5]);
+    await expect(now).toHaveText("together");
+    await expect(now).not.toHaveAttribute("data-part");
+    await expect(now).toHaveAttribute("data-together", "true");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   test("one singer on a microphone is not a duet", async ({ page }) => {
     await screen(page);
     await onMics(page, ["Ana", null]);

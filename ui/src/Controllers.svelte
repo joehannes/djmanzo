@@ -26,12 +26,14 @@
     controlStatus,
     openController,
     openHidController,
+    pressStandIn,
     setKeyboardEnabled,
     controllerLights,
     type AudioRouting,
     type ControlStatus,
     type ControllerLights,
     type MappingInfo,
+    type StandInRun,
   } from "./api";
 
   let { mappings = [] }: { mappings?: MappingInfo[] } = $props();
@@ -172,6 +174,21 @@
     }
   }
 
+  /** §106: what the stand-in's controls reached, once pressed. */
+  let pressed = $state<StandInRun | null>(null);
+
+  async function pressAll() {
+    busy = true;
+    error = null;
+    try {
+      pressed = await pressStandIn();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function toggleKeyboard() {
     if (!status) return;
     await setKeyboardEnabled(!status.keyboard);
@@ -239,65 +256,89 @@
         disabled={busy || !chosenPort}
       />
     </div>
+  {/if}
 
-    {#if status.open_port}
-      <div class="open">
-        <strong>{status.open_port}</strong>
-        <span class="mapping">{status.open_mapping ?? "no mapping"}</span>
-        <IconButton icon="unlink" title="Disconnect" onClick={disconnect} disabled={busy} />
-      </div>
+  <!--
+    Outside the branch above on purpose: §106's stand-in is open on a machine
+    with no MIDI service at all, and it was the branch that hid it.
+  -->
+  {#if status?.open_port}
+    <div class="open">
+      <strong>{status.open_port}</strong>
+      <span class="mapping">{status.open_mapping ?? "no mapping"}</span>
+      <IconButton icon="unlink" title="Disconnect" onClick={disconnect} disabled={busy} />
+    </div>
 
+    {#if status.standin}
       <!--
-        §53: *the UI should know*. What the open mapping reaches, read off the
-        mapping rather than off the device — a MIDI controller announces a name
-        and nothing else, and its bindings are what a hand will actually find.
+        §106: no hardware answered here. The stand-in plays the mapping's own
+        description back through the path a port takes, so this proves the
+        path and nothing about a controller.
       -->
-      {#if reach}
-        <dl class="reach" data-reach>
-          {#each reachRows as [label, value] (label)}
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          {/each}
-        </dl>
-        <!--
-          The screens are the one thing §53 asks for that djmanzo still cannot
-          answer from a mapping, and it is named rather than counted.
-
-          The lights now say what is actually happening, which is three
-          different answers and not one: driven, described but not driven with
-          the reason, or not described at all. A count on its own would imply a
-          controller that lights up, which is exactly what this line used to do
-          in the other direction.
-        -->
-        <p class="note" data-lights>
-          Screens: djmanzo cannot see them — they are driven by the
-          controller's own firmware, not by a mapping.
-          {#if lights && lights.lit > 0}
-            Lights: djmanzo is driving {lights.lit} of them, out to
-            <strong>{lights.port}</strong>.
-          {:else if lights?.unlit}
-            Lights: this mapping describes {reach.leds}, and djmanzo cannot
-            send them — {lights.unlit}.
-          {:else if reach.leds > 0}
-            Lights: this mapping describes {reach.leds}.
-          {/if}
+      <p class="note" data-standin>
+        A stand-in, not a device: djmanzo plays this mapping's own controls
+        through the path a controller's would take.
+        <button type="button" onclick={pressAll} disabled={busy}>Press every control</button>
+      </p>
+      {#if pressed}
+        <p class="note" data-standin-run>
+          {pressed.messages} messages sent, {pressed.actions} actions reached{pressed.said.length
+            ? `: ${pressed.said.join(", ")}${pressed.actions > pressed.said.length ? ", …" : ""}`
+            : ""}.
         </p>
       {/if}
+    {/if}
 
-      {#if status.audio}
-        <p class="note" class:warn={!!status.audio.not_applied}>
-          {#if status.audio.not_applied}
-            {status.audio.not_applied}.
-          {:else}
-            This controller routes its own outputs: {routingLine(status.audio)}.
-          {/if}
-        </p>
-      {/if}
-    {:else}
-      <p class="note">
-        Nothing connected. Pads and faders do nothing until a port is open.
+    <!--
+      §53: *the UI should know*. What the open mapping reaches, read off the
+      mapping rather than off the device — a MIDI controller announces a name
+      and nothing else, and its bindings are what a hand will actually find.
+    -->
+    {#if reach}
+      <dl class="reach" data-reach>
+        {#each reachRows as [label, value] (label)}
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        {/each}
+      </dl>
+      <!--
+        The screens are the one thing §53 asks for that djmanzo still cannot
+        answer from a mapping, and it is named rather than counted.
+
+        The lights now say what is actually happening, which is three
+        different answers and not one: driven, described but not driven with
+        the reason, or not described at all. A count on its own would imply a
+        controller that lights up, which is exactly what this line used to do
+        in the other direction.
+      -->
+      <p class="note" data-lights>
+        Screens: djmanzo cannot see them — they are driven by the
+        controller's own firmware, not by a mapping.
+        {#if lights && lights.lit > 0}
+          Lights: djmanzo is driving {lights.lit} of them, out to
+          <strong>{lights.port}</strong>.
+        {:else if lights?.unlit}
+          Lights: this mapping describes {reach.leds}, and djmanzo cannot
+          send them — {lights.unlit}.
+        {:else if reach.leds > 0}
+          Lights: this mapping describes {reach.leds}.
+        {/if}
       </p>
     {/if}
+
+    {#if status.audio}
+      <p class="note" class:warn={!!status.audio.not_applied}>
+        {#if status.audio.not_applied}
+          {status.audio.not_applied}.
+        {:else}
+          This controller routes its own outputs: {routingLine(status.audio)}.
+        {/if}
+      </p>
+    {/if}
+  {:else if status && !status.unavailable && status.inputs.length > 0}
+    <p class="note">
+      Nothing connected. Pads and faders do nothing until a port is open.
+    </p>
   {/if}
 
   {#if status}

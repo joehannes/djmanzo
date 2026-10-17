@@ -52,6 +52,25 @@ impl Topic {
         Topic::Trouble,
     ];
 
+    /// How a run names it (`guide energy`), as the interface does.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Topic::Next => "next",
+            Topic::Mix => "mix",
+            Topic::Energy => "energy",
+            Topic::Request => "request",
+            Topic::Learn => "learn",
+            Topic::Trouble => "trouble",
+        }
+    }
+
+    /// The topic a slug names.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|topic| topic.slug() == slug)
+    }
+
     #[must_use]
     pub const fn title(self) -> &'static str {
         match self {

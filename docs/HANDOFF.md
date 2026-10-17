@@ -113,6 +113,93 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 
+**From the two parallel sessions of 17 October** (their notes, kept here):
+
+- **An `$effect` that fetches "until there is something" loops forever when
+  the answer is legitimately empty.** The playlist drawer did, on a DJ with
+  no plain lists; with the browser suite's instant answers it froze the page
+  (every probe "hung", even `page.evaluate` of a click). Ask once per
+  occasion, with a plain flag the effect does not read reactively.
+- **A UI mutation run leaves the mutant's bundle in `ui/dist`.** Rebuild
+  before the next real run, or it tests the mutant.
+- **The browser suite tests `ui/dist`, not `ui/src`.** A run started on a
+  bundle older than the code (`npm run build` not run since a merge) fails
+  or passes against the wrong interface: on 17 October seventeen of the
+  karaoke beta's specs failed against a bundle from before Session B until
+  a fresh build. Build, confirm `✓ built`, then run. Editing `src` while a
+  run is going is safe; rebuilding during one is not.
+- **Two copies of a component with radio buttons share a group when they
+  share a `name`.** The skin picker in Settings and on the Singers panel did,
+  and a choice in one left the other showing nothing chosen; give each
+  instance its own (`$props.id()` — which must be a declaration's
+  initialiser on its own line, not inside a template string).
+- **A mutant that does not compile proves nothing**, and an unused import
+  or a type narrowed away is enough to stop `svelte-check`; write mutants
+  that keep the code well-typed (`if (rest === "never") …` rather than
+  deleting the call).
+- `cargo fmt` re-wraps a long line between an edit script's read and its next
+  match: re-read after every `cargo fmt` before matching text in an edit.
+- A §16 pack's `transitions` is taste in `plan`'s sense, which includes
+  `Cut` and excludes `Echo` (`STYLE_IS_TASTE`): echo is the planner's answer
+  to a key clash. It reads backwards from DJ talk, where an echo-out is a
+  style; `pack::tests::transition_preferences_are_taste_and_said_once`
+  holds it.
+- `ui/e2e/floor/media.ts` (like `senses/media.ts`) **reuses** a file already
+  in `/tmp/djmanzo-floor`: after changing a generator, delete the directory,
+  or the test runs against the old footage.
+- `vitest run` prints a test's `console.log` only with `--reporter=verbose`;
+  without it a probe looks like it printed nothing.
+- An `AnalyserNode`'s frequency data is smoothed across reads by default
+  (`smoothingTimeConstant` 0.8). Read once a look, that carries the last
+  look's spectrum into this one for many looks; the room surface sets it to 0
+  and `floor.spec.ts`'s *switch* sound fails without it.
+- A timecode decoder's `Reading::speed` was a value held from the last zero
+  crossing; anything reading it as "now" on a stopped record saw a creep.
+  It is bounded now (`Decoder::bounded`), but a new consumer of the raw
+  smoothed field would bring the creep back — read `Reading`, not the field.
+- The controller stand-in proves a mapping's bytes reach the vocabulary
+  through the real callback; it cannot prove a controller sends what its
+  mapping says. A mapping naming the wrong note passes.
+- *(Round 2.)* A night's row figures are text on purpose (`"5,2,1"`,
+  `"3,18,40"`), read back by `profile::counts_of`, which refuses a row with
+  the wrong number of parts rather than reading it as zeros. A new figure
+  follows the same rule.
+- **An analyser that changes its answer is an `analysis::CACHE_VERSION`
+  bump** even when no field moved — the doc on it says so and it was still
+  missed once: the breakdown fix passed every test and the running
+  application kept showing the old answer, because the deck load reads the
+  on-disk cache under `~/.cache` (not under `XDG_DATA_HOME`, so a fresh data
+  directory does not clear it) and writes that into the library.
+- **`energy::Trajectory::changes` still counts in windows** (`AT_LEAST`,
+  §116): the assumption the breakdown finder had until 17 October, so at a
+  thirty-two-beat phrase a current has to be in or out for sixty-four beats
+  before *What changes next* names it. It wants the breakdown finder's
+  beats-based rule (`windows_for`) and a test of its own.
+- **The floor's occupancy reads against a running average that includes
+  the frame before it.** `RoomSense` reads `occupied` and only then `learn`s
+  from the frame: the other way round, the frame being judged is already
+  part of the look it is judged against.
+- **`dj_audio::null::play_into_inputs` is the whole backend's.** Every null
+  input opened afterwards at that rate plays the recording, a microphone
+  strip included, so with `DJMANZO_STANDIN_TIMECODE` set the singers' and
+  room inputs hear the control record. Its test opens at 44 123 Hz so no
+  other test is caught by it; a new test of the null inputs should not use
+  that rate.
+- **Under Xvfb the top bar wraps and unwraps** as its readouts change width,
+  moving everything below it about thirty pixels; an `xdotool` click aimed
+  from an older screenshot lands on the wrong control. Take the screenshot
+  right before the click.
+- **The stand-ins in the running application:** `DJMANZO_NULL_AUDIO=1
+  DJMANZO_STANDIN_TIMECODE=1 DJMANZO_STANDIN_CONTROLLER=generic-2-deck`.
+  The timecode status is in Settings (*Show Settings* from the palette,
+  well down, under *Timecode vinyl*); the controller in *Show Controllers*.
+  *Press every control* leaves every EQ, filter, pitch and the crossfader
+  where a full sweep leaves them — at the top.
+- **The disk allowance fills with stale test binaries.** On 17 October
+  `target/debug/deps` reached 21 GB and the gates died with no space left;
+  deleting all but the newest `name-hash` executable per crate freed 13 GB
+  without a rebuild.
+
 **From the karaoke beta's session A** (its notes, kept here):
 
 - The drawer can only be driven so far under Xvfb: its playlist `select` is
@@ -1488,6 +1575,36 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
 
 ## Where the work stands, and what is next
 
+**Two sessions at once (17 October, after v0.45.0).** The owner runs two
+sessions side by side again, the karaoke beta's shape made general:
+[PARALLEL-SESSIONS.md](PARALLEL-SESSIONS.md) names who owns which files, the
+marked blocks in `lib.rs`, and that one session folds the other's branch.
+Session 1 (*Interface and karaoke*, `claude/vigilant-tesla-xdqpmf`) and
+Session 2 (*Intelligence* — the assistant's briefing, learning, packs, crowd
+signals, hardware stand-ins) keep their state in
+[parallel/session-1.md](parallel/session-1.md) and
+[parallel/session-2.md](parallel/session-2.md); read those before this
+section, which is written at the fold.
+
+**Both rounds of both sessions are in `main` and released as v0.46.0** (17
+October). Session 2's round 2 was §12 across nights (the effect pair, the
+staged-move verdicts and *how quickly the DJ changes plans* kept on each
+night's row and read back into the profile), §20/§75's breakdowns column
+(which found the breakdown finder missing every breakdown under sixteen bars
+on a thirty-two-beat record, and the analysis cache holding the old answer),
+§34/§36's last four floor signals against stand-ins, and §106's stand-ins
+in the running application (which found the Controllers panel hiding an open
+controller on a machine with no MIDI service). Session 1's ROADMAP/FEATURES
+truth pass was not part of it.
+
+**Editions (17 October, §130).** djmanzo is to be sold at seven levels —
+Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full, Custom — each its
+own download, from one codebase: [EDITIONS.md](EDITIONS.md) has the
+editions, the prices and the order of work, [ADR-0010](adr/0010-editions.md)
+the decision. `dj_core::edition` is the parts list every check asks
+(`Modules::has`); nothing reads it yet. When adding a feature, say which
+module it belongs to, or that it is the foundation's.
+
 **The website and the account (17 October).** The owner asked for a site to
 present and sell djmanzo, and for the application to sign in to it. Both are
 built: [WEBSITE.md](WEBSITE.md) is the page to read. The site is `website/`,
@@ -1499,6 +1616,10 @@ Ed25519-signed licences offline, and **locks nothing** (`account::ENFORCED`
 is `false`) — whether and when to enforce is the owner's call. What waits on
 the owner: provider keys (OAuth, Stripe, PayPal) and a decision on
 enforcement; until the keys exist the shop runs in its labelled demo mode.
+This is the licence service [EDITIONS.md](EDITIONS.md)'s order of work names
+(steps 3 and 4), built on the website branch before §131 was written; where
+the two differ, EDITIONS.md and [ADR-0011](adr/0011-licence-by-sign-in.md)
+say how.
 
 
 **The karaoke beta (16–17 October, §126–§129).** The owner asked for a
@@ -1517,8 +1638,9 @@ vocal presets, Suno's form filled in djmanzo's own window and WhatsApp Web
 open is in the two notes files** ([karaoke-beta/session-a.md](karaoke-beta/session-a.md),
 [karaoke-beta/session-b.md](karaoke-beta/session-b.md)) — chiefly *Like
 this one*, the fast search modes, a way into *Find a song* from the Singers
-panel, a *not sure* mark for the guide offer, the room's taps in the crowd
-log, and nothing yet proved on a signed-in Suno or WhatsApp. The skin
+panel and a *not sure* mark for the guide offer (both since built — see
+[parallel/session-1.md](parallel/session-1.md)), the room's taps in the
+crowd log, and nothing yet proved on a signed-in Suno or WhatsApp. The skin
 picker lives in the Singers panel; Settings → Appearance is its natural
 second home.
 
@@ -1619,15 +1741,11 @@ from a list here that will go stale.
 
 The largest of them, in the order they are worth doing:
 
-1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
-   colour rule ship; `dj_render::layer` is the inventory and the count is
-   checked in both directions. **Twelve of twenty** exist. The eight that do
-   not are the ones djmanzo cannot yet compute: vocal and stem presence,
-   breakdowns, drops, saved loops, energy trajectory, the mix-*in* region and
-   crowd response. Each needs analysis or history that does not exist, so the
-   next one built is a research question rather than a drawing one —
-   **mix-in** is the cheapest of them, and even it needs something that can say
-   where a record's intro ends.
+1. **§25–§27, the waveform as instrumentation — done.** `dj_render::layer`
+   is the inventory and the count is checked in both directions; all
+   twenty-three layers are drawn (checked 17 October — this item used to say
+   twelve of twenty, long after the rest had shipped). Read the paragraphs
+   below for how they were built, not as a list of what is left.
 
    Nothing here can be checked against a real room. **This container has no
    camera and no microphone**, so §34–§37 are tested against synthetic series
@@ -2171,8 +2289,10 @@ The largest of them, in the order they are worth doing:
 17. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
-   `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty
-   are written, and the twenty-two that are not are deliberately absent: a
+   `coach::next_lesson` teaches inside the chosen one. Twenty-one of §16's
+   thirty are written (thirteen added on 17 October, each built from a genre
+   family or an occasion djmanzo already has, with a tempo window, an arc and
+   transition preferences), and the nine that are not are deliberately absent: a
    *Karaoke / MC* pack asserting a technique list nobody checked is a
    curriculum that teaches the wrong thing with confidence, which is worse than
    an honest gap. Adding one is cheap and is the right work for somebody who

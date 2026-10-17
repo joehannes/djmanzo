@@ -194,6 +194,27 @@
     picking = true;
   }
 
+  /**
+   * Open one guide from elsewhere — a tile on the dashboard. A guide that
+   * is not for now opens the list instead, where its reason is shown.
+   */
+  export async function openTopic(topic: string) {
+    close();
+    const r = button?.getBoundingClientRect();
+    if (r && r.width > 0) place = { top: Math.round(r.bottom + 6), left: Math.round(r.left) };
+    else place = { top: 56, left: 16 };
+    try {
+      guides = await listGuides(decks);
+      error = null;
+    } catch (e) {
+      guides = [];
+      error = String(e);
+    }
+    const guide = guides.find((g) => g.topic === topic);
+    if (guide && !guide.not_now) await choose(guide);
+    else picking = true;
+  }
+
   async function choose(guide: Guide) {
     if (guide.not_now) return;
     picking = false;

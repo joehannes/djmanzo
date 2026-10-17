@@ -848,7 +848,8 @@ export interface StripSettings {
   eq: { low_db: number; mid_db: number; mid_hz: number; high_db: number } | null;
   compressor: { threshold_db: number; ratio: number; makeup_db: number } | null;
   de_esser: { frequency_hz: number; threshold_db: number } | null;
-  echo: { delay_ms: number; feedback: number; level: number } | null;
+  /** `beats`: timed to the record playing, one of six note lengths; absent or null is the delay as set. */
+  echo: { delay_ms: number; feedback: number; level: number; beats?: number | null } | null;
   reverb: { seconds: number; level: number } | null;
   /**
    * K9: what the singer on this strip hears in a monitor of their own, once
@@ -1851,6 +1852,12 @@ export interface LibraryTrack {
    * Absent on every list but a search's.
    */
   near?: boolean;
+  /**
+   * §20/§75: where the first breakdown starts, in seconds. `null` inside the
+   * reading for a record measured and found to have none; the reading itself
+   * `null` for one nobody measured.
+   */
+  breakdown?: { at: number | null } | null;
   id: string;
   path: string;
   title: string;
@@ -2080,6 +2087,12 @@ export interface KnowledgePack {
    * to see how far it narrows before they press it.
    */
   teaches: number;
+  /** §16's allowed BPM relationships: how far apart two tempos may be, as a fraction. */
+  tempo_window: number;
+  /** §16's energy curve: the set arc it offers, or empty for none. */
+  arc: string;
+  /** §16's transition preferences, lower-case style names, preferred first. */
+  transitions: string[];
 }
 
 /** One of §81's six kinds of night, read off the table that owns it. */
@@ -3050,6 +3063,14 @@ export interface Profile {
   genres: [string, number][];
   /** The sentence, written in Rust so a panel cannot assemble a stronger one. */
   says: string;
+  /** §12: the two effects they run together here, by name. */
+  pair?: [string, string] | null;
+  /** §12/§44: staged moves taken as offered, changed, turned down, as shares. */
+  staged?: [number, number, number] | null;
+  /** §12: the share of loads that replaced a cued record before it played. */
+  swapped?: number | null;
+  /** §12: how many seconds a replaced record had usually sat cued. */
+  swapped_after?: number | null;
 }
 
 /**
@@ -3255,6 +3276,29 @@ export interface Rehearsal {
  */
 export const practiceRehearse = (style?: string) =>
   invoke<Rehearsal>("practice_rehearse", { style: style ?? null });
+
+/**
+ * §69: the practice deck — a deck only the headphones hear
+ * (`dj_app::practice_live`). Said to in the deck vocabulary: `play_pause`,
+ * `loop 4`, `stem_mute drums`, `fx 1 echo`.
+ */
+export interface PracticeLive {
+  /** The record on it, by id, or null. */
+  track: string | null;
+  title: string;
+  playing: boolean;
+  looping: boolean;
+  position_seconds: number;
+  length_seconds: number;
+  /** Its peak in the headphones, 0 to 1. */
+  level: number;
+  /** Whether there is a headphone pair: without one it is silent. */
+  headphones: boolean;
+}
+export const practiceLive = () => invoke<PracticeLive>("practice_live");
+export const practiceLiveLoad = (track: string) => invoke<PracticeLive>("practice_live_load", { track });
+export const practiceLiveDo = (action: string) => invoke<PracticeLive>("practice_live_do", { action });
+export const practiceLiveEject = () => invoke<PracticeLive>("practice_live_eject");
 
 /**
  * Speech recognition — words in time and spoken commands — on this machine:
@@ -4407,6 +4451,19 @@ export interface ControlStatus {
   hid_unavailable: string | null;
   open_hid: string | null;
   open_hid_mapping: string | null;
+  /**
+   * §106: the open "port" is the stand-in controller, not a device. Optional
+   * because a build before it never sends it.
+   */
+  standin?: boolean;
+}
+
+/** What pressing every control of the stand-in controller did. */
+export interface StandInRun {
+  messages: number;
+  actions: number;
+  /** The first few actions, as said. */
+  said: string[];
 }
 
 export interface HidDevice {
@@ -4552,6 +4609,7 @@ export const onKeyboardEnabled = (handler: (on: boolean) => void): Promise<Unlis
 export const openController = (port: string, mapping?: string) =>
   invoke<void>("open_controller", { port, mapping: mapping ?? null });
 export const closeController = () => invoke<void>("close_controller");
+export const pressStandIn = () => invoke<StandInRun>("controller_standin_press");
 export const openHidController = (device: string, mapping: string) =>
   invoke<void>("open_hid_controller", { device, mapping });
 export const closeHidController = () => invoke<void>("close_hid_controller");
@@ -5046,6 +5104,8 @@ export interface SingerRequest {
   voice?: VoiceTag | null;
   /** K4: what the singer asked for from their phone, not yet taken. */
   asks?: { key: number | null; voice: VoiceTag | null } | null;
+  /** The singer said they are not sure of it. Absent when they did not. */
+  unsure?: boolean;
 }
 
 /** K4: what is done with the record's own singer. */
@@ -5307,7 +5367,9 @@ export const karaokeAsk = (
   track: string | null,
   path: string | null,
   key: number | null,
-) => invoke<Rotation>("karaoke_ask", { singer, title, track, path, key });
+  /** The singer is not sure of it: the guide voice is offered for it. Sent only when so. */
+  unsure = false,
+) => invoke<Rotation>("karaoke_ask", { singer, title, track, path, key, ...(unsure ? { unsure } : {}) });
 export const karaokeSang = () => invoke<Rotation>("karaoke_sang");
 /**
  * K2: *Load on N* — the up-next singer's song on deck N, then their key, then

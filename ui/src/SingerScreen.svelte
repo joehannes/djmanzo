@@ -58,7 +58,7 @@
     type VocalsState,
     vocalsState,
   } from "./api";
-  import { breakAt, partOf } from "./lyricBreak";
+  import { breakAt, partOf, partsOf } from "./lyricBreak";
   import { MIC_TOKENS, spread } from "./micColours";
   import { lyricsAt } from "./lyricsAt";
   import Visuals from "./Visuals.svelte";
@@ -225,10 +225,12 @@
   const HEARD = 0.12;
   const micColour = (strip: number) => `var(${MIC_TOKENS[micOrder[strip % micOrder.length] ?? 0]})`;
   const duet = $derived(onMic.filter((name) => name !== null).length >= 2);
-  const part = $derived(current && duet ? partOf(current.text, onMic) : null);
-  /** A timed line's first word is the name itself ("Ana:"): not sung, not drawn. */
+  /** A duet whose lines are marked by part ("M:", "F:") rather than named: whose part is whose. */
+  const order = $derived(duet && words ? partsOf(words.lines) : []);
+  const part = $derived(current && duet ? partOf(current.text, onMic, order) : null);
+  /** A timed line's first word is the name or the part's mark ("Ana:", "F:"): not sung, not drawn. */
   const named = $derived(
-    part?.singer != null && current !== null && (current.words[0]?.[1] ?? "").trim().endsWith(":"),
+    !!part?.marked && current !== null && (current.words[0]?.[1] ?? "").trim().endsWith(":"),
   );
   /**
    * B7: the singer's deck playing with the guide under them, before their
@@ -237,7 +239,7 @@
   const guided = $derived(Boolean(deck?.playing && isGuide(deck.voice) && moment && moment.index < 0));
   const following = $derived(moment && words ? (words.lines[moment.index + 1] ?? null) : null);
   /** B3: the line after, a duet's part read ahead in its singer's colour. */
-  const nextPart = $derived(following && duet ? partOf(following.text, onMic) : null);
+  const nextPart = $derived(following && duet ? partOf(following.text, onMic, order) : null);
 
   /**
    * Who is next. While a song plays its singer is still at the top of the
@@ -524,6 +526,7 @@
           class="line now"
           data-line="now"
           data-part={part?.singer != null ? part.singer + 1 : undefined}
+          data-together={part?.together || undefined}
           style:--sing={part?.singer != null ? micColour(part.singer) : undefined}
         >
           {#if current.words.length > 0}

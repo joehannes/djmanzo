@@ -205,4 +205,34 @@ test.describe("§127: a playlist under each deck", () => {
     await expect.poll(async () => Math.abs((await width(deck1)) - (await width(deck2)))).toBeLessThan(3);
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **A DJ with no plain lists does not make the drawer ask forever.** Only a
+   * folder and a smart list: the drawer says there is nothing to choose and
+   * asks for the lists once per opening — it used to ask again on every empty
+   * answer, which froze the page.
+   */
+  test("with no lists to choose, the drawer asks once and says so", async ({ page }) => {
+    await openShell(page, "/", {}, { list_playlists: LISTS.filter((list) => list.kind !== "list") });
+    await rust(page);
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
+        __listsAsked: number;
+      };
+      win.__listsAsked = 0;
+      const stub = win.__TAURI_INTERNALS__.invoke;
+      win.__TAURI_INTERNALS__.invoke = (cmd, args = {}) => {
+        if (cmd === "list_playlists") win.__listsAsked += 1;
+        return stub(cmd, args);
+      };
+    });
+    const deck1 = page.locator('section.deck[data-deck="1"]');
+    await deck1.getByRole("button", { name: "Deck 1's playlist" }).click();
+    const drawer = page.getByRole("region", { name: "Deck 1's playlist" });
+    await expect(drawer.getByRole("combobox", { name: "Playlist for deck 1" }).locator("option")).toHaveText(["No playlist"]);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (window as unknown as { __listsAsked: number }).__listsAsked)).toBe(1);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

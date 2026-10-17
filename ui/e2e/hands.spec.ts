@@ -373,4 +373,79 @@ test.describe("§53's lights", () => {
     await expect(said).not.toContainText("cannot send");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+});
+
+test.describe("§106's stand-in controller", () => {
+  /**
+   * **§106: the stand-in controller is shown open on a machine with no MIDI
+   * service, with its reach, and says it is not hardware.**
+   *
+   * The panel used to draw the open controller only inside the branch for a
+   * machine that has MIDI ports, so the stand-in — which exists for exactly the
+   * machine that has none — was open in Rust and invisible here. Pressing its
+   * controls reports what they reached, and a real controller is offered no
+   * such button.
+   */
+  test("a stand-in controller is shown open without MIDI, and says what its presses reached", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    const status = (standin: boolean) => ({
+      inputs: [],
+      hid_inputs: [],
+      open_port: standin ? "Stand-in controller (no hardware)" : "DDJ-SR MIDI 1",
+      open_mapping: "Pioneer DDJ-SR",
+      unavailable: standin ? "MIDI is not available on this machine" : null,
+      keyboard: true,
+      keyboard_name: "",
+      standin,
+    });
+    const answers = (standin: boolean) => ({
+      controller_hands: NO_STEMS,
+      controller_lights: { lit: 0, port: "", unlit: "" },
+      control_status: status(standin),
+      controller_standin_press: {
+        messages: 40,
+        actions: 30,
+        said: ["deck 1 play_pause", "deck 1 cue"],
+      },
+      control_mappings: [
+        { name: "Pioneer DDJ-SR", device: "DDJ-SR", bindings: 113, bundled: true, hands: NO_STEMS },
+      ],
+      palette: {
+        because: "",
+        entries: [
+          {
+            label: "Show Controllers",
+            about: "What is plugged in, and what it is mapped to.",
+            kind: "surface",
+            run: "controllers",
+            tier: "preparation",
+          },
+        ],
+      },
+    });
+    const open = async (standin: boolean) => {
+      await openShell(page, "/", {}, answers(standin));
+      await page.keyboard.press("Control+k");
+      await page.getByRole("button", { name: /Show Controllers/ }).first().click();
+      return page.locator('[data-surface="controllers"]');
+    };
+
+    const panel = await open(true);
+    await expect(panel).toContainText("MIDI is not available on this machine");
+    await expect(panel.locator(".open strong")).toHaveText("Stand-in controller (no hardware)");
+    await expect(panel.locator("[data-reach]")).toContainText("Pads");
+    await expect(panel.locator("[data-standin]")).toContainText("not a device");
+    await panel.getByRole("button", { name: "Press every control" }).click();
+    await expect(panel.locator("[data-standin-run]")).toHaveText(
+      "40 messages sent, 30 actions reached: deck 1 play_pause, deck 1 cue, ….",
+    );
+
+    const real = await open(false);
+    await expect(real.locator(".open strong")).toHaveText("DDJ-SR MIDI 1");
+    await expect(real.locator("[data-standin]")).toHaveCount(0);
+    expect(thrown).toEqual([]);
+  });
 });

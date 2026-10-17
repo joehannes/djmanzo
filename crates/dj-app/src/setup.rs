@@ -245,17 +245,27 @@ impl Setup {
     /// takes the judgement out: a pack added for weddings is wired in by
     /// existing, and nobody has to remember this table.
     ///
-    /// **Exactly one, or none.** Two packs name the club — house and techno —
-    /// and picking between them would be djmanzo deciding what kind of club
-    /// night this is, which nothing here knows. `None` is the honest answer and
-    /// leaves the whole catalogue on, which is what a DJ who has chosen no pack
-    /// already gets.
+    /// **The occasion's own pack, else exactly one, else none.** Since §16's
+    /// thirteen joined, an occasion has a pack of its own — *Club*, *Wedding*,
+    /// *Practice / Education*, the *Latin* pack for a Latin night — named by
+    /// the occasion's slug and pairing with it, and that is the one. Without
+    /// one, a pack is chosen only where exactly one names the occasion: four
+    /// packs name the club (house, techno, EDM and the club's own), and
+    /// picking between the genre ones would be djmanzo deciding what kind of
+    /// club night this is, which nothing here knows. `None` leaves the whole
+    /// catalogue on, which is what a DJ who has chosen no pack already gets.
     #[must_use]
     pub fn pack(&self) -> Option<&'static dj_assistant::pack::Pack> {
         let slug = self.setting.slug();
-        let mut found = dj_assistant::pack::ALL
-            .iter()
-            .filter(|p| p.setting == Some(slug));
+        let naming = || {
+            dj_assistant::pack::ALL
+                .iter()
+                .filter(move |p| p.setting == Some(slug))
+        };
+        if let Some(own) = naming().find(|p| p.id == slug) {
+            return Some(own);
+        }
+        let mut found = naming();
         let first = found.next()?;
         found.next().is_none().then_some(first)
     }
@@ -366,47 +376,41 @@ mod tests {
     // §31's readings and §7's arrangements — three copies of one grep, asked
     // once now and in both directions.
 
-    /// **The knowledge pack is derived, and the tie is a real answer.**
-    ///
-    /// Two packs name the club, so the club preset must name neither: picking
-    /// between house and techno would be djmanzo deciding what kind of club
-    /// night this is. The three occasions that do have exactly one get it, and
-    /// the derivation is what makes a pack added for weddings wire itself in.
+    /// **The knowledge pack is derived: the occasion's own, and a tie is a
+    /// real answer.** Every occasion has its own pack now, so each preset
+    /// names it — never one of the genre packs that also name the occasion
+    /// (house, techno and EDM all name the club). The derivation is what made
+    /// the packs added for weddings and the beach wire themselves in.
     #[test]
-    fn a_setup_names_a_knowledge_pack_only_where_exactly_one_names_it() {
+    fn a_setup_names_the_occasions_own_knowledge_pack() {
         use crate::setting::Setting;
-        assert_eq!(setup(Setting::Latin).pack().map(|p| p.id), Some("latin"));
-        assert_eq!(
-            setup(Setting::Practice).pack().map(|p| p.id),
-            Some("beginner")
-        );
-        assert_eq!(
-            setup(Setting::OpenFormat).pack().map(|p| p.id),
-            Some("open-format")
-        );
-        assert_eq!(
-            setup(Setting::Club).pack(),
-            None,
-            "the club preset picked between house and techno"
-        );
-        assert_eq!(setup(Setting::Beach).pack(), None);
-        assert_eq!(setup(Setting::Wedding).pack(), None);
+        for (setting, pack) in [
+            (Setting::Latin, "latin"),
+            (Setting::Practice, "practice"),
+            (Setting::OpenFormat, "open-format"),
+            (Setting::Club, "club"),
+            (Setting::Beach, "beach"),
+            (Setting::Wedding, "wedding"),
+        ] {
+            assert_eq!(
+                setup(setting).pack().map(|p| p.id),
+                Some(pack),
+                "{setting:?} named another pack, or none"
+            );
+        }
 
-        // And a preset that sets one says so before it does it.
-        assert!(
-            setup(Setting::Latin)
-                .changes()
-                .iter()
-                .any(|line| line.starts_with("Knowledge:")),
-            "the latin preset narrows what the coach teaches and does not say so"
-        );
-        assert!(
-            !setup(Setting::Club)
-                .changes()
-                .iter()
-                .any(|line| line.starts_with("Knowledge:")),
-            "the club preset claims a change it does not make"
-        );
+        // And a preset that sets one says so, by the pack's own title,
+        // before it does it.
+        for setting in Setting::ALL {
+            let pack = setup(setting).pack().expect("every occasion has a pack");
+            assert!(
+                setup(setting)
+                    .changes()
+                    .iter()
+                    .any(|line| line.starts_with("Knowledge:") && line.contains(pack.title)),
+                "the {setting:?} preset narrows what the coach teaches and does not say so"
+            );
+        }
     }
 
     /// **A preset says everything it will do, and nothing it will not.**

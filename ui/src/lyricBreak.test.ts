@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { breakAt, partOf } from "./lyricBreak";
+import { breakAt, partOf, partsOf } from "./lyricBreak";
 
 const line = (at: number, text: string) => ({ at, text, words: [] as [number, string][] });
 const SONG = [line(10, "First"), line(12, "Second"), line(40, ""), line(52, "Back in"), line(54, "Last")];
@@ -27,10 +27,26 @@ describe("B3: an instrumental break", () => {
 describe("B3: a duet's parts", () => {
   it("are the singers on the microphones, named at the start of a line", () => {
     const on = ["Ana", null, "Ben"];
-    expect(partOf("Ana: so long", on)).toEqual({ singer: 0, text: "so long" });
-    expect(partOf(" ben :and you", on)).toEqual({ singer: 2, text: "and you" });
-    expect(partOf("BEN: and you", on)).toEqual({ singer: 2, text: "and you" });
-    expect(partOf("Oh: what a night", on)).toEqual({ singer: null, text: "Oh: what a night" });
-    expect(partOf("No colon here", on)).toEqual({ singer: null, text: "No colon here" });
+    expect(partOf("Ana: so long", on)).toEqual({ singer: 0, text: "so long", marked: true, together: false });
+    expect(partOf(" ben :and you", on)).toEqual({ singer: 2, text: "and you", marked: true, together: false });
+    expect(partOf("BEN: and you", on)).toEqual({ singer: 2, text: "and you", marked: true, together: false });
+    expect(partOf("Oh: what a night", on)).toEqual({ singer: null, text: "Oh: what a night", marked: false, together: false });
+    expect(partOf("No colon here", on)).toEqual({ singer: null, text: "No colon here", marked: false, together: false });
+  });
+
+  it("are marked rather than named: the first part sung is the first singer's", () => {
+    const song = [{ text: "D: together now" }, { text: "F: she starts" }, { text: "M: he answers" }, { text: "F: again" }];
+    const order = partsOf(song);
+    expect(order).toEqual(["f", "m"]);
+    // Mic 1 empty, Ana on Mic 2, Ben on Mic 3.
+    const on = [null, "Ana", "Ben"];
+    expect(partOf("F: she starts", on, order)).toEqual({ singer: 1, text: "she starts", marked: true, together: false });
+    expect(partOf("m:he answers", on, order)).toEqual({ singer: 2, text: "he answers", marked: true, together: false });
+    expect(partOf("Female: spelled out", on, order).singer).toBe(1);
+    expect(partOf("D: together now", on, order)).toEqual({ singer: null, text: "together now", marked: true, together: true });
+    // A name still wins, and a mark the song never set up has no singer.
+    expect(partOf("Ben: mine", on, order).singer).toBe(2);
+    expect(partOf("M: alone", on, ["m"])).toMatchObject({ singer: 1, marked: true });
+    expect(partOf("Oh: not a mark", on, order)).toMatchObject({ singer: null, marked: false });
   });
 });

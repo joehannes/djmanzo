@@ -14,6 +14,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import packs from "./packs.json" with { type: "json" };
 import { errorsThrown, openShell } from "./shell";
 
 async function openPacks(page: Page) {
@@ -49,10 +50,18 @@ test.describe("§16's knowledge packs", () => {
       "knowledge_packs",
     );
 
-    // Eight rows, and the two ends of the range they cover. The general pack
+    // Twenty-one rows, and the two ends of the range they cover. The general pack
     // teaches the whole catalogue; the beginner pack is the narrowing, and the
     // difference between the two numbers is the whole point of choosing one.
-    await expect(page.locator(".packs li")).toHaveCount(8);
+    await expect(page.locator(".packs li")).toHaveCount(21);
+    // §16's three fields, said under each: how close it holds the tempo, the
+    // night's shape it offers, and how it prefers to mix.
+    const techno = packs.find((p) => p.id === "techno")!;
+    await expect(pack(page, "techno").locator(".pack-how")).toHaveText(
+      [`holds the tempo within ${Math.round(techno.tempo_window * 100)} %`, techno.arc, techno.transitions.join(", ")]
+        .filter(Boolean)
+        .join(" · "),
+    );
     await expect(pack(page, "general").locator(".pack-reach")).toContainText(
       "27 moves",
     );

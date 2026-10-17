@@ -146,8 +146,8 @@ pub const CONSUMERS: [Consumer; 9] = [
     },
     Consumer {
         asked: "assistant",
-        module: "commands.rs",
-        reads: "DjContext",
+        module: "assistant.rs",
+        reads: "context::gather_from",
         why_not: "",
     },
     Consumer {
@@ -175,6 +175,137 @@ pub const CONSUMERS: [Consumer; 9] = [
         why_not: "",
     },
 ];
+
+/// §11's object gathered from one snapshot, for anything in `dj-app` that
+/// needs it — the assistant's briefing (§40) and the `dj_context` command.
+///
+/// Built from the `snapshot` the caller already holds, so a briefing reads its
+/// decks and its context at one moment rather than two: the second-
+/// descriptions failure with a clock in it is what this module exists to stop.
+///
+/// A poisoned conduct lock is the one failure, as in `dj_context`; an
+/// unreadable room is an absent reading, not an error.
+///
+/// # Errors
+/// When the conduct lock is poisoned.
+pub fn gather_from(
+    state: &crate::state::AppState,
+    snapshot: &crate::Snapshot,
+) -> Result<DjContext, String> {
+    let occasion = state
+        .conduct()
+        .lock()
+        .map_err(|_| "the conduct lock is poisoned".to_owned())?
+        .occasion
+        .name()
+        .to_owned();
+
+    // §14's gestures over tonight's log, which is the only window there is.
+    let night = state.night();
+    let log = state.bus().log();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+
+    let (taken, ignored) = state
+        .fatigue()
+        .lock()
+        .map_or((0, 0), |fatigue| (fatigue.taken(), fatigue.ignored()));
+
+    let audience = state
+        .room()
+        .lock()
+        .ok()
+        .and_then(|room| room.glance())
+        .map(|glance| glance.because);
+
+    Ok(DjContext {
+        session_phase: snapshot.context.session.map(|read| read.phase),
+        occasion,
+        music: music(snapshot),
+        hardware: hardware(snapshot, &state.control().status(None)),
+        audience,
+        behaviour: behaviour(&signals, night.elapsed(), taken, ignored),
+        attention: snapshot.attention,
+        health: health(snapshot, state.worker_load()),
+    })
+}
+
+/// §40 joined to §11: the fields the briefing already tells under one of
+/// §40's own items, and that item's name in [`crate::sight::ALL`].
+///
+/// Told there rather than here so the model reads one sentence about the
+/// phase, not two that might disagree — the room in particular is told only
+/// while it is watched (`sight::room_words`), and the object's `audience`
+/// carries no such rule.
+pub const TOLD_BY_SIGHT: [(&str, &str); 3] = [
+    ("session_phase", "session phase"),
+    ("occasion", "current venue/occasion"),
+    ("audience", "audience context"),
+];
+
+/// The rest of §11's object as briefing lines: one per field, labelled with
+/// §11's own name and each value named, `none` for an absence.
+///
+/// Rendered from the serialised object rather than field by field, so a field
+/// added to a context struct is told without anybody remembering to tell it —
+/// the test holds every leaf to appearing.
+#[must_use]
+pub fn told(context: &DjContext) -> Vec<String> {
+    let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(context) else {
+        return Vec::new();
+    };
+    FIELDS
+        .iter()
+        .filter(|(_, ours)| TOLD_BY_SIGHT.iter().all(|(field, _)| field != ours))
+        .filter_map(|(directive, ours)| {
+            let value = fields.get(*ours)?;
+            let mut parts = Vec::new();
+            flatten("", value, &mut parts);
+            Some(format!("{}: {}", words(directive), parts.join(", ")))
+        })
+        .collect()
+}
+
+/// `musicContext` → `music context`; `djBehaviorContext` → `dj behavior context`.
+fn words(directive: &str) -> String {
+    let mut out = String::new();
+    for c in directive.chars() {
+        if c.is_ascii_uppercase() && !out.is_empty() {
+            out.push(' ');
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
+}
+
+/// Every leaf of `value` as `name value`, nested names joined by a space.
+fn flatten(prefix: &str, value: &serde_json::Value, parts: &mut Vec<String>) {
+    let name = prefix.replace('_', " ");
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, inner) in map {
+                let nested = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix} {key}")
+                };
+                flatten(&nested, inner, parts);
+            }
+        }
+        serde_json::Value::Null => parts.push(format!("{name} none")),
+        serde_json::Value::Bool(yes) => {
+            parts.push(format!("{name} {}", if *yes { "yes" } else { "no" }))
+        }
+        serde_json::Value::Number(number) => match number.as_f64() {
+            Some(x) if x.fract() != 0.0 => parts.push(format!("{name} {x:.2}")),
+            _ => parts.push(format!("{name} {number}")),
+        },
+        serde_json::Value::String(text) => parts.push(format!("{name} {text}")),
+        serde_json::Value::Array(items) => {
+            let shown: Vec<String> = items.iter().map(ToString::to_string).collect();
+            parts.push(format!("{name} [{}]", shown.join(", ")));
+        }
+    }
+}
 
 /// What is on the decks, from the snapshot the interface is already being sent.
 ///
@@ -511,6 +642,97 @@ mod tests {
         );
     }
 
+    /// Every leaf's name as the briefing spells it, and whether it is null.
+    ///
+    /// Walked here rather than with `flatten`, so a fault in the renderer
+    /// cannot hide itself from the test that checks it.
+    fn paths(prefix: &str, value: &serde_json::Value, out: &mut Vec<(String, bool)>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, inner) in map {
+                    let name = key.replace('_', " ");
+                    let nested = if prefix.is_empty() {
+                        name
+                    } else {
+                        format!("{prefix} {name}")
+                    };
+                    paths(&nested, inner, out);
+                }
+            }
+            other => out.push((prefix.to_owned(), other.is_null())),
+        }
+    }
+
+    /// **§40 joined to §11: every leaf of the object reaches the briefing**,
+    /// or its field is one §40 already tells under an item of its own. A field
+    /// added to a context struct and left out of the briefing fails here, as
+    /// does a field claimed to be told by a §40 item that does not exist, or
+    /// one told both ways.
+    #[test]
+    fn every_field_of_the_object_is_told_or_carried_by_a_named_item() {
+        let state = crate::state::AppState::new(true);
+        let snapshot = crate::commands::snapshot_now(&state);
+        let context = gather_from(&state, &snapshot).expect("gathered");
+        let lines = told(&context);
+        let text = lines.join("\n");
+        let label = |field: &str| {
+            FIELDS
+                .iter()
+                .find(|(_, ours)| *ours == field)
+                .map(|(directive, _)| words(directive))
+                .expect("every field has a §11 name")
+        };
+
+        let serde_json::Value::Object(fields) = serde_json::to_value(&context).expect("serialises")
+        else {
+            panic!("an object");
+        };
+        let mut leaves = Vec::new();
+        for (field, value) in &fields {
+            if TOLD_BY_SIGHT.iter().any(|(ours, _)| ours == field) {
+                continue;
+            }
+            let label = label(field);
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.starts_with(&format!("{label}: "))),
+                "{field} has no line of its own:\n{text}"
+            );
+            paths("", value, &mut leaves);
+        }
+        assert!(
+            leaves.len() >= 15,
+            "too few leaves to mean anything: {leaves:?}"
+        );
+        for (leaf, null) in &leaves {
+            let said = if *null {
+                format!("{leaf} none")
+            } else {
+                format!("{leaf} ")
+            };
+            assert!(text.contains(&said), "{said:?} is not told:\n{text}");
+        }
+
+        for (field, item) in TOLD_BY_SIGHT {
+            assert!(
+                fields.contains_key(field),
+                "{field} is not a field of the object"
+            );
+            assert!(
+                crate::sight::ALL.iter().any(|seen| seen.name == item),
+                "{field} is said to be told by §40's {item:?}, which is not one of its items"
+            );
+            let directive = label(field);
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line.starts_with(&format!("{directive}: "))),
+                "{field} told twice: by {item:?} and as {directive:?}"
+            );
+        }
+    }
+
     /// **All eight of §11's fields are on the object, and nothing else is.**
     ///
     /// The guard the whole module rests on. §11 is a list of eight and djmanzo
@@ -601,6 +823,7 @@ mod tests {
             "asks.rs" => include_str!("asks.rs"),
             "commands.rs" => include_str!("commands.rs"),
             "autopilot.rs" => include_str!("autopilot.rs"),
+            "assistant.rs" => include_str!("assistant.rs"),
             _ => return None,
         })
     }

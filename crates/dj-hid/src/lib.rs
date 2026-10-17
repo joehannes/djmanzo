@@ -37,6 +37,7 @@ pub mod platter;
 pub mod port;
 pub mod report;
 pub mod script;
+pub mod standin;
 pub mod usb;
 
 pub use keys::{Chord, KeyBinding, KeyError, KeyMap};
