@@ -288,7 +288,7 @@ fn context_lines(state: &AppState) -> Vec<String> {
         },
     );
 
-    crate::sight::brief(
+    let mut lines = crate::sight::brief(
         &value,
         &crate::sight::Beside {
             posture,
@@ -304,7 +304,15 @@ fn context_lines(state: &AppState) -> Vec<String> {
             transition,
             room,
         },
-    )
+    );
+    // §40 joined to §11: the context engine's one object, read from the same
+    // snapshot, for what the briefing above does not already tell — the music,
+    // the machine, how the DJ is working tonight, the attention budget and
+    // whether djmanzo is keeping up. One list rather than two that drift.
+    if let Ok(context) = crate::context::gather_from(state, &snapshot) {
+        lines.extend(crate::context::told(&context));
+    }
+    lines
 }
 
 /// The planned set, in order, with the one that is next marked.
@@ -616,6 +624,41 @@ mod tests {
     /// §40: **the briefing reads the room from the room**, and only while it
     /// is watched -- nothing seen yet says nothing is watching, and a reading
     /// that has just arrived says it is (too little yet to give a direction).
+    #[test]
+    fn the_briefing_reads_the_context_engines_one_object() {
+        let state = AppState::new(true);
+        let lines = context_lines(&state);
+        let text = lines.join("\n");
+        for label in [
+            "music context: ",
+            "hardware context: ",
+            "dj behavior context: ",
+            "attention budget: ",
+            "performance health: ",
+        ] {
+            assert_eq!(
+                lines.iter().filter(|line| line.starts_with(label)).count(),
+                1,
+                "{label:?} once:\n{text}"
+            );
+        }
+        // Absences said as absences, from the object rather than invented here.
+        assert!(text.contains("music context: bpm none"), "{text}");
+        assert!(text.contains("gestures per minute 0.0"), "{text}");
+        // The phase, the occasion and the room are §40's own items: told once.
+        for once in [
+            "session phase: ",
+            "current venue/occasion: ",
+            "audience context: ",
+        ] {
+            assert_eq!(
+                lines.iter().filter(|line| line.starts_with(once)).count(),
+                1,
+                "{once:?} once:\n{text}"
+            );
+        }
+    }
+
     #[test]
     fn the_briefing_tells_the_room_only_while_it_is_watched() {
         let state = AppState::new(true);
