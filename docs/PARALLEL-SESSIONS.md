@@ -34,18 +34,24 @@ than this table, and some of what it names cannot be built here (a camera, a
 microphone, a controller, a screen reader). Take items in order; stop an item
 that turns out to need hardware and say so in the notes.
 
-### Session 1 — Interface (boards, guides, the waveform)
+### Session 1 — Interface (the transition, the library, the two ends)
 
-1. **§117: a board the DJ arranges by hand.** Designed 12 October in the row:
-   *Arrange* on any board puts small controls on each widget (earlier, later,
-   narrower, wider, shorter, taller, take it off) and offers the widgets it
-   does not have; every change is sent whole and kept.
-2. **§118: the guides and the welcome on the boards**, and what else the row
-   names as left.
-3. **§25–§27: the waveform's missing layers** — `dj_render::layer` holds the
-   inventory and the count; build the next one that can be computed here.
-4. **§103: judge the three success criteria never judged** (audience
-   awareness, performance, extensibility), honestly, from what is built.
+Checked against the code on 17 October: §117's hand-arranged boards, §118's
+further guides and all twenty-three waveform layers are built, whatever older
+sentences in HANDOFF or the status rows still say. What is open:
+
+1. **§5: the `transition` surface, drawn.** `cockpit` declares it and no panel
+   draws it — the assistant carries it. A panel of its own: the record
+   playing, the one coming, the mix §27's ghost plans between them (style,
+   length, where it starts), the time to it.
+2. **Library quality: the absent columns.** The performance table's six
+   missing columns, starting with *breakdowns* from `energy::trajectory`
+   (§75), which is analysed and drawn on the overview but is not a column.
+3. **Adaptability: the two ends as layouts.** Density adapts; a beginner's
+   and a professional's layouts that express the two ends do not exist.
+4. **Truth pass on the status documents**: every sentence in HANDOFF,
+   DIRECTIVE-STATUS and ROADMAP that names as missing something that is
+   built (the waveform's layers, §117, §118, §103's count), corrected.
 5. **Karaoke fold** when the karaoke sessions finish:
    [karaoke_beta_release.md](karaoke_beta_release.md) §6.
 
@@ -79,11 +85,15 @@ need into your notes file, and the fold makes it.
 **Session 1 owns:**
 `ui/src/` (all of it, except the panels Session 2 owns below), `ui/e2e/`
 (except Session 2's new specs), `crates/dj-render/`,
-`crates/dj-app/src/{boards,dashboard,widgets,guide,welcome,gig,leader,layout,waveform,cockpit,mission,tiers,uiop,handle,looks,theme}.rs`,
+`crates/dj-app/src/{boards,dashboard,widgets,guide,welcome,gig,leader,layout,waveform,cockpit,mission,tiers,uiop,handle,looks,columns,library,ghost,transition,plan}.rs`,
 and **`crates/dj-core/` exclusively** — `param.rs`, `action.rs` and
 `vocabulary.rs` carry counts and fixed-size arrays that two sessions cannot
 both append to. Session 2 needing a new parameter or action writes it in its
 notes; Session 1 adds it at the fold.
+
+(`crates/dj-library/` is Session 2's: a column Session 1 adds reads what the
+analysis already keeps; a library change it cannot do without waits for the
+fold and is written in its notes.)
 
 **Session 2 owns:**
 `crates/dj-assistant/` (except `song.rs`, karaoke's), `crates/dj-library/`,
@@ -95,7 +105,7 @@ plus any new `ui/e2e/*.spec.ts` it creates (named for its work, e.g.
 
 **Neither touches (karaoke's, until the karaoke fold):**
 everything the karaoke sessions changed —
-`crates/dj-app/src/{guests,guide_offer,reactions,suno,karaoke,quiz,range,voice,monitors,deck_queue,find_song,sources_board,whispercpp,commands}.rs`,
+`crates/dj-app/src/{guests,guide_offer,reactions,suno,theme,karaoke,quiz,range,voice,monitors,deck_queue,find_song,sources_board,whispercpp,commands}.rs`,
 `crates/dj-assistant/src/song.rs`, `crates/dj-net/`, `crates/dj-vocal/`,
 `crates/dj-engine/`, and in `ui/`: `Singers`, `SingerScreen`, `GuestSong`,
 `RoomEmoji`, `SkinPicker`, `DeckDrawer`, `FindSong`, `SourcesBoard`,
