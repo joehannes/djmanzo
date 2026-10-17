@@ -655,6 +655,12 @@ impl Rotation {
                     .find(|singer| same(&singer.name, &sign.name))
             {
                 singer.from_phone = true;
+                // Not sure of it, said on the phone as on the host's form.
+                if sign.unsure
+                    && let Some(song) = singer.songs.last_mut()
+                {
+                    song.unsure = true;
+                }
                 if !sign.proposal.is_empty()
                     && let Some(song) = singer.songs.last_mut()
                 {
@@ -1081,6 +1087,35 @@ mod tests {
         );
         // Nothing new: nothing to keep.
         assert!(!rotation.from_phones(&mut stage, |_| None));
+    }
+
+    /// **Not sure of it, said on the phone, is on the request** — so the
+    /// guide is offered for it as for one the host ticked; a song put down
+    /// without it is not marked.
+    #[test]
+    fn a_phone_that_is_not_sure_marks_the_request() {
+        let mut rotation = Rotation::default();
+        let mut stage = phones();
+        sign(&mut stage, "phone-a", "Ana");
+        assert!(stage.unsure_of_last("phone-a"));
+        sign(&mut stage, "phone-b", "Ben");
+        assert!(
+            !stage.unsure_of_last("phone-c"),
+            "a phone that put nothing down"
+        );
+        rotation.from_phones(&mut stage, |_| None);
+        let ana = rotation
+            .singers
+            .iter()
+            .find(|s| s.name == "Ana")
+            .expect("Ana");
+        let ben = rotation
+            .singers
+            .iter()
+            .find(|s| s.name == "Ben")
+            .expect("Ben");
+        assert!(ana.songs[0].unsure);
+        assert!(!ben.songs[0].unsure);
     }
 
     /// **K4: the host's line is one line, at most eighty characters, and a

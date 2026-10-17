@@ -181,6 +181,9 @@ pub struct SignUp {
     /// Only what the host allows phones to propose; the rest is dropped.
     pub proposal: Proposal,
     pub at: SystemTime,
+    /// The singer said they are not sure of the song: a word for the host,
+    /// not a proposal, so never dropped by the host's rules.
+    pub unsure: bool,
 }
 
 /// What became of a sign-up.
@@ -440,8 +443,27 @@ impl Stage {
             song,
             proposal,
             at: now,
+            unsure: false,
         });
         Signed::Added
+    }
+
+    /// Mark the song `phone`'s singer put down last, still waiting to be
+    /// taken, as one they are not sure of. False when there is none.
+    pub fn unsure_of_last(&mut self, phone: &str) -> bool {
+        let Some(name) = self.names.get(phone) else {
+            return false;
+        };
+        let Some(sign) = self
+            .waiting
+            .iter_mut()
+            .rev()
+            .find(|sign| same(&sign.name, name))
+        else {
+            return false;
+        };
+        sign.unsure = true;
+        true
     }
 
     /// Songs `name` has waiting: in the rotation, and put down since.

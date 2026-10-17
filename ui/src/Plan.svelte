@@ -31,6 +31,8 @@
     ARCS,
     ARC_HELP,
     assistantSetSetlist,
+    chosenPack,
+    knowledgePacks,
     learnedTaste,
     setlistBuild,
     setlistSave,
@@ -56,6 +58,20 @@
   const DEFAULT_MINUTES = 90;
 
   let arc = $state<Arc>("journey");
+  /** The DJ has said a shape themselves: nothing is offered over it. */
+  let arcSaid = $state(false);
+  /**
+   * §16's energy curve: the chosen knowledge pack's usual shape, *offered*
+   * where the DJ has not said one — never put in place silently, because the
+   * arc is the DJ's to say.
+   */
+  let packArc = $state<{ title: string; arc: Arc } | null>(null);
+  const offered = $derived(packArc && !arcSaid && packArc.arc !== arc ? packArc : null);
+
+  function sayArc(choice: Arc) {
+    arc = choice;
+    arcSaid = true;
+  }
   let minutes = $state(DEFAULT_MINUTES);
   let favours = $state<string[]>([]);
   let avoids = $state<string[]>([]);
@@ -72,6 +88,17 @@
 
   /** What the taste knows, offered rather than imposed. */
   onMount(() => {
+    void (async () => {
+      try {
+        const [id, packs] = await Promise.all([chosenPack(), knowledgePacks()]);
+        const pack = packs.find((p) => p.id === id);
+        if (pack && (ARCS as readonly string[]).includes(pack.arc)) {
+          packArc = { title: pack.title, arc: pack.arc as Arc };
+        }
+      } catch {
+        // No pack chosen, or none answering: nothing to offer.
+      }
+    })();
     void (async () => {
       try {
         learnedFavourites = (await learnedTaste()).favourites;
@@ -213,13 +240,19 @@
         <button
           class:active={arc === choice}
           title={ARC_HELP[choice]}
-          onclick={() => (arc = choice)}
+          onclick={() => sayArc(choice)}
         >
           {choice}
         </button>
       {/each}
     </div>
     <p class="help">{ARC_HELP[arc]}</p>
+    {#if offered}
+      <p class="help" data-pack-arc>
+        The {offered.title} pack usually takes a <strong>{offered.arc}</strong> night.
+        <button type="button" onclick={() => sayArc(offered.arc)}>Use {offered.arc}</button>
+      </p>
+    {/if}
 
     <label class="minutes">
       <span>Minutes</span>

@@ -2207,8 +2207,10 @@ The largest of them, in the order they are worth doing:
 17. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
-   `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty
-   are written, and the twenty-two that are not are deliberately absent: a
+   `coach::next_lesson` teaches inside the chosen one. Twenty-one of §16's
+   thirty are written (thirteen added on 17 October, each built from a genre
+   family or an occasion djmanzo already has, with a tempo window, an arc and
+   transition preferences), and the nine that are not are deliberately absent: a
    *Karaoke / MC* pack asserting a technique list nobody checked is a
    curriculum that teaches the wrong thing with confidence, which is worse than
    an honest gap. Adding one is cheap and is the right work for somebody who

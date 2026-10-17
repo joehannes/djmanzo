@@ -25,8 +25,12 @@ Versioning follows semver, with one project-specific convention:
 - **Three ways to search for a singer's song.** Above the request form: *By
   name* (your collection), *By a line* (the words of your records whose
   lyrics djmanzo has) and *Online* (every source you have connected).
-- **Not sure of it.** Tick it beside a request and the guide voice is
-  offered for that song even if the singer has sung it before.
+- **Not sure of it.** Tick it beside a request — or on the room's page,
+  from a singer's phone — and the guide voice is offered for that song even
+  if the singer has sung it before.
+- **The set plan offers your pack's shape.** With a knowledge pack chosen,
+  the plan says the shape that kind of night usually takes and offers it;
+  it never sets it for you.
 - **An echo in time with the record.** A singer's echo can be set in beats —
   a quarter, half, three quarters, one, one and a half or two — and follows
   the tempo of the record the room is hearing.

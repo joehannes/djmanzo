@@ -357,6 +357,7 @@ impl Doorman {
                     chosen_key: request.param("key").and_then(|k| k.parse().ok()),
                     guide: rules.guide,
                     chosen_voice: request.param("voice").and_then(Voice::by_tag),
+                    unsure: request.param("unsure").is_some(),
                     photos: rules.photos,
                     photo: stage.photo_of_phone(phone).map(|photo| photo.approved),
                 })
@@ -374,17 +375,22 @@ impl Doorman {
             key: request.field("key").and_then(|k| k.trim().parse().ok()),
             voice: request.field("voice").as_deref().and_then(Voice::by_tag),
         };
+        let unsure = request.field("unsure").is_some();
         let signed = self
             .front
             .stage(|stage| {
-                stage.sign_with(
+                let signed = stage.sign_with(
                     &phone,
                     &name,
                     token.as_deref(),
                     written.as_deref(),
                     proposal,
                     SystemTime::now(),
-                )
+                );
+                if signed == Signed::Added && unsure {
+                    stage.unsure_of_last(&phone);
+                }
+                signed
             })
             .unwrap_or(Signed::Closed);
         // The name goes back with a refusal, so it need not be typed again.
@@ -752,6 +758,44 @@ mod tests {
         assert!(front.stage(|s| s.take().0).unwrap().is_empty());
     }
 
+    /// **"I'm not sure of this one", from the phone**: the box is on the
+    /// form, carried from a search to the song chosen from it, and the
+    /// sign-up says so — and one sent without it does not. Not a proposal:
+    /// kept whatever the host lets phones propose.
+    #[test]
+    fn a_guest_can_say_they_are_not_sure_of_their_song() {
+        let (server, front) = serving();
+        singing(&front);
+        let plain = get(server.address(), "/?name=Ana&q=obsesion");
+        assert!(plain.contains("name=\"unsure\""), "{plain}");
+        assert!(plain.contains("not sure of this one"), "{plain}");
+        assert!(!plain.contains("value=\"1\" checked"), "{plain}");
+        assert!(
+            !plain.contains("<input type=\"hidden\" name=\"unsure\""),
+            "carried without being asked: {plain}"
+        );
+
+        let found = get(server.address(), "/?name=Ana&q=obsesion&unsure=1");
+        assert!(
+            found.contains("name=\"unsure\" value=\"1\" checked"),
+            "{found}"
+        );
+        assert!(
+            found.contains("<input type=\"hidden\" name=\"unsure\" value=\"1\">"),
+            "the song chosen from the search did not carry it: {found}"
+        );
+        let token = first_token(&found);
+        post_to(
+            server.address(),
+            "/sing",
+            &format!("name=Ana&song={}&unsure=1", urlencoding::encode(&token)),
+        );
+        let (signed, _) = front.stage(|s| s.take()).unwrap();
+        assert_eq!(signed.len(), 1);
+        assert!(signed[0].unsure, "the phone's word was lost");
+        assert!(signed[0].proposal.is_empty(), "it is not a proposal");
+    }
+
     /// **A guest finds their song, puts their name down, and the host's
     /// rotation can take it** — over a real socket, as a phone does: the
     /// search answers with forms, the chosen one posts its token, the answer
@@ -788,6 +832,7 @@ mod tests {
         let (signed, _) = front.stage(|s| s.take()).unwrap();
         assert_eq!(signed.len(), 1);
         assert_eq!(signed[0].name, "Ana");
+        assert!(!signed[0].unsure, "not sure, without being said");
         assert_eq!(
             signed[0].song,
             crate::stage::Chosen::Book(crate::stage::BookSong {

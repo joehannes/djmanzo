@@ -20,6 +20,24 @@ the shared documents at the fold (§5).
 - **`main` at v0.45.0 merged** into this branch; every gate green on the
   merged tree (920 browser tests on a fresh bundle).
 
+### Round 2
+
+- **The phone's *not sure of it* — built.** The room's page has the box
+  beside the song (`page.rs`, both languages), carried from a search to the
+  song chosen from it; `dj_net::stage::SignUp::unsure` and
+  `Stage::unsure_of_last` (not a `Proposal`: a word for the host, never
+  dropped by the host's rules); `Rotation::from_phones` marks the request.
+  Held by `front::tests::a_guest_can_say_they_are_not_sure_of_their_song`
+  (over a real socket) and `karaoke::tests::a_phone_that_is_not_sure_marks_the_request`;
+  3 mutants fail them. Not driven on a phone.
+- **The set plan offers the chosen pack's arc — built.** With a pack chosen
+  whose arc is one of the plan's four, the Plan panel says *The Beach /
+  Resort pack usually takes a flat night.* with *Use flat*; it never sets
+  it, and once the DJ says a shape nothing is offered over it. Held by
+  `plan.spec.ts`'s two new tests; 2 mutants fail them.
+- **Truth pass**: §128 closed ✅ (everything its row named as not built is
+  built), §129 and §119 brought up to date; 80 done, 30 part, of 129.
+
 ### Item 1: karaoke follow-ups
 
 - **Find a song from the Singers panel — built.** *Can't name it?* beside
