@@ -1,0 +1,269 @@
+/*
+  Isla Manzo's tokens. App.svelte rewrites these as the visitor's genre and
+  the hour change; these values are the island at night before anybody has
+  said anything.
+*/
+:root {
+  --bg: #06233a;
+  --surface: #0d3b5c;
+  --surface-2: #124a70;
+  --primary: #ffb703;
+  --secondary: #ff5d73;
+  --ink: #fdf6e3;
+  --ink-soft: rgba(253, 246, 227, 0.72);
+  --on-primary: #10131a;
+  --on-secondary: #10131a;
+  --line: rgba(253, 246, 227, 0.16);
+  --sign-bg: #fdf6e3;
+  --sign-ink: #10131a;
+  --display: "Bungee", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 14px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+:root[data-day="1"] {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+body {
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  line-height: 1.08;
+  margin: 0 0 0.4em;
+  letter-spacing: 0.005em;
+}
+
+h1 {
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
+}
+h2 {
+  font-size: clamp(1.4rem, 3vw, 1.8rem);
+}
+h3 {
+  font-size: 1.15rem;
+}
+
+p {
+  margin: 0 0 0.9em;
+  max-width: 68ch;
+}
+
+a {
+  color: var(--primary);
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.12s, background 0.2s;
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--primary) 50%, black);
+}
+.btn.secondary {
+  background: var(--secondary);
+  border-color: var(--secondary);
+  color: var(--on-secondary);
+}
+.btn.quiet {
+  border-color: var(--line);
+}
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.15s cubic-bezier(0.3, 1.6, 0.5, 1), background 0.2s, border-color 0.2s;
+}
+.chip:hover {
+  border-color: var(--primary);
+}
+.chip[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  transform: scale(1.04);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.field > span {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+input[type="text"],
+input[type="email"],
+input[type="search"],
+input[type="number"],
+input[type="password"],
+input[type="url"],
+input[type="date"],
+select,
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 70%, black);
+  color: var(--ink);
+}
+textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+.small {
+  font-size: 0.88rem;
+}
+.notice {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border-left: 5px solid var(--secondary);
+  background: color-mix(in srgb, var(--secondary) 14%, var(--surface));
+}
+.ok {
+  border-left-color: #3ddc84;
+  background: color-mix(in srgb, #3ddc84 14%, var(--surface));
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+}
+figure {
+  margin: 0 0 16px;
+}
+figcaption {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
