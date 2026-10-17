@@ -200,6 +200,22 @@ pub fn start_timecode(
     format: Option<String>,
     absolute: Option<bool>,
 ) -> Result<TimecodeStatusDto, String> {
+    start(&state, deck, device_id, format, absolute)
+}
+
+/// What [`start_timecode`] does, minus Tauri's `State` wrapper: §106's
+/// stand-in turntable (`crate::standin`) puts a deck on its record through
+/// exactly this, so it is the door a DJ uses and not a second one.
+///
+/// # Errors
+/// As [`start_timecode`].
+pub(crate) fn start(
+    state: &AppState,
+    deck: u8,
+    device_id: Option<String>,
+    format: Option<String>,
+    absolute: Option<bool>,
+) -> Result<TimecodeStatusDto, String> {
     let id = DeckId::from_human(deck).ok_or_else(|| format!("no deck {deck}"))?;
     let chosen = pick_format(format.as_deref())?;
     let absolute = absolute.unwrap_or(false);
@@ -224,7 +240,7 @@ pub fn start_timecode(
             absolute,
         }),
     );
-    Ok(status_of(&state))
+    Ok(status_of(state))
 }
 
 /// Take a deck off vinyl and give it its transport back.
@@ -240,7 +256,7 @@ pub fn stop_timecode(state: State<'_, AppState>, deck: u8) -> Result<TimecodeSta
 }
 
 /// Find a named format among the bundled ones, or the first if none is named.
-fn pick_format(name: Option<&str>) -> Result<dj_dvs::TimecodeFormat, String> {
+pub(crate) fn pick_format(name: Option<&str>) -> Result<dj_dvs::TimecodeFormat, String> {
     let bundled = dj_dvs::TimecodeFormat::bundled();
     match name {
         Some(wanted) => bundled

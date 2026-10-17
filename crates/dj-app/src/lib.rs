@@ -119,6 +119,7 @@ pub mod signals;
 pub mod snapshot;
 pub mod sources;
 pub mod staged;
+pub mod standin;
 pub mod state;
 pub mod theme;
 pub mod thrift;
@@ -713,6 +714,8 @@ pub fn run() {
                     crate::control::drain(app.handle().clone(), inbox);
                 }
             }
+            // §106: the stand-ins, when the environment asks for them.
+            crate::standin::open(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -725,6 +728,7 @@ pub fn run() {
             find_song::find_song,
             // End of session A's commands.
             commands::list_devices,
+            standin::controller_standin_press,
             commands::list_inputs,
             commands::list_panels,
             commands::detach_panel,

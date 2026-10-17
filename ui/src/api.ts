@@ -4428,6 +4428,19 @@ export interface ControlStatus {
   hid_unavailable: string | null;
   open_hid: string | null;
   open_hid_mapping: string | null;
+  /**
+   * §106: the open "port" is the stand-in controller, not a device. Optional
+   * because a build before it never sends it.
+   */
+  standin?: boolean;
+}
+
+/** What pressing every control of the stand-in controller did. */
+export interface StandInRun {
+  messages: number;
+  actions: number;
+  /** The first few actions, as said. */
+  said: string[];
 }
 
 export interface HidDevice {
@@ -4573,6 +4586,7 @@ export const onKeyboardEnabled = (handler: (on: boolean) => void): Promise<Unlis
 export const openController = (port: string, mapping?: string) =>
   invoke<void>("open_controller", { port, mapping: mapping ?? null });
 export const closeController = () => invoke<void>("close_controller");
+export const pressStandIn = () => invoke<StandInRun>("controller_standin_press");
 export const openHidController = (device: string, mapping: string) =>
   invoke<void>("open_hid_controller", { device, mapping });
 export const closeHidController = () => invoke<void>("close_hid_controller");

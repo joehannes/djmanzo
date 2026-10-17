@@ -130,6 +130,40 @@ this round's.
   same generic list the first eight use. Nothing here is a claim about a
   real room.
 
+- **4. §106 in the running application — built and driven under Xvfb.**
+  `DJMANZO_STANDIN_TIMECODE=<deck>` (with `DJMANZO_NULL_AUDIO`): once an
+  output is open, `crate::standin` renders `dj_dvs::turntable::Turntable::perform`
+  under a scripted hand (about twenty-five seconds: play, brake to a stop,
+  start, baby scratch, spin back, lift, drop forty seconds in, +8 %), has the
+  null inputs play it (`dj_audio::null::play_into_inputs`, new: interleaved,
+  channel for channel, **only at its own rate**, because a control record
+  resampled by repeating samples reports the wrong speed), and puts the deck
+  on it through `timecode::start` — `start_timecode`'s body, now shared, so
+  the stand-in uses the door a DJ uses. `DJMANZO_STANDIN_CONTROLLER=<stem>`:
+  `ControlHub::open_standin` wires a `dj_hid::standin::StandIn`, `status`
+  reports it as the open port (`STANDIN_PORT`, `standin: true`) so §53's
+  reach reads it, and `controller_standin_press` plays every control's
+  presses into it and posts the actions to the drain a real port posts to.
+  **Driving it found the panel hiding it**: the Controllers panel drew the
+  open controller only inside the branch for a machine with MIDI ports, so
+  on this machine — no MIDI service — the stand-in was open in Rust and
+  absent on screen; the open block now stands outside that branch. Seen in
+  the running application: the deck header's BPM following the hand (123.8,
+  0.2 at the stop, about 134 at +8 %, passing values through the brake,
+  scratch and spin), the timecode panel reading *reading (90 %) at 1.01× …
+  0.00× … −0.42× · djmanzo 1 kHz · relative · Null input*, the Controllers
+  panel showing *Stand-in controller (no hardware) · Generic 2-deck* under
+  *MIDI is not available on this machine*, with its reach (2 decks, 2 jogs,
+  17 knobs and faders, 8 pads, no stem controls — and the stem module opened
+  on the deck for it, §53's adaptation), and *Press every control* reporting
+  *92 messages sent, 56 actions reached: deck 1 play_pause, deck 1 cue, …*
+  with every EQ, filter, pitch and the crossfader left where a full sweep
+  leaves them. Held by `null::tests::a_recording_reaches_the_inputs_channel_for_channel_at_its_own_rate`,
+  `control::tests::a_stand_in_controller_opens_like_a_port_and_its_presses_reach_the_drain`,
+  `standin::tests::the_stand_in_record_is_followed_through_the_hands_moves`
+  and `e2e/hands.spec.ts`'s stand-in test; six mutants fail them. Nothing
+  here says a real turntable or controller behaves like the stand-in.
+
 ### Round 2 changelog lines
 
 - **What the DJ does, kept across nights.** The effects they run together,
@@ -150,6 +184,13 @@ this round's.
   above the music on their own. Each on its own line beside its blind spot,
   measured from the same frames and sound the room surface already reads.
   Built and tested against drawn footage and generated sound only.
+- **Stand-ins for a turntable and a controller in the running
+  application** (development only): `DJMANZO_STANDIN_TIMECODE=1` puts deck 1
+  on a scripted control record on a machine with no turntable, and
+  `DJMANZO_STANDIN_CONTROLLER=generic-2-deck` opens a controller that is not
+  there, with a button to press every control of it.
+- **Fixed: the Controllers panel hid an open controller on a machine with no
+  MIDI service.**
 
 ### Round 2 DIRECTIVE-STATUS text
 
@@ -201,6 +242,15 @@ this round's.
   against a cut, through Chromium's fake camera). Nothing about a real room
   is claimed: what remains for both rows is a camera and a microphone in
   one.
+- **§106**, adding to what the row says of the stand-ins: **and they run in
+  the application (17 October).** `DJMANZO_STANDIN_TIMECODE` and
+  `DJMANZO_STANDIN_CONTROLLER` (`crate::standin`) put a deck on the stand-in
+  turntable through `timecode::start` and open the stand-in controller in
+  place of a port, so the timecode panel, the deck and §53's reach can be
+  watched following them under Xvfb — which found the Controllers panel
+  hiding an open controller on a machine with no MIDI service. Still
+  stand-ins: a pressed record, a cartridge and a real controller are what
+  would prove the rest.
 
 ### Round 2 HANDOFF traps
 
@@ -556,3 +606,13 @@ this round's.
   frame before it.** `RoomSense` reads `occupied` and only then `learn`s from
   the frame: the other way round, the frame being judged is already part of
   the look it is judged against.
+- **`dj_audio::null::play_into_inputs` is the whole backend's.** Every null
+  input opened afterwards at that rate plays the recording, a microphone
+  strip included, so with `DJMANZO_STANDIN_TIMECODE` set the singers' and
+  room inputs hear the control record. Its test opens at 44 123 Hz so no
+  other test is caught by it; a new test of the null inputs should not use
+  that rate.
+- **Under Xvfb the top bar wraps and unwraps** as its readouts change width,
+  moving everything below it about thirty pixels; an `xdotool` click aimed
+  from an older screenshot can land on the wrong control. Take the
+  screenshot right before the click.
