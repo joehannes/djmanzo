@@ -17,10 +17,12 @@ if (!commit || !sources.length) {
 }
 const git = (...args) => execFileSync("git", args, { cwd: `${here}/..`, encoding: "utf8" }).trim();
 let drift = false;
-for (const target of ["HEAD", "origin/main"]) {
+// This branch since the commit; and main since it last parted from that commit
+// (three dots), so this branch's own edits are not mistaken for main's.
+for (const [target, range] of [["HEAD", `${commit}..HEAD`], ["origin/main", `${commit}...origin/main`]]) {
   let stat;
   try {
-    stat = git("diff", "--stat", `${commit}..${target}`, "--", ...sources);
+    stat = git("diff", "--stat", range, "--", ...sources);
   } catch {
     console.log(`(${target} is not here to compare with)`);
     continue;

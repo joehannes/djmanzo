@@ -20,7 +20,7 @@
 
 import type { Module } from "./catalog";
 
-export const CHECKED_AGAINST = "18c34467c6ddd656b662ad92134d42cbd05b9da9";
+export const CHECKED_AGAINST = "57081cfd6bfaf731288faebca8d4b508bf597252";
 
 /** The documents a fact can come from, as `git diff` names them. */
 export const SOURCES = ["README.md", "docs/FEATURES.md", "docs/EDITIONS.md", "docs/MARKETPLACE.md", "docs/VIDEO.md", "docs/KARAOKE-NIGHT.md"] as const;
