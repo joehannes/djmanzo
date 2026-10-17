@@ -266,6 +266,20 @@
     return () => clearInterval(timer);
   });
 
+  /**
+   * B8: *Sang*, and a moment for it — the host sees it taken, the singers'
+   * screen cheers (`SingerScreen.svelte`).
+   */
+  let sangNote = $state<string | null>(null);
+  let sangGone: ReturnType<typeof setTimeout> | undefined;
+  async function sang(name: string, title: string) {
+    await change(karaokeSang());
+    if (error) return;
+    sangNote = `${name} sang ${title}`;
+    clearTimeout(sangGone);
+    sangGone = setTimeout(() => (sangNote = null), 4_000);
+  }
+
   async function change(done: Promise<Rotation>) {
     error = "";
     try {
@@ -798,6 +812,9 @@
     <p class="error" role="alert">{error}</p>
   {/if}
 
+  {#if sangNote}
+    <p class="sang-note" role="status" data-sang-note>✓ {sangNote}</p>
+  {/if}
   {#if upNext}
     {@const next = upNext.songs[0]}
     <!--
@@ -812,6 +829,9 @@
       ondragleave={() => (landing = null)}
       ondrop={(event) => void dropSinger(event, upNext.name)}
     >
+      <p class="eyebrow">Up next</p>
+      <!-- B8: the name rises in when it is someone new; nothing to press moves. -->
+      {#key upNext.name}
       <p class="who">
         {upNext.name}
         {#if upNext.ready}<span class="badge ready" data-ready>Ready</span>{/if}
@@ -823,6 +843,7 @@
           >
         {/if}
       </p>
+      {/key}
       <p class="what">{next.title}</p>
       {#if next.track && line !== undefined}
         <!-- K6: the line the song's voice sings — what a singer is scored against. -->
@@ -902,7 +923,7 @@
       <div class="actions">
         {#if next.path}
           {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
-            <button onclick={() => void load(deck)}>Load on {deck}</button>
+            <button class="primary" onclick={() => void load(deck)}>Load on {deck}</button>
           {/each}
         {:else}
           <span class="hint">Not found in the collection yet — search for it below.</span>
@@ -925,7 +946,7 @@
               : "Bring them in"}</button
           >
         {/if}
-        <button class="done" onclick={() => void change(karaokeSang())}>Sang</button>
+        <button class="done" onclick={() => void sang(upNext.name, next.title)}>Sang</button>
         {#if rotation?.recording}
           <!-- K9: what is being recorded, and for how long; *Sang* stops it too. -->
           <span class="recording" role="status" data-recording>
@@ -939,6 +960,7 @@
           >
         {/if}
         <button
+          class="quiet"
           title="Called and not here: to the bottom of the list, songs kept"
           onclick={() => void change(karaokeNotHere(upNext.name))}>Not here</button
         >
@@ -1619,17 +1641,65 @@
     color: var(--text-dim);
   }
 
+  /*
+    B8: the card a host reads from across the booth — the name first and
+    largest, the record under it, then what to do: Load on N filled, Sang
+    outlined, the rest quiet.
+  */
   .up {
     border: 1px solid var(--accent);
+    border-left-width: 4px;
     border-radius: var(--radius);
-    padding: 0.5rem 0.6rem;
-    background: var(--panel);
+    padding: 0.55rem 0.7rem 0.6rem;
+    background: linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--accent) 12%, var(--panel)),
+      var(--panel) 60%
+    );
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
   }
 
   .who {
     margin: 0;
-    font-size: 1.4em;
-    font-weight: 700;
+    font-size: 1.6em;
+    font-weight: 750;
+    line-height: 1.15;
+    animation: name-in 500ms ease-out;
+  }
+
+  @keyframes name-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.35em);
+    }
+  }
+
+  .actions .quiet {
+    color: var(--text-dim);
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .sang-note {
+    margin: 0 0 0.35rem;
+    font-weight: 600;
+    color: var(--success);
+    animation: name-in 400ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .who,
+    .sang-note {
+      animation: none;
+    }
   }
 
   .what {

@@ -6,6 +6,17 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **The karaoke screens, livelier and clearer.** The singers' screen
+  names who is singing, rising in when it is someone new; the count-in's
+  dots pulse on each beat; the next singer's name rises in at the foot;
+  and at *Sang* the screen cheers — "¡Bravo, Ana!", the song and its score,
+  a burst of confetti in the theme's colours — for a few seconds, above the
+  words and never over them. The Singers panel's up-next card reads as a
+  card: *Up next*, the name large, the record under it, *Load on N* filled
+  as the main press, *Sang* outlined, *Not here* quiet, and a moment's
+  "✓ Ana sang …" when *Sang* is pressed. Nothing a host presses moves; with
+  reduced motion, everything only fades.
+
 - **A guest's song, from Suno to WhatsApp, in djmanzo's own windows.**
   *Fill in Suno's form* (a guest's song card) opens djmanzo's Suno window
   and fills its Custom form with the words chosen and the style, like an
@@ -69,6 +80,25 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B8 built** (§128, inside ADR-0009's rule that what is pressed never
+  moves): `SingerScreen.svelte` (`[data-now-singing]`, the count-in keyed
+  per beat, `[data-up-next]` keyed per name, `[data-cheer]` on a Sang the
+  screen saw happen — never the one already there when it opened — for
+  4.5 s, its timer outside the effect the rotation's answers re-run) and
+  `Singers.svelte` (the up-next card's eyebrow, sizes, `.primary` *Load on
+  N*, quiet *Not here*, `[data-sang-note]`). Motion is transform and
+  opacity only, once and short, nothing looping — on a machine with no GPU
+  the whole page pays for it (ADR-0009). Held by
+  `e2e/karaoke-design.spec.ts` (4); 9 mutants fail it, three of them only
+  after its checks were strengthened (a Sang from before the screen
+  opened, looked for from the first answer; the confetti's `display`, as an
+  empty box counts as hidden either way; *Load on N* against a plain
+  button, not against transparent). Looked at before and after
+  (screenshots in the session's report); the first look had the cheer
+  over the new singer's name, so the name now gives way to it. Driven:
+  the card, the name and next singer on the singers' screen, and *Sang*
+  giving the cheer on the screen and the note in the panel.
 
 - **B5 built**, as the owner chose on 16 October (asked: prefill and the
   DJ presses Create, not full automation; WhatsApp ready and the DJ sends;

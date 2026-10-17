@@ -262,6 +262,43 @@
     return singing ? (waiting[0]?.name ?? null) : null;
   });
   let photo = $state<string | null>(null);
+
+  /**
+   * Karaoke beta B8: a moment at *Sang* — the singer just marked as sung,
+   * cheered for a few seconds in the screen's upper band, never over the
+   * words. Only a change the screen sees happen: the song sung before it
+   * opened is not cheered again.
+   */
+  const CHEER_MS = 4_500;
+  let cheer = $state<{ singer: string; title: string; score: number | null; at: number } | null>(null);
+  let sungSeen: string | null = null;
+  let cheerGone: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const last = rotation?.lately?.[0];
+    if (!rotation) return;
+    const key = last ? `${rotation.lately.length}\n${last.singer}\n${last.title}` : "";
+    if (sungSeen === null) {
+      sungSeen = key;
+      return;
+    }
+    if (key === sungSeen || !last) {
+      sungSeen = key;
+      return;
+    }
+    sungSeen = key;
+    cheer = { singer: last.singer, title: last.title, score: last.score ?? null, at: Date.now() };
+    // Not the effect's cleanup: the rotation is asked for every few seconds,
+    // and each answer would cancel it.
+    clearTimeout(cheerGone);
+    cheerGone = setTimeout(() => (cheer = null), CHEER_MS);
+  });
+  /** The confetti: a few pieces, each its own place, delay and colour. */
+  const PIECES = Array.from({ length: 14 }, (_, i) => ({
+    x: ((i * 37) % 100) - 50,
+    delay: (i % 5) * 70,
+    colour: ["var(--stem-vocal)", "var(--warn)", "var(--accent-2)", "var(--danger)"][i % 4],
+    turn: ((i * 53) % 360) - 180,
+  }));
   $effect(() => {
     const name = singer;
     if (!name) {
@@ -411,6 +448,32 @@
   {#if deck?.title}
     <p class="song">{deck.title}{deck.artist ? ` — ${deck.artist}` : ""}</p>
   {/if}
+  {#if singer && !duet && !cheer}
+    <!-- B8: who is singing, rising in when it is someone new. -->
+    {#key singer}
+      <p class="now-singing" data-now-singing>{singer}</p>
+    {/key}
+  {/if}
+  {#if cheer}
+    {#key cheer.at}
+      <div class="cheer" data-cheer role="status" aria-live="polite">
+        <p class="cheer-name">¡Bravo, {cheer.singer}!</p>
+        <p class="cheer-song">
+          {cheer.title}{cheer.score !== null ? ` · ${Math.round(cheer.score)}` : ""}
+        </p>
+        <span class="confetti" aria-hidden="true">
+          {#each PIECES as piece, i (i)}
+            <i
+              style:--x="{piece.x}vw"
+              style:--delay="{piece.delay}ms"
+              style:--colour={piece.colour}
+              style:--turn="{piece.turn}deg"
+            ></i>
+          {/each}
+        </span>
+      </div>
+    {/key}
+  {/if}
 
   {#if duet}
     <p class="duet" data-duet role="group" aria-label="Singing together">
@@ -446,11 +509,14 @@
       <p class="guided" data-guided>You'll hear the original singer quietly underneath</p>
     {/if}
     {#if moment?.countIn != null}
-      <p class="count" role="img" data-count-in={moment.countIn} aria-label="{moment.countIn} beats to go">
-        {#each Array.from({ length: 4 }, (_, i) => i) as dot (dot)}
-          <span class="dot" class:lit={dot < moment.countIn}></span>
-        {/each}
-      </p>
+      <!-- B8: drawn again on each beat, so the dots pulse with it. -->
+      {#key moment.countIn}
+        <p class="count" role="img" data-count-in={moment.countIn} aria-label="{moment.countIn} beats to go">
+          {#each Array.from({ length: 4 }, (_, i) => i) as dot (dot)}
+            <span class="dot" class:lit={dot < moment.countIn}></span>
+          {/each}
+        </p>
+      {/key}
     {/if}
     {#if words && words.lines.length > 0}
       {#if current && current.text !== ""}
@@ -509,7 +575,10 @@
 
   <div class="foot">
     {#if next}
-      <p class="up-next" data-up-next>Next: <strong>{next.name}</strong> — {next.song}</p>
+      <!-- B8: the next singer's name rises in when it changes. -->
+      {#key next.name}
+        <p class="up-next" data-up-next>Next: <strong>{next.name}</strong> — {next.song}</p>
+      {/key}
     {/if}
     {#if then.length > 0}
       <p class="then" data-then>then {then.join(" · ")}</p>
@@ -779,6 +848,141 @@
 
   .dot.lit {
     background: var(--stem-vocal);
+    animation: beat 360ms ease-out;
+  }
+
+  /*
+    B8's motion: transforms and opacity only, once and short — on a machine
+    with no GPU, motion is paid for by the whole page (ADR-0009), so nothing
+    here loops. With reduced motion, a fade and nothing else.
+  */
+  @keyframes beat {
+    from {
+      transform: scale(1.35);
+      box-shadow: 0 0 2.4vh color-mix(in srgb, var(--stem-vocal) 70%, transparent);
+    }
+    to {
+      transform: scale(1);
+      box-shadow: 0 0 0 transparent;
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(1.4vh);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .now-singing {
+    margin: 0.6vh 0 0;
+    font-size: 4vh;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--stem-vocal);
+    animation: rise 700ms ease-out;
+  }
+
+  .up-next {
+    animation: rise 600ms ease-out;
+  }
+
+  /* B8: at Sang, in the band above the words. */
+  .cheer {
+    position: absolute !important;
+    left: 50%;
+    top: 8.5vh;
+    transform: translateX(-50%);
+    width: min(80vw, 120vh);
+    pointer-events: none;
+    animation: cheer 4.5s ease-out forwards;
+  }
+
+  .cheer-name {
+    margin: 0;
+    font-size: 6vh;
+    font-weight: 800;
+    color: var(--stem-vocal);
+    filter: drop-shadow(0 0.4vh 1vh rgb(0 0 0 / 0.8));
+  }
+
+  .cheer-song {
+    margin: 0.4vh 0 0;
+    font-size: 2.6vh;
+    color: rgb(255 255 255 / 0.8);
+  }
+
+  .confetti {
+    position: absolute;
+    left: 50%;
+    top: 3vh;
+  }
+
+  .confetti i {
+    position: absolute;
+    width: 1.3vh;
+    height: 2.2vh;
+    border-radius: 0.2vh;
+    background: var(--colour);
+    opacity: 0;
+    animation: piece 1.6s ease-out var(--delay) forwards;
+  }
+
+  @keyframes cheer {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) scale(0.92);
+    }
+    10% {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes piece {
+    0% {
+      opacity: 1;
+      transform: translate(0, 0) rotate(0);
+    }
+    70% {
+      opacity: 0.9;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--x), 12vh) rotate(var(--turn));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot.lit {
+      animation: none;
+    }
+    .now-singing,
+    .up-next {
+      animation: fade 400ms ease-out;
+    }
+    .confetti {
+      display: none;
+    }
+    .cheer {
+      animation: fade 400ms ease-out;
+    }
   }
 
   .still {
