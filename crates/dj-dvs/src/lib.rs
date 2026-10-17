@@ -26,7 +26,12 @@
 //! Everything in this crate is verified against a signal this crate generates:
 //! [`Synth`] writes a timecode and [`Decoder`] reads it back, so the encoding,
 //! the register, the quadrature and the position lookup are all pinned by
-//! round-trip tests over synthetic audio.
+//! round-trip tests over synthetic audio. [`turntable`] goes further: what a
+//! working deck puts out under a DJ's hand — stopped, scratched, lifted and
+//! dropped, through wow, flutter, rumble, hiss, hum and a level short of full
+//! scale — read back a callback at a time. It found the decoder reading no
+//! place at all from a record at −6 dBFS, and a stopped platter as still
+//! turning; both are fixed and held there.
 //!
 //! **That is not the same as being verified against a real record.** The bit
 //! ordering, the register's direction of travel and the sense of the quadrature
@@ -39,6 +44,7 @@ pub mod decode;
 pub mod format;
 pub mod lfsr;
 pub mod synth;
+pub mod turntable;
 
 pub use decode::{Decoder, PositionTable, Reading};
 pub use format::TimecodeFormat;

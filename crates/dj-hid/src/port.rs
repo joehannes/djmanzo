@@ -87,16 +87,16 @@ impl std::fmt::Debug for Connection {
 }
 
 /// What the callback owns and mutates.
-struct Wiring {
-    mapping: Mapping,
+pub(crate) struct Wiring {
+    pub(crate) mapping: Mapping,
     /// The mapping's Lua, compiled here rather than carried in the `Mapping`.
     ///
     /// A `Mapping` is plain data -- cloned into the hub's list, serialised by
     /// the editor -- and a Lua state is neither cloneable nor serialisable. It
     /// belongs where it runs, which is this thread.
-    script: Option<crate::script::Script>,
-    out: Sender<String>,
-    listener: Listener,
+    pub(crate) script: Option<crate::script::Script>,
+    pub(crate) out: Sender<String>,
+    pub(crate) listener: Listener,
 }
 
 /// What the mapping editor watches the port for.
@@ -281,18 +281,7 @@ pub fn open_with(
     // Compiled before the port opens, so a broken script is a message at the
     // moment a DJ chooses the mapping rather than a control that does nothing
     // an hour into a set.
-    let script = match &mapping.script {
-        Some(source) => Some(
-            crate::script::Script::load(
-                &mapping.name,
-                source,
-                registry
-                    .unwrap_or_else(|| std::sync::Arc::new(dj_control::ParameterRegistry::new())),
-            )
-            .map_err(|e| PortError::Refused(mapping.name.clone(), e.to_string()))?,
-        ),
-        None => None,
-    };
+    let script = compile(&mapping, registry)?;
 
     let mut midi =
         MidiInput::new(CLIENT_NAME).map_err(|e| PortError::Unavailable(e.to_string()))?;
@@ -319,48 +308,7 @@ pub fn open_with(
         .connect(
             &found,
             CLIENT_NAME,
-            |_timestamp, bytes, wiring: &mut Wiring| {
-                let Some(message) = Message::from_bytes(bytes) else {
-                    return;
-                };
-                // While the editor is listening, a control says what it is
-                // instead of doing what it does.
-                if wiring.listener.note(message) {
-                    return;
-                }
-                // A scripted control is the script's, and the script decides
-                // what it means -- including that it means nothing.
-                if wiring.mapping.is_scripted(message) {
-                    let Some(script) = &wiring.script else {
-                        return;
-                    };
-                    let Some((control, event, value)) = wiring.mapping.script_event(message) else {
-                        return;
-                    };
-                    match script.on_control(&control, event, value) {
-                        Ok(actions) => {
-                            for action in actions {
-                                let _ = wiring.out.send(action);
-                            }
-                        }
-                        Err(why) => {
-                            // One line, not a dialog: a script that fails on
-                            // one pad should not take the controller down, and
-                            // the next press is a fresh call.
-                            tracing::warn!(%why, %control, "a mapping script failed");
-                        }
-                    }
-                    return;
-                }
-
-                for action in wiring.mapping.translate(message) {
-                    // A full or disconnected channel means the application has
-                    // gone away. There is nothing useful to do about it here
-                    // and nowhere to report it to, so the message is dropped
-                    // rather than blocking the operating system's MIDI thread.
-                    let _ = wiring.out.send(action);
-                }
-            },
+            |_timestamp, bytes, wiring: &mut Wiring| deliver(bytes, wiring),
             Wiring {
                 mapping,
                 script,
@@ -375,6 +323,74 @@ pub fn open_with(
         port: name,
         mapping: mapping_name,
     })
+}
+
+/// A mapping's script, compiled, or `None` for a mapping without one.
+pub(crate) fn compile(
+    mapping: &Mapping,
+    registry: Option<std::sync::Arc<dj_control::ParameterRegistry>>,
+) -> Result<Option<crate::script::Script>, PortError> {
+    mapping
+        .script
+        .as_ref()
+        .map(|source| {
+            crate::script::Script::load(
+                &mapping.name,
+                source,
+                registry
+                    .unwrap_or_else(|| std::sync::Arc::new(dj_control::ParameterRegistry::new())),
+            )
+            .map_err(|e| PortError::Refused(mapping.name.clone(), e.to_string()))
+        })
+        .transpose()
+}
+
+/// What a port does with one message: translate it and send the actions on.
+///
+/// The body of the MIDI callback, out here so [`crate::standin`] runs exactly
+/// what a real port runs — the learning intercept, the script and the table —
+/// with nothing but the operating system's delivery left out.
+pub(crate) fn deliver(bytes: &[u8], wiring: &mut Wiring) {
+    let Some(message) = Message::from_bytes(bytes) else {
+        return;
+    };
+    // While the editor is listening, a control says what it is
+    // instead of doing what it does.
+    if wiring.listener.note(message) {
+        return;
+    }
+    // A scripted control is the script's, and the script decides
+    // what it means -- including that it means nothing.
+    if wiring.mapping.is_scripted(message) {
+        let Some(script) = &wiring.script else {
+            return;
+        };
+        let Some((control, event, value)) = wiring.mapping.script_event(message) else {
+            return;
+        };
+        match script.on_control(&control, event, value) {
+            Ok(actions) => {
+                for action in actions {
+                    let _ = wiring.out.send(action);
+                }
+            }
+            Err(why) => {
+                // One line, not a dialog: a script that fails on
+                // one pad should not take the controller down, and
+                // the next press is a fresh call.
+                tracing::warn!(%why, %control, "a mapping script failed");
+            }
+        }
+        return;
+    }
+
+    for action in wiring.mapping.translate(message) {
+        // A full or disconnected channel means the application has
+        // gone away. There is nothing useful to do about it here
+        // and nowhere to report it to, so the message is dropped
+        // rather than blocking the operating system's MIDI thread.
+        let _ = wiring.out.send(action);
+    }
 }
 
 /// The bundled mapping that fits `port`, if one does.

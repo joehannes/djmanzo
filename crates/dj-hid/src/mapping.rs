@@ -560,6 +560,27 @@ impl Mapping {
                     if let Trigger::Control14 { msb, .. } = trigger {
                         let halves = self.highres.entry(trigger).or_insert((0, None));
                         if controller == msb {
+                            // **The low byte is not kept across a change of
+                            // the high one.** A controller sends the pair high
+                            // then low, so the high byte arrives with the last
+                            // move's low byte still held: a pitch fader pushed
+                            // up across a step read the new step plus the old
+                            // fine position — a jump ahead — and pushed down
+                            // read a jump back, each time its high byte
+                            // changed. Until the new low byte arrives the
+                            // value is taken at the edge of the new step
+                            // nearest where the fader came from, so a sweep
+                            // one way reads one way. (MIDI 1.0 says a receiver
+                            // should zero the low byte on a new high one; that
+                            // alone still steps back on the way down.) Found by
+                            // `standin`'s sweep.
+                            if let Some(low) = halves.1.as_mut() {
+                                match value.cmp(&halves.0) {
+                                    std::cmp::Ordering::Greater => *low = 0,
+                                    std::cmp::Ordering::Less => *low = 0x7F,
+                                    std::cmp::Ordering::Equal => {}
+                                }
+                            }
                             halves.0 = value;
                         } else {
                             halves.1 = Some(value);

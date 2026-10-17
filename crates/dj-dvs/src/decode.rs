@@ -145,6 +145,12 @@ pub struct Decoder {
     /// Which way the record was turning at the last bit, so a reversal can
     /// drop a window that would otherwise mix bits read in both orders.
     was_forward: bool,
+    /// The tallest recent peak, falling slowly between peaks: what a one is
+    /// measured against (see [`Self::recent_peak`]).
+    envelope: f32,
+    /// Carrier cycles since the signal came back, so no bit is read before
+    /// the envelope has certainly seen a one.
+    settled: u32,
 }
 
 /// How much of the previous speed to keep on each new measurement.
@@ -167,6 +173,14 @@ const SILENCE: f32 = 0.05;
 /// factor of two, and a DJ should not have to calibrate a threshold by hand
 /// before any sound comes out.
 const ONE_LEVEL: f32 = 0.75;
+
+/// How much of the envelope is kept at each crossing that does not raise it.
+///
+/// Two thousand crossings a second at normal speed, so the envelope falls by
+/// about a tenth in fifty milliseconds — slowly beside the bits, which come a
+/// thousand a second and are a one half the time, and quickly beside a DJ
+/// turning the preamp's gain.
+const ENVELOPE_RELEASE: f32 = 0.998;
 
 impl Decoder {
     /// A decoder for `format`, building its own table.
@@ -209,6 +223,8 @@ impl Decoder {
             good: 0.0,
             seen: 0.0,
             was_forward: true,
+            envelope: 0.0,
+            settled: 0,
         })
     }
 
@@ -245,9 +261,12 @@ impl Decoder {
             // spliced onto half from after it landed, is a position on neither.
             self.filled = 0;
             self.since_crossing = 0.0;
+            self.envelope = 0.0;
+            self.settled = 0;
             return;
         }
         self.good += 1.0;
+        self.envelope = peak.max(self.envelope * ENVELOPE_RELEASE);
 
         // **Direction needs to know which crossing this was.**
         //
@@ -267,6 +286,9 @@ impl Decoder {
         let cycles_per_sample = 1.0 / (self.since_crossing * 2.0);
         let measured = cycles_per_sample * self.sample_rate / self.format.carrier_hz;
         let instant = measured * direction;
+        // A speed held from before a stop is not a measurement: bound it by
+        // the gap this crossing ended before averaging it in.
+        self.speed = self.bounded();
         self.speed = if self.speed == 0.0 {
             instant
         } else {
@@ -277,6 +299,14 @@ impl Decoder {
         // One bit per cycle, and two crossings to a cycle -- so bits are taken
         // on the rising edge only, which is the same edge every time.
         if !rising {
+            return;
+        }
+        // No bit is read until a register's width of cycles has passed since
+        // the signal came back. A maximal sequence never runs more zeros than
+        // its width less one, so by then the envelope has seen a one, and a
+        // zero is not taken for one because nothing taller had come yet.
+        if self.settled < self.format.bits {
+            self.settled += 1;
             return;
         }
 
@@ -301,16 +331,34 @@ impl Decoder {
         self.filled = (self.filled + 1).min(self.format.bits);
     }
 
-    /// The tallest peak worth comparing against.
+    /// The tallest peak worth comparing against: the envelope of recent
+    /// peaks.
     ///
-    /// A fixed number here would mean a cartridge quieter than the one this
-    /// was written on decoded every bit as a zero.
+    /// **This was full scale, fixed**, on the reasoning that a gain which
+    /// tracked the signal would also track a DJ's fade. But the decoder reads
+    /// the turntable's own output, before any fader, and a fixed full scale
+    /// meant a record arriving at −6 dBFS — an ordinary preamp setting — had
+    /// every one read as a zero and never found its place. Found by
+    /// `turntable`'s stand-in deck, and held there.
     fn recent_peak(&self) -> f32 {
-        // Full scale, which the synthesiser produces and a well-set-up
-        // cartridge approaches. Deliberately simple: an adaptive gain that
-        // tracked the signal would also track a fade, and a DJ fading the
-        // channel down must not change what the record says.
-        1.0
+        self.envelope
+    }
+
+    /// The smoothed speed, bounded by the time since the last crossing.
+    ///
+    /// Speed is measured at crossings, so a record that stops sends none and
+    /// the last measurement would stand for ever: a platter braked to a halt
+    /// read as still turning at a few percent, and the playhead crept. No
+    /// crossing for a whole carrier cycle's worth of samples at some speed
+    /// means the record is going slower than that, so that is the most this
+    /// reports. At normal speed a crossing comes every half cycle and this
+    /// never bites.
+    fn bounded(&self) -> f64 {
+        if self.since_crossing <= 0.0 {
+            return self.speed;
+        }
+        let most = self.sample_rate / (self.since_crossing * self.format.carrier_hz);
+        self.speed.signum() * self.speed.abs().min(most)
     }
 
     const fn mask(&self) -> u32 {
@@ -323,7 +371,7 @@ impl Decoder {
 
     fn reading(&self) -> Reading {
         Reading {
-            speed: self.speed,
+            speed: self.bounded(),
             position: self.position(),
             quality: if self.seen > 0.0 {
                 (self.good / self.seen).clamp(0.0, 1.0)

@@ -55,6 +55,30 @@ pub enum Arc {
 }
 
 impl Arc {
+    /// Every arc, in the order a picker would offer them.
+    pub const ALL: [Self; 4] = [Self::Rising, Self::Journey, Self::Flat, Self::Descent];
+
+    /// The name it is stored, sent and written by.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Rising => "rising",
+            Self::Journey => "journey",
+            Self::Flat => "flat",
+            Self::Descent => "descent",
+        }
+    }
+
+    /// The arc with that name, or `None`.
+    ///
+    /// `None` rather than the default journey: a name nobody recognises is a
+    /// mistake to say, and a §16 pack whose arc is misspelled would otherwise
+    /// offer a journey to a beach.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|arc| arc.name() == name)
+    }
+
     /// Where the set should be going, `0.0` at the start and `1.0` at the end.
     #[must_use]
     pub fn trajectory_at(self, through: f32) -> Trajectory {
@@ -581,5 +605,23 @@ mod tests {
         let wanted = TrackId::from_bytes([7; 32]);
         let set = assemble(&pool(), Arc::Journey, &Taste::default(), 30.0, Some(wanted));
         assert_eq!(set[0].track, wanted);
+    }
+
+    /// **Every arc's name reads back to that arc, and nothing else reads.**
+    ///
+    /// The name is how a §16 pack offers an arc, so a name that did not read
+    /// back would be an offer of nothing; and an unknown name is `None`, not
+    /// the default journey, or a misspelled `beach` arc would quietly become a
+    /// peak.
+    #[test]
+    fn an_arc_is_named_and_read_back_by_the_same_word() {
+        for arc in Arc::ALL {
+            assert_eq!(Arc::from_name(arc.name()), Some(arc));
+        }
+        let mut names: Vec<_> = Arc::ALL.iter().map(|a| a.name()).collect();
+        names.dedup();
+        assert_eq!(names.len(), Arc::ALL.len());
+        assert_eq!(Arc::from_name("Journey"), None);
+        assert_eq!(Arc::from_name(""), None);
     }
 }
