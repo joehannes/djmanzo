@@ -14,6 +14,12 @@
  *   movement that is *uneven* and *not together*;
  * - **cut** — a still room whose lights snap between dark and bright every
  *   second: the picture changing *as a whole*;
+ * - **few** — two figures wandering a large dark room: little of the picture
+ *   *occupied*, and what is, *not packed*;
+ * - **crowd** — thirty figures milling in the middle of the same room: much
+ *   of it *occupied*, and *packed together*;
+ * - **beam** — a still dark room with one bright beam sweeping across it: the
+ *   *lighting moving* while the *scene* stays as it was;
  * - **claps** — dense, sharp clicks at random moments over a quiet room, the
  *   way a room applauding sounds;
  * - **hats** — the same clicks, high and on a sixteenth-note grid at 128 BPM:
@@ -38,7 +44,7 @@ export const FPS = 15;
 export const SECONDS = 8;
 export const SAMPLE_RATE = 48_000;
 
-export type Footage = "sway" | "scatter" | "cut";
+export type Footage = "sway" | "scatter" | "cut" | "few" | "crowd" | "beam";
 export type Sound = "claps" | "hats" | "bass" | "switch";
 
 export const footagePath = (scene: Footage) => join(MEDIA_DIR, `${scene}.y4m`);
@@ -98,17 +104,32 @@ function draw(scene: Footage, t: number, out: Float32Array, figures: Figure[]) {
     }
     return;
   }
-  // Scatter: a dark, featureless room, and figures striped so a camera can
-  // see them move, each on its own heading, bouncing off the walls.
+  if (scene === "beam") {
+    // One beam, sixteen pixels wide, swinging across most of the room every
+    // two seconds. As many pixels are lit in every frame, so the picture's
+    // brightness as a whole never changes; only where the light is does.
+    const centre = WIDE / 2 + (WIDE / 2 - 30) * Math.sin(Math.PI * t);
+    for (let y = 0; y < HIGH; y++) {
+      for (let x = 0; x < WIDE; x++) {
+        out[y * WIDE + x] = Math.abs(x - centre) < 8 ? 0.95 : 0.03 + 0.1 * texture(x, y);
+      }
+    }
+    return;
+  }
+  // Scatter, few and crowd: a dark, featureless room, and figures striped so
+  // a camera can see them move, each on its own heading, bouncing off the
+  // walls — of the room, or of the middle of it for the crowd.
   out.fill(0.08);
-  const R = 22;
+  const R = scene === "scatter" ? 22 : 16;
+  const [left, top, right, bottom] =
+    scene === "crowd" ? [60, 50, WIDE - 60, HIGH - 50] : [0, 0, WIDE, HIGH];
   for (const f of figures) {
     let x = f.x + f.dx * t;
     let y = f.y + f.dy * t;
-    const spanX = WIDE - 2 * R;
-    const spanY = HIGH - 2 * R;
-    x = R + Math.abs(((((x - R) % (2 * spanX)) + 2 * spanX) % (2 * spanX)) - spanX);
-    y = R + Math.abs(((((y - R) % (2 * spanY)) + 2 * spanY) % (2 * spanY)) - spanY);
+    const spanX = right - left - 2 * R;
+    const spanY = bottom - top - 2 * R;
+    x = left + R + Math.abs(((((x - left - R) % (2 * spanX)) + 2 * spanX) % (2 * spanX)) - spanX);
+    y = top + R + Math.abs(((((y - top - R) % (2 * spanY)) + 2 * spanY) % (2 * spanY)) - spanY);
     for (let py = Math.floor(y - R); py <= y + R; py++) {
       for (let px = Math.floor(x - R); px <= x + R; px++) {
         if (px < 0 || py < 0 || px >= WIDE || py >= HIGH) continue;
@@ -125,8 +146,9 @@ const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
 
 /** One scene as YUV4MPEG2, grey (chroma at 128): only luma is measured. */
 export function writeFootage(scene: Footage): string {
-  const random = seeded(scene === "scatter" ? 21 : 23);
-  const figures: Figure[] = Array.from({ length: 9 }, () => {
+  const random = seeded(scene === "scatter" ? 21 : scene === "few" ? 25 : scene === "crowd" ? 27 : 23);
+  const count = scene === "few" ? 2 : scene === "crowd" ? 30 : 9;
+  const figures: Figure[] = Array.from({ length: count }, () => {
     const heading = random() * 2 * Math.PI;
     const speed = 50 + random() * 30;
     return {
@@ -229,7 +251,7 @@ export function writeSound(kind: Sound): string {
 
 /** Every file, written once per run; a file already there is reused. */
 export function ensureMedia() {
-  for (const scene of ["sway", "scatter", "cut"] as const) {
+  for (const scene of ["sway", "scatter", "cut", "few", "crowd", "beam"] as const) {
     if (!existsSync(footagePath(scene))) writeFootage(scene);
   }
   for (const kind of ["claps", "hats", "bass", "switch"] as const) {

@@ -95,6 +95,41 @@ this round's.
   and `e2e/columns.spec.ts`'s breakdown test; ten mutants fail them (seven on
   the column and its storage, three on the window rule).
 
+- **3. §34/§36, what was left — built, against stand-ins only.** Four more
+  lines on the floor, each placed against its own night like the first
+  eight, none added to another. **Occupied picture** (§34's *occupancy*, a
+  proxy): the share of the picture more than 24 luma from the room's look,
+  learned as a running average — the plain average for the first looks, so a
+  camera switched on with somebody in view does not hold them as the empty
+  room, then two per cent a look, so a crowd that keeps moving never settles
+  into it and a lamp left on does. **Packed together** (§34's *crowd
+  density*, a proxy): for each occupied four-pixel block, the share of the
+  blocks within two of it that are occupied too. **Lighting moving**: how
+  far the centre of the picture's brightest pixels moved across the same
+  sixth of a second movement is read over — distinct from scene change by
+  construction, since a sweeping beam moves its light and leaves the
+  brightness histogram as it was. **Voices over the music** (§36's *vocal
+  response*): the microphone's mid band on a second running fit against the
+  master's level, split from the broadband room over the music, so a room
+  singing and the low end rattling are two readings. There is no master
+  band meter, so the fit is against the whole mix's level, and the line's
+  stated blind spot says the record's own vocal lifts it too. Each line says
+  what it is confused with (a still person fades into the room, one figure
+  near the lens packs like a crowd, a white shirt moves the light, two
+  beams cancel). Held by `floor::tests::voices_over_the_music_are_the_voice_band_alone`,
+  the widened `each_signal_is_placed_against_its_own_night_and_said_alone`,
+  seven new `floor.test.ts` cases and `e2e/floor.spec.ts`'s new test, which
+  plays drawn footage through Chromium's fake camera: two figures against
+  thirty (occupancy 0.03 against 0.22, density 0.16 against 0.71), a
+  sweeping beam against the lights snapping on (lighting about 0.9 with the
+  scene under 0.06, against a scene change of 1 with the lighting at 0).
+  Eleven mutants fail them; three survived the first tests (the early plain
+  average, the quarter-of-a-block rule, the fewest bright pixels) and each
+  has a test now. **Not driven under Xvfb**: the webview there has no camera
+  or microphone, so the room surface cannot look, and the lines are the
+  same generic list the first eight use. Nothing here is a claim about a
+  real room.
+
 ### Round 2 changelog lines
 
 - **What the DJ does, kept across nights.** The effects they run together,
@@ -109,6 +144,12 @@ this round's.
   with thirty-two-beat phrases.** The finder asked for two of its windows,
   and a window is a phrase. It now asks for four bars whatever the window.
   Records already analysed are analysed again on their next load.
+- **Four more of the floor's signals.** How much of the picture is
+  occupied, how tightly it packs, whether the lighting is moving (a sweeping
+  beam, which is not a change of scene), and whether the room's voices rise
+  above the music on their own. Each on its own line beside its blind spot,
+  measured from the same frames and sound the room surface already reads.
+  Built and tested against drawn footage and generated sound only.
 
 ### Round 2 DIRECTIVE-STATUS text
 
@@ -144,6 +185,22 @@ this round's.
   windows until 17 October, and at a thirty-two-beat phrase that was sixteen
   bars, so the breakdowns column read a dash for a record with an obvious
   eight-bar breakdown. `energy::trajectory_tests::an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase`.
+- **§34 and §36**, replacing what each row says is left (*an occupancy
+  proxy, a crowd-density proxy, lighting motion as distinct from scene
+  change; vocal response split from the room over the music*): **built (17
+  October), against stand-ins only.** Twelve lines now: *Occupied picture*
+  (difference from a learned look of the room), *Packed together* (how
+  closely the occupied blocks sit), *Lighting moving* (the brightest
+  pixels' centre, across the same sixth of a second movement is read over,
+  which a sweeping beam moves and a scene change does not), and *Voices over
+  the music* (the mid band on a second fit against the master's level — the
+  whole mix's level, since there is no master band meter, which the line's
+  blind spot says). Each placed against its own night, none combined, each
+  beside what it is confused with. `floor::tests::voices_over_the_music_are_the_voice_band_alone`,
+  `floor.test.ts`, `e2e/floor.spec.ts` (two figures against thirty, a beam
+  against a cut, through Chromium's fake camera). Nothing about a real room
+  is claimed: what remains for both rows is a camera and a microphone in
+  one.
 
 ### Round 2 HANDOFF traps
 
@@ -492,3 +549,10 @@ this round's.
   thirty-two-beat phrase a current has to be in or out for sixty-four beats
   before *What changes next* names it. Not changed in round 2; it wants the
   same beats-based rule and its own test.
+- **`e2e/floor/media.ts` reuses a file already in `$TMPDIR/djmanzo-floor`.**
+  Change how a scene is drawn and the old footage is still played until that
+  directory is removed; a new scene needs a new name or a cleared directory.
+- **The floor's occupancy reads against a running average that includes the
+  frame before it.** `RoomSense` reads `occupied` and only then `learn`s from
+  the frame: the other way round, the frame being judged is already part of
+  the look it is judged against.
