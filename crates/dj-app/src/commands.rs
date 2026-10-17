@@ -3734,6 +3734,15 @@ pub struct ProfileDto {
     pub genres: Vec<(String, f64)>,
     /// The sentence, written in Rust — see `crate::profile::Profile::words`.
     pub says: String,
+    /// §12: the two effects they run together here, by name.
+    pub pair: Option<[String; 2]>,
+    /// §12/§44: staged moves taken as offered, changed and turned down, as
+    /// shares that sum to one.
+    pub staged: Option<[f64; 3]>,
+    /// §12: the share of loads that replaced a cued record before it played.
+    pub swapped: Option<f64>,
+    /// §12: how many seconds a replaced record had usually sat cued.
+    pub swapped_after: Option<f64>,
 }
 
 impl ProfileDto {
@@ -3754,6 +3763,12 @@ impl ProfileDto {
             techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
             genres: p.genres().to_vec(),
             says: p.words(),
+            pair: p
+                .pair()
+                .map(|(a, b)| [a.name().to_owned(), b.name().to_owned()]),
+            staged: p.staged().map(|s| [s.offered, s.changed, s.rejected]),
+            swapped: p.changes().map(|c| c.share),
+            swapped_after: p.changes().and_then(|c| c.seconds),
         }
     }
 }
@@ -3787,6 +3802,18 @@ pub fn night_setting(
         None => None,
     };
 
+    note_tonight(&state, setting, density.as_deref())
+}
+
+/// [`night_setting`]'s body, on a plain `AppState` so a test can drive it.
+///
+/// # Errors
+/// Whatever the database says.
+pub(crate) fn note_tonight(
+    state: &AppState,
+    setting: Option<crate::setting::Setting>,
+    density: Option<&str>,
+) -> Result<SettingDto, String> {
     let posture = state
         .conduct()
         .lock()
@@ -3795,7 +3822,7 @@ pub fn night_setting(
 
     // Everything read off tonight's log, now, while there is a log -- and
     // only what the DJ's own hand did; see `profile::Tonight`.
-    let db = library(&state)?;
+    let db = library(state)?;
     let night = state.night();
     let read = crate::profile::tonight(&state.bus().log(), &|at| night.phase_at(at), &|id| {
         db.track(id).ok().flatten()?.analysis.bpm
@@ -3803,17 +3830,23 @@ pub fn night_setting(
     let joined = read.techniques.join(",");
     let length = read.length.map(|beats| beats.to_string());
     let loop_beats = read.loop_beats.map(|beats| beats.to_string());
+    // §12/§44: what the DJ did with tonight's staged transactions, kept with
+    // the night so it outlives the run (`staged::Verdicts::stored`).
+    let verdicts = night.verdicts().stored();
     db.note_night(
         &state.session_id(),
         setting.map(|s| s.slug()),
         dj_library::NightRead {
-            density: density.as_deref(),
+            density,
             style: read.style.as_deref(),
             posture: posture.as_deref(),
             techniques: (!joined.is_empty()).then_some(joined.as_str()),
             length: length.as_deref(),
             loop_beats: loop_beats.as_deref(),
             effect: read.effect.map(dj_core::fx::EffectKind::name),
+            pair: read.pair.as_deref(),
+            verdicts: verdicts.as_deref(),
+            swaps: read.swaps.as_deref(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -4455,6 +4488,9 @@ mod tests {
                     length: None,
                     loop_beats: None,
                     effect: None,
+                    pair: None,
+                    verdicts: None,
+                    swaps: None,
                 })
                 .collect();
             crate::profile::profiles(
@@ -7750,6 +7786,44 @@ impl VocalReading {
     }
 }
 
+/// §20/§75's *breakdowns*, as the table reads it: where the record's first
+/// breakdown starts, in seconds, or `None` inside a reading that says the
+/// record was measured and has none. The reading itself is `None` when
+/// nobody measured — three answers, as the vocal column keeps them.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BreakdownReading {
+    pub at: Option<f64>,
+}
+
+impl BreakdownReading {
+    /// From the frame the library keeps, at the record's own rate.
+    #[must_use]
+    pub fn from_frame(frame: f64, rate: dj_core::SampleRate) -> Self {
+        Self {
+            at: (frame >= 0.0 && rate.as_f64() > 0.0).then(|| frame / rate.as_f64()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod breakdown_tests {
+    use super::BreakdownReading;
+    use dj_core::SampleRate;
+
+    /// **A breakdown reaches the table in seconds at the record's own rate,
+    /// and "none" stays none.**
+    #[test]
+    fn a_breakdown_is_read_in_seconds_and_none_stays_none() {
+        let at = |frame: f64, rate: u32| {
+            BreakdownReading::from_frame(frame, SampleRate::new(rate).unwrap()).at
+        };
+        assert_eq!(at(96_000.0, 48_000), Some(2.0));
+        assert_eq!(at(88_200.0, 44_100), Some(2.0));
+        assert_eq!(at(dj_library::NO_BREAKDOWN, 48_000), None);
+        assert_eq!(at(0.0, 48_000), Some(0.0), "a record that opens on one");
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LibraryTrackDto {
     pub id: String,
@@ -7790,6 +7864,8 @@ pub struct LibraryTrackDto {
     /// §124: found by the typo-tolerant pass rather than by the words as
     /// typed, so the table can say "close to what you typed" beside it.
     pub near: bool,
+    /// §20/§75: where the first breakdown starts. See [`BreakdownReading`].
+    pub breakdown: Option<BreakdownReading>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -7815,6 +7891,10 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             last_played: track.stats.last_played,
             phrase_beats: track.analysis.phrase_beats,
             near: false,
+            breakdown: track
+                .analysis
+                .breakdown
+                .map(|frame| BreakdownReading::from_frame(frame, track.sample_rate)),
         }
     }
 }
@@ -13406,6 +13486,31 @@ fn recall_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
 mod persistence_tests {
     use super::*;
     use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+
+    /// **§12 across nights: what the night did is written to its row** —
+    /// tonight's staged verdicts and the records the DJ's hand cued and
+    /// replaced — so a profile can read them back after the run has gone.
+    #[test]
+    fn a_nights_verdicts_and_swaps_reach_its_row() {
+        let state = AppState::new(true);
+        state.night().note_verdict(crate::staged::Verdict::Accepted);
+        state.night().note_verdict(crate::staged::Verdict::Rejected);
+        let deck = DeckId::from_human(1).unwrap();
+        let bus = state.bus();
+        bus.record_load(deck, dj_core::TrackId::from_bytes([1; 32]));
+        bus.record_load(deck, dj_core::TrackId::from_bytes([2; 32]));
+        note_tonight(&state, Some(crate::setting::Setting::Club), None).unwrap();
+
+        let row = state
+            .library()
+            .get()
+            .unwrap()
+            .night(&state.session_id())
+            .unwrap()
+            .expect("tonight's row");
+        assert_eq!(row.verdicts.as_deref(), Some("1,0,1"));
+        assert_eq!(row.swaps.as_deref(), Some("1,2,0"));
+    }
 
     const SR: SampleRate = SampleRate::DEFAULT;
 

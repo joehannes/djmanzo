@@ -48,7 +48,11 @@
     floorSaw,
     flow,
     histogram,
+    learn,
+    lighting,
+    occupied,
     sceneChange,
+    type Background,
     type FloorMeasured,
     type FloorRead,
   } from "./floor";
@@ -106,6 +110,8 @@
    * of a second movement is read across.
    */
   let lastHistogram: Float32Array | null = null;
+  /** §34's occupancy reads against this: the room's look, learned as it is watched. */
+  let background: Background | null = null;
   let error = $state("");
   let looking = $state(false);
   let showPreview = $state(true);
@@ -278,6 +284,7 @@
     analyser = null;
     canvas = null;
     lastHistogram = null;
+    background = null;
     generation += 1;
     looking = false;
     haveCamera = false;
@@ -375,6 +382,14 @@
         const shape = histogram(after);
         if (lastHistogram) measured.scene = sceneChange(lastHistogram, shape);
         lastHistogram = shape;
+        // Read against the look learned so far, then learned from: a frame
+        // compared with an average it is already part of differs from it less.
+        const room = occupied(background, after, WIDE, HIGH);
+        if (room.occupancy !== null) measured.occupancy = room.occupancy;
+        if (room.density !== null) measured.density = room.density;
+        background = learn(background, after);
+        const light = lighting(before, after, WIDE, HIGH);
+        if (light !== null) measured.lighting = light;
       }
     }
 

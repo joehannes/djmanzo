@@ -245,6 +245,171 @@ export function sceneChange(before: Float32Array, after: Float32Array): number {
   return Math.min(1, Math.max(0, 1 - shared));
 }
 
+/**
+ * How far a pixel's brightness must sit from the room's learned look before it
+ * counts as something in the room, on the 0..255 luma scale. Sensor noise and
+ * the slow drift of a room's light stay well inside it.
+ */
+export const OCCUPIED_BY = 24;
+
+/** The share of the difference a look moves the learned look by, once settled. */
+export const LEARN = 0.02;
+
+/** How many looks the room's look needs before anything is read against it. */
+export const LEARNED_AFTER = 6;
+
+/** The side of one block when reading how the occupied parts pack, in pixels. */
+export const PACK = 4;
+
+/** How many blocks each way count as beside a block. */
+export const PACK_REACH = 2;
+
+/** The room's look, learned from the looks so far. */
+export interface Background {
+  luma: Float32Array;
+  looks: number;
+}
+
+/**
+ * Learn the room's look from one more frame.
+ *
+ * A running average of the frames: each look moves it {@link LEARN} of the way
+ * towards what the camera sees now, so a crowd that keeps moving never settles
+ * into it and a lamp switched on an hour ago does. For the first looks it is
+ * the plain average of everything seen, so the first frame — which may well
+ * have people in it — is not held as the empty room for minutes.
+ */
+export function learn(background: Background | null, frame: Float32Array): Background {
+  if (!background || background.luma.length !== frame.length) {
+    return { luma: Float32Array.from(frame), looks: 1 };
+  }
+  const share = Math.max(LEARN, 1 / (background.looks + 1));
+  const luma = background.luma.map((v, i) => v + (frame[i] - v) * share);
+  return { luma, looks: background.looks + 1 };
+}
+
+/**
+ * How much of the picture is occupied, and how tightly what occupies it packs.
+ *
+ * - **occupancy** is the share of the picture's pixels more than
+ *   {@link OCCUPIED_BY} from the room's learned look, on 0..1. §34's
+ *   *occupancy*, as a proxy: it counts whatever is not the usual room, people
+ *   and a light thrown on a wall alike, and a person standing still long
+ *   enough becomes the usual room.
+ * - **density** is how closely those pixels sit together: the picture is cut
+ *   into {@link PACK}-pixel blocks, a block is occupied when a quarter of it
+ *   is, and for each occupied block the share of the blocks within
+ *   {@link PACK_REACH} of it that are occupied too, averaged. §34's *crowd
+ *   density*, as a proxy: a few figures apart read low, a packed floor high,
+ *   and one person filling the lens as high as a packed floor.
+ *
+ * Both `null` until the look has been learned from {@link LEARNED_AFTER}
+ * frames; density `null` too when fewer than three blocks are occupied, since
+ * how nothing packs is not a reading.
+ */
+export function occupied(
+  background: Background | null,
+  frame: Float32Array,
+  wide: number,
+  high: number,
+): { occupancy: number | null; density: number | null } {
+  if (!background || background.looks < LEARNED_AFTER || background.luma.length !== frame.length) {
+    return { occupancy: null, density: null };
+  }
+  const mask = new Uint8Array(frame.length);
+  let count = 0;
+  for (let i = 0; i < frame.length; i++) {
+    if (Math.abs(frame[i] - background.luma[i]) > OCCUPIED_BY) {
+      mask[i] = 1;
+      count += 1;
+    }
+  }
+  const occupancy = count / frame.length;
+  const across = Math.floor(wide / PACK);
+  const down = Math.floor(high / PACK);
+  const blocks = new Uint8Array(across * down);
+  const taken: number[] = [];
+  for (let by = 0; by < down; by++) {
+    for (let bx = 0; bx < across; bx++) {
+      let n = 0;
+      for (let y = 0; y < PACK; y++) {
+        for (let x = 0; x < PACK; x++) n += mask[(by * PACK + y) * wide + bx * PACK + x];
+      }
+      if (n * 4 >= PACK * PACK) {
+        blocks[by * across + bx] = 1;
+        taken.push(by * across + bx);
+      }
+    }
+  }
+  if (taken.length < 3) return { occupancy, density: null };
+  let sum = 0;
+  for (const at of taken) {
+    const bx = at % across;
+    const by = Math.floor(at / across);
+    let near = 0;
+    let cells = 0;
+    for (let dy = -PACK_REACH; dy <= PACK_REACH; dy++) {
+      for (let dx = -PACK_REACH; dx <= PACK_REACH; dx++) {
+        const x = bx + dx;
+        const y = by + dy;
+        if ((dx === 0 && dy === 0) || x < 0 || y < 0 || x >= across || y >= down) continue;
+        cells += 1;
+        near += blocks[y * across + x];
+      }
+    }
+    sum += cells > 0 ? near / cells : 0;
+  }
+  return { occupancy, density: sum / taken.length };
+}
+
+/** The luma, on 0..255, at and above which a pixel is part of the lighting. */
+export const BRIGHT = 200;
+
+/** The fewest bright pixels that make a light worth following. */
+export const BRIGHT_LEAST = 3;
+
+/** The share of the picture's diagonal a light must cross to read as the whole scale. */
+export const LIGHT_FULL = 0.1;
+
+/**
+ * How far the lighting moved between two frames, on 0..1: the distance the
+ * centre of the picture's brightest pixels (at or above {@link BRIGHT}) moved,
+ * against {@link LIGHT_FULL} of the diagonal.
+ *
+ * Distinct from {@link sceneChange} on purpose. A beam sweeping across a dark
+ * room moves its light a long way and leaves the picture's brightness exactly
+ * as it was, so the scene has not changed and the lighting has; the lights
+ * snapping on change the scene and move nothing. `null` when either frame has
+ * fewer than {@link BRIGHT_LEAST} bright pixels — there is no light to follow.
+ *
+ * A centre: two beams sweeping opposite ways cancel, and anything bright that
+ * moves — a white shirt in a dark room — moves it too. Rust's line says so.
+ */
+export function lighting(
+  before: Float32Array,
+  after: Float32Array,
+  wide: number,
+  high: number,
+): number | null {
+  const centre = (luma: Float32Array): [number, number] | null => {
+    let n = 0;
+    let sx = 0;
+    let sy = 0;
+    for (let i = 0; i < luma.length; i++) {
+      if (luma[i] < BRIGHT) continue;
+      n += 1;
+      sx += i % wide;
+      sy += Math.floor(i / wide);
+    }
+    return n >= BRIGHT_LEAST ? [sx / n, sy / n] : null;
+  };
+  const from = centre(before);
+  const to = centre(after);
+  if (!from || !to) return null;
+  const moved = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  return Math.min(1, moved / (Math.hypot(wide, high) * LIGHT_FULL));
+}
+
 /** What one look measured. Every field optional: a microphone alone sees no picture. */
 export interface FloorMeasured {
   low?: number;
@@ -254,6 +419,9 @@ export interface FloorMeasured {
   uneven?: number;
   together?: number;
   scene?: number;
+  occupancy?: number;
+  density?: number;
+  lighting?: number;
   /** The microphone's loudness, the number the room surface already read. */
   heard?: number;
 }
@@ -287,6 +455,9 @@ export const floorSaw = (measured: FloorMeasured) =>
       uneven: measured.uneven ?? null,
       together: measured.together ?? null,
       scene: measured.scene ?? null,
+      occupancy: measured.occupancy ?? null,
+      density: measured.density ?? null,
+      lighting: measured.lighting ?? null,
       heard: measured.heard ?? null,
     },
   });

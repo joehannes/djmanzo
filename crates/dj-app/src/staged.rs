@@ -323,6 +323,18 @@ impl Verdicts {
         }
     }
 
+    /// As the night's row keeps it: `"offered,changed,rejected"`, or `None`
+    /// before anything was staged.
+    #[must_use]
+    pub fn stored(&self) -> Option<String> {
+        (*self != Self::default()).then(|| {
+            format!(
+                "{},{},{}",
+                self.accepted, self.accepted_changed, self.rejected
+            )
+        })
+    }
+
     /// The briefing's sentence, or empty before anything was staged.
     #[must_use]
     pub fn words(&self) -> String {

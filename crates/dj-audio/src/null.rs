@@ -12,8 +12,8 @@
 use crate::device::{ActiveConfig, DeviceId, DeviceInfo, StreamConfig};
 use crate::{AudioBackend, AudioCallback, AudioError, AudioStream, RenderContext};
 use dj_core::SampleRate;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// How many null capture streams are open right now.
 ///
@@ -53,6 +53,50 @@ fn null_voice(rate: f64) -> Option<Vec<f32>> {
             .map(|n| samples[((n as f64 * step) as usize).min(samples.len() - 1)])
             .collect(),
     )
+}
+
+/// §106: what the null inputs play in place of silence or a voice, set by
+/// [`play_into_inputs`].
+///
+/// Test-visible state for the reason [`LIVE_INPUTS`] is: the stand-in turntable
+/// is the only way a timecode deck can be driven on a machine with no
+/// turntable, and the null input is the only input it has. Read once when an
+/// input opens, on that input's own thread and before its loop, so nothing in
+/// the loop locks.
+static RECORDING: Mutex<Option<Arc<Recording>>> = Mutex::new(None);
+
+#[derive(Debug)]
+struct Recording {
+    samples: Vec<f32>,
+    channels: usize,
+    rate: f64,
+}
+
+/// Have every null input opened from now on play `samples` — interleaved,
+/// `channels` wide, at `sample_rate` — round and round, each channel into the
+/// input channel of the same number, instead of silence.
+///
+/// **Only an input opened at that rate plays it**, and one at any other rate
+/// stays silent: a control record resampled by repeating samples reports the
+/// wrong speed, and a stand-in that lied about the speed would be worse than
+/// none. Empty `samples` puts the inputs back to silence.
+pub fn play_into_inputs(samples: Vec<f32>, channels: usize, sample_rate: SampleRate) {
+    let recording = (channels > 0 && samples.len() >= channels).then(|| {
+        Arc::new(Recording {
+            samples,
+            channels,
+            rate: sample_rate.as_f64(),
+        })
+    });
+    if let Ok(mut slot) = RECORDING.lock() {
+        *slot = recording;
+    }
+}
+
+/// The recording an input at `rate` plays, if there is one for that rate.
+fn recording_at(rate: f64) -> Option<Arc<Recording>> {
+    let recording = RECORDING.lock().ok()?.clone()?;
+    ((recording.rate - rate).abs() < 0.5).then_some(recording)
 }
 
 /// The channel count, rate and sample bytes of a 16-bit PCM WAV.
@@ -342,6 +386,10 @@ impl AudioBackend for NullBackend {
                     );
                     let mut next = std::time::Instant::now();
                     let voice = null_voice(active.sample_rate.as_f64()).unwrap_or_default();
+                    let recording = recording_at(active.sample_rate.as_f64());
+                    let recorded = recording
+                        .as_ref()
+                        .map_or(0, |r| r.samples.len() / r.channels);
                     let mut sung = 0usize;
                     while alive.load(Ordering::Relaxed) {
                         if running.load(Ordering::Relaxed) && !UNPLUGGED.load(Ordering::Relaxed) {
@@ -352,7 +400,14 @@ impl AudioBackend for NullBackend {
                             // device thread.
                             'block: for _ in 0..frames {
                                 for channel in 0..channels {
-                                    let sample = if channel == 0 && !voice.is_empty() {
+                                    let sample = if let Some(recording) = &recording {
+                                        if channel < recording.channels {
+                                            recording.samples
+                                                [(sung % recorded) * recording.channels + channel]
+                                        } else {
+                                            0.0
+                                        }
+                                    } else if channel == 0 && !voice.is_empty() {
                                         voice[sung % voice.len()]
                                     } else {
                                         0.0
@@ -614,6 +669,60 @@ mod tests {
             )
             .unwrap();
         assert!(stream.config().device_name.contains("headphone"));
+    }
+
+    /// **§106: a recording played into the inputs arrives channel for
+    /// channel, and only at its own rate.** Run at a rate no other test opens
+    /// an input at, because the recording is the whole backend's.
+    #[test]
+    fn a_recording_reaches_the_inputs_channel_for_channel_at_its_own_rate() {
+        let rate = SampleRate::new(44_123).expect("a rate");
+        // Left counts up, right counts down: a channel swapped or a frame
+        // skipped both show.
+        let frames = 500usize;
+        #[allow(clippy::cast_precision_loss)]
+        let recording: Vec<f32> = (0..frames)
+            .flat_map(|n| [n as f32 / 1000.0, -(n as f32) / 1000.0])
+            .collect();
+        play_into_inputs(recording.clone(), 2, rate);
+
+        let read = |rate: SampleRate| {
+            let (producer, mut consumer) = rtrb::RingBuffer::new(4096);
+            let config = StreamConfig {
+                sample_rate: rate,
+                buffer_frames: 64,
+                channels: 2,
+                ..Default::default()
+            };
+            let stream = NullBackend::new().open_input(&config, producer).unwrap();
+            stream.play().unwrap();
+            let mut got = Vec::new();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while got.len() < 1200 && std::time::Instant::now() < deadline {
+                while let Ok(sample) = consumer.pop() {
+                    got.push(sample);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            got
+        };
+
+        let got = read(rate);
+        assert!(got.len() >= 1200, "only {} samples arrived", got.len());
+        // Round and round: frame 500 is frame 0 again.
+        for (i, sample) in got.iter().take(1200).enumerate() {
+            assert_eq!(*sample, recording[i % recording.len()], "sample {i}");
+        }
+
+        let elsewhere = read(SampleRate::new(44_124).expect("a rate"));
+        assert!(!elsewhere.is_empty());
+        assert!(
+            elsewhere.iter().all(|sample| *sample == 0.0),
+            "a recording played at the wrong rate"
+        );
+
+        play_into_inputs(Vec::new(), 2, rate);
+        assert!(read(rate).iter().all(|sample| *sample == 0.0));
     }
 
     #[test]

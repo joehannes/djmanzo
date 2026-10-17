@@ -89,6 +89,13 @@ pub struct NightRead<'a> {
     pub loop_beats: Option<&'a str>,
     /// §12: the effect the DJ switched on most tonight, by name.
     pub effect: Option<&'a str>,
+    /// §12: the two effects run together most tonight (`"echo+filter"`).
+    pub pair: Option<&'a str>,
+    /// §12/§44: tonight's staged transactions, as `"offered,changed,rejected"`.
+    pub verdicts: Option<&'a str>,
+    /// §12: records loaded by hand and replaced before they played, as
+    /// `"swapped,loaded,median seconds cued"`.
+    pub swaps: Option<&'a str>,
 }
 
 fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
@@ -103,6 +110,9 @@ fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
         length: row.get(7)?,
         loop_beats: row.get(8)?,
         effect: row.get(9)?,
+        pair: row.get(10)?,
+        verdicts: row.get(11)?,
+        swaps: row.get(12)?,
     })
 }
 
@@ -134,6 +144,12 @@ pub struct Night {
     pub loop_beats: Option<String>,
     /// §12: the effect the DJ switched on most, by name (`"echo"`).
     pub effect: Option<String>,
+    /// §12: the two effects run together most (`"echo+filter"`).
+    pub pair: Option<String>,
+    /// §12/§44: the night's staged transactions, `"offered,changed,rejected"`.
+    pub verdicts: Option<String>,
+    /// §12: cued records replaced before they played, `"swapped,loaded,seconds"`.
+    pub swaps: Option<String>,
 }
 
 /// §37: what the room did after one mix, as it goes in.
@@ -375,7 +391,7 @@ impl Library {
                      grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
                      key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10,
                      phrase_beats = ?11, phrase_anchor = ?12, phrase_confidence = ?13,
-                     energy = ?14, vocal = ?15
+                     energy = ?14, vocal = ?15, breakdown = ?16
                  WHERE id = ?1",
                 params![
                     id.to_hex(),
@@ -393,6 +409,7 @@ impl Library {
                     analysis.phrase_confidence,
                     analysis.energy,
                     analysis.vocal,
+                    analysis.breakdown,
                 ],
             )?;
             Ok(())
@@ -1420,8 +1437,8 @@ impl Library {
             .map_or(0, |d| d.as_secs() as i64);
         self.with(|conn| {
             conn.execute(
-                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect)
-                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(session_id) DO UPDATE SET
                      setting    = COALESCE(?2, setting),
                      density    = COALESCE(?4, density),
@@ -1430,7 +1447,10 @@ impl Library {
                      techniques = COALESCE(?7, techniques),
                      length     = COALESCE(?8, length),
                      loop_beats = COALESCE(?9, loop_beats),
-                     effect     = COALESCE(?10, effect)",
+                     effect     = COALESCE(?10, effect),
+                     pair       = COALESCE(?11, pair),
+                     verdicts   = COALESCE(?12, verdicts),
+                     swaps      = COALESCE(?13, swaps)",
                 rusqlite::params![
                     session_id,
                     setting,
@@ -1442,6 +1462,9 @@ impl Library {
                     read.length,
                     read.loop_beats,
                     read.effect,
+                    read.pair,
+                    read.verdicts,
+                    read.swaps,
                 ],
             )?;
             Ok(())
@@ -1456,7 +1479,7 @@ impl Library {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps
                      FROM nights WHERE session_id = ?1",
                     [session_id],
                     read_night,
@@ -1476,7 +1499,7 @@ impl Library {
     pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
         self.with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
+                "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps
                  FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
             )?;
             let rows = stmt.query_map([setting], read_night)?;
@@ -2575,7 +2598,9 @@ fn set_analysis_if_absent_on(
              energy = COALESCE(?14, energy),
              -- COALESCE for `energy`'s reason: an importer brings a grid and a
              -- key and has never asked whether there is a voice in the record.
-             vocal = COALESCE(?15, vocal)
+             vocal = COALESCE(?15, vocal),
+             -- And the breakdown: an importer has never listened for one.
+             breakdown = COALESCE(?16, breakdown)
          WHERE id = ?1",
         params![
             id.to_hex(),
@@ -2593,6 +2618,7 @@ fn set_analysis_if_absent_on(
             analysis.phrase_confidence,
             analysis.energy,
             analysis.vocal,
+            analysis.breakdown,
         ],
     )?;
     Ok(written > 0)
@@ -2654,7 +2680,7 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
      play_count, last_played, rating, grid_source, colour, \
-     phrase_beats, phrase_anchor, phrase_confidence, energy, vocal";
+     phrase_beats, phrase_anchor, phrase_confidence, energy, vocal, breakdown";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -2667,7 +2693,7 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
      tracks.grid_source, tracks.colour, \
      tracks.phrase_beats, tracks.phrase_anchor, tracks.phrase_confidence, \
-     tracks.energy, tracks.vocal";
+     tracks.energy, tracks.vocal, tracks.breakdown";
 
 /// Read one row.
 ///
@@ -2758,6 +2784,7 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
             phrase_confidence: row.get(at(32))?,
             energy: row.get(at(33))?,
             vocal: row.get(at(34))?,
+            breakdown: row.get(at(35))?,
         },
         stats: PlayStats {
             play_count: row.get(at(25))?,
@@ -3184,6 +3211,31 @@ mod tests {
         // night already said about them.
         assert_eq!(night.loop_beats.as_deref(), Some("0.5"));
         assert_eq!(night.effect.as_deref(), Some("echo"));
+    }
+
+    /// **§12 across nights: the pair, the verdicts and the swaps are kept with
+    /// the night**, and a later read with nothing to say wipes none of them.
+    #[test]
+    fn a_nights_pair_verdicts_and_swaps_are_kept() {
+        let lib = library();
+        lib.note_night(
+            "n1",
+            Some("club"),
+            NightRead {
+                pair: Some("echo+filter"),
+                verdicts: Some("5,2,1"),
+                swaps: Some("3,18,40"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+        lib.note_night("n1", None, NightRead::default()).unwrap();
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.pair.as_deref(), Some("echo+filter"));
+        assert_eq!(night.verdicts.as_deref(), Some("5,2,1"));
+        assert_eq!(night.swaps.as_deref(), Some("3,18,40"));
+        let club = lib.nights_in("club").unwrap();
+        assert_eq!(club[0].swaps.as_deref(), Some("3,18,40"));
     }
 
     /// The DJ can correct themselves: naming a setting again does change it.
@@ -3968,6 +4020,38 @@ mod tests {
             "an instrumental must not read as absent"
         );
         assert_eq!(read(3), Some(0.42));
+    }
+
+    /// **§20/§75's breakdown column keeps its three answers apart through
+    /// SQLite**, and an importer that never listened does not erase one.
+    #[test]
+    fn a_records_breakdown_keeps_its_three_answers() {
+        let lib = library();
+        for n in 1..=3 {
+            lib.upsert_track(&track(n, "A", "B")).unwrap();
+        }
+        lib.set_analysis(id(1), &StoredAnalysis::default()).unwrap();
+        for (n, at) in [(2, crate::NO_BREAKDOWN), (3, 4_800_000.0)] {
+            lib.set_analysis(
+                id(n),
+                &StoredAnalysis {
+                    breakdown: Some(at),
+                    ..StoredAnalysis::default()
+                },
+            )
+            .unwrap();
+        }
+        let read = |n: u8| lib.track(id(n)).unwrap().unwrap().analysis.breakdown;
+        assert_eq!(read(1), None);
+        assert_eq!(read(2), Some(crate::NO_BREAKDOWN));
+        assert_eq!(read(3), Some(4_800_000.0));
+        // In a playlist's joined query too, which reads the qualified list.
+        let found = lib.search("A", 10).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|t| t.analysis.breakdown == Some(4_800_000.0))
+        );
     }
 
     /// An importer that knows a grid must not blank a reading the analyser

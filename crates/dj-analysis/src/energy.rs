@@ -369,6 +369,23 @@ const THIN: f32 = 0.6;
 /// Two, which at eight beats is four bars. One window is a fill.
 const AT_LEAST: usize = 2;
 
+/// How many beats of thin windows in a row a breakdown needs: sixteen, four
+/// bars — [`AT_LEAST`]'s two windows at eight beats, said in beats.
+///
+/// **In beats, because the window is not always eight.** With a phrase it is
+/// the phrase, and at thirty-two beats [`AT_LEAST`]'s two windows asked a
+/// breakdown for sixteen bars: the commonest breakdown there is, eight bars
+/// with the kick out, read clearly as one thin window and was never marked.
+/// Found when the library's breakdown column read *none* for a record with an
+/// obvious one.
+const AT_LEAST_BEATS: u32 = 16;
+
+/// How many windows of `per_section` beats cover `beats`, and never fewer
+/// than one.
+fn windows_for(beats: u32, per_section: u32) -> usize {
+    beats.div_ceil(per_section.max(1)).max(1) as usize
+}
+
 /// How much the low band has to come back for the return to be a drop.
 ///
 /// Half as much again as the breakdown was. A record that drifts back up over
@@ -496,12 +513,13 @@ fn thin_stretches(
     let mut breakdowns = Vec::new();
     let mut drops = Vec::new();
     let mut run: Option<usize> = None;
+    let at_least = windows_for(AT_LEAST_BEATS, per_section);
     for index in 0..=sections.len() {
         let thin = sections.get(index).is_some_and(|s| s.low < thin_below);
         match (thin, run) {
             (true, None) => run = Some(index),
             (false, Some(start)) => {
-                if index - start >= AT_LEAST {
+                if index - start >= at_least {
                     let ends_at = sections.get(index).map_or_else(
                         || {
                             // The record ran out. The span ends where the last
@@ -1011,6 +1029,10 @@ mod trajectory_tests {
     }
 
     fn measure(audio: &[f32]) -> Trajectory {
+        measure_in(audio, 8)
+    }
+
+    fn measure_in(audio: &[f32], phrase_beats: u32) -> Trajectory {
         let (envelope, banded) = onset::detect_all(audio, SR.get());
         let frames = (audio.len() / 2) as u64;
         trajectory(
@@ -1020,7 +1042,7 @@ mod trajectory_tests {
             &grid(),
             SR,
             frames,
-            Some(8),
+            Some(phrase_beats),
         )
     }
 
@@ -1103,6 +1125,27 @@ mod trajectory_tests {
             "a two-bar gap was marked as a breakdown: {:?}",
             found.breakdowns
         );
+    }
+
+    /// **An eight-bar breakdown is a breakdown whatever the window is.** With a
+    /// thirty-two-beat phrase it is one thin window, and two windows in a row
+    /// would have asked for sixteen bars.
+    #[test]
+    fn an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase() {
+        let found = measure_in(&with_a_breakdown(16, 8, 16), 32);
+        assert_eq!(found.beats_per_section, 32);
+        assert_eq!(found.breakdowns.len(), 1, "{:?}", found.breakdowns);
+        let from = found.breakdowns[0].from / f64::from(SR.get());
+        // Sixteen bars at 128 BPM is 30 seconds.
+        assert!(
+            (from - 30.0).abs() < 2.0,
+            "the breakdown starts at {from:.1}s"
+        );
+        // And the rule is still four bars, not one window: at eight beats a
+        // window, two bars thin is a fill.
+        assert_eq!(windows_for(AT_LEAST_BEATS, 8), 2);
+        assert_eq!(windows_for(AT_LEAST_BEATS, 32), 1);
+        assert_eq!(windows_for(AT_LEAST_BEATS, 4), 4);
     }
 
     /// The curve is a fraction of the record's own peak, from end to end.

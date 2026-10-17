@@ -28,13 +28,19 @@ pub struct Measured {
     pub uneven: Option<f32>,
     pub together: Option<f32>,
     pub scene: Option<f32>,
+    /// How much of the picture differs from the room's learned look.
+    pub occupancy: Option<f32>,
+    /// How closely the parts that differ sit beside each other.
+    pub density: Option<f32>,
+    /// How far the brightest part of the picture moved.
+    pub lighting: Option<f32>,
     /// The microphone's loudness, on the room surface's own scale.
     pub heard: Option<f32>,
 }
 
 impl Measured {
-    /// The look these make. `OverMusic` is never sent: it is worked out from
-    /// `heard` and the master in [`Floor::saw`].
+    /// The look these make. `OverMusic` and `Voice` are never sent: they are
+    /// worked out from `heard`, `mid` and the master in [`Floor::saw`].
     #[must_use]
     pub fn look(&self, at: SystemTime) -> Look {
         [
@@ -44,7 +50,10 @@ impl Measured {
             (Signal::Applause, self.applause),
             (Signal::Uneven, self.uneven),
             (Signal::Together, self.together),
+            (Signal::Occupancy, self.occupancy),
+            (Signal::Density, self.density),
             (Signal::Scene, self.scene),
+            (Signal::Lighting, self.lighting),
         ]
         .into_iter()
         .fold(Look::at(at), |look, (signal, value)| match value {
@@ -188,10 +197,17 @@ mod tests {
             low: Some(0.3),
             high: Some(1.4),
             scene: Some(f32::NAN),
+            occupancy: Some(0.25),
+            density: Some(0.5),
+            lighting: Some(0.75),
             heard: Some(0.6),
             ..Measured::default()
         };
         let look = measured.look(SystemTime::UNIX_EPOCH);
+        assert_eq!(look.get(Signal::Occupancy), Some(0.25));
+        assert_eq!(look.get(Signal::Density), Some(0.5));
+        assert_eq!(look.get(Signal::Lighting), Some(0.75));
+        assert_eq!(look.get(Signal::Voice), None);
         assert_eq!(look.get(Signal::Low), Some(0.3));
         assert_eq!(look.get(Signal::High), Some(1.0), "clamped on the way in");
         assert_eq!(look.get(Signal::Scene), None, "a broken number is dropped");
@@ -205,6 +221,7 @@ mod tests {
             let music = 0.4 + 0.05 * (i % 6) as f32;
             let measured = Measured {
                 heard: Some(music * 0.9 + 0.05),
+                mid: Some(music * 0.8 + 0.1),
                 ..Measured::default()
             };
             saw(
@@ -215,6 +232,8 @@ mod tests {
             );
         }
         let line = floor.line(Signal::OverMusic);
+        assert!(line.now.is_some(), "{}", line.says);
+        let line = floor.line(Signal::Voice);
         assert!(line.now.is_some(), "{}", line.says);
     }
 

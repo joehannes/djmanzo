@@ -1852,6 +1852,12 @@ export interface LibraryTrack {
    * Absent on every list but a search's.
    */
   near?: boolean;
+  /**
+   * §20/§75: where the first breakdown starts, in seconds. `null` inside the
+   * reading for a record measured and found to have none; the reading itself
+   * `null` for one nobody measured.
+   */
+  breakdown?: { at: number | null } | null;
   id: string;
   path: string;
   title: string;
@@ -3057,6 +3063,14 @@ export interface Profile {
   genres: [string, number][];
   /** The sentence, written in Rust so a panel cannot assemble a stronger one. */
   says: string;
+  /** §12: the two effects they run together here, by name. */
+  pair?: [string, string] | null;
+  /** §12/§44: staged moves taken as offered, changed, turned down, as shares. */
+  staged?: [number, number, number] | null;
+  /** §12: the share of loads that replaced a cued record before it played. */
+  swapped?: number | null;
+  /** §12: how many seconds a replaced record had usually sat cued. */
+  swapped_after?: number | null;
 }
 
 /**
@@ -4437,6 +4451,19 @@ export interface ControlStatus {
   hid_unavailable: string | null;
   open_hid: string | null;
   open_hid_mapping: string | null;
+  /**
+   * §106: the open "port" is the stand-in controller, not a device. Optional
+   * because a build before it never sends it.
+   */
+  standin?: boolean;
+}
+
+/** What pressing every control of the stand-in controller did. */
+export interface StandInRun {
+  messages: number;
+  actions: number;
+  /** The first few actions, as said. */
+  said: string[];
 }
 
 export interface HidDevice {
@@ -4582,6 +4609,7 @@ export const onKeyboardEnabled = (handler: (on: boolean) => void): Promise<Unlis
 export const openController = (port: string, mapping?: string) =>
   invoke<void>("open_controller", { port, mapping: mapping ?? null });
 export const closeController = () => invoke<void>("close_controller");
+export const pressStandIn = () => invoke<StandInRun>("controller_standin_press");
 export const openHidController = (device: string, mapping: string) =>
   invoke<void>("open_hid_controller", { device, mapping });
 export const closeHidController = () => invoke<void>("close_hid_controller");

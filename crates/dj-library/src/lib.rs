@@ -46,8 +46,8 @@ pub mod vocal_line;
 
 pub use playlist::{Note, PlayRecord, Playlist, PlaylistKind};
 pub use record::{
-    EditableField, GridSource, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop,
-    Tags, TrackEdit,
+    EditableField, GridSource, LibraryTrack, NO_BREAKDOWN, PlayStats, StoredAnalysis, StoredCue,
+    StoredLoop, Tags, TrackEdit,
 };
 pub use scan::{ScanReport, ScannedFile, scan_all, scan_folder};
 pub use store::{Chosen, Library, LibraryError, MixResponse, Night, NightRead, StoredResponse};

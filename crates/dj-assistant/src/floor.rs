@@ -12,12 +12,22 @@
 //! - **the room over the music** — how much louder the microphone is than the
 //!   music djmanzo is sending explains, which is the one way to tell a crowd's
 //!   noise from the record without knowing what a crowd sounds like;
+//! - **voices over the music** — the same question asked of the voice band
+//!   alone, on a fit of its own: §36's *vocal response*, split from the room
+//!   over the music so a crowd singing and a bass bin rattling the booth are
+//!   not one reading;
 //! - **uneven movement** — how much the picture's motion differs from one
 //!   part of the frame to another (the variance of a coarse optical flow);
 //! - **moving together** — how much of that motion goes the same way, §36's
 //!   *cohesion*;
+//! - **occupied picture** — how much of the picture differs from the room's
+//!   look, learned slowly over the night: §34's *occupancy*, as a proxy;
+//! - **packed together** — how closely the parts that differ sit beside each
+//!   other: §34's *crowd density*, as a proxy;
 //! - **scene change** — the picture changing as a whole between one look and
-//!   the next, §34's *scene change* and §36's *visual change*.
+//!   the next, §34's *scene change* and §36's *visual change*;
+//! - **lighting moving** — how far the brightest part of the picture moved,
+//!   which a sweeping beam does without changing the scene at all.
 //!
 //! # Each its own line, never a score
 //!
@@ -78,25 +88,37 @@ pub enum Signal {
     Applause,
     /// The microphone's level beyond what the music's level explains.
     OverMusic,
+    /// The microphone's voice band beyond what the music's level explains.
+    Voice,
     /// How much the picture's motion differs across the frame.
     Uneven,
     /// How much of the picture's motion goes the same way.
     Together,
+    /// How much of the picture differs from the room's learned look.
+    Occupancy,
+    /// How closely the parts of the picture that differ sit together.
+    Density,
     /// How much the picture changed as a whole since the last look.
     Scene,
+    /// How far the brightest part of the picture moved.
+    Lighting,
 }
 
 impl Signal {
     /// Every signal, in the order they are said.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 12] = [
         Self::Low,
         Self::Mid,
         Self::High,
         Self::Applause,
         Self::OverMusic,
+        Self::Voice,
         Self::Uneven,
         Self::Together,
+        Self::Occupancy,
+        Self::Density,
         Self::Scene,
+        Self::Lighting,
     ];
 
     /// The stable slug.
@@ -108,9 +130,13 @@ impl Signal {
             Self::High => "high",
             Self::Applause => "applause",
             Self::OverMusic => "over_music",
+            Self::Voice => "voice",
             Self::Uneven => "uneven",
             Self::Together => "together",
+            Self::Occupancy => "occupancy",
+            Self::Density => "density",
             Self::Scene => "scene",
+            Self::Lighting => "lighting",
         }
     }
 
@@ -123,9 +149,13 @@ impl Signal {
             Self::High => "High band",
             Self::Applause => "Applause-like clicks",
             Self::OverMusic => "Room over the music",
+            Self::Voice => "Voices over the music",
             Self::Uneven => "Uneven movement",
             Self::Together => "Moving together",
+            Self::Occupancy => "Occupied picture",
+            Self::Density => "Packed together",
             Self::Scene => "Scene change",
+            Self::Lighting => "Lighting moving",
         }
     }
 
@@ -140,10 +170,24 @@ impl Signal {
             Self::OverMusic => {
                 "how much louder the microphone is than the music's own level explains"
             }
+            Self::Voice => {
+                "how much louder the microphone's voice band (250 Hz to 2 kHz) is than the \
+                 music's own level explains"
+            }
             Self::Uneven => "how differently the parts of the picture move",
             Self::Together => "how much of the picture's movement goes the same way",
+            Self::Occupancy => {
+                "how much of the picture differs from the room's look, learned slowly over the night"
+            }
+            Self::Density => {
+                "how closely the parts of the picture that differ from the room's look sit \
+                 beside each other"
+            }
             Self::Scene => {
                 "how much the picture's brightness changed as a whole since the last look"
+            }
+            Self::Lighting => {
+                "how far the brightest part of the picture moved in a sixth of a second"
             }
         }
     }
@@ -158,9 +202,22 @@ impl Signal {
             Self::High => "cymbals in the record as much as anything in the room",
             Self::Applause => "a fast, loose percussion part can look the same",
             Self::OverMusic => "anything loud near the microphone counts, a shout in the booth too",
+            Self::Voice => {
+                "the record's own vocal coming in lifts it too: the music's level is the whole \
+                 mix, not its voice"
+            }
             Self::Uneven => "one person close to the lens moves more than a crowd far away",
             Self::Together => "a sweeping light makes the whole picture move one way too",
+            Self::Occupancy => {
+                "people who stand still for minutes fade into the room's look, and a light thrown \
+                 on a wall reads as people"
+            }
+            Self::Density => "one person close to the lens packs as tightly as a crowd far away",
             Self::Scene => "the lighting rig changing looks like the room changing",
+            Self::Lighting => {
+                "someone in a white shirt crossing a dark room moves the brightest part too, and \
+                 two lights sweeping opposite ways cancel"
+            }
         }
     }
 
@@ -171,12 +228,17 @@ impl Signal {
     #[must_use]
     pub const fn absent(self) -> &'static str {
         match self {
-            Self::Low | Self::Mid | Self::High | Self::Applause | Self::OverMusic => {
+            Self::Low | Self::Mid | Self::High | Self::Applause | Self::OverMusic | Self::Voice => {
                 "nothing has been heard through a microphone"
             }
             Self::Uneven => "the picture has too little detail to follow",
             Self::Together => "too little of the picture has moved to say which way",
+            Self::Occupancy => "there has been no picture to learn the room's look from",
+            Self::Density => {
+                "too little of the picture has differed from the room's look to say how it packs"
+            }
             Self::Scene => "there has been no picture to compare from one look to the next",
+            Self::Lighting => "the picture has had no bright part to follow",
         }
     }
 
@@ -307,6 +369,15 @@ impl Fit {
         self.xy += music * heard;
     }
 
+    /// Take a pair and, once the line holds, how far above it `heard` sits —
+    /// half way up the 0..1 scale meaning *on* it.
+    fn over(&mut self, music: f64, heard: f64) -> Option<f32> {
+        self.add(music, heard);
+        let (intercept, slope) = self.line().ok()?;
+        #[allow(clippy::cast_possible_truncation)]
+        Some((0.5 + heard - (intercept + slope * music)) as f32)
+    }
+
     /// The line, `(intercept, slope)`, or why there is none.
     fn line(&self) -> Result<(f64, f64), Unfit> {
         #[allow(clippy::cast_precision_loss)]
@@ -342,6 +413,10 @@ pub struct Floor {
     /// The whole night, per signal.
     tonight: [Spread; Signal::ALL.len()],
     fit: Fit,
+    /// The voice band against the music: a fit of its own, because the
+    /// speakers fill the voice band in a different proportion from the whole
+    /// of the sound, and one line through both would be right for neither.
+    voice: Fit,
 }
 
 impl Floor {
@@ -356,19 +431,21 @@ impl Floor {
     /// the 0..1 loudness scale ([`loudness_of_peak`] for a peak meter), taken
     /// at the same moment: the pair feeds the room-over-music fit, and once the
     /// fit holds, the look gains its [`Signal::OverMusic`] — how far above the
-    /// line it sits, half way up the scale meaning *on* it.
+    /// line it sits, half way up the scale meaning *on* it. The look's own
+    /// [`Signal::Mid`] is paired with the music the same way, on a second fit,
+    /// for [`Signal::Voice`].
     pub fn saw(&mut self, mut look: Look, heard: Option<f32>, music: Option<f32>) {
-        if let (Some(heard), Some(music)) = (heard, music)
-            && heard.is_finite()
-            && music.is_finite()
-        {
-            let (heard, music) = (f64::from(heard), f64::from(music));
-            self.fit.add(music, heard);
-            if let Ok((intercept, slope)) = self.fit.line() {
-                let over = heard - (intercept + slope * music);
-                #[allow(clippy::cast_possible_truncation)]
-                let value = (0.5 + over) as f32;
-                look = look.with(Signal::OverMusic, value);
+        if let Some(music) = music.filter(|music| music.is_finite()) {
+            let music = f64::from(music);
+            if let Some(heard) = heard.filter(|heard| heard.is_finite())
+                && let Some(over) = self.fit.over(music, f64::from(heard))
+            {
+                look = look.with(Signal::OverMusic, over);
+            }
+            if let Some(mid) = look.get(Signal::Mid)
+                && let Some(over) = self.voice.over(music, f64::from(mid))
+            {
+                look = look.with(Signal::Voice, over);
             }
         }
         if look.is_empty() {
@@ -399,6 +476,15 @@ impl Floor {
         self.seen.back().map(|look| look.at)
     }
 
+    /// The fit a signal is read off, for the two that are.
+    const fn fit_of(&self, signal: Signal) -> Option<&Fit> {
+        match signal {
+            Signal::OverMusic => Some(&self.fit),
+            Signal::Voice => Some(&self.voice),
+            _ => None,
+        }
+    }
+
     fn near(&self, signal: Signal) -> Vec<f32> {
         self.seen
             .iter()
@@ -420,8 +506,8 @@ impl Floor {
             looks,
             says: format!("{title}: not yet — {why}"),
         };
-        if signal == Signal::OverMusic
-            && let Err(unfit) = self.fit.line()
+        if let Some(fit) = self.fit_of(signal)
+            && let Err(unfit) = fit.line()
         {
             return not_yet(unfit.why());
         }
@@ -541,7 +627,10 @@ mod tests {
     /// them would move every line, or one combined line, and both fail here.
     #[test]
     fn each_signal_is_placed_against_its_own_night_and_said_alone() {
-        for signal in Signal::ALL.into_iter().filter(|s| *s != Signal::OverMusic) {
+        for signal in Signal::ALL
+            .into_iter()
+            .filter(|s| !matches!(s, Signal::OverMusic | Signal::Voice))
+        {
             let floor = night_of(signal, wander, 0.95);
             let lines = floor.lines();
             assert_eq!(lines.len(), Signal::ALL.len(), "one line per signal");
@@ -687,6 +776,79 @@ mod tests {
             "the DJ pushing the master read as the room: {}",
             pushed.says
         );
+    }
+
+    /// **Voices over the music are the voice band's own, split from the room
+    /// over the music.**
+    ///
+    /// Two endings to one night. In the first the room sings: the
+    /// microphone's voice band rises above what the music explains while the
+    /// whole of the sound barely moves, because a crowd singing is a small
+    /// share of a loud room's level. In the second something rattles the low
+    /// end — a bass bin in the booth, a crowd stamping — and the whole of the
+    /// sound rises while the voice band stays on its line. A voice line read
+    /// off the broadband fit would call both a singing room, and the room over
+    /// the music alone could not tell them apart at all.
+    #[test]
+    fn voices_over_the_music_are_the_voice_band_alone() {
+        let music_at = |i: u64| 0.5 + 0.03 * f(i % 10);
+        let mid_of = |music: f32| music * 0.8 + 0.1;
+        let night = |sung: f32, rattled: f32| {
+            let mut floor = Floor::new();
+            for i in 0..BEFORE {
+                let music = music_at(i);
+                let room = if i % 7 == 0 { 0.03 } else { 0.0 };
+                floor.saw(
+                    Look::at(at(i * 2)).with(Signal::Mid, mid_of(music) + room),
+                    Some(heard(music, room)),
+                    Some(music),
+                );
+            }
+            for i in BEFORE..BEFORE + LAST {
+                let music = music_at(i);
+                floor.saw(
+                    Look::at(at(i * 2)).with(Signal::Mid, mid_of(music) + sung),
+                    Some(heard(music, rattled)),
+                    Some(music),
+                );
+            }
+            floor
+        };
+
+        let singing = night(0.2, 0.0);
+        let voice = singing.line(Signal::Voice);
+        assert_eq!(voice.against, Some(Against::Highest), "{}", voice.says);
+        assert!(
+            voice.says.contains(Signal::Voice.cannot()),
+            "{}",
+            voice.says
+        );
+        let room = singing.line(Signal::OverMusic);
+        assert!(
+            room.against.is_some_and(|a| a <= Against::Usual),
+            "a room singing moved the broadband line: {}",
+            room.says
+        );
+
+        let rattled = night(0.0, 0.2);
+        let room = rattled.line(Signal::OverMusic);
+        assert_eq!(room.against, Some(Against::Highest), "{}", room.says);
+        let voice = rattled.line(Signal::Voice);
+        assert!(
+            voice.against.is_some_and(|a| a <= Against::Usual),
+            "the low end rattling read as voices: {}",
+            voice.says
+        );
+
+        // With no music level to pair it with, the voice band is only the
+        // mid band: no fit, and the line says why rather than guessing.
+        let mut unpaired = Floor::new();
+        for i in 0..200 {
+            unpaired.saw(Look::at(at(i * 2)).with(Signal::Mid, wander(i)), None, None);
+        }
+        let line = unpaired.line(Signal::Voice);
+        assert_eq!(line.confidence, Confidence::NotYet, "{}", line.says);
+        assert!(line.says.contains("two minutes"), "{}", line.says);
     }
 
     /// **And it refuses when the music gives it nothing to learn from.**

@@ -98,7 +98,28 @@ pub struct ControlStatus {
     pub hid_unavailable: Option<String>,
     pub open_hid: Option<String>,
     pub open_hid_mapping: Option<String>,
+    /// §106: the open "port" is the stand-in, not a device. Said so the panel
+    /// can offer to press its controls, and so nobody reads a stand-in as
+    /// hardware that answered.
+    pub standin: bool,
 }
+
+/// What the stand-in controller is called where a port's name would be.
+pub const STANDIN_PORT: &str = "Stand-in controller (no hardware)";
+
+/// What pressing every control of the stand-in did.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct StandInRun {
+    /// Messages sent, as the hardware would send them.
+    pub messages: usize,
+    /// Actions they were translated into, each posted to the drain.
+    pub actions: usize,
+    /// The first few, as said, so a person can see what was reached.
+    pub said: Vec<String>,
+}
+
+/// How many actions [`StandInRun::said`] carries.
+const STANDIN_SAID: usize = 12;
 
 /// A HID device, as the interface lists it.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -202,6 +223,10 @@ pub struct ControlHub {
     /// setup, and refusing the second one to keep this field simple would be
     /// the software's convenience beating the DJ's.
     open_hid: Mutex<Option<dj_hid::usb::Connection>>,
+    /// §106: a controller that is not there, wired as one that is, with the
+    /// mapping it plays so its presses can be spelled. Opened from
+    /// `DJMANZO_STANDIN_CONTROLLER` (`crate::standin`), never by a DJ.
+    standin: Mutex<Option<(dj_hid::standin::StandIn, dj_hid::Mapping)>>,
     /// What the editor watches a HID device with.
     ///
     /// Its own listener because learning from HID needs the previous report to
@@ -260,6 +285,7 @@ impl ControlHub {
                 lights: Mutex::new(None),
                 unlit: Mutex::new(None),
                 open_hid: Mutex::new(None),
+                standin: Mutex::new(None),
                 registry: None,
                 hid_listener: dj_hid::usb::Listener::default(),
                 audio: Mutex::new(None),
@@ -640,9 +666,73 @@ impl ControlHub {
         }
     }
 
+    /// §106: open the stand-in controller with a mapping, named as its file
+    /// is (`generic-2-deck`) or as the mapping calls itself.
+    ///
+    /// A bundled file's stem is looked up through the bundle and then by the
+    /// mapping's name, so a user mapping of the same name — which replaces the
+    /// bundled one everywhere else — replaces it here too.
+    ///
+    /// # Errors
+    /// When no mapping goes by that name, or its script does not compile.
+    pub fn open_standin(&self, name: &str) -> Result<(), String> {
+        let wanted = dj_hid::bundled::CONTROLLERS
+            .iter()
+            .find(|(stem, _)| *stem == name)
+            .and_then(|(_, text)| dj_hid::Mapping::parse(text).ok())
+            .map_or_else(|| name.to_owned(), |mapping| mapping.name);
+        let mapping = self
+            .mappings
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|known| known.mapping.name == wanted)
+            .map(|known| known.mapping.clone())
+            .ok_or_else(|| format!("no mapping called {name:?}"))?;
+        let standin = dj_hid::standin::StandIn::new(mapping.clone(), self.listener.clone())
+            .map_err(|e| e.to_string())?;
+        *self.standin.lock().unwrap() = Some((standin, mapping));
+        Ok(())
+    }
+
+    /// §106: press, turn and sweep every control of the stand-in as a person
+    /// checking a controller would (`dj_hid::standin::presses`), and post what
+    /// each message is translated into to the drain — the queue a real port's
+    /// actions go to, so they reach the decks the same way.
+    ///
+    /// # Errors
+    /// When no stand-in is open.
+    pub fn press_standin(&self) -> Result<StandInRun, String> {
+        let mut slot = self.standin.lock().unwrap();
+        let (standin, mapping) = slot
+            .as_mut()
+            .ok_or_else(|| "no stand-in controller is open".to_owned())?;
+        let mut run = StandInRun {
+            messages: 0,
+            actions: 0,
+            said: Vec::new(),
+        };
+        for press in dj_hid::standin::presses(mapping) {
+            for (bytes, _) in press.messages {
+                run.messages += 1;
+                for action in standin.send(&bytes) {
+                    run.actions += 1;
+                    if run.said.len() < STANDIN_SAID {
+                        run.said.push(action.clone());
+                    }
+                    // The drain has gone only when the application is
+                    // closing, and then there is nothing to reach.
+                    let _ = self.post.send(action);
+                }
+            }
+        }
+        Ok(run)
+    }
+
     /// Close whatever is open. Closing nothing is not an error.
     pub fn close(&self) {
         *self.open.lock().unwrap() = None;
+        *self.standin.lock().unwrap() = None;
         // Dropped with the connection, which blacks the board out and joins
         // the pump. A controller keeps its LEDs after the thing that set them
         // has let go — they are the device's state, not djmanzo's — so a DJ
@@ -690,6 +780,8 @@ impl ControlHub {
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
         let open = self.open.lock().unwrap();
+        let standin = self.standin.lock().unwrap();
+        let standin_mapping = standin.as_ref().map(|(_, mapping)| mapping.name.clone());
         let open_hid = self.open_hid.lock().unwrap();
         let (found, hid_unavailable) = self.hid_devices();
         let hid_inputs = found
@@ -703,8 +795,17 @@ impl ControlHub {
         let keyboard = self.keyboard.lock().unwrap();
         ControlStatus {
             inputs,
-            open_port: open.as_ref().map(|c| c.port().to_owned()),
-            open_mapping: open.as_ref().map(|c| c.mapping().to_owned()),
+            // A real port first: the stand-in is for a machine with none, and
+            // a DJ who has plugged one in is looking at that one.
+            open_port: open
+                .as_ref()
+                .map(|c| c.port().to_owned())
+                .or_else(|| standin_mapping.as_ref().map(|_| STANDIN_PORT.to_owned())),
+            open_mapping: open
+                .as_ref()
+                .map(|c| c.mapping().to_owned())
+                .or_else(|| standin_mapping.clone()),
+            standin: open.is_none() && standin_mapping.is_some(),
             unavailable,
             keyboard: self.keyboard_on(),
             keyboard_name: keyboard.name.clone(),
@@ -949,6 +1050,55 @@ mod tests {
     /// of the interface's verbs is handed on as the tree would run it; one
     /// naming an activity or a panel djmanzo does not have is refused, and an
     /// engine action is not an interface line at all.
+    /// **§106: the stand-in is open like a port, and its presses reach the
+    /// drain a real port's actions go to.** The panel and §53's reach read
+    /// `status`, so a stand-in that did not appear there would leave both
+    /// as blank as no controller at all.
+    #[test]
+    fn a_stand_in_controller_opens_like_a_port_and_its_presses_reach_the_drain() {
+        let (hub, take) = ControlHub::new();
+        assert!(
+            hub.press_standin().is_err(),
+            "pressed a stand-in nobody opened"
+        );
+        assert!(hub.open_standin("no-such-controller").is_err());
+
+        hub.open_standin("generic-2-deck")
+            .expect("the bundled mapping");
+        let status = hub.status(None);
+        assert_eq!(status.open_port.as_deref(), Some(STANDIN_PORT));
+        let name = status.open_mapping.clone().expect("a mapping");
+        assert!(
+            hub.mappings().iter().any(|m| m.name == name),
+            "the open mapping is not one the hands can be read from: {name}"
+        );
+        assert!(status.standin);
+
+        let run = hub.press_standin().expect("pressed");
+        assert!(run.messages > 10, "{run:?}");
+        assert!(run.actions > 0, "{run:?}");
+        assert!(run.said.len() <= STANDIN_SAID);
+        let posted: Vec<String> = take.try_iter().collect();
+        assert_eq!(
+            posted.len(),
+            run.actions,
+            "an action never reached the drain"
+        );
+        assert_eq!(&posted[..run.said.len()], &run.said[..]);
+
+        // By its own name too.
+        hub.open_standin(&name).expect("by name");
+        assert_eq!(
+            hub.status(None).open_mapping.as_deref(),
+            Some(name.as_str())
+        );
+
+        hub.close();
+        let status = hub.status(None);
+        assert_eq!(status.open_port, None);
+        assert!(!status.standin);
+    }
+
     #[test]
     fn a_controller_reaches_what_a_key_under_space_reaches() {
         let state = crate::state::AppState::new(true);

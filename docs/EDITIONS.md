@@ -169,8 +169,8 @@ those Macs. Any edition whose modules run there can be built for them.
 1. **The parts list** (`dj_core::edition`): done.
 2. **The build switch**: the edition at build time, commands refusing what is
    not there, the interface hiding it, the heavy parts left out, a Tauri
-   config and a release row per edition. This touches files Session 2 works
-   in, so it lands after Session 2's round 2 is merged.
+   config and a release row per edition. Next: it touches files Session 2
+   works in, and Session 2's round 2 is merged (v0.46.0).
 3. **The quiet cards.**
 4. **The Auto-Pilot surface.**
 5. **The Apprentice curriculum**: the largest piece, and most of it is

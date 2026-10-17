@@ -32,6 +32,9 @@ interface Measured {
   uneven: number | null;
   together: number | null;
   scene: number | null;
+  occupancy: number | null;
+  density: number | null;
+  lighting: number | null;
   heard: number | null;
 }
 
@@ -170,6 +173,46 @@ test.describe("§34 / §36: the floor's other signals", () => {
   });
 
   /**
+   * **Occupancy, density and lighting each move with what they measure, and
+   * not with one another.**
+   *
+   * Two figures in a large room against thirty milling in the middle of it:
+   * more of the picture is occupied, and what is occupied packs tighter. A
+   * beam sweeping a still room against the lights snapping on: the lighting
+   * moves where the scene does not, and the scene changes where the lighting
+   * does not move. A measurement that read movement or brightness under
+   * either name passes neither half.
+   */
+  test("occupancy, density and lighting each move with what they measure", async () => {
+    const few = (await scene("few", "bass", 16)).slice(6);
+    const crowd = (await scene("crowd", "bass", 16)).slice(6);
+    const beam = await scene("beam", "bass", 14);
+    const cut = await scene("cut", "bass", 14);
+
+    const fewOccupied = median(few.map((m) => m.occupancy));
+    const crowdOccupied = median(crowd.map((m) => m.occupancy));
+    expect(crowdOccupied, `crowd ${crowdOccupied} against two figures ${fewOccupied}`).toBeGreaterThan(
+      fewOccupied * 3,
+    );
+    const fewPacked = median(few.map((m) => m.density));
+    const crowdPacked = median(crowd.map((m) => m.density));
+    expect(crowdPacked, `crowd ${crowdPacked} against two figures ${fewPacked}`).toBeGreaterThan(
+      fewPacked + 0.25,
+    );
+
+    const sweeping = median(beam.map((m) => m.lighting));
+    expect(sweeping, "a sweeping beam did not move the lighting").toBeGreaterThan(0.3);
+    expect(Math.max(...beam.map((m) => m.scene ?? 0)), "a sweeping beam read as a new scene").toBeLessThan(
+      0.15,
+    );
+    expect(Math.max(...cut.map((m) => m.scene ?? 0)), "the lights snapping on was not a new scene").toBeGreaterThan(
+      0.5,
+    );
+    const still = cut.map((m) => m.lighting).filter((v): v is number => v !== null);
+    expect(Math.max(0, ...still), "a still room's lights read as moving").toBeLessThan(0.1);
+  });
+
+  /**
    * **Each look hears its own moment.** An analyser smooths its spectrum
    * across reads by default, which at one read every look would carry the
    * last look's bass into this one's for many looks after the music changed:
@@ -187,11 +230,23 @@ test.describe("§34 / §36: the floor's other signals", () => {
    * thing djmanzo touches; the room surface's rule is that no frame and no
    * sample leaves it, and the floor's signals keep it.
    */
-  test("what crosses to Rust is eight numbers and nothing else", async () => {
+  test("what crosses to Rust is eleven numbers and nothing else", async () => {
     const seen = await scene("scatter", "claps", 4);
     for (const look of seen) {
       expect(Object.keys(look).sort()).toEqual(
-        ["applause", "heard", "high", "low", "mid", "scene", "together", "uneven"].sort(),
+        [
+          "applause",
+          "density",
+          "heard",
+          "high",
+          "lighting",
+          "low",
+          "mid",
+          "occupancy",
+          "scene",
+          "together",
+          "uneven",
+        ].sort(),
       );
       expect(JSON.stringify(look).length, "a look carried more than numbers").toBeLessThan(400);
     }

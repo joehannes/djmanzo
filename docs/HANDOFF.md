@@ -160,6 +160,45 @@ without a microphone has, for driving anything that listens to a strip (K6).
 - The controller stand-in proves a mapping's bytes reach the vocabulary
   through the real callback; it cannot prove a controller sends what its
   mapping says. A mapping naming the wrong note passes.
+- *(Round 2.)* A night's row figures are text on purpose (`"5,2,1"`,
+  `"3,18,40"`), read back by `profile::counts_of`, which refuses a row with
+  the wrong number of parts rather than reading it as zeros. A new figure
+  follows the same rule.
+- **An analyser that changes its answer is an `analysis::CACHE_VERSION`
+  bump** even when no field moved — the doc on it says so and it was still
+  missed once: the breakdown fix passed every test and the running
+  application kept showing the old answer, because the deck load reads the
+  on-disk cache under `~/.cache` (not under `XDG_DATA_HOME`, so a fresh data
+  directory does not clear it) and writes that into the library.
+- **`energy::Trajectory::changes` still counts in windows** (`AT_LEAST`,
+  §116): the assumption the breakdown finder had until 17 October, so at a
+  thirty-two-beat phrase a current has to be in or out for sixty-four beats
+  before *What changes next* names it. It wants the breakdown finder's
+  beats-based rule (`windows_for`) and a test of its own.
+- **The floor's occupancy reads against a running average that includes
+  the frame before it.** `RoomSense` reads `occupied` and only then `learn`s
+  from the frame: the other way round, the frame being judged is already
+  part of the look it is judged against.
+- **`dj_audio::null::play_into_inputs` is the whole backend's.** Every null
+  input opened afterwards at that rate plays the recording, a microphone
+  strip included, so with `DJMANZO_STANDIN_TIMECODE` set the singers' and
+  room inputs hear the control record. Its test opens at 44 123 Hz so no
+  other test is caught by it; a new test of the null inputs should not use
+  that rate.
+- **Under Xvfb the top bar wraps and unwraps** as its readouts change width,
+  moving everything below it about thirty pixels; an `xdotool` click aimed
+  from an older screenshot lands on the wrong control. Take the screenshot
+  right before the click.
+- **The stand-ins in the running application:** `DJMANZO_NULL_AUDIO=1
+  DJMANZO_STANDIN_TIMECODE=1 DJMANZO_STANDIN_CONTROLLER=generic-2-deck`.
+  The timecode status is in Settings (*Show Settings* from the palette,
+  well down, under *Timecode vinyl*); the controller in *Show Controllers*.
+  *Press every control* leaves every EQ, filter, pitch and the crossfader
+  where a full sweep leaves them — at the top.
+- **The disk allowance fills with stale test binaries.** On 17 October
+  `target/debug/deps` reached 21 GB and the gates died with no space left;
+  deleting all but the newest `name-hash` executable per crate freed 13 GB
+  without a rebuild.
 
 **From the karaoke beta's session A** (its notes, kept here):
 
@@ -1546,6 +1585,17 @@ signals, hardware stand-ins) keep their state in
 [parallel/session-1.md](parallel/session-1.md) and
 [parallel/session-2.md](parallel/session-2.md); read those before this
 section, which is written at the fold.
+
+**Both rounds of both sessions are in `main` and released as v0.46.0** (17
+October). Session 2's round 2 was §12 across nights (the effect pair, the
+staged-move verdicts and *how quickly the DJ changes plans* kept on each
+night's row and read back into the profile), §20/§75's breakdowns column
+(which found the breakdown finder missing every breakdown under sixteen bars
+on a thirty-two-beat record, and the analysis cache holding the old answer),
+§34/§36's last four floor signals against stand-ins, and §106's stand-ins
+in the running application (which found the Controllers panel hiding an open
+controller on a machine with no MIDI service). Session 1's ROADMAP/FEATURES
+truth pass was not part of it.
 
 **Editions (17 October, §130).** djmanzo is to be sold at seven levels —
 Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full, Custom — each its

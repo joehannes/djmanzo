@@ -198,6 +198,52 @@ test.describe("§20's columns", () => {
   });
 
   /**
+   * **§20/§75's breakdowns: where the first one starts, three answers apart,
+   * and the column sorts by it.**
+   *
+   * A record with a breakdown at 1:35, one measured and found to have none,
+   * and one nobody measured. Sorted ascending, the breakdown comes first, the
+   * record with none after it and the unmeasured one last; the vocal and
+   * breakdown readings used to compare as equal objects, which left those
+   * columns' sorts doing nothing.
+   */
+  test("the breakdown column says where, or none, or nothing, and sorts by it", async ({
+    page,
+  }) => {
+    const rows = ANSWERS.library_search as Record<string, unknown>[];
+    const row = (n: string, title: string, breakdown: unknown) => ({
+      ...rows[0],
+      id: n.repeat(64),
+      path: `/music/${n}.flac`,
+      title,
+      breakdown,
+    });
+    await openShell(page, "/", {}, {
+      library_search: [
+        row("a", "Never Measured", null),
+        row("b", "Has None", { at: null }),
+        row("c", "Breaks Early", { at: 95.2 }),
+      ],
+    });
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await expect(page.locator(TABLE)).toBeVisible();
+    await page.getByTestId("columns-toggle").click();
+    await tick(page, "breakdown").check();
+    await expect(page.locator(HEAD("breakdown"))).toHaveCount(1);
+
+    await page.locator(`${HEAD("breakdown")} button`).click();
+    const titles = await page.locator(`${TABLE} td.title`).allTextContents();
+    const cells = (await page.locator(CELL("breakdown")).allTextContents()).map((c) => c.trim());
+    expect(titles.map((t) => t.trim().split("\n")[0].trim())).toEqual([
+      expect.stringContaining("Breaks Early"),
+      expect.stringContaining("Has None"),
+      expect.stringContaining("Never Measured"),
+    ]);
+    expect(cells).toEqual(["1:35", "\u2013", ""]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * §20's readings, drawn as readings rather than as numbers.
    *
    * A rating is stars because it is read at a glance and "4" looks like a

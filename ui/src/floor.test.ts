@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { BINS, bands, clicks, flow, histogram, sceneChange } from "./floor";
+import {
+  BINS,
+  LEARNED_AFTER,
+  bands,
+  clicks,
+  flow,
+  histogram,
+  learn,
+  lighting,
+  occupied,
+  sceneChange,
+  type Background,
+} from "./floor";
 
 const RATE = 48_000;
 
@@ -188,5 +200,132 @@ describe("the picture changing as a whole", () => {
     const dark = new Float32Array(1000).fill(20);
     const half = dark.map((v, i) => (i < 500 ? 200 : v));
     expect(sceneChange(histogram(dark), histogram(half))).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("§34's occupancy and crowd density, as proxies", () => {
+  const W = 64;
+  const H = 48;
+  /** A dark room with a little texture, the same every look. */
+  const room = () => {
+    const out = new Float32Array(W * H);
+    for (let i = 0; i < out.length; i++) out[i] = 20 + 10 * Math.sin(i * 0.37);
+    return out;
+  };
+  /** The room with bright squares of `side` pixels at each of `at`. */
+  const withFigures = (at: [number, number][], side: number) => {
+    const out = room();
+    for (const [x0, y0] of at) {
+      for (let y = y0; y < y0 + side && y < H; y++) {
+        for (let x = x0; x < x0 + side && x < W; x++) out[y * W + x] = 160;
+      }
+    }
+    return out;
+  };
+  const learned = (looks: number) => {
+    let background: Background | null = null;
+    for (let i = 0; i < looks; i++) background = learn(background, room());
+    return background;
+  };
+
+  it("reads nothing until the room's look has been learned", () => {
+    const frame = withFigures([[10, 10]], 6);
+    expect(occupied(learned(LEARNED_AFTER - 1), frame, W, H)).toEqual({ occupancy: null, density: null });
+    expect(occupied(null, frame, W, H)).toEqual({ occupancy: null, density: null });
+    expect(occupied(learned(LEARNED_AFTER), room(), W, H).occupancy).toBe(0);
+  });
+
+  it("counts more of the picture occupied by many figures than by a few", () => {
+    const background = learned(20);
+    const few = occupied(background, withFigures([[4, 4], [50, 36]], 6), W, H);
+    const packed: [number, number][] = [];
+    for (let y = 12; y < 40; y += 7) for (let x = 8; x < 56; x += 7) packed.push([x, y]);
+    const many = occupied(background, withFigures(packed, 6), W, H);
+    expect(few.occupancy).toBeCloseTo((2 * 36) / (W * H), 5);
+    expect(many.occupancy!).toBeGreaterThan(few.occupancy! * 5);
+    // Packed together, the occupied blocks have occupied blocks beside them;
+    // two figures across the room have only their own.
+    expect(many.density!).toBeGreaterThan(0.5);
+    expect(few.density!).toBeLessThan(0.25);
+  });
+
+  it("does not hold the first frame, with somebody in it, as the empty room", () => {
+    // The camera is switched on with a figure in view, who then walks off.
+    let background: Background | null = learn(null, withFigures([[29, 20]], 6));
+    for (let i = 1; i < LEARNED_AFTER + 2; i++) background = learn(background, room());
+    expect(occupied(background, room(), W, H).occupancy).toBe(0);
+  });
+
+  it("does not read specks scattered over the picture as a packed crowd", () => {
+    const background = learned(20);
+    const specks = room();
+    // One pixel in every block over most of the picture: sensor noise, or
+    // glitter, and nothing that fills a block.
+    for (let y = 2; y < H - 4; y += 4) for (let x = 2; x < W - 4; x += 4) specks[y * W + x] = 200;
+    const read = occupied(background, specks, W, H);
+    expect(read.occupancy!).toBeGreaterThan(0);
+    expect(read.density).toBeNull();
+  });
+
+  it("says nothing about how three blocks of nothing pack", () => {
+    const background = learned(20);
+    const tiny = occupied(background, withFigures([[30, 20]], 2), W, H);
+    expect(tiny.occupancy!).toBeGreaterThan(0);
+    expect(tiny.density).toBeNull();
+  });
+
+  it("lets a crowd that keeps moving stay out of the room's look, and lets a lamp in", () => {
+    // A figure that moves every look never becomes the room.
+    let background: Background | null = null;
+    for (let i = 0; i < 200; i++) background = learn(background, withFigures([[(i * 9) % 58, 20]], 6));
+    const moving = occupied(background, withFigures([[29, 20]], 6), W, H);
+    expect(moving.occupancy!).toBeGreaterThan(0.005);
+    // A light left on in one place does, given long enough.
+    let lamp: Background | null = learned(20);
+    for (let i = 0; i < 300; i++) lamp = learn(lamp, withFigures([[29, 20]], 6));
+    expect(occupied(lamp, withFigures([[29, 20]], 6), W, H).occupancy).toBe(0);
+  });
+});
+
+describe("lighting moving, as distinct from the scene changing", () => {
+  const W = 64;
+  const H = 48;
+  /** A dark textured room with a bright vertical beam `wide` pixels across at `x`. */
+  const beam = (x: number, wide = 3) => {
+    const out = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let px = 0; px < W; px++) {
+        out[y * W + px] = px >= x && px < x + wide ? 240 : 15 + 10 * Math.sin(px * 0.5 + y * 0.3);
+      }
+    }
+    return out;
+  };
+
+  it("follows a beam sweeping across the room, which does not change the scene", () => {
+    const moved = lighting(beam(10), beam(30), W, H);
+    expect(moved!).toBeGreaterThan(0.9);
+    expect(sceneChange(histogram(beam(10)), histogram(beam(30)))).toBeLessThan(0.05);
+    expect(lighting(beam(10), beam(12), W, H)!).toBeCloseTo(2 / (Math.hypot(W, H) * 0.1), 5);
+  });
+
+  it("does not follow a single bright speck", () => {
+    const speck = (x: number) => {
+      const out = new Float32Array(W * H).fill(30);
+      out[20 * W + x] = 250;
+      out[20 * W + x + 1] = 250;
+      return out;
+    };
+    expect(lighting(speck(10), speck(40), W, H)).toBeNull();
+  });
+
+  it("reads a still light as still, and has nothing to follow in the dark", () => {
+    expect(lighting(beam(20), beam(20), W, H)).toBe(0);
+    const dark = new Float32Array(W * H).fill(30);
+    expect(lighting(dark, beam(20), W, H)).toBeNull();
+    // The lights snapping on change the scene and leave nothing to follow
+    // from: the two readings are about different things.
+    const bright = new Float32Array(W * H).fill(150);
+    expect(sceneChange(histogram(dark), histogram(bright))).toBeGreaterThan(0.9);
+    expect(lighting(dark, bright, W, H)).toBeNull();
   });
 });

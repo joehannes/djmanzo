@@ -159,6 +159,36 @@ pub struct Profile {
     automation: Option<Posture>,
     techniques: Vec<Did>,
     genres: Vec<(String, f64)>,
+    pair: Option<(EffectKind, EffectKind)>,
+    staged: Option<Staged>,
+    changes: Option<Changes>,
+}
+
+/// §12/§44 across nights: what this DJ does with what djmanzo stages, as
+/// shares of the moves, weighed by when.
+///
+/// Counts, never a preference: nothing here changes what is staged next. It
+/// is the DJ's own record of how often they took djmanzo's word, changed it,
+/// or turned it down, kept so the assistant and the DJ can see it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Staged {
+    /// How many moves it rests on, unweighted.
+    pub moves: u32,
+    pub offered: f64,
+    pub changed: f64,
+    pub rejected: f64,
+}
+
+/// §12's *how quickly the DJ changes plans*, across nights: how often a
+/// record they cued was replaced before it played, and how long it had sat.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Changes {
+    /// How many loads it rests on, unweighted.
+    pub loads: u32,
+    /// The share of loads that replaced a cued record, weighed by when.
+    pub share: f64,
+    /// How many seconds a replaced record had usually sat cued, when any was.
+    pub seconds: Option<f64>,
 }
 
 impl Profile {
@@ -226,6 +256,24 @@ impl Profile {
     #[must_use]
     pub fn automation(&self) -> Option<Posture> {
         self.automation
+    }
+
+    /// §12: the two effects they run together here, when enough nights agree.
+    #[must_use]
+    pub fn pair(&self) -> Option<(EffectKind, EffectKind)> {
+        self.pair
+    }
+
+    /// §12/§44: what they do with staged moves here, as shares.
+    #[must_use]
+    pub fn staged(&self) -> Option<Staged> {
+        self.staged
+    }
+
+    /// §12: how often, and how soon, they change the record they cued here.
+    #[must_use]
+    pub fn changes(&self) -> Option<Changes> {
+        self.changes
     }
 
     /// The gestures that show up on most of these nights.
@@ -357,8 +405,39 @@ impl Profile {
         if let Some(effect) = self.effect {
             said.push_str(&format!(", {} as the effect", effect.name()));
         }
+        if let Some((first, second)) = self.pair {
+            said.push_str(&format!(
+                ", {} and {} together",
+                first.name(),
+                second.name()
+            ));
+        }
         if let Some(posture) = self.automation {
             said.push_str(&format!(", assistant on {}", posture.name()));
+        }
+        if let Some(staged) = self.staged {
+            #[allow(clippy::cast_possible_truncation)]
+            let percent = |share: f64| (share * 100.0).round() as i64;
+            said.push_str(&format!(
+                ", staged moves {}% taken as offered, {}% changed, {}% turned down",
+                percent(staged.offered),
+                percent(staged.changed),
+                percent(staged.rejected)
+            ));
+        }
+        if let Some(changes) = self.changes {
+            #[allow(clippy::cast_possible_truncation)]
+            let percent = (changes.share * 100.0).round() as i64;
+            match changes.seconds {
+                Some(seconds) if percent > 0 => {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let seconds = seconds.round() as i64;
+                    said.push_str(&format!(
+                        ", a cued record replaced before it played on {percent}% of loads, after about {seconds} s"
+                    ));
+                }
+                _ => said.push_str(", the record cued is the record played"),
+            }
         }
         said.push('.');
         said
@@ -410,8 +489,92 @@ pub fn profiles(nights: &[Night], played: &dyn Fn(Setting) -> Played, now: i64) 
                 .and_then(|word| Posture::ALL.into_iter().find(|p| p.name() == word)),
             techniques: usual(&seen, now),
             genres: shares(played.genres),
+            pair: agreed(seen.iter().map(|n| (n.pair.clone(), weight(n, now))))
+                .and_then(|word| pair_of(&word)),
+            staged: staged(&seen, now),
+            changes: changes(&seen, now),
         })
         .collect()
+}
+
+/// A pair as the night's row keeps it (`"echo+filter"`), read back.
+fn pair_of(word: &str) -> Option<(EffectKind, EffectKind)> {
+    let (first, second) = word.split_once('+')?;
+    let first = EffectKind::parse(first).filter(|k| *k != EffectKind::None)?;
+    let second = EffectKind::parse(second).filter(|k| *k != EffectKind::None)?;
+    Some((first, second))
+}
+
+/// Numbers kept comma-separated on a night's row, read back; `None` for a
+/// row that is absent or malformed, which then answers nothing.
+fn counts_of<const N: usize>(word: Option<&str>) -> Option<[u32; N]> {
+    let mut out = [0_u32; N];
+    let mut parts = word?.split(',');
+    for slot in &mut out {
+        *slot = parts.next()?.trim().parse().ok()?;
+    }
+    parts.next().is_none().then_some(out)
+}
+
+/// §12/§44 across nights: the verdicts as shares, each night weighed on
+/// `learned::recency` like everything else here, and nothing on fewer than
+/// [`ENOUGH_PLAYS`] moves in all.
+fn staged(nights: &[&Night], now: i64) -> Option<Staged> {
+    let mut moves = 0_u32;
+    let mut weighed = [0.0_f64; 3];
+    for night in nights {
+        let Some(counts) = counts_of::<3>(night.verdicts.as_deref()) else {
+            continue;
+        };
+        let weight = weight(night, now);
+        for (slot, count) in weighed.iter_mut().zip(counts) {
+            *slot += weight * f64::from(count);
+        }
+        moves += counts.iter().sum::<u32>();
+    }
+    let total: f64 = weighed.iter().sum();
+    if (moves as usize) < ENOUGH_PLAYS || total <= 0.0 {
+        return None;
+    }
+    Some(Staged {
+        moves,
+        offered: weighed[0] / total,
+        changed: weighed[1] / total,
+        rejected: weighed[2] / total,
+    })
+}
+
+/// §12's *how quickly the DJ changes plans*, across nights: the swaps as a
+/// share of the loads, weighed by when, and the seconds a replaced record sat
+/// as each night's middle weighed by how many it replaced. Nothing on fewer
+/// than [`ENOUGH_PLAYS`] loads in all.
+fn changes(nights: &[&Night], now: i64) -> Option<Changes> {
+    let (mut loads, mut swapped_w, mut loaded_w) = (0_u32, 0.0_f64, 0.0_f64);
+    let (mut seconds_w, mut seconds_sum) = (0.0_f64, 0.0_f64);
+    for night in nights {
+        let Some([swapped, loaded, seconds]) = counts_of::<3>(night.swaps.as_deref()) else {
+            continue;
+        };
+        if loaded == 0 || swapped > loaded {
+            continue;
+        }
+        let weight = weight(night, now);
+        loads += loaded;
+        swapped_w += weight * f64::from(swapped);
+        loaded_w += weight * f64::from(loaded);
+        if swapped > 0 {
+            seconds_w += weight * f64::from(swapped);
+            seconds_sum += weight * f64::from(swapped) * f64::from(seconds);
+        }
+    }
+    if (loads as usize) < ENOUGH_PLAYS || loaded_w <= 0.0 {
+        return None;
+    }
+    Some(Changes {
+        loads,
+        share: swapped_w / loaded_w,
+        seconds: (seconds_w > 0.0).then(|| seconds_sum / seconds_w),
+    })
 }
 
 /// What was played on one kind of night, as the library can derive it.
@@ -455,6 +618,11 @@ pub struct Tonight {
     pub loop_beats: Option<f32>,
     /// §12: the effect the DJ switched on most tonight.
     pub effect: Option<EffectKind>,
+    /// §12: the two effects run together most tonight, as the row keeps it
+    /// (`"echo+filter"`), when it happened [`crate::signals::ENOUGH`] times.
+    pub pair: Option<String>,
+    /// §12: tonight's swaps, as the row keeps them (`Swaps::stored`).
+    pub swaps: Option<String>,
 }
 
 /// Read tonight's log as [`Tonight`].
@@ -511,12 +679,22 @@ pub fn tonight(
     )
     .and_then(|word| EffectKind::parse(&word));
 
+    // The commonest pair, if the DJ's hand made it often enough to be more
+    // than a moment — §13's four, as for every figure a night keeps.
+    let pair = crate::signals::effect_combinations(log)
+        .into_iter()
+        .find(|pair| pair.times >= crate::signals::ENOUGH)
+        .map(|pair| format!("{}+{}", pair.first.name(), pair.second.name()));
+    let swaps = crate::signals::swaps(log).stored();
+
     Tonight {
         techniques,
         style,
         length,
         loop_beats,
         effect,
+        pair,
+        swaps,
     }
 }
 
@@ -888,6 +1066,9 @@ mod tests {
             length: None,
             loop_beats: None,
             effect: None,
+            pair: None,
+            verdicts: None,
+            swaps: None,
         }
     }
 
@@ -1454,8 +1635,14 @@ mod tests {
         );
 
         let automixed = tonight(&night(By::Machine), &peak, &at_120);
+        // The two loads in this log are the DJ's own hand — only the mixing is
+        // the automix's — so two loaded and none replaced is true of it.
+        assert_eq!(automixed.swaps.as_deref(), Some("0,2,0"));
         assert_eq!(
-            automixed,
+            Tonight {
+                swaps: None,
+                ..automixed
+            },
             Tonight::default(),
             "the automix's night was filed as the DJ's"
         );
@@ -1928,5 +2115,149 @@ mod tests {
         let mut ahead = night("b", "club");
         ahead.began_at = now + 90 * DAY;
         assert!((weight(&ahead, now) - 1.0).abs() < 1e-6);
+    }
+
+    /// **§12 across nights: the pair, the staged moves and the swaps are read
+    /// back from the nights' rows**, as a profile reads everything else — the
+    /// pair by agreement, the moves and the swaps as weighed shares — and said.
+    #[test]
+    fn a_pair_staged_moves_and_swaps_are_read_back_across_nights() {
+        let mut rows = nights("club", 3);
+        rows[0].pair = Some("echo+filter".to_owned());
+        rows[1].pair = Some("echo+filter".to_owned());
+        rows[2].pair = Some("echo+reverb".to_owned());
+        rows[0].verdicts = Some("5,1,0".to_owned());
+        rows[1].verdicts = Some("4,2,0".to_owned());
+        rows[2].verdicts = Some("3,0,1".to_owned());
+        rows[0].swaps = Some("2,10,30".to_owned());
+        rows[1].swaps = Some("1,8,60".to_owned());
+        rows[2].swaps = Some("0,6,0".to_owned());
+        let club = &profiles(&rows, &nothing, NOW)[0];
+
+        assert_eq!(club.pair(), Some((EffectKind::Echo, EffectKind::Filter)));
+        let staged = club.staged().expect("sixteen moves is enough");
+        assert_eq!(staged.moves, 16);
+        assert!((staged.offered - 0.75).abs() < 1e-9, "{staged:?}");
+        assert!((staged.changed - 0.1875).abs() < 1e-9, "{staged:?}");
+        assert!((staged.rejected - 0.0625).abs() < 1e-9, "{staged:?}");
+        let changes = club.changes().expect("twenty-four loads is enough");
+        assert_eq!(changes.loads, 24);
+        assert!((changes.share - 0.125).abs() < 1e-9, "{changes:?}");
+        // Each night's middle, weighed by how many it replaced: 30 s twice and
+        // 60 s once.
+        assert!(
+            (changes.seconds.unwrap() - 40.0).abs() < 1e-9,
+            "{changes:?}"
+        );
+
+        let said = club.words();
+        assert!(said.contains("echo and filter together"), "{said}");
+        assert!(
+            said.contains("staged moves 75% taken as offered, 19% changed, 6% turned down"),
+            "{said}"
+        );
+        assert!(
+            said.contains(
+                "a cued record replaced before it played on 13% of loads, after about 40 s"
+            ),
+            "{said}"
+        );
+    }
+
+    /// **Too few moves or loads says nothing**, and a row nobody can read is
+    /// left out rather than read as zeros.
+    #[test]
+    fn too_few_moves_or_loads_says_nothing_and_a_bad_row_is_left_out() {
+        let mut rows = nights("club", 3);
+        for row in &mut rows {
+            row.verdicts = Some("2,1,0".to_owned());
+            row.swaps = Some("1,3,20".to_owned());
+        }
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        assert_eq!(club.staged(), None, "nine moves is not enough");
+        assert_eq!(club.changes(), None, "nine loads is not enough");
+
+        rows[0].verdicts = Some("40,0,0".to_owned());
+        rows[1].verdicts = Some("nonsense".to_owned());
+        rows[2].verdicts = Some("1,2".to_owned());
+        rows[0].swaps = Some("50,20,10".to_owned());
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        let staged = club.staged().expect("forty moves");
+        assert_eq!(staged.moves, 40, "the unreadable rows were read");
+        assert!((staged.offered - 1.0).abs() < 1e-9);
+        // More swaps than loads is not a night anything happened on.
+        assert_eq!(club.changes(), None);
+
+        let mut never = nights("club", 3);
+        for row in &mut never {
+            row.swaps = Some("0,8,0".to_owned());
+        }
+        let club = &profiles(&never, &nothing, NOW)[0];
+        assert_eq!(club.changes().unwrap().seconds, None);
+        assert!(
+            club.words()
+                .contains("the record cued is the record played")
+        );
+    }
+
+    /// **Old nights fade.** Two years of turning everything down, then three
+    /// recent nights of taking it as offered: the profile says what they do
+    /// now, on `learned::recency`'s curve.
+    #[test]
+    fn old_verdicts_fade_against_new_ones() {
+        const DAY: i64 = 86_400;
+        let mut rows = nights("club", 6);
+        for (i, row) in rows.iter_mut().enumerate() {
+            if i < 3 {
+                row.began_at = NOW - 730 * DAY;
+                row.verdicts = Some("0,0,10".to_owned());
+            } else {
+                row.began_at = NOW;
+                row.verdicts = Some("10,0,0".to_owned());
+            }
+        }
+        let staged = profiles(&rows, &nothing, NOW)[0].staged().unwrap();
+        assert!(
+            staged.offered > 0.9,
+            "the old nights outvoted the new: {staged:?}"
+        );
+    }
+
+    /// **Tonight's pair needs §13's four**: echo with filter brought in three
+    /// times is not yet a habit to file, four times is.
+    #[test]
+    fn tonights_pair_needs_four_times() {
+        use dj_core::fx::FxChange::{Select, SetEnabled, ToggleEnabled};
+        use dj_core::{Action, DeckAction, DeckId};
+        let fx = |secs: f64, slot: u8, change: dj_core::fx::FxChange| {
+            TimedEvent::hand(
+                Duration::from_secs_f64(secs),
+                dj_control::SessionEvent::Action(Action::Deck {
+                    deck: DeckId::from_human(1).unwrap(),
+                    action: DeckAction::Fx { slot, change },
+                }),
+            )
+        };
+        let log = |times: u8| {
+            let mut log = vec![
+                fx(0.0, 1, Select(EffectKind::Echo)),
+                fx(1.0, 1, SetEnabled(true)),
+                fx(2.0, 2, Select(EffectKind::Filter)),
+            ];
+            // Each pair of toggles brings the filter in once over the echo.
+            for n in 0..times {
+                let at = 3.0 + f64::from(n) * 2.0;
+                log.push(fx(at, 2, ToggleEnabled));
+                log.push(fx(at + 1.0, 2, ToggleEnabled));
+            }
+            log
+        };
+        let peak = |_: Duration| Some(SessionPhase::Peak);
+        let none = |_: TrackId| None;
+        assert_eq!(tonight(&log(3), &peak, &none).pair, None);
+        assert_eq!(
+            tonight(&log(4), &peak, &none).pair.as_deref(),
+            Some("echo+filter")
+        );
     }
 }

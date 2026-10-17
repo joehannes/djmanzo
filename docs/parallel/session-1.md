@@ -41,8 +41,8 @@ the shared documents at the fold (§5).
 - **§130, editions, planned and the parts list built**: the owner named seven
   editions, separate downloads and half the competitors' prices
   (`docs/EDITIONS.md`, ADR-0010, `dj_core::edition`). The build switch
-  touches `lib.rs` and `App.svelte`, so it waits for Session 2's round 2 to
-  be merged.
+  touches `lib.rs` and `App.svelte`, so it waited for Session 2's round 2,
+  merged as v0.46.0 the same evening; it is next.
 
 ### Round 2
 
