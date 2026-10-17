@@ -474,6 +474,83 @@ pub fn effect_combinations(events: &[TimedEvent]) -> Vec<Combination> {
     out
 }
 
+/// §12's *how quickly the DJ changes plans*, as the log can honestly show it.
+///
+/// A plan, here, is the record the DJ cued: loaded on a deck that has not
+/// played it yet. Changing the plan is loading another record on that deck
+/// before pressing play — a fact in the log, not a reading of anybody's mind.
+/// Counted out of the records they loaded by hand, with how long the replaced
+/// record sat cued at the middle of them, so "quickly" is a number of seconds
+/// and not an adjective.
+///
+/// **Only the DJ's hand on both sides.** A record djmanzo cued and the DJ
+/// replaced is a rejected suggestion, which §44's verdicts count already; a
+/// record the DJ cued and djmanzo replaced is the automix's doing. Loading the
+/// same record again is a re-cue, not a change of plan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Swaps {
+    /// Records the DJ cued and replaced before they played.
+    pub swapped: usize,
+    /// Records the DJ loaded by hand.
+    pub loaded: usize,
+    /// How long a replaced record sat cued, at the middle of them; `None`
+    /// when nothing was replaced.
+    pub sat: Option<Duration>,
+}
+
+impl Swaps {
+    /// As the night's row keeps it: `"swapped,loaded,seconds"`, or `None`
+    /// before anything was loaded by hand.
+    #[must_use]
+    pub fn stored(&self) -> Option<String> {
+        (self.loaded > 0).then(|| {
+            format!(
+                "{},{},{}",
+                self.swapped,
+                self.loaded,
+                self.sat.map_or(0, |sat| sat.as_secs())
+            )
+        })
+    }
+}
+
+/// Read tonight's swaps off the log; see [`Swaps`].
+#[must_use]
+pub fn swaps(events: &[TimedEvent]) -> Swaps {
+    // Per deck: the record cued and not yet played, when, and by whose hand.
+    let mut cued: BTreeMap<DeckId, (Duration, dj_core::TrackId, By)> = BTreeMap::new();
+    let mut out = Swaps::default();
+    let mut sat: Vec<Duration> = Vec::new();
+    for entry in events {
+        match entry.event {
+            SessionEvent::Load { deck, track } => {
+                if entry.by == By::Hand {
+                    out.loaded += 1;
+                    if let Some((when, before, By::Hand)) = cued.get(&deck).copied()
+                        && before != track
+                    {
+                        out.swapped += 1;
+                        sat.push(entry.at.saturating_sub(when));
+                    }
+                }
+                cued.insert(deck, (entry.at, track, entry.by));
+            }
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Play | DeckAction::PlayPause,
+            }) => {
+                // Played: whatever happens to the deck now is a new record
+                // after this one, not a change of mind about it.
+                cued.remove(&deck);
+            }
+            _ => {}
+        }
+    }
+    sat.sort_unstable();
+    out.sat = sat.get(sat.len() / 2).copied();
+    out
+}
+
 /// The gesture an event is, if it is one of §14's — also what §119 draws a
 /// night's actions by (`crate::crowd::moves`).
 pub(crate) fn did(event: &SessionEvent) -> Option<Did> {
@@ -593,6 +670,63 @@ mod tests {
                 action: DeckAction::SetEqLow(0.2),
             },
         )
+    }
+
+    fn load(secs: f64, n: u8, track: u8, by: By) -> TimedEvent {
+        TimedEvent {
+            at: Duration::from_secs_f64(secs),
+            event: SessionEvent::Load {
+                deck: deck(n),
+                track: dj_core::TrackId::from_bytes([track; 32]),
+            },
+            by,
+        }
+    }
+
+    fn play(secs: f64, n: u8) -> TimedEvent {
+        at(
+            secs,
+            Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            },
+        )
+    }
+
+    /// **A cued record replaced before it played is a change of plan, and
+    /// nothing else is.** Not a record replaced after it played, not the same
+    /// record loaded again, not a record djmanzo cued or replaced; and the
+    /// time it sat is counted at the middle, in seconds.
+    #[test]
+    fn a_cued_record_replaced_before_it_played_is_a_change_of_plan() {
+        let log = [
+            // Deck 1: cued, thought better of after 30 s, then 50 s, then played.
+            load(0.0, 1, 1, By::Hand),
+            load(30.0, 1, 2, By::Hand),
+            load(80.0, 1, 3, By::Hand),
+            play(90.0, 1),
+            // Played, then the next record: not a change of plan.
+            load(300.0, 1, 4, By::Hand),
+            // The same record again: a re-cue.
+            load(310.0, 1, 4, By::Hand),
+            // Deck 2: djmanzo cued it and the DJ replaced it — a verdict, not
+            // a swap — and then djmanzo replaced the DJ's: the automix's.
+            load(0.0, 2, 5, By::Machine),
+            load(20.0, 2, 6, By::Hand),
+            load(40.0, 2, 7, By::Machine),
+            // Deck 2 again, the DJ's own, replaced after 10 s.
+            load(50.0, 2, 8, By::Hand),
+            load(60.0, 2, 9, By::Hand),
+        ];
+        let read = swaps(&log);
+        assert_eq!(read.swapped, 3, "{read:?}");
+        assert_eq!(read.loaded, 8, "{read:?}");
+        assert_eq!(read.sat, Some(Duration::from_secs(30)), "{read:?}");
+        assert_eq!(read.stored().as_deref(), Some("3,8,30"));
+
+        assert_eq!(swaps(&[]).stored(), None);
+        let none = swaps(&[load(0.0, 1, 1, By::Hand), play(5.0, 1)]);
+        assert_eq!(none.stored().as_deref(), Some("0,1,0"));
     }
 
     const PEAK: fn(Duration) -> Option<SessionPhase> = |_| Some(SessionPhase::Peak);

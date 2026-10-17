@@ -346,6 +346,21 @@ fn habit_lines(state: &AppState, log: &[dj_control::TimedEvent]) -> Vec<String> 
         .map(|seen| dj_library::conventions::words(&dj_library::conventions::conventions(&seen)))
         .unwrap_or_default();
     let verdicts = state.night().verdicts().words();
+    // §12's *how quickly the DJ changes plans*: cued records replaced before
+    // they played, out of the records loaded by hand.
+    let swaps = crate::signals::swaps(log);
+    let changed = if swaps.loaded == 0 {
+        String::new()
+    } else {
+        let after = swaps
+            .sat
+            .map(|sat| format!(", after about {} s", sat.as_secs()))
+            .unwrap_or_default();
+        format!(
+            "{} of {} records loaded by hand replaced before they played{after}",
+            swaps.swapped, swaps.loaded
+        )
+    };
     let said = |text: String| {
         if text.is_empty() {
             "none".to_owned()
@@ -360,6 +375,7 @@ fn habit_lines(state: &AppState, log: &[dj_control::TimedEvent]) -> Vec<String> 
         ),
         format!("cue pads: {}", said(pads)),
         format!("staged transactions tonight: {}", said(verdicts)),
+        format!("cued records changed tonight: {}", said(changed)),
     ]
 }
 
@@ -689,6 +705,10 @@ mod tests {
         assert_eq!(
             line(&state, "staged transactions tonight:"),
             "staged transactions tonight: none"
+        );
+        assert_eq!(
+            line(&state, "cued records changed tonight:"),
+            "cued records changed tonight: none"
         );
         state.night().note_verdict(crate::staged::Verdict::Rejected);
         state

@@ -3057,6 +3057,14 @@ export interface Profile {
   genres: [string, number][];
   /** The sentence, written in Rust so a panel cannot assemble a stronger one. */
   says: string;
+  /** §12: the two effects they run together here, by name. */
+  pair?: [string, string] | null;
+  /** §12/§44: staged moves taken as offered, changed, turned down, as shares. */
+  staged?: [number, number, number] | null;
+  /** §12: the share of loads that replaced a cued record before it played. */
+  swapped?: number | null;
+  /** §12: how many seconds a replaced record had usually sat cued. */
+  swapped_after?: number | null;
 }
 
 /**

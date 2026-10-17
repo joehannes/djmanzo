@@ -40,6 +40,72 @@ written under *Needed* below for the fold.
   hardware**: no controller, turntable, control record or MIDI service has
   touched any of it.
 
+## Round 2 (from 17 October, on `main` at `04c9e67`)
+
+**Owner's choices (17 October):** Session 1 has finished and merged to
+`main`, so this round edits Session 1's files directly where it needs to
+(`commands.rs`, `columns.rs`, `Library.svelte`, the null audio host,
+`control.rs`, `shell.ts`) instead of leaving notes, folds its own notes into
+the shared documents, merges into `main` and releases v0.46.0. Session 1's
+leftovers (the ROADMAP/FEATURES truth pass, closing §115/§118/§121) are not
+this round's.
+
+### Round 2 status
+
+- **1. §12 across nights — built.** Three more figures kept on each night's
+  row (migration 22: `pair`, `verdicts`, `swaps`), written by
+  `night_setting` (its body now `commands::note_tonight`, so a test drives
+  it through `AppState`) and read back by `profile` with `learned::recency`'s
+  decay: the two effects run together (by agreement, as the other figures),
+  what was done with staged moves (weighed shares, nothing on fewer than
+  twelve moves), and **how quickly the DJ changes plans** — new,
+  `signals::swaps`: a record the DJ loaded by hand and replaced on the same
+  deck before pressing play, counted out of the records they loaded, with how
+  long the replaced one sat cued at the middle of them (nothing on fewer than
+  twelve loads). A record djmanzo cued, or one djmanzo replaced, or the same
+  record loaded again, is not a change of the DJ's plan. All three reach the
+  profile's sentence and its DTO; tonight's swaps reach the assistant's
+  briefing. Held by `signals::tests::a_cued_record_replaced_before_it_played_is_a_change_of_plan`,
+  `profile::tests` (four new), `store::tests::a_nights_pair_verdicts_and_swaps_are_kept`
+  and `commands::persistence_tests::a_nights_verdicts_and_swaps_reach_its_row`;
+  eleven mutants fail them. Not driven under Xvfb: a profile needs three
+  nights of a setting and the change is a sentence in a panel that a fresh
+  install leaves empty.
+
+### Round 2 changelog lines
+
+- **What the DJ does, kept across nights.** The effects they run together,
+  what they do with what djmanzo stages (taken as offered, changed, turned
+  down), and how often they change the record they have cued before playing
+  it — and how soon — are now kept with each night and read back into "how
+  you play here", fading on the same curve as everything else learned.
+  Counts, never a preference: nothing here changes what djmanzo stages next.
+
+### Round 2 DIRECTIVE-STATUS text
+
+- **§12**, replacing *"Not yet: the effect pairs and verdicts are tonight's
+  and not yet kept across nights (…); *how quickly the DJ changes plans* is
+  not built."*: **Kept across nights, and *how quickly the DJ changes plans*
+  built (17 October).** Each night's row keeps the pair, the verdicts and the
+  swaps (migration 22), written by `night_setting` and read back by
+  `profile` on `learned::recency`: the pair by agreement, the verdicts as
+  weighed shares on twelve moves or more, the swaps likewise on twelve loads.
+  *How quickly the DJ changes plans* is `signals::swaps`: a record the DJ
+  loaded by hand and replaced on that deck before it played, out of the
+  records they loaded, with the middle of how long the replaced ones sat
+  cued — a fact in the log, not a reading of intent; a record djmanzo cued
+  or replaced is the verdicts' business or the automix's. Held by
+  `signals::tests::a_cued_record_replaced_before_it_played_is_a_change_of_plan`,
+  four `profile::tests`, `store::tests::a_nights_pair_verdicts_and_swaps_are_kept`
+  and `commands::persistence_tests::a_nights_verdicts_and_swaps_reach_its_row`;
+  eleven mutants fail them.
+
+### Round 2 HANDOFF traps
+
+- A night's row figures are text on purpose (`"5,2,1"`, `"3,18,40"`), read
+  back by `profile::counts_of`, which refuses a row with the wrong number of
+  parts rather than reading it as zeros. A new figure follows the same rule.
+
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
 - **The assistant is told what the context engine knows.** Besides what is on

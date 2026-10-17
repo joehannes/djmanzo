@@ -89,6 +89,13 @@ pub struct NightRead<'a> {
     pub loop_beats: Option<&'a str>,
     /// §12: the effect the DJ switched on most tonight, by name.
     pub effect: Option<&'a str>,
+    /// §12: the two effects run together most tonight (`"echo+filter"`).
+    pub pair: Option<&'a str>,
+    /// §12/§44: tonight's staged transactions, as `"offered,changed,rejected"`.
+    pub verdicts: Option<&'a str>,
+    /// §12: records loaded by hand and replaced before they played, as
+    /// `"swapped,loaded,median seconds cued"`.
+    pub swaps: Option<&'a str>,
 }
 
 fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
@@ -103,6 +110,9 @@ fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
         length: row.get(7)?,
         loop_beats: row.get(8)?,
         effect: row.get(9)?,
+        pair: row.get(10)?,
+        verdicts: row.get(11)?,
+        swaps: row.get(12)?,
     })
 }
 
@@ -134,6 +144,12 @@ pub struct Night {
     pub loop_beats: Option<String>,
     /// §12: the effect the DJ switched on most, by name (`"echo"`).
     pub effect: Option<String>,
+    /// §12: the two effects run together most (`"echo+filter"`).
+    pub pair: Option<String>,
+    /// §12/§44: the night's staged transactions, `"offered,changed,rejected"`.
+    pub verdicts: Option<String>,
+    /// §12: cued records replaced before they played, `"swapped,loaded,seconds"`.
+    pub swaps: Option<String>,
 }
 
 /// §37: what the room did after one mix, as it goes in.
@@ -1420,8 +1436,8 @@ impl Library {
             .map_or(0, |d| d.as_secs() as i64);
         self.with(|conn| {
             conn.execute(
-                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect)
-                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(session_id) DO UPDATE SET
                      setting    = COALESCE(?2, setting),
                      density    = COALESCE(?4, density),
@@ -1430,7 +1446,10 @@ impl Library {
                      techniques = COALESCE(?7, techniques),
                      length     = COALESCE(?8, length),
                      loop_beats = COALESCE(?9, loop_beats),
-                     effect     = COALESCE(?10, effect)",
+                     effect     = COALESCE(?10, effect),
+                     pair       = COALESCE(?11, pair),
+                     verdicts   = COALESCE(?12, verdicts),
+                     swaps      = COALESCE(?13, swaps)",
                 rusqlite::params![
                     session_id,
                     setting,
@@ -1442,6 +1461,9 @@ impl Library {
                     read.length,
                     read.loop_beats,
                     read.effect,
+                    read.pair,
+                    read.verdicts,
+                    read.swaps,
                 ],
             )?;
             Ok(())
@@ -1456,7 +1478,7 @@ impl Library {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps
                      FROM nights WHERE session_id = ?1",
                     [session_id],
                     read_night,
@@ -1476,7 +1498,7 @@ impl Library {
     pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
         self.with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect
+                "SELECT session_id, setting, began_at, density, style, posture, techniques, length, loop_beats, effect, pair, verdicts, swaps
                  FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
             )?;
             let rows = stmt.query_map([setting], read_night)?;
@@ -3184,6 +3206,31 @@ mod tests {
         // night already said about them.
         assert_eq!(night.loop_beats.as_deref(), Some("0.5"));
         assert_eq!(night.effect.as_deref(), Some("echo"));
+    }
+
+    /// **§12 across nights: the pair, the verdicts and the swaps are kept with
+    /// the night**, and a later read with nothing to say wipes none of them.
+    #[test]
+    fn a_nights_pair_verdicts_and_swaps_are_kept() {
+        let lib = library();
+        lib.note_night(
+            "n1",
+            Some("club"),
+            NightRead {
+                pair: Some("echo+filter"),
+                verdicts: Some("5,2,1"),
+                swaps: Some("3,18,40"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+        lib.note_night("n1", None, NightRead::default()).unwrap();
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.pair.as_deref(), Some("echo+filter"));
+        assert_eq!(night.verdicts.as_deref(), Some("5,2,1"));
+        assert_eq!(night.swaps.as_deref(), Some("3,18,40"));
+        let club = lib.nights_in("club").unwrap();
+        assert_eq!(club[0].swaps.as_deref(), Some("3,18,40"));
     }
 
     /// The DJ can correct themselves: naming a setting again does change it.

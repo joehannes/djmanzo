@@ -139,6 +139,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 21,
         sql: MIGRATION_21,
     },
+    Migration {
+        version: 22,
+        sql: MIGRATION_22,
+    },
 ];
 
 /// The initial schema.
@@ -914,6 +918,27 @@ CREATE TABLE vocal_lines (
     sung      REAL    NOT NULL,
     made_at   INTEGER NOT NULL
 );
+"#;
+
+/// §12 across nights: three more figures read off the action log while it
+/// exists, beside `MIGRATION_19`'s, for its reason.
+///
+/// `pair` is the two effects the DJ ran together most tonight, in one rack,
+/// by name and in the order effects are offered (`"echo+filter"`). `verdicts`
+/// is what they did with tonight's staged transactions, as three counts —
+/// accepted as offered, accepted after changing, rejected (`"5,2,1"`).
+/// `swaps` is how often a record they loaded by hand was replaced before it
+/// played, out of how many they loaded, and how many seconds the replaced one
+/// sat cued at the middle of them (`"3,18,40"`).
+///
+/// Counts kept as text, like the figures beside them, so the row reads the
+/// same in `sqlite3` as it does to djmanzo. Null for a night that did not do
+/// the thing, and for every night before this existed: an absence, not a
+/// confident nothing.
+const MIGRATION_22: &str = r#"
+ALTER TABLE nights ADD COLUMN pair TEXT;
+ALTER TABLE nights ADD COLUMN verdicts TEXT;
+ALTER TABLE nights ADD COLUMN swaps TEXT;
 "#;
 
 const MIGRATION_17: &str = r#"
