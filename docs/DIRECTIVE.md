@@ -2749,3 +2749,15 @@ Added by the owner in conversation, 2026-10-16. Quoted as written.
 
 *Planned the same day in [karaoke_beta_release.md](karaoke_beta_release.md) (B6).*
 
+
+---
+# 130. ASKED SINCE: EDITIONS, TO SELL AT DIFFERENT LEVELS
+Added by the owner in conversation, 2026-10-17. Quoted as written.
+> later i'll want you to do another general status report and also ensure to be able to create different versions of the app: if the full app is the full version, and a karaoke version focuses on karaoke features, there can be different parts of the app to make different (not full => cheaper, more specialised) versions ... i want that in order to sell at different levels and specialise later ... please think of that later also when status reporting and looking out
+
+And, asked which editions, how they are downloaded and what they cost:
+> Editions: Auto-Pilot (like a 2 decks AI-Autopilot where the user has different options to style and fill the playlist and drive/configure an autopilot and take over manually if he wants), Hobbyist (all basic DJ functionality with some lookout to the Pro version just to give the user an idea of what else would be possible), Apprentince (same as Hobbyist, but also an Assitant and Teacher and Workflow teacher that teaches interactively on how to DJ and the different musical basics (especially as relevant for the genre(s)) and mixing techniques, crowd dynamics, basics as of a DJ life, even tutoring how to encounter the first gigs ... and how to prepare ... the road ahead), Pro DJ, Karaoke Version (Hobbyist + Karaoke features), Full Version (all), Custom Version (considering the individual modules there's the Basic Hobbyist Foundation and the rest of the modules can be added at 5-10 USD each or similar) ...
+> Downloads: separate
+> Prices: Typical Average Pricing, but 50% off by default of the common pro competitors average, + regional discounts for poorer regions/student reductions/similar ...
+
+*Planned the same day in [EDITIONS.md](EDITIONS.md) and [ADR-0010](adr/0010-editions.md).*

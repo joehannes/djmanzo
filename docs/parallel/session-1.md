@@ -38,6 +38,11 @@ the shared documents at the fold (§5).
   thread; the engine hands decks its own silence now.
 - **§115, §118 and §121 closed by the owner**: their rows name no open
   gap. 85 done, 25 part.
+- **§130, editions, planned and the parts list built**: the owner named seven
+  editions, separate downloads and half the competitors' prices
+  (`docs/EDITIONS.md`, ADR-0010, `dj_core::edition`). The build switch
+  touches `lib.rs` and `App.svelte`, so it waits for Session 2's round 2 to
+  be merged.
 
 ### Round 2
 

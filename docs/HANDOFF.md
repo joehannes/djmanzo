@@ -1547,6 +1547,14 @@ signals, hardware stand-ins) keep their state in
 [parallel/session-2.md](parallel/session-2.md); read those before this
 section, which is written at the fold.
 
+**Editions (17 October, §130).** djmanzo is to be sold at seven levels —
+Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full, Custom — each its
+own download, from one codebase: [EDITIONS.md](EDITIONS.md) has the
+editions, the prices and the order of work, [ADR-0010](adr/0010-editions.md)
+the decision. `dj_core::edition` is the parts list every check asks
+(`Modules::has`); nothing reads it yet. When adding a feature, say which
+module it belongs to, or that it is the foundation's.
+
 **The karaoke beta (16–17 October, §126–§129).** The owner asked for a
 night's worth of karaoke features in one afternoon, and they were built in
 two sessions that could not collide ([karaoke_beta_release.md](karaoke_beta_release.md):

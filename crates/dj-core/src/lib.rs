@@ -13,6 +13,7 @@
 pub mod action;
 pub mod context;
 pub mod deck;
+pub mod edition;
 pub mod genre;
 pub mod jog;
 

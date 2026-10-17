@@ -16,6 +16,9 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Editions planned.** djmanzo will come in seven editions, each its own
+  download: Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full and
+  Custom. See `docs/EDITIONS.md` for what each carries and what it costs.
 - **A quiet warm-up.** Early in the night djmanzo's whisper line says only
   what cannot wait (a record running out, a deck clipping); the next-record
   list and the guides are as they were.
