@@ -7767,6 +7767,44 @@ impl VocalReading {
     }
 }
 
+/// §20/§75's *breakdowns*, as the table reads it: where the record's first
+/// breakdown starts, in seconds, or `None` inside a reading that says the
+/// record was measured and has none. The reading itself is `None` when
+/// nobody measured — three answers, as the vocal column keeps them.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BreakdownReading {
+    pub at: Option<f64>,
+}
+
+impl BreakdownReading {
+    /// From the frame the library keeps, at the record's own rate.
+    #[must_use]
+    pub fn from_frame(frame: f64, rate: dj_core::SampleRate) -> Self {
+        Self {
+            at: (frame >= 0.0 && rate.as_f64() > 0.0).then(|| frame / rate.as_f64()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod breakdown_tests {
+    use super::BreakdownReading;
+    use dj_core::SampleRate;
+
+    /// **A breakdown reaches the table in seconds at the record's own rate,
+    /// and "none" stays none.**
+    #[test]
+    fn a_breakdown_is_read_in_seconds_and_none_stays_none() {
+        let at = |frame: f64, rate: u32| {
+            BreakdownReading::from_frame(frame, SampleRate::new(rate).unwrap()).at
+        };
+        assert_eq!(at(96_000.0, 48_000), Some(2.0));
+        assert_eq!(at(88_200.0, 44_100), Some(2.0));
+        assert_eq!(at(dj_library::NO_BREAKDOWN, 48_000), None);
+        assert_eq!(at(0.0, 48_000), Some(0.0), "a record that opens on one");
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LibraryTrackDto {
     pub id: String,
@@ -7807,6 +7845,8 @@ pub struct LibraryTrackDto {
     /// §124: found by the typo-tolerant pass rather than by the words as
     /// typed, so the table can say "close to what you typed" beside it.
     pub near: bool,
+    /// §20/§75: where the first breakdown starts. See [`BreakdownReading`].
+    pub breakdown: Option<BreakdownReading>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -7832,6 +7872,10 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             last_played: track.stats.last_played,
             phrase_beats: track.analysis.phrase_beats,
             near: false,
+            breakdown: track
+                .analysis
+                .breakdown
+                .map(|frame| BreakdownReading::from_frame(frame, track.sample_rate)),
         }
     }
 }

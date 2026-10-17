@@ -72,6 +72,29 @@ this round's.
   nights of a setting and the change is a sentence in a panel that a fresh
   install leaves empty.
 
+- **2. Breakdowns column (§20/§75) — built, and driving it found a defect in
+  the analysis.** `columns::Column::Breakdown` ("Break"): where the record's
+  first breakdown starts, a dash when it has none, blank when it was never
+  measured. Stored on the track (migration 23, `tracks.breakdown`, frames at
+  the record's rate, `dj_library::NO_BREAKDOWN` for *measured, none*) by
+  `library::stored_analysis` from the trajectory, sent as
+  `commands::BreakdownReading`, sorted by start with *none* after every
+  record that has one and the unmeasured last. **The column showed a dash for
+  a record with an obvious eight-bar breakdown**, and the column was right:
+  `energy::trajectory` asked for two thin windows, and a window is the
+  record's phrase — at a thirty-two-beat phrase that was a sixteen-bar
+  breakdown or nothing. It now asks for sixteen beats whatever the window
+  (`energy::AT_LEAST_BEATS`, `windows_for`). **And then the column still
+  showed a dash**, because the deck's analysis cache (`analysis::CACHE_VERSION`)
+  held the old answer and the deck load writes it into the library; its own
+  doc says an analyser that changes its answer is a version bump, so it is
+  7 now, and the running application re-analysed and read **0:30** for a
+  breakdown at 31 s. Held by `store::tests::a_records_breakdown_keeps_its_three_answers`,
+  `library::tests::the_stored_breakdown_is_the_first_and_none_is_not_absence`,
+  `commands::breakdown_tests`, `energy::trajectory_tests::an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase`
+  and `e2e/columns.spec.ts`'s breakdown test; ten mutants fail them (seven on
+  the column and its storage, three on the window rule).
+
 ### Round 2 changelog lines
 
 - **What the DJ does, kept across nights.** The effects they run together,
@@ -80,6 +103,12 @@ this round's.
   it — and how soon — are now kept with each night and read back into "how
   you play here", fading on the same curve as everything else learned.
   Counts, never a preference: nothing here changes what djmanzo stages next.
+- **A breakdowns column.** The library table can show where each record's
+  first breakdown starts, a dash for a record with none, and sorts by it.
+- **Fixed: a breakdown shorter than sixteen bars was missed on any record
+  with thirty-two-beat phrases.** The finder asked for two of its windows,
+  and a window is a phrase. It now asks for four bars whatever the window.
+  Records already analysed are analysed again on their next load.
 
 ### Round 2 DIRECTIVE-STATUS text
 
@@ -99,6 +128,22 @@ this round's.
   four `profile::tests`, `store::tests::a_nights_pair_verdicts_and_swaps_are_kept`
   and `commands::persistence_tests::a_nights_verdicts_and_swaps_reach_its_row`;
   eleven mutants fail them.
+- **Library quality** (the row after §121), replacing *"where a record's
+  breakdowns are is `energy::trajectory` (§75) and is drawn on the overview
+  but is not a column, which is a different and smaller piece of work than
+  the one this row used to describe"*: **where a record's breakdowns are is
+  `energy::trajectory` (§75) and is now §20's *breakdown* column too (17
+  October)**: the first breakdown's start, a dash for *measured, none* and a
+  blank for *never measured*, sorted with *none* after every record that has
+  one. Building it found the finder missing every breakdown shorter than
+  sixteen bars on a thirty-two-beat record — see §25/§75. The column count
+  in this row's first sentence becomes sixteen.
+- **§25 and §75**, in each place they say *a run of at least two windows*:
+  **a run of thin windows covering at least sixteen beats** — two windows at
+  the default eight-beat window, one at a thirty-two-beat phrase. It said two
+  windows until 17 October, and at a thirty-two-beat phrase that was sixteen
+  bars, so the breakdowns column read a dash for a record with an obvious
+  eight-bar breakdown. `energy::trajectory_tests::an_eight_bar_breakdown_is_found_in_a_thirty_two_beat_phrase`.
 
 ### Round 2 HANDOFF traps
 
@@ -436,3 +481,14 @@ this round's.
 - The controller stand-in proves a mapping's bytes reach the vocabulary
   through the real callback; it cannot prove a controller sends what its
   mapping says. A mapping naming the wrong note passes.
+- **An analyser that changes its answer is an `analysis::CACHE_VERSION` bump**
+  even when no field moved — the doc on it says so and it was still missed
+  once: the breakdown fix passed every test and the running application kept
+  showing the old answer, because the deck load reads the on-disk cache under
+  `~/.cache` (not under `XDG_DATA_HOME`, so a fresh data directory does not
+  clear it) and writes that into the library.
+- **`energy::Trajectory::changes` still counts in windows** (`AT_LEAST`, §116,
+  Session 1's): the same assumption the breakdown finder had, so at a
+  thirty-two-beat phrase a current has to be in or out for sixty-four beats
+  before *What changes next* names it. Not changed in round 2; it wants the
+  same beats-based rule and its own test.

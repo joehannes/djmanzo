@@ -143,6 +143,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 22,
         sql: MIGRATION_22,
     },
+    Migration {
+        version: 23,
+        sql: MIGRATION_23,
+    },
 ];
 
 /// The initial schema.
@@ -939,6 +943,15 @@ const MIGRATION_22: &str = r#"
 ALTER TABLE nights ADD COLUMN pair TEXT;
 ALTER TABLE nights ADD COLUMN verdicts TEXT;
 ALTER TABLE nights ADD COLUMN swaps TEXT;
+"#;
+
+/// §20/§75: where a record's first breakdown starts, kept on the record at
+/// analysis so the library can show it as a column — in frames at the
+/// record's own rate, `-1` for a record measured and found to have none, null
+/// for one nobody measured (every record analysed before this existed, until
+/// it is analysed again).
+const MIGRATION_23: &str = r#"
+ALTER TABLE tracks ADD COLUMN breakdown REAL;
 "#;
 
 const MIGRATION_17: &str = r#"

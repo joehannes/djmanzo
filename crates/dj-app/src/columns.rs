@@ -24,9 +24,10 @@
 //!   gap: it is drawn as a stripe down the edge of the title, because a DJ
 //!   colours tracks to find them at a glance and a column of swatches is not a
 //!   glance, it is a column to read.
-//! - **Vocal availability** and **stem availability** need analysis nobody has
-//!   written. The separator can split any record on demand; whether a record
-//!   *has* vocals is a different question and djmanzo has never asked it.
+//! - **Stem availability** needs analysis nobody has written. The separator
+//!   can split any record on demand; which stems a record *has* is a
+//!   different question. (Vocal availability and breakdowns, once on this
+//!   list, are columns now — from §25's own measurements.)
 //! - **Transition suitability**, **AI confidence** and **function tag** are
 //!   §76's lens, which is already a column set of its own with its own switch.
 //!   Offering them here as well would give the same judgement two homes.
@@ -60,6 +61,8 @@ pub enum Column {
     Energy,
     /// §20's *vocal availability*. See [`Column::about`].
     Vocal,
+    /// §20/§75's *breakdowns*: where the first one starts.
+    Breakdown,
     Phrases,
     Rating,
     Plays,
@@ -69,7 +72,7 @@ pub enum Column {
 
 impl Column {
     /// Every column there is, in the order the picker offers them.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Title,
         Self::Artist,
         Self::Album,
@@ -81,6 +84,7 @@ impl Column {
         Self::Loudness,
         Self::Energy,
         Self::Vocal,
+        Self::Breakdown,
         Self::Phrases,
         Self::Rating,
         Self::Plays,
@@ -118,6 +122,7 @@ impl Column {
             Self::Loudness => "loudness",
             Self::Energy => "energy",
             Self::Vocal => "vocal",
+            Self::Breakdown => "breakdown",
             Self::Phrases => "phrases",
             Self::Rating => "rating",
             Self::Plays => "plays",
@@ -145,6 +150,7 @@ impl Column {
             Self::Loudness => "Loud",
             Self::Energy => "Energy",
             Self::Vocal => "Vocal",
+            Self::Breakdown => "Break",
             Self::Phrases => "Phrase",
             Self::Rating => "Rating",
             Self::Plays => "Plays",
@@ -185,6 +191,14 @@ impl Column {
             Self::Vocal => {
                 "Whether there is a lead sitting where a singer sits, at the record's most \
                  vocal moment. A centred synth lead reads the same way."
+            }
+            // Where the floor first comes out — the low end thinning well
+            // below the record's own middle for four bars or more. A fade-out
+            // on a breakdown still has one; a record that only breathes does
+            // not.
+            Self::Breakdown => {
+                "Where the first breakdown starts: the low end dropping well below the \
+                 record's own middle for four bars or more. A dash when it has none."
             }
             Self::Phrases => {
                 "How many beats a phrase runs for, when the structure is clear enough to say."

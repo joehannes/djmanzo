@@ -48,6 +48,10 @@ pub struct Tags {
     pub track_number: Option<u32>,
 }
 
+/// [`StoredAnalysis::breakdown`] for a record measured and found to have no
+/// breakdown. A frame position is never negative, so this cannot be one.
+pub const NO_BREAKDOWN: f64 = -1.0;
+
 /// The analyser's findings, as stored.
 ///
 /// Flat rather than nesting [`Beatgrid`]: a database row is flat, and a shape
@@ -88,6 +92,14 @@ pub struct StoredAnalysis {
     /// analysed at all. `Some(0.0)` is a different answer: measured, and
     /// nothing held in the voice range.
     pub vocal: Option<f64>,
+    /// §20/§75: where the record's first breakdown starts, in frames at its
+    /// own sample rate — the floor coming out, as `dj_analysis::energy`
+    /// measures it.
+    ///
+    /// Three answers, like `vocal`: `None` for a record nobody measured (or
+    /// one with no grid to count windows against), [`NO_BREAKDOWN`] for one
+    /// measured and found to have none, and a frame for one that has.
+    pub breakdown: Option<f64>,
     /// Phrase length in beats, and the beat within it that starts a phrase.
     ///
     /// Both or neither: a length without its starting beat is a marker in an

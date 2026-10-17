@@ -1852,6 +1852,12 @@ export interface LibraryTrack {
    * Absent on every list but a search's.
    */
   near?: boolean;
+  /**
+   * §20/§75: where the first breakdown starts, in seconds. `null` inside the
+   * reading for a record measured and found to have none; the reading itself
+   * `null` for one nobody measured.
+   */
+  breakdown?: { at: number | null } | null;
   id: string;
   path: string;
   title: string;
