@@ -669,6 +669,11 @@
    * and the copy is the one that goes stale.
    */
   let allPacks = $state<KnowledgePack[]>([]);
+  /** §16's three fields as a line: "holds the tempo within 3 % · journey · blend, fade". */
+  const packHow = (pack: KnowledgePack) =>
+    [`holds the tempo within ${Math.round(pack.tempo_window * 100)} %`, pack.arc, pack.transitions.join(", ")]
+      .filter(Boolean)
+      .join(" · ");
   /** The chosen pack's id, or empty for all of djmanzo's knowledge. */
   let pack = $state("");
 
@@ -854,6 +859,8 @@
                 ? ` · ${body.families.join(", ")}`
                 : ""}
             </span>
+            <!-- §16's three fields: how close the tempo is held, the shape offered, the mixes preferred. -->
+            <span class="pack-how">{packHow(body)}</span>
           </button>
         </li>
       {/each}
@@ -2258,7 +2265,8 @@
   }
 
   .pack-about,
-  .pack-reach {
+  .pack-reach,
+  .pack-how {
     color: var(--muted);
     font-size: 0.85em;
   }

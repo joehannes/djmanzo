@@ -113,6 +113,47 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 
+**From the two parallel sessions of 17 October** (their notes, kept here):
+
+- **The browser suite tests `ui/dist`, not `ui/src`.** A run started on a
+  bundle older than the code (`npm run build` not run since a merge) fails
+  or passes against the wrong interface: on 17 October seventeen of the
+  karaoke beta's specs failed against a bundle from before Session B until
+  a fresh build. Build, confirm `✓ built`, then run. Editing `src` while a
+  run is going is safe; rebuilding during one is not.
+- **Two copies of a component with radio buttons share a group when they
+  share a `name`.** The skin picker in Settings and on the Singers panel did,
+  and a choice in one left the other showing nothing chosen; give each
+  instance its own (`$props.id()` — which must be a declaration's
+  initialiser on its own line, not inside a template string).
+- **A mutant that does not compile proves nothing**, and an unused import
+  or a type narrowed away is enough to stop `svelte-check`; write mutants
+  that keep the code well-typed (`if (rest === "never") …` rather than
+  deleting the call).
+- `cargo fmt` re-wraps a long line between an edit script's read and its next
+  match: re-read after every `cargo fmt` before matching text in an edit.
+- A §16 pack's `transitions` is taste in `plan`'s sense, which includes
+  `Cut` and excludes `Echo` (`STYLE_IS_TASTE`): echo is the planner's answer
+  to a key clash. It reads backwards from DJ talk, where an echo-out is a
+  style; `pack::tests::transition_preferences_are_taste_and_said_once`
+  holds it.
+- `ui/e2e/floor/media.ts` (like `senses/media.ts`) **reuses** a file already
+  in `/tmp/djmanzo-floor`: after changing a generator, delete the directory,
+  or the test runs against the old footage.
+- `vitest run` prints a test's `console.log` only with `--reporter=verbose`;
+  without it a probe looks like it printed nothing.
+- An `AnalyserNode`'s frequency data is smoothed across reads by default
+  (`smoothingTimeConstant` 0.8). Read once a look, that carries the last
+  look's spectrum into this one for many looks; the room surface sets it to 0
+  and `floor.spec.ts`'s *switch* sound fails without it.
+- A timecode decoder's `Reading::speed` was a value held from the last zero
+  crossing; anything reading it as "now" on a stopped record saw a creep.
+  It is bounded now (`Decoder::bounded`), but a new consumer of the raw
+  smoothed field would bring the creep back — read `Reading`, not the field.
+- The controller stand-in proves a mapping's bytes reach the vocabulary
+  through the real callback; it cannot prove a controller sends what its
+  mapping says. A mapping naming the wrong note passes.
+
 **From the karaoke beta's session A** (its notes, kept here):
 
 - The drawer can only be driven so far under Xvfb: its playlist `select` is

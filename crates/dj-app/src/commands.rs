@@ -6691,6 +6691,97 @@ mod chosen_pack_tests {
         assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
     }
 
+    /// **The DJ's own style first, the pack's only without it** (§16's
+    /// transition preferences).
+    #[test]
+    fn the_planner_takes_the_packs_style_only_where_the_dj_has_none() {
+        use dj_core::action::TransitionStyle;
+        let techno = dj_assistant::pack::pack("techno").expect("the techno pack ships");
+        let preferred = techno.transitions.first().copied();
+        assert!(
+            preferred.is_some(),
+            "the fixture is wrong: techno prefers a style"
+        );
+        assert_eq!(usual_or_pack(None, Some(techno)), preferred);
+        assert_eq!(
+            usual_or_pack(Some(TransitionStyle::Cut), Some(techno)),
+            Some(TransitionStyle::Cut),
+            "a pack overrode what this DJ does"
+        );
+        assert_eq!(usual_or_pack(None, None), None);
+    }
+
+    /// **A tempo wider apart than the pack holds loses the credit for
+    /// fitting, and says so** (§16's *allowed BPM relationships*). Techno
+    /// holds within three percent: a five-percent stretch the scorer called a
+    /// fit drops below a record with no tempo credit at all, and the reason
+    /// names the window; inside the window, or on open format's six, it keeps
+    /// its place.
+    #[test]
+    fn a_tempo_wider_than_the_pack_holds_loses_its_credit() {
+        let techno = dj_assistant::pack::pack("techno").expect("the techno pack ships");
+        assert!(
+            (techno.tempo_window - 0.03).abs() < 1e-9,
+            "the fixture is wrong"
+        );
+        let stretched = scored(
+            1,
+            5.0,
+            vec![Reason::TempoFits {
+                from: 130.0,
+                to: 136.5,
+            }],
+        );
+        let near = scored(
+            3,
+            5.0,
+            vec![Reason::TempoFits {
+                from: 130.0,
+                to: 132.0,
+            }],
+        );
+        let plain = scored(2, 4.5, vec![Reason::PhraseUnknown]);
+        let out = with_pack(vec![stretched, near, plain], Some(techno), &|_| None);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(3), id(2), id(1)],
+            "a five-percent stretch kept its credit on a techno night"
+        );
+        assert!(
+            out[2]
+                .reasons
+                .contains(&Reason::TempoWiderThanPack { window: 0.03 })
+        );
+        assert!(
+            !out[0]
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::TempoWiderThanPack { .. }))
+        );
+        assert_eq!(
+            describe_reason(&Reason::TempoWiderThanPack { window: 0.03 }),
+            "wider than this pack holds (3 %)"
+        );
+
+        let open = dj_assistant::pack::pack("open-format").expect("open format ships");
+        let kept = with_pack(
+            vec![
+                scored(
+                    1,
+                    5.0,
+                    vec![Reason::TempoFits {
+                        from: 130.0,
+                        to: 136.5,
+                    }],
+                ),
+                scored(2, 4.5, vec![Reason::PhraseUnknown]),
+            ],
+            Some(open),
+            &|_| None,
+        );
+        assert_eq!(kept[0].track, id(1), "open format holds six percent");
+    }
+
     /// **A pack that does not pair across half time drops the pairing back to
     /// where an unrelated tempo sits, and the rail re-sorts around that.**
     ///
@@ -10740,15 +10831,33 @@ pub(crate) fn tonight_profile(
 /// `None` in three different situations and they are all the same answer —
 /// there is no library, the night has not been named, or djmanzo has not seen
 /// enough nights of it to say. `profile::ENOUGH_NIGHTS` and the half-agree rule
-/// own the last of those; this just asks.
+/// own the last of those; this just asks. In all three the chosen §16 pack's
+/// preferred style stands in ([`usual_or_pack`]), and with no pack either,
+/// `None` is the answer.
 ///
 /// One query and a fold per call, rather than a cached copy: the profile
 /// changes when a night ends, this is asked once per planned transition, and a
 /// second copy of an answer that has an owner is the thing this codebase keeps
 /// having to take back out.
 pub(crate) fn usual_style(state: &AppState) -> Option<dj_core::action::TransitionStyle> {
-    let db = library(state).ok()?;
-    tonight_profile(state, &db).and_then(|profile| profile.style())
+    let learned = library(state)
+        .ok()
+        .and_then(|db| tonight_profile(state, &db).and_then(|profile| profile.style()));
+    let pack = state
+        .chosen_pack()
+        .and_then(|id| dj_assistant::pack::pack(&id));
+    usual_or_pack(learned, pack)
+}
+
+/// §16's *transition preferences*, where the DJ's own are not known: what this
+/// DJ does on this kind of night first (§81), and only without it the chosen
+/// pack's preferred style. `plan::choose_style` applies either only where the
+/// tempos and keys agree, so a pack can never override a cut or an echo.
+fn usual_or_pack(
+    learned: Option<dj_core::action::TransitionStyle>,
+    pack: Option<&dj_assistant::pack::Pack>,
+) -> Option<dj_core::action::TransitionStyle> {
+    learned.or_else(|| pack.and_then(|pack| pack.transitions.first().copied()))
 }
 
 /// Fold §81's profile into a ranking, and re-sort.
@@ -10878,7 +10987,24 @@ fn with_pack(
             // is credited and the ranking is djmanzo's own. The half/double
             // rule still applies, because open format has one.
             let in_family = family_of(s.track).filter(|name| pack.families.contains(name));
-            dj_library::suggest::also_in_pack(s, in_family, pack.half_time)
+            let mut s = dj_library::suggest::also_in_pack(s, in_family, pack.half_time);
+            // §16's allowed BPM relationships: a tempo the scorer called a fit
+            // but wider apart than this kind of night holds has its credit
+            // taken back, and says so — `also_in_pack`'s pattern.
+            if dj_library::suggest::wider_than_pack(&s, pack.tempo_window)
+                && let Some(given) = s
+                    .reasons
+                    .iter()
+                    .find(|r| matches!(r, dj_library::suggest::Reason::TempoFits { .. }))
+                    .copied()
+            {
+                s.score -= given.weight();
+                s.reasons
+                    .push(dj_library::suggest::Reason::TempoWiderThanPack {
+                        window: pack.tempo_window,
+                    });
+            }
+            s
         })
         .collect();
     // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
@@ -11815,6 +11941,9 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         // it changed the answer.
         Reason::PhaseAsks(words) => format!("the night asks for {words}"),
         Reason::HalfTimeUnusual => "half/double is unusual here".to_owned(),
+        Reason::TempoWiderThanPack { window } => {
+            format!("wider than this pack holds ({:.0} %)", window * 100.0)
+        }
         // §24's answer to "why do I keep seeing these two together?", in the
         // place a DJ asks it: beside the suggestion itself.
         Reason::KeptBefore { times, on_loop } => {
@@ -11886,7 +12015,7 @@ pub fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
             // their order to whichever was pushed first would print the verdict
             // before the thing it is a verdict on whenever a caller assembled
             // the reasons in a different order.
-            Reason::HalfTimeUnusual => 2,
+            Reason::HalfTimeUnusual | Reason::TempoWiderThanPack { .. } => 2,
             Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 3,
             Reason::Loudness { .. } => 4,
             Reason::SameFamily(_) | Reason::OtherFamily { .. } => 5,
@@ -11959,6 +12088,7 @@ pub fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
             // about the phase mattered without saying what.
             Reason::PhaseAsks(words) => Some((*words).to_owned()),
             Reason::HalfTimeUnusual => Some("unusual here".to_owned()),
+            Reason::TempoWiderThanPack { .. } => Some("wider than the pack".to_owned()),
             Reason::Unanalysed => Some("not analysed".to_owned()),
         })
         .collect::<Vec<_>>()
@@ -19824,6 +19954,13 @@ pub struct KnowledgePackDto {
     /// How many of the catalogue's moves it would teach — the number that says
     /// what choosing it costs, which is the thing a picker should show.
     pub teaches: usize,
+    /// §16's *allowed BPM relationships*: how far apart two tempos may be for
+    /// this kind of night to hold them together, as a fraction.
+    pub tempo_window: f64,
+    /// §16's *energy curve*: the set arc it offers, or empty for none.
+    pub arc: String,
+    /// §16's *transition preferences*, lower-case style names, preferred first.
+    pub transitions: Vec<String>,
 }
 
 /// §16's packs, and which one is chosen.
@@ -19843,6 +19980,13 @@ pub fn knowledge_packs() -> Vec<KnowledgePackDto> {
                 .iter()
                 .filter(|t| pack.teaches_move(t))
                 .count(),
+            tempo_window: pack.tempo_window,
+            arc: pack.arc.unwrap_or_default().to_owned(),
+            transitions: pack
+                .transitions
+                .iter()
+                .map(|style| style.as_str().to_owned())
+                .collect(),
         })
         .collect()
 }

@@ -6,7 +6,10 @@
     "families": [],
     "ceiling": "hard",
     "setting": "",
-    "teaches": 27
+    "teaches": 27,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": []
   },
   {
     "id": "beginner",
@@ -15,7 +18,13 @@
     "families": [],
     "ceiling": "first",
     "setting": "practice",
-    "teaches": 7
+    "teaches": 7,
+    "tempo_window": 0.03,
+    "arc": "",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
   },
   {
     "id": "open-format",
@@ -24,7 +33,13 @@
     "families": [],
     "ceiling": "practised",
     "setting": "open-format",
-    "teaches": 18
+    "teaches": 18,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
   },
   {
     "id": "house",
@@ -38,7 +53,12 @@
     ],
     "ceiling": "practised",
     "setting": "club",
-    "teaches": 13
+    "teaches": 13,
+    "tempo_window": 0.04,
+    "arc": "journey",
+    "transitions": [
+      "blend"
+    ]
   },
   {
     "id": "techno",
@@ -52,7 +72,12 @@
     ],
     "ceiling": "practised",
     "setting": "club",
-    "teaches": 13
+    "teaches": 13,
+    "tempo_window": 0.03,
+    "arc": "journey",
+    "transitions": [
+      "blend"
+    ]
   },
   {
     "id": "hip-hop",
@@ -66,7 +91,12 @@
     ],
     "ceiling": "hard",
     "setting": "",
-    "teaches": 15
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut"
+    ]
   },
   {
     "id": "latin",
@@ -83,7 +113,13 @@
     ],
     "ceiling": "practised",
     "setting": "latin",
-    "teaches": 15
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
   },
   {
     "id": "scratch",
@@ -96,6 +132,238 @@
     ],
     "ceiling": "hard",
     "setting": "",
-    "teaches": 11
+    "teaches": 11,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut"
+    ]
+  },
+  {
+    "id": "bachata",
+    "title": "Bachata",
+    "about": "Guitar, bongo and güira, sweet and steady: the phrase decides the mix.",
+    "families": [
+      "bachata"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "merengue",
+    "title": "Merengue",
+    "about": "Fast, two-step and joyful: in and out on the phrase, never mid-line.",
+    "families": [
+      "merengue"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "dembow",
+    "title": "Dembow",
+    "about": "The Dominican riddim, short and hard: quick exits on the bar.",
+    "families": [
+      "dembow"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "reggaeton",
+    "title": "Reggaeton",
+    "about": "The dem bow rhythm under a hook: records turn over on the chorus.",
+    "families": [
+      "reggaeton"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "salsa",
+    "title": "Salsa",
+    "about": "Clave first: a mix that crosses the clave is audibly wrong.",
+    "families": [
+      "salsa"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "caribbean",
+    "title": "Caribbean",
+    "about": "The islands' records together: merengue, bachata, dembow, salsa.",
+    "families": [
+      "merengue",
+      "bachata",
+      "dembow",
+      "salsa",
+      "reggaeton",
+      "cumbia"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "cut",
+      "blend"
+    ]
+  },
+  {
+    "id": "afro",
+    "title": "Afro / Afrobeats",
+    "about": "Afrobeats, amapiano and afro house: long, rolling blends.",
+    "families": [
+      "afrobeats",
+      "amapiano",
+      "afro house",
+      "gqom",
+      "kuduro",
+      "coupe decale"
+    ],
+    "ceiling": "practised",
+    "setting": "",
+    "teaches": 13,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "blend"
+    ]
+  },
+  {
+    "id": "r-and-b",
+    "title": "R&B",
+    "about": "Smooth records and the hip-hop beside them: vocals first.",
+    "families": [
+      "r&b",
+      "hip hop"
+    ],
+    "ceiling": "practised",
+    "setting": "",
+    "teaches": 15,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
+  },
+  {
+    "id": "edm",
+    "title": "EDM",
+    "about": "Builds, drops and the big room: the mix lands on the drop.",
+    "families": [
+      "house",
+      "trance",
+      "dubstep",
+      "drum and bass",
+      "hardstyle",
+      "eurodance"
+    ],
+    "ceiling": "practised",
+    "setting": "club",
+    "teaches": 16,
+    "tempo_window": 0.06,
+    "arc": "rising",
+    "transitions": [
+      "blend"
+    ]
+  },
+  {
+    "id": "wedding",
+    "title": "Wedding",
+    "about": "A room that is not there for the DJ: every generation, gently.",
+    "families": [],
+    "ceiling": "practised",
+    "setting": "wedding",
+    "teaches": 18,
+    "tempo_window": 0.06,
+    "arc": "journey",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
+  },
+  {
+    "id": "beach",
+    "title": "Beach / Resort",
+    "about": "Warm and unhurried: nobody is waiting for a drop.",
+    "families": [],
+    "ceiling": "practised",
+    "setting": "beach",
+    "teaches": 18,
+    "tempo_window": 0.06,
+    "arc": "flat",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
+  },
+  {
+    "id": "club",
+    "title": "Club",
+    "about": "A crowd that came to dance, and knows what it came for.",
+    "families": [],
+    "ceiling": "practised",
+    "setting": "club",
+    "teaches": 18,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
+  },
+  {
+    "id": "practice",
+    "title": "Practice / Education",
+    "about": "Nobody is listening: everything djmanzo can teach, at your pace.",
+    "families": [],
+    "ceiling": "practised",
+    "setting": "practice",
+    "teaches": 18,
+    "tempo_window": 0.06,
+    "arc": "",
+    "transitions": [
+      "blend",
+      "fade"
+    ]
   }
 ]

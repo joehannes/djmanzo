@@ -34,8 +34,8 @@
 //!
 //! # Why not thirty packs
 //!
-//! §16 lists thirty and this ships eight, with thirteen more in [`READY`] for
-//! the parallel sessions' fold. Those are the ones whose content djmanzo can
+//! §16 lists thirty and this ships twenty-one (eight, then thirteen more at
+//! the parallel sessions' fold). Those are the ones whose content djmanzo can
 //! actually justify from tables it already has — a genre pack is one family of
 //! the genre map with its parent's curriculum, an occasion pack is a §81
 //! setting with the whole catalogue up to practised moves; the rest would be
@@ -122,7 +122,7 @@ pub struct Pack {
 }
 
 /// The packs that ship.
-pub const ALL: [Pack; 8] = [
+pub const ALL: [Pack; 21] = [
     Pack {
         id: "general",
         title: "General",
@@ -273,22 +273,6 @@ pub const ALL: [Pack; 8] = [
         transitions: &[TransitionStyle::Cut],
         setting: None,
     },
-];
-
-/// Packs written to the same rules, waiting to join [`ALL`] at the parallel
-/// sessions' fold (docs/PARALLEL-SESSIONS.md): the picker's browser test counts
-/// the shipped packs, and that test is the other session's to change. Every
-/// test below holds these to exactly the rules [`ALL`] keeps.
-///
-/// **Built only from what djmanzo already has.** A genre pack is one family
-/// of `dj_core::genre` (or a few that a DJ would name together) with its
-/// parent's curriculum — Bachata teaches what Latin teaches, narrowed to one
-/// family — and an occasion pack points at a §81 setting that owns its
-/// presentation. The rest of §16's list (Private Event, Lounge, Festival,
-/// Mobile DJ, Karaoke / MC, VJ / Video, DVS, CDJ, Stem / Remix) would need a
-/// curriculum nobody here has checked, which is the gap the module docs
-/// refuse to fill with confidence.
-pub const READY: [Pack; 13] = [
     latin_family(
         "bachata",
         "Bachata",
@@ -470,9 +454,9 @@ const fn occasion(
     }
 }
 
-/// Every pack: [`ALL`], then [`READY`].
+/// Every pack: [`ALL`].
 pub fn every() -> impl Iterator<Item = &'static Pack> {
-    ALL.iter().chain(READY.iter())
+    ALL.iter()
 }
 
 /// A pack by its slug.
@@ -541,7 +525,7 @@ mod tests {
         let mut ids: Vec<&str> = every().map(|p| p.id).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), ALL.len() + READY.len(), "two packs share an id");
+        assert_eq!(ids.len(), ALL.len(), "two packs share an id");
 
         for pack in every() {
             if let Some(setting) = pack.setting {
@@ -579,23 +563,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// **The packs waiting for the fold are not yet chosen by slug.**
-    ///
-    /// The picker counts what it is offered, and that count is the other
-    /// session's test: a `pack()` that found the waiting ones would let a
-    /// stored slug choose a pack the picker does not show.
-    #[test]
-    fn the_waiting_packs_are_not_chosen_by_slug_before_the_fold() {
-        for waiting in READY {
-            assert!(
-                pack(waiting.id).is_none(),
-                "{} is chosen by slug before it joins ALL",
-                waiting.id
-            );
-        }
-        assert!(ALL.iter().all(|p| pack(p.id) == Some(p)));
     }
 
     /// **A beginner is never sent at a hard move, and a turntablist is never

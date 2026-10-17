@@ -183,6 +183,10 @@ pub enum Reason {
     /// pairing the pack is quiet about scores exactly what an unrelated tempo
     /// scores, which is what "not part of this music" means.
     HalfTimeUnusual,
+    /// §16: a tempo the scorer credited as fitting is wider apart than the
+    /// chosen pack holds (`window`, a fraction). Like [`Reason::HalfTimeUnusual`]
+    /// it takes back the credit rather than adding a penalty, and says so.
+    TempoWiderThanPack { window: f64 },
     /// Both records name a genre and they are the same family.
     SameFamily(&'static str),
     /// Both name a genre and the families differ.
@@ -257,7 +261,7 @@ impl Reason {
             // Nothing of its own: it is the *removal* of a credit, and the
             // removal happens in `also_in_pack` where the credit can be seen.
             // A weight here as well would take it away twice.
-            Self::HalfTimeUnusual => 0.0,
+            Self::HalfTimeUnusual | Self::TempoWiderThanPack { .. } => 0.0,
             // Both zero on purpose; see `OtherFamily`.
             Self::SameFamily(_) | Self::OtherFamily { .. } => 0.0,
             Self::Unanalysed => -10.0,

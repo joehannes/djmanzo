@@ -125,6 +125,21 @@ the shared documents at the fold (§5).
   (`Night::note_verdict`). Not held by a test through the commands
   themselves — Session 2's `staged` tests hold the verdicts.
 
+- **Round 1 folded in full** (17 October): §16, §34/§36 and §106 merged
+  too, and §16's fold made — the thirteen packs joined `pack::ALL` (21),
+  `KnowledgePackDto` and `api.ts` carry `tempo_window`, `arc` and
+  `transitions` and the Settings picker says them under each pack, the rail
+  takes back a fit wider than the chosen pack holds
+  (`Reason::TempoWiderThanPack`, three wordings in `commands.rs`), and the
+  planner's `usual_style` falls back to the pack's first style
+  (`usual_or_pack`). `packs.json`, `setups.json` and `welcome.json`
+  re-blessed. Not done (optional in its notes): the set planner offering the
+  pack's arc (round 2, Session 1), `nights` columns for §12 across nights
+  (round 2, Session 2), the stand-ins wired into the running application
+  (round 2, Session 2), `floor_saw`/`floor_read` answered in `shell.ts`.
+  Both sessions' changelog lines, status text and traps are now in
+  `CHANGELOG.md`, `DIRECTIVE-STATUS.md` and `HANDOFF.md`.
+
 ### Changes in shared files (for the fold)
 
 - `crates/dj-app/src/lib.rs`: a *Parallel, session 1* modules block after

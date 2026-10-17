@@ -2081,6 +2081,12 @@ export interface KnowledgePack {
    * to see how far it narrows before they press it.
    */
   teaches: number;
+  /** §16's allowed BPM relationships: how far apart two tempos may be, as a fraction. */
+  tempo_window: number;
+  /** §16's energy curve: the set arc it offers, or empty for none. */
+  arc: string;
+  /** §16's transition preferences, lower-case style names, preferred first. */
+  transitions: string[];
 }
 
 /** One of §81's six kinds of night, read off the table that owns it. */

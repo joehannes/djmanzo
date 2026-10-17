@@ -153,3 +153,57 @@ cd ui && npx svelte-check && npx vitest run && DJMANZO_CHROMIUM=/opt/pw-browsers
 Then mutation-test the load-bearing new test, and drive the application under
 Xvfb (CLAUDE.md has the commands) for anything a person sees. Commit messages
 end with the session's own attribution lines and name no model.
+
+Before Playwright, `cd ui && npm run build` and confirm `✓ built`: the suite
+tests `ui/dist`, and a stale bundle passes or fails against the wrong
+interface.
+
+## 7. Round 2 (from 17 October, after the first fold)
+
+Round 1 is done on both sides and folded into `claude/vigilant-tesla-xdqpmf`
+(Session 2's §40, §12/§14, §16, §34/§36 and §106, with the lines it needed in
+`commands.rs` made at the fold). Each session starts round 2 from that branch,
+fetched fresh. Everything in §3–§6 holds, with these changes of ownership:
+
+- **`crates/dj-library/` stays Session 2's, schema included**: both of
+  round 2's library changes are Session 2's, so no two sessions write a
+  migration.
+- **`crates/dj-net/` (the room's page) is Session 1's**, for the phone's
+  *not sure* mark.
+- **`commands.rs` still grows no new commands.** Session 2 may change
+  `night_setting` (for §12 across nights) and `with_pack`'s neighbours named
+  below; anything else there goes in its notes.
+
+### Session 1 — round 2
+
+1. **The phone's *not sure of it*** (karaoke): the room's request page
+   (`dj_net`) gets the mark the host's form has, carried into
+   `karaoke::Request::unsure`.
+2. **The set planner offers the chosen pack's arc** (§16): where the DJ has
+   not said an arc, the Plan panel *offers* the pack's (`Arc::from_name`),
+   never defaults to it silently.
+3. **The truth pass, continued**: ROADMAP and FEATURES against the code;
+   §118 and §121's rows read through for gaps already closed.
+4. **Folds** of Session 2's round 2.
+
+### Session 2 — round 2
+
+1. **§12 across nights**: the effect pairs and the transaction's verdicts
+   kept beside the gesture counts in the `nights` table (a migration), filled
+   by `commands::night_setting`, read back by `profile` with
+   `learned::recency`'s decay; then *how quickly the DJ changes plans* (§12),
+   if it can be derived from the log honestly.
+2. **Library quality: the breakdowns column** (§20/§75): where a record's
+   first breakdown is, kept on the record at analysis (`energy::trajectory`),
+   a column in `columns.rs`'s list with its sentence. (`columns.rs` and
+   `Library.svelte`'s cell are Session 1's files: write the column's two lines
+   there in the notes, or ask for the fold to make them.)
+3. **§34/§36, what is left**: an occupancy proxy, a crowd-density proxy and
+   lighting motion as distinct from scene change; *vocal response* split from
+   `OverMusic` (the room over the music in the voice band only). Stand-ins as
+   in round 1; nothing claimed about a real room.
+4. **§106 in the running application**: `DJMANZO_STANDIN_TIMECODE` and
+   `DJMANZO_STANDIN_CONTROLLER` (its round-1 notes), so the timecode panel and
+   §53's reach can be driven under Xvfb. `dj-audio`'s null host and
+   `control.rs` are shared: name the lines in the notes if the change is not
+   wholly in new files.
