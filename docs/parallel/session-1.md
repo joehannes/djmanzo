@@ -37,6 +37,10 @@ the shared documents at the fold (§5).
   `plan.spec.ts`'s two new tests; 2 mutants fail them.
 - **Truth pass**: §128 closed ✅ (everything its row named as not built is
   built), §129 and §119 brought up to date; 80 done, 30 part, of 129.
+- **Rows that name no open gap but are still 🟡**: §115, §118 (its one
+  *Not yet* — three more guides — is built: `guide::Topic` has all six) and
+  §121. Not closed here: each row is long, and closing one is a claim about
+  everything the directive's section asks; put to the owner.
 
 ### Item 1: karaoke follow-ups
 
