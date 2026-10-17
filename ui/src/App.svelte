@@ -2049,6 +2049,9 @@
       .catch((why) => console.warn("leader tree:", why));
   });
 
+  /** The guides' button, for a dashboard tile to open one through. */
+  let guidesRef = $state<ReturnType<typeof Guides>>();
+
   /** Carry out one leaf of the tree. */
   async function runLeaf(run: string) {
     // A line of one word is all kind: `welcome`, `locks` with none on.
@@ -2102,6 +2105,9 @@
       setUpForTonight(rest.slice(at + 1), pack === "-" ? "" : pack);
     } else if (kind === "welcome") {
       await openWelcome();
+    } else if (kind === "guide") {
+      // §117: a guide from the dashboard, opened as its button opens it.
+      await guidesRef?.openTopic(rest);
     }
   }
 
@@ -3615,6 +3621,7 @@
       <!-- §128: folded behind ⋯ with the readings when the bar is short of room. -->
       <div class="foldable fold-guides">
       <Guides
+        bind:this={guidesRef}
         send={(action) => send(action)}
         decks={deckCount}
         onTrouble={() => (tonightDeciding = true)}

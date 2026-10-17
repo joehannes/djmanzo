@@ -16,6 +16,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import boards from "./dashboards.json" with { type: "json" };
+import guides from "./guides.json" with { type: "json" };
 import { errorsThrown, openShell } from "./shell";
 
 const SLIM = { interface_settings: { toolbars: false, uses: {} } };
@@ -162,6 +163,28 @@ test.describe("§117: the dashboard", () => {
     for (const tile of boards.karaoke.sections[0].tiles) {
       await expect(board(page).locator("section").first().locator(`[data-tile="${tile.id}"]`)).toBeVisible();
     }
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§118's guides and welcome on it** (§117): a guide's tile opens that
+   * guide as its button in the top bar does — the next record's three-way
+   * choice — and the welcome's tile the welcome.
+   */
+  test("a guide's tile opens the guide, and the welcome's the welcome", async ({ page }) => {
+    await openShell(page, "/", {}, { ...SLIM, guides: guides.playing });
+    await page.keyboard.press("0");
+    const guidesSection = board(page).locator("section").filter({ has: page.locator("h3", { hasText: /^Guides$/ }) });
+    await expect(guidesSection.locator("[data-tile]")).toHaveCount(7);
+    await guidesSection.locator('[data-tile="guide:next"]').click();
+    await expect(board(page)).toHaveCount(0);
+    const decision = page.locator('[role="dialog"][aria-label="Choose the next record"]');
+    await expect(decision).toBeVisible();
+    await decision.getByRole("button", { name: "Close" }).click();
+
+    await page.keyboard.press("0");
+    await board(page).locator('[data-tile="welcome"]').click();
+    await expect(page.getByRole("dialog", { name: /^Welcome to/ })).toBeVisible();
     expect(errorsThrown(page)).toEqual([]);
   });
 

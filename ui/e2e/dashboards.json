@@ -79,6 +79,60 @@
       {
         "tiles": [
           {
+            "about": "Three records to follow what is playing: up, level, or down.",
+            "id": "guide:next",
+            "key": null,
+            "label": "Next record",
+            "run": "guide next"
+          },
+          {
+            "about": "How to bring the waiting record in, each way drawn as it sounds.",
+            "id": "guide:mix",
+            "key": null,
+            "label": "The mix",
+            "run": "guide mix"
+          },
+          {
+            "about": "Where the night stands, and your word on where it goes.",
+            "id": "guide:energy",
+            "key": null,
+            "label": "The energy of the night",
+            "run": "guide energy"
+          },
+          {
+            "about": "What the room asked for, most wanted first: find it, or not tonight.",
+            "id": "guide:request",
+            "key": null,
+            "label": "A request waiting",
+            "run": "guide request"
+          },
+          {
+            "about": "The moves you are learning, each as it is taught, and one more to try.",
+            "id": "guide:learn",
+            "key": null,
+            "label": "Learning a move",
+            "run": "guide learn"
+          },
+          {
+            "about": "The plans you wrote for tonight, one press each.",
+            "id": "guide:trouble",
+            "key": null,
+            "label": "If something goes wrong",
+            "run": "guide trouble"
+          },
+          {
+            "about": "How you play, what you are learning, and your first steps — asked again.",
+            "id": "welcome",
+            "key": null,
+            "label": "Welcome",
+            "run": "welcome"
+          }
+        ],
+        "title": "Guides"
+      },
+      {
+        "tiles": [
+          {
             "about": "The collection, searchable and sortable.",
             "id": "surface:library",
             "key": null,
@@ -785,6 +839,60 @@
       {
         "tiles": [
           {
+            "about": "Three records to follow what is playing: up, level, or down.",
+            "id": "guide:next",
+            "key": null,
+            "label": "Next record",
+            "run": "guide next"
+          },
+          {
+            "about": "How to bring the waiting record in, each way drawn as it sounds.",
+            "id": "guide:mix",
+            "key": null,
+            "label": "The mix",
+            "run": "guide mix"
+          },
+          {
+            "about": "Where the night stands, and your word on where it goes.",
+            "id": "guide:energy",
+            "key": null,
+            "label": "The energy of the night",
+            "run": "guide energy"
+          },
+          {
+            "about": "What the room asked for, most wanted first: find it, or not tonight.",
+            "id": "guide:request",
+            "key": null,
+            "label": "A request waiting",
+            "run": "guide request"
+          },
+          {
+            "about": "The moves you are learning, each as it is taught, and one more to try.",
+            "id": "guide:learn",
+            "key": null,
+            "label": "Learning a move",
+            "run": "guide learn"
+          },
+          {
+            "about": "The plans you wrote for tonight, one press each.",
+            "id": "guide:trouble",
+            "key": null,
+            "label": "If something goes wrong",
+            "run": "guide trouble"
+          },
+          {
+            "about": "How you play, what you are learning, and your first steps — asked again.",
+            "id": "welcome",
+            "key": null,
+            "label": "Welcome",
+            "run": "welcome"
+          }
+        ],
+        "title": "Guides"
+      },
+      {
+        "tiles": [
+          {
             "about": "The collection, searchable and sortable.",
             "id": "surface:library",
             "key": null,
@@ -1487,6 +1595,60 @@
           }
         ],
         "title": "Activities"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Three records to follow what is playing: up, level, or down.",
+            "id": "guide:next",
+            "key": null,
+            "label": "Next record",
+            "run": "guide next"
+          },
+          {
+            "about": "How to bring the waiting record in, each way drawn as it sounds.",
+            "id": "guide:mix",
+            "key": null,
+            "label": "The mix",
+            "run": "guide mix"
+          },
+          {
+            "about": "Where the night stands, and your word on where it goes.",
+            "id": "guide:energy",
+            "key": null,
+            "label": "The energy of the night",
+            "run": "guide energy"
+          },
+          {
+            "about": "What the room asked for, most wanted first: find it, or not tonight.",
+            "id": "guide:request",
+            "key": null,
+            "label": "A request waiting",
+            "run": "guide request"
+          },
+          {
+            "about": "The moves you are learning, each as it is taught, and one more to try.",
+            "id": "guide:learn",
+            "key": null,
+            "label": "Learning a move",
+            "run": "guide learn"
+          },
+          {
+            "about": "The plans you wrote for tonight, one press each.",
+            "id": "guide:trouble",
+            "key": null,
+            "label": "If something goes wrong",
+            "run": "guide trouble"
+          },
+          {
+            "about": "How you play, what you are learning, and your first steps — asked again.",
+            "id": "welcome",
+            "key": null,
+            "label": "Welcome",
+            "run": "welcome"
+          }
+        ],
+        "title": "Guides"
       },
       {
         "tiles": [

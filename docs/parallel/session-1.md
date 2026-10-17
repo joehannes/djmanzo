@@ -104,6 +104,18 @@ the shared documents at the fold (§5).
 - **Still open from those notes:** nothing proved on a signed-in Suno or
   WhatsApp (needs an account and a phone).
 
+### Item 2: the truth pass, and what it turned up
+
+- **§117's last gap built, and the row closed ✅** (written into
+  DIRECTIVE-STATUS already): its "Not yet" — the §118 guides and welcome on
+  the dashboard — was the one thing the row still named. The dashboard
+  (`0`) now has a *Guides* section: the six guides (`guide <topic>`), each
+  opened as its top-bar button opens it (`Guides.svelte`'s `openTopic`), and
+  *Welcome*. `leader::runnable` accepts both runs; `dashboards.json`
+  re-blessed. Held by a dashboard test and `dashboard.spec.ts`'s guide test;
+  3 mutants fail them. The count: 79 done, 31 part, 19 standing rules, of
+  129.
+
 ### Session 2 folded in
 
 - **§40 and §12/§14 merged** into this branch (17 October). Its *Needed*

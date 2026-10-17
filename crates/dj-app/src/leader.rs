@@ -462,6 +462,10 @@ pub fn runnable(run: &str, switches: &[String]) -> Result<(), String> {
         "board" => Err(format!("there is no board called {rest:?}")),
         "ui" if UI_VERBS.contains(&rest) => Ok(()),
         "ui" => Err(format!("{rest:?} is not something the interface does")),
+        // §118's guides and its welcome, as the dashboard opens them.
+        "guide" if crate::guide::Topic::from_slug(rest).is_some() => Ok(()),
+        "guide" => Err(format!("there is no guide called {rest:?}")),
+        "welcome" if rest.is_empty() => Ok(()),
         "uiop" => crate::uiop::UiOp::parse(rest)
             .map(|_| ())
             .map_err(|error| format!("{rest:?}: {error}")),
