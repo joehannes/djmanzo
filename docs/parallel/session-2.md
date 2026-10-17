@@ -31,7 +31,14 @@ written under *Needed* below for the fold.
   drawn footage and generated sound in Chromium and run in the shipped
   webview under Xvfb with WebKitGTK's mock devices; **nothing here has been
   near a real room**, a real camera or a real microphone.
-- §106 — not started.
+- **§106 built: a controller and a turntable that are not there** — a
+  stand-in controller driving raw MIDI through the port's own callback body,
+  and a stand-in turntable rendering a deck under a scripted hand. Each found
+  a real defect, now fixed: a 14-bit fader stepping backwards, and a
+  timecode decoder that found no place at all on a record below full scale
+  and read a stopped platter as still turning. **Unproven against real
+  hardware**: no controller, turntable, control record or MIDI service has
+  touched any of it.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
@@ -76,6 +83,18 @@ written under *Needed* below for the fold.
   reading what it is easily confused with. Nothing adds them up: there is no
   crowd score, by §36's own rule. Built and tested against drawn footage and
   generated sound; not yet against a real room.
+
+- **Timecode vinyl at an ordinary level, and stopping when the record
+  does.** A control record arriving below full scale, as it does through a
+  normally set preamp, was never found on the record at all; now it is, down
+  to −12 dBFS and below. A platter stopped by hand read as still turning
+  slowly and the track crept on; it now stops within a twentieth of a second.
+  Tested against a stand-in turntable — playing, braked, scratched, lifted and
+  dropped, with wow, flutter, rumble, hiss and hum — not yet against a real
+  deck.
+- **High-resolution faders no longer step backwards.** A pitch fader sent as
+  two control changes, as Pioneer's are, jumped back a fraction each time it
+  crossed a step while being pushed one way; a slow push now reads one way.
 
 ## DIRECTIVE-STATUS text
 
@@ -216,6 +235,48 @@ written under *Needed* below for the fold.
   scattered figures, a lighting cut, a room clapping, a hi-hat on the grid,
   a bass tone, and one that switches from the bass to the hats).
 
+- **§106**, replacing *"What is not here yet: the other hardware djmanzo
+  reads that this container has none of — controllers and timecode vinyl —
+  through a stand-in of the same kind."*: **Controllers and timecode vinyl
+  have stand-ins now (17 October), and each found a defect.** *A controller*:
+  this container has no MIDI service (no ALSA sequencer, so not even a
+  virtual port), so `dj_hid::standin::StandIn` starts one step in, handing
+  raw bytes to the very function a real port's callback runs
+  (`port::deliver`, the callback's body moved out for this) — the learning
+  intercept, the mapping's script, the table — and `standin::presses` spells
+  every control of a mapping as the bytes the hardware sends (note-on, the
+  velocity-zero note-on most controllers send as a release, a 14-bit
+  fader's pair, an encoder's steps). Every control of all eight bundled
+  mappings reaches an action the vocabulary accepts; a shift key changes a
+  pad through the script; learning describes rather than acts; clock, sysex,
+  aftertouch and cut-short messages are ignored. **It found 14-bit faders
+  stepping backwards**: the high byte arrived with the last move's low byte
+  still held, so the DDJ-SR's pitch fader pushed up read −0.7357 then −0.7468
+  at a step; now the low byte is taken at the new step's near edge until its
+  own arrives (MIDI 1.0's zeroing alone still steps back on the way down).
+  *Timecode vinyl*: `dj_dvs::turntable::Turntable` renders what a working
+  deck puts out under a scripted hand (`Move`: play, ramp, scratch, lift,
+  drop) through textbook impairments (`Deck::WORKING`: −6 dBFS, a decibel of
+  imbalance, wow 0.1 %, flutter 0.05 %, rumble, hiss, hum), with the truth at
+  every frame, fed to the decoder a 256-frame callback at a time. **It found
+  the decoder reading no place at all on that deck** — a one was a peak over
+  three quarters of *full scale*, so a record at −6 dBFS read every bit as a
+  zero — and **a stopped platter reading as still turning at 7 %**, because
+  speed is measured at crossings and a stopped record sends none. The
+  threshold is now three quarters of an envelope of recent peaks, with no
+  bit read until a register's width of cycles has passed since the signal
+  returned (a maximal sequence never runs more zeros than that, so the
+  envelope has seen a one; without the wait, a needle dropped onto a run of
+  zeros reported a wrong place); the speed is bounded by the time since the
+  last crossing. Now: playing, speed within 3 % and place within 10 ms with
+  no block lost; braked, stopped within 50 ms; dropped elsewhere, found
+  there; no wrong place reported anywhere in the set; below −20 dBFS, no
+  place rather than a wrong one. Held by `standin::tests` (5),
+  `turntable::tests` (7) and the decoder's own; eleven mutants fail them.
+  **None of it has met real hardware**: the bytes are each mapping's own
+  description played back, and the deck is textbook figures, not a measured
+  cartridge — no RIAA curve, warp, skating or stylus resonance.
+
 ## Needed in files this session does not own
 
 - `crates/dj-app/src/commands.rs`, `dj_context`: its body is now
@@ -273,6 +334,17 @@ written under *Needed* below for the fold.
   room can see the lines; until then the shell answers both with `null`, and
   the surface draws nothing for a `null`.
 
+- **§106 at the fold** (optional, to drive the stand-ins through the running
+  application under Xvfb rather than only in tests):
+  - `crates/dj-audio` (null host): with `DJMANZO_STANDIN_TIMECODE=<deck>`,
+    feed `dj_dvs::turntable::Turntable::perform`'s audio as that deck's
+    timecode input, so the timecode panel and the deck follow a scripted
+    hand with no turntable.
+  - `crates/dj-app/src/control.rs`: with `DJMANZO_STANDIN_CONTROLLER=<mapping
+    file stem>`, wire a `dj_hid::standin::StandIn` in place of a port, so
+    the controllers panel and §53's reach can be seen with a "controller"
+    attached, and a debug command can play `standin::presses` into it.
+
 ## HANDOFF traps
 
 - `cargo fmt` re-wraps a long line between an edit script's read and its next
@@ -291,3 +363,10 @@ written under *Needed* below for the fold.
   (`smoothingTimeConstant` 0.8). Read once a look, that carries the last
   look's spectrum into this one for many looks; the room surface sets it to 0
   and `floor.spec.ts`'s *switch* sound fails without it.
+- A timecode decoder's `Reading::speed` was a value held from the last zero
+  crossing; anything reading it as "now" on a stopped record saw a creep.
+  It is bounded now (`Decoder::bounded`), but a new consumer of the raw
+  smoothed field would bring the creep back — read `Reading`, not the field.
+- The controller stand-in proves a mapping's bytes reach the vocabulary
+  through the real callback; it cannot prove a controller sends what its
+  mapping says. A mapping naming the wrong note passes.
