@@ -1557,15 +1557,11 @@ from a list here that will go stale.
 
 The largest of them, in the order they are worth doing:
 
-1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
-   colour rule ship; `dj_render::layer` is the inventory and the count is
-   checked in both directions. **Twelve of twenty** exist. The eight that do
-   not are the ones djmanzo cannot yet compute: vocal and stem presence,
-   breakdowns, drops, saved loops, energy trajectory, the mix-*in* region and
-   crowd response. Each needs analysis or history that does not exist, so the
-   next one built is a research question rather than a drawing one —
-   **mix-in** is the cheapest of them, and even it needs something that can say
-   where a record's intro ends.
+1. **§25–§27, the waveform as instrumentation — done.** `dj_render::layer`
+   is the inventory and the count is checked in both directions; all
+   twenty-three layers are drawn (checked 17 October — this item used to say
+   twelve of twenty, long after the rest had shipped). Read the paragraphs
+   below for how they were built, not as a list of what is left.
 
    Nothing here can be checked against a real room. **This container has no
    camera and no microphone**, so §34–§37 are tested against synthetic series

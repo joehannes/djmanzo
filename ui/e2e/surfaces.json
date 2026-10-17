@@ -510,33 +510,6 @@
     ]
   },
   {
-    "name": "transition",
-    "title": "Transition",
-    "about": "One transition, examined: where, how long, and what happens.",
-    "category": "planning",
-    "least": [
-      420,
-      240
-    ],
-    "prefer": [
-      760,
-      400
-    ],
-    "priority": 50,
-    "performance_critical": false,
-    "detachable": false,
-    "stackable": true,
-    "collapsible": true,
-    "contextual": true,
-    "home": "bottom",
-    "docks": [
-      "left",
-      "right",
-      "bottom",
-      "detached"
-    ]
-  },
-  {
     "name": "journal",
     "title": "Journal",
     "about": "Notes attached to a moment.",

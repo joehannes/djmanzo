@@ -868,6 +868,11 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            // Also the transition examined: `Pair.svelte` draws §68's
+            // transition object — where, how long, what happens, moved and
+            // re-scored. A `transition` surface was declared beside it and
+            // never drawn; two names for one panel is the two-descriptions
+            // trap, so it went and this carries it.
             name: "pair",
             title: "Pair",
             about: "Two records side by side, and the seam between them.",
@@ -1143,22 +1148,6 @@ pub fn surfaces() -> &'static [Surface] {
             collapsible: true,
             contextual: false,
             home: Dock::Right,
-            docks: SIDE_OR_BOTTOM,
-        },
-        Surface {
-            name: "transition",
-            title: "Transition",
-            about: "One transition, examined: where, how long, and what happens.",
-            category: Category::Planning,
-            least: (420, 240),
-            prefer: (760, 400),
-            priority: 50,
-            performance_critical: false,
-            detachable: false,
-            stackable: true,
-            collapsible: true,
-            contextual: true,
-            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
