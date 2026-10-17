@@ -45,18 +45,33 @@ pub fn sung_before(sung: &[&str], song: &str) -> bool {
 }
 
 /// The offer, or none: none when a voice is already chosen for the record,
-/// or the guest book has them singing this song before.
+/// or the guest book has them singing this song before — unless they said
+/// they are not sure of it (`unsure`), when it is offered all the same.
 #[must_use]
-pub fn offer(name: &str, song: &str, chosen_voice: bool, sung: &[&str]) -> Option<GuideOffer> {
-    if chosen_voice || song.trim().is_empty() || sung_before(sung, song) {
+pub fn offer(
+    name: &str,
+    song: &str,
+    chosen_voice: bool,
+    unsure: bool,
+    sung: &[&str],
+) -> Option<GuideOffer> {
+    if chosen_voice || song.trim().is_empty() {
         return None;
     }
-    Some(GuideOffer {
-        line: format!(
+    let line = if unsure {
+        format!(
+            "Not sure of it, {}: the guide voice keeps the original singer quietly underneath.",
+            name.trim()
+        )
+    } else if sung_before(sung, song) {
+        return None;
+    } else {
+        format!(
             "New to {}: the guide voice keeps the original singer quietly underneath.",
             name.trim()
-        ),
-    })
+        )
+    };
+    Some(GuideOffer { line })
 }
 
 /// The offer for the singer up next and their first song, from the
@@ -72,12 +87,18 @@ pub fn for_up_next(rotation: &Rotation, journal: &Journal) -> Option<GuideOffer>
         .flat_map(|guest| guest.sang.iter());
     let mut titles = Vec::new();
     for sang in theirs {
-        if song.track.is_some() && sang.track == song.track {
+        if song.track.is_some() && sang.track == song.track && !song.unsure {
             return None;
         }
         titles.push(sang.title.as_str());
     }
-    offer(&singer.name, &song.title, song.voice.is_some(), &titles)
+    offer(
+        &singer.name,
+        &song.title,
+        song.voice.is_some(),
+        song.unsure,
+        &titles,
+    )
 }
 
 /// [`for_up_next`], for the Singers panel's up-next card.
@@ -96,15 +117,17 @@ mod tests {
     /// where they already chose a voice, and never for no song.
     #[test]
     fn the_guide_is_offered_for_a_song_new_to_the_singer() {
-        let offered = offer("Ana", "Bachata Rosa", false, &["Vivir mi vida"]).expect("new to her");
+        let offered =
+            offer("Ana", "Bachata Rosa", false, false, &["Vivir mi vida"]).expect("new to her");
         assert!(offered.line.starts_with("New to Ana"), "{}", offered.line);
         assert!(offered.line.contains("quietly underneath"));
-        assert!(offer("Ana", "Bachata Rosa", false, &[]).is_some());
+        assert!(offer("Ana", "Bachata Rosa", false, false, &[]).is_some());
 
         assert_eq!(
             offer(
                 "Ana",
                 "Bachata Rosa",
+                false,
                 false,
                 &["Juan Luis Guerra - Bachata Rosa"]
             ),
@@ -112,15 +135,24 @@ mod tests {
             "sung before, written with the artist"
         );
         assert_eq!(
-            offer("Ana", "bachata rosa!", false, &["Bachata Rosa"]),
+            offer("Ana", "bachata rosa!", false, false, &["Bachata Rosa"]),
             None
         );
         assert_eq!(
-            offer("Ana", "Bachata Rosa", true, &[]),
+            offer("Ana", "Bachata Rosa", true, false, &[]),
             None,
             "a voice already chosen"
         );
-        assert_eq!(offer("Ana", "  ", false, &[]), None);
+        assert_eq!(offer("Ana", "  ", false, false, &[]), None);
+        assert!(
+            offer("Ana", "Bachata Rosa", false, true, &["Bachata Rosa"]).is_some(),
+            "not sure of a song sung before"
+        );
+        assert_eq!(
+            offer("Ana", "Bachata Rosa", true, true, &[]),
+            None,
+            "a voice chosen is chosen, sure or not"
+        );
         assert!(!sung_before(&["Rosa"], "Bachata Rosa"));
     }
 
@@ -164,5 +196,17 @@ mod tests {
         assert_eq!(for_up_next(&rotation, &journal), None, "the same title");
         journal.guests[1].sang = vec![sang("Ojalá que llueva café", Some("cd"))];
         assert!(for_up_next(&rotation, &journal).is_some());
+
+        // Not sure of it: offered though the guest book has her singing it.
+        journal.guests[1].sang = vec![sang("Rosa (live)", Some("ab"))];
+        assert_eq!(for_up_next(&rotation, &journal), None);
+        assert!(rotation.unsure_of_last(" ana "));
+        let unsure = for_up_next(&rotation, &journal).expect("she is not sure of it");
+        assert!(
+            unsure.line.starts_with("Not sure of it, Ana"),
+            "{}",
+            unsure.line
+        );
+        assert!(!rotation.unsure_of_last("Nobody"), "nobody asked");
     }
 }

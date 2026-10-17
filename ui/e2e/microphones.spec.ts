@@ -723,4 +723,45 @@ test.describe("K3: the singers' microphones", () => {
     expect(asked[0]).toMatchObject({ cmd: "karaoke_range_start", singer: "Ana" });
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **An echo in time with the record**: a note length chosen under the
+   * echo, sent with the rest of the strip for Rust to play at the record's
+   * tempo (`dj_app::echo_tempo`); the delay in milliseconds, which is what
+   * plays with nothing playing, is not moved by hand while it is timed;
+   * *No* gives the delay back.
+   */
+  test("an echo can be put in time with the record", async ({ page }) => {
+    await singers(page);
+    const here = section(page);
+    await here.getByRole("button", { name: "Open the inputs" }).click();
+    await readings(page, TWO);
+    await here.getByRole("button", { name: "Mic 1", exact: true }).click();
+    const chain = here.getByRole("group", { name: "Mic 1's chain" });
+    const last = async () => (await calls(page)).filter((c) => c.cmd === "vocal_strip_set").at(-1);
+    const timing = chain.getByRole("combobox", { name: "Mic 1 Echo in time with the record" });
+    await expect(timing).toHaveCount(0);
+
+    await chain.getByRole("checkbox", { name: "Mic 1 Echo" }).check();
+    await expect(timing).toHaveValue("");
+    const delay = chain.getByRole("slider", { name: "Mic 1 Echo Delay" });
+    await expect(delay).toBeEnabled();
+
+    const before = (await last())?.settings;
+    if (!before?.echo) throw new Error("the echo was not switched on");
+    await timing.selectOption({ label: "½ beat" });
+    await expect.poll(async () => (await last())?.settings?.echo?.beats).toBe(0.5);
+    expect((await last())?.settings).toEqual({ ...before, echo: { ...before.echo, beats: 0.5 } });
+    await expect(timing).toHaveValue("0.5");
+    await expect(delay).toBeDisabled();
+    // What is played is the record's tempo, so the readout says so rather
+    // than a number that is not what is heard.
+    await expect(delay.locator("xpath=following-sibling::output")).toHaveText("in time");
+
+    await timing.selectOption({ label: "No" });
+    await expect.poll(async () => (await last())?.settings?.echo?.beats).toBeNull();
+    await expect(delay).toBeEnabled();
+    await expect(delay.locator("xpath=following-sibling::output")).toHaveText(`${before.echo.delay_ms} ms`);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

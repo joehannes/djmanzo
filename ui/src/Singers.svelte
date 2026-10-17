@@ -13,6 +13,7 @@
    * interface can do: put the up-next song on a deck, in the singer's key.
    */
   import BuyLinks from "./BuyLinks.svelte";
+  import FindSong from "./FindSong.svelte";
   import Guests from "./Guests.svelte";
   import Microphones from "./Microphones.svelte";
   import LookByAi from "./LookByAi.svelte";
@@ -23,6 +24,8 @@
   import { rangeWords } from "./notes";
   import {
     detachPanel,
+    guessFromDescription,
+    type Guess,
     dispatch,
     karaokeAsk,
     karaokeBreaks,
@@ -133,6 +136,8 @@
 
   let singer = $state("");
   let song = $state("");
+  /** The singer is not sure of the song: the guide voice is offered for it. */
+  let unsure = $state(false);
   /** The record chosen from the collection for the song, if one was. */
   let picked = $state<LibraryTrack | null>(null);
   let matches = $state<LibraryTrack[]>([]);
@@ -401,6 +406,55 @@
     fits = [];
   }
 
+  /**
+   * §128 from the Singers panel: a singer who cannot name their song.
+   * The guided questions of *Find a song* open under the form, and what
+   * they find comes back to the song box — a record of the collection as
+   * the record, so the request carries it, and a guess of the assistant's
+   * the collection does not have as words, which the rotation takes as
+   * typed.
+   */
+  let findOpen = $state(false);
+  let guesses = $state<Guess[]>([]);
+  let guessing = $state(false);
+  let guessError = $state("");
+
+  /** Words for the song box, for a song the collection does not have. */
+  function found(text: string) {
+    picked = null;
+    song = text;
+    findOpen = false;
+    guesses = [];
+  }
+
+  async function askGuesses(description: string) {
+    guessing = true;
+    try {
+      guesses = await guessFromDescription(description);
+      guessError = "";
+    } catch (e) {
+      guessError = String(e);
+    } finally {
+      guessing = false;
+    }
+  }
+
+  /** A record of the collection, taken as picked: the request carries it. */
+  function foundTrack(track: LibraryTrack) {
+    picked = track;
+    pickedKey = null;
+    song = label(track);
+    matches = [];
+    fits = [];
+    findOpen = false;
+    guesses = [];
+  }
+
+  function takeGuess(guess: Guess) {
+    if (guess.owned) foundTrack(guess.owned);
+    else found(`${guess.artist} – ${guess.title}`);
+  }
+
   /** K8: *Songs for them* — records that fit the singer being typed. */
   let songsFor = $state<SongFor[] | null>(null);
   const typedRange = $derived(
@@ -428,10 +482,11 @@
     const chosen = picked && label(picked) === title ? picked : null;
     // K8: the key its fit offered — a starting key the host can still change.
     const key = chosen ? pickedKey : null;
-    await change(karaokeAsk(name, title, chosen?.id ?? null, chosen?.path ?? null, key));
+    await change(karaokeAsk(name, title, chosen?.id ?? null, chosen?.path ?? null, key, unsure));
     if (!error) {
       singer = "";
       song = "";
+      unsure = false;
       picked = null;
       pickedKey = null;
       songsFor = null;
@@ -473,7 +528,7 @@
   const guideFor = $derived.by(() => {
     const up = rotation?.singers.find((s) => s.name === rotation?.up_next);
     const song = up?.songs[0];
-    return up && song ? `${up.name}\n${song.title}\n${song.voice ?? ""}` : "";
+    return up && song ? `${up.name}\n${song.title}\n${song.voice ?? ""}\n${song.unsure ?? false}` : "";
   });
   $effect(() => {
     const asking = guideFor;
@@ -844,7 +899,7 @@
         {/if}
       </p>
       {/key}
-      <p class="what">{next.title}</p>
+      <p class="what">{next.title}{#if next.unsure}<span class="unsure-mark" data-unsure>not sure of it</span>{/if}</p>
       {#if next.track && line !== undefined}
         <!-- K6: the line the song's voice sings — what a singer is scored against. -->
         {#if line && line.scorable}
@@ -1023,6 +1078,7 @@
               >{/if}</span
           >
           <span class="song">{person.songs[0].title}</span>
+          {#if person.songs[0].unsure}<span class="unsure-mark" data-unsure>not sure</span>{/if}
           {#if asked(person.songs[0])}
             <span class="asked" data-asks>{asked(person.songs[0])}</span>
             <button
@@ -1107,7 +1163,18 @@
         </ul>
       {/if}
     </div>
+    <label class="unsure" title="The guide voice is offered for it, keeping the original singer quietly underneath">
+      <input type="checkbox" bind:checked={unsure} />
+      Not sure of it
+    </label>
     <button type="submit" disabled={!singer.trim() || !song.trim()}>Add</button>
+    <button
+      type="button"
+      class="quiet"
+      aria-expanded={findOpen}
+      title="The guided questions: when it is from, how fast, who sings it…"
+      onclick={() => (findOpen = !findOpen)}>Can't name it?</button
+    >
     {#if typedRange}
       <button type="button" class="quiet" onclick={() => void suggest()}>Songs for {singer.trim()}</button>
     {/if}
@@ -1126,6 +1193,29 @@
                   >{fitWords(found.offer)}</span
                 ></button
               >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  {/if}
+
+  {#if findOpen}
+    <section class="find-song" aria-label="Find a song they cannot name">
+      <FindSong {enabled} onTrack={foundTrack} onAsk={(text) => void askGuesses(text)} />
+      {#if guessing}
+        <p class="hint">Asking the assistant…</p>
+      {:else if guessError}
+        <p class="error">{guessError}</p>
+      {:else if guesses.length > 0}
+        <ul class="guesses" aria-label="The assistant's guesses">
+          {#each guesses as guess (guess.artist + guess.title)}
+            <li>
+              <button type="button" onclick={() => takeGuess(guess)}
+                >{guess.artist} – {guess.title}{#if guess.owned}<span class="fit">in your collection</span
+                  >{/if}</button
+              >
+              {#if guess.why}<span class="why">{guess.why}</span>{/if}
             </li>
           {/each}
         </ul>
@@ -1998,6 +2088,32 @@
     text-align: left;
   }
 
+  .find-song {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .guesses {
+    list-style: none;
+    margin: 0.3rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .guesses button {
+    width: 100%;
+    text-align: left;
+  }
+
+  .guesses .why {
+    display: block;
+    font-size: 0.85em;
+    opacity: 0.75;
+  }
+
   /* Over what follows rather than in the form's row: in the row it stretched
      the singer's name field to the list's height, found by driving it. */
   .matches {
@@ -2100,6 +2216,18 @@
   .asks span,
   .asked {
     color: var(--warn);
+  }
+  .unsure-mark {
+    margin-left: 0.4em;
+    font-size: 0.8em;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .unsure {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
   }
   .line-field {
     display: flex;

@@ -58,6 +58,12 @@ pub struct Request {
     /// to take or refuse. Nothing of it is applied until taken.
     #[serde(default)]
     pub asks: Option<Asks>,
+    /// The singer is not sure of it, though they may have sung it before:
+    /// the guide voice is offered for it as for a song new to them
+    /// ([`crate::guide_offer`]). Absent from a request made before it
+    /// existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unsure: bool,
 }
 
 /// K4: a singer's proposal, as the host's row shows it.
@@ -230,6 +236,22 @@ fn same(a: &str, b: &str) -> bool {
 }
 
 impl Rotation {
+    /// Mark the song `name` asked for last as one they are not sure of —
+    /// the host's tick beside the request. False when they have asked for
+    /// nothing.
+    pub fn unsure_of_last(&mut self, name: &str) -> bool {
+        let Some(song) = self
+            .singers
+            .iter_mut()
+            .find(|singer| same(&singer.name, name.trim()))
+            .and_then(|singer| singer.songs.last_mut())
+        else {
+            return false;
+        };
+        song.unsure = true;
+        true
+    }
+
     /// Somebody asks for a song.
     ///
     /// A singer already in the rotation adds it to their own list and keeps
@@ -260,6 +282,7 @@ impl Rotation {
             key,
             voice: None,
             asks: None,
+            unsure: false,
         };
         match self
             .singers

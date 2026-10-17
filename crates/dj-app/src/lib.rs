@@ -30,6 +30,10 @@ pub mod deck_queue;
 pub mod find_song;
 pub mod sources_board;
 // End of session A's modules.
+// Parallel, session 1 (docs/PARALLEL-SESSIONS.md §4): its modules go
+// between these two lines, and nothing else does.
+pub mod echo_tempo;
+// End of parallel session 1's modules.
 pub mod assistant;
 pub mod at_hand;
 pub mod audience;
@@ -607,6 +611,8 @@ pub fn run() {
                                 crate::deck_queue::advance(&state, deck);
                             });
                         }
+                        // A singer's echo timed to the record playing.
+                        crate::echo_tempo::tick(&state, &snapshot);
                         if let Some(deck) = crate::commands::tick_breaks(&state, now) {
                             let handle = handle.clone();
                             std::thread::spawn(move || {

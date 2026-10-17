@@ -401,6 +401,7 @@ fn the_singers_microphones_never_allocate() {
             delay_ms: 300.0,
             feedback: 0.4,
             level: 0.3,
+            beats: None,
         }),
         ..dj_vocal::StripSettings::default()
     };

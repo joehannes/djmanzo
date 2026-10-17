@@ -1341,7 +1341,7 @@ fn lock<T>(held: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// K3: what each strip plays — the rig kept in `vocal.json`, with the chain
 /// of whoever is on it laid over its row (docs/KARAOKE.md §6).
-fn played_vocal_settings(state: &AppState) -> Vec<dj_vocal::StripSettings> {
+pub(crate) fn played_vocal_settings(state: &AppState) -> Vec<dj_vocal::StripSettings> {
     let on = lock(state.on_mics());
     played(state.read_vocal_settings(), &on)
 }
@@ -1480,7 +1480,8 @@ fn vocal_settings_changed(state: &AppState) {
 /// A2: a strip's settings as the engine is to play them — held out of the
 /// room while push-to-talk is taking from it, whatever the screen sends
 /// meanwhile, so moving its fader mid-command does not put "deck two, play"
-/// through the PA.
+/// through the PA — and with an echo timed to the record, at the record's
+/// tempo ([`crate::echo_tempo`]).
 fn as_played(
     state: &AppState,
     strip: usize,
@@ -1490,6 +1491,7 @@ fn as_played(
         .take
         .as_ref()
         .is_some_and(|take| take.strip == strip);
+    let settings = crate::echo_tempo::timed(settings);
     if taking {
         crate::voice::held_out(settings)
     } else {
@@ -1497,7 +1499,7 @@ fn as_played(
     }
 }
 
-fn send_vocal_strip(
+pub(crate) fn send_vocal_strip(
     state: &AppState,
     strip: usize,
     settings: dj_vocal::StripSettings,
@@ -16553,6 +16555,8 @@ pub fn sing_rules_set(
 
 /// §107: somebody asks for a song. With no key, the key they sang it in last
 /// time.
+/// `unsure`: the singer is not sure of it, and the guide voice is offered
+/// for it as for a song new to them.
 ///
 /// # Errors
 /// An empty name or title.
@@ -16564,10 +16568,15 @@ pub fn karaoke_ask(
     track: Option<String>,
     path: Option<String>,
     key: Option<i32>,
+    unsure: Option<bool>,
 ) -> Result<RotationDto, String> {
     let mut taken = false;
     let dto = with_rotation(&state, |rotation| {
         taken = rotation.ask(&singer, &title, track, path, key);
+        // The host's *not sure of it*: the guide is offered for it.
+        if taken && unsure.unwrap_or(false) {
+            rotation.unsure_of_last(&singer);
+        }
         taken
     });
     if taken {

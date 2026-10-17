@@ -18,12 +18,15 @@
     enabled = true,
     onAsk,
     onFind,
+    onTrack,
   }: {
     enabled?: boolean;
     /** Ask the assistant with this description. */
     onAsk: (description: string) => void;
     /** Find a record of the collection in the search box. */
     onFind?: (text: string) => void;
+    /** Take the record itself, where a name in a search box is not the next gesture. */
+    onTrack?: (track: LibraryTrack) => void;
   } = $props();
 
   const DECADES = [1960, 1970, 1980, 1990, 2000, 2010, 2020];
@@ -123,7 +126,9 @@
           <li>
             <span class="what">{name(hit.track)}</span>
             <span class="because">{hit.because.join(" · ")}</span>
-            <button class="find" onclick={() => onFind?.(name(hit.track))}>Find it</button>
+            <button class="find" onclick={() => (onTrack ? onTrack(hit.track) : onFind?.(name(hit.track)))}
+              >Find it</button
+            >
           </li>
         {/each}
       </ul>
