@@ -73,7 +73,7 @@ export async function keys(env: AppEnv): Promise<Keys> {
   return { privateKey, publicKey, publicRaw: jwk.x! };
 }
 
-async function sign(env: AppEnv, prefix: "DJM1" | "DJA1", claims: object): Promise<string> {
+export async function sign(env: AppEnv, prefix: "DJM1" | "DJA1", claims: object): Promise<string> {
   const { privateKey } = await keys(env);
   const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
   const signed = `${prefix}.${payload}`;
