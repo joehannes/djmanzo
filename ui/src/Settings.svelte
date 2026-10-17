@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Licence from "./Licence.svelte";
   /**
    * Sources, credentials, folders and branding.
    *
@@ -1733,6 +1734,8 @@
       <p class="warn">{remote.error}</p>
     {/if}
   </div>
+
+  <Licence />
 
   <div class="block">
     <h3>Your logo</h3>

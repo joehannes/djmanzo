@@ -1,0 +1,9 @@
+{
+  "name": "djmanzo-licence",
+  "private": true,
+  "type": "module",
+  "description": "djmanzo's licence service: a Cloudflare Worker over one KV namespace (docs/EDITIONS.md).",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

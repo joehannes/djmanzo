@@ -158,19 +158,21 @@ planned; [ADR-0011](adr/0011-licence-by-sign-in.md) is the decision.
    `127.0.0.1` only djmanzo is listening on, with a PKCE check, as RFC 8252
    asks of native applications.
 4. **The licence.** The Worker reads the KV record and signs a short licence:
-   the account, the edition, its modules, the trial's end if there is one,
-   when it was issued and when it expires (30 days). djmanzo keeps it on
-   disk and checks its Ed25519 signature offline; `dj_core::edition::Modules`
+   the account, the edition, Custom's modules, the trial's end if there is
+   one, when it was signed and when to renew it (30 days on). djmanzo keeps it
+   on disk and checks its Ed25519 signature offline; `dj_core::edition::Modules`
    comes from it, and every check asks `Modules::has` as before.
-5. **Renewing.** While online, djmanzo renews the licence in the background
-   every few days. Offline, it works until the licence expires: 30 days
-   without a connection is a long tour.
+5. **Renewing.** While online, djmanzo fetches a fresh licence in the
+   background; that is how an upgrade, a refund or a trial turned into a
+   purchase arrives. **A purchase past its renewal date keeps working**: the
+   price is paid once, so a DJ a month off the grid is only asked to sign in
+   when they can. A trial ends on its date, connection or not.
 
 ### Rules that keep a gig safe
 
-- **A licence never runs out mid-set.** Expiry, a lapsed trial or a refund
-  takes effect the next time the application starts, never while a deck is
-  playing.
+- **More applies at once, less waits.** A sign-in, a purchase or an upgrade
+  takes effect the moment it arrives; a lapsed trial, a refund or a sign-out
+  only the next time the application starts, never while a deck is playing.
 - **No connection is ever needed to play.** Signing in and renewing need
   one; playing does not.
 - **Nothing the DJ made is held hostage.** The collection, cues, playlists,
@@ -239,13 +241,27 @@ states, named for what they show, for the shop pages (see its README).
 1. **The parts list** (`dj_core::edition`): done.
 2. **The switch at run time**: `Modules` from the licence, every command a
    module owns refusing what is not there with the edition that has it, the
-   interface hiding it. Until the licence exists, a development licence for
-   Full.
+   interface hiding it. **The boundary is built** (`dj_app::gate`): every
+   command passes one guard, which refuses what a module does (not what it
+   reads) when the licence in force does not carry it, and says which
+   edition does. With no licence nothing is refused, until the owner decides
+   what a djmanzo nobody has signed in to may do. Left: actions on the bus
+   (decks three and four, stems on a deck), and the interface hiding what is
+   refused.
 3. **The licence in the application**: reading and checking a signed
-   licence, the trial's days in the status strip, *Sign in*.
-4. **The licence service**: the Worker, KV, the webhook, the trial (in this
-   repository, deployed by the owner).
-5. **The quiet cards.**
+   licence (`dj_app::licence`), Settings → *Licence* with *Sign in* through
+   the browser for the five providers and *try an edition free for 7 days*,
+   renewal in the background, the trial's days in the top bar: **built**.
+   Signing in works once the service is deployed and a build names it
+   (`DJMANZO_LICENCE_SERVICE`); until then the buttons say the shop is not
+   open yet, and a pasted licence works.
+4. **The licence service**: the Worker, KV, sign-in with five providers, the
+   webhook, the trial (`services/licence`): **built and tested, not
+   deployed**; deploying is the owner's, step by step in its README.
+5. **The quiet cards**: a panel the edition does not carry is drawn as a
+   card saying what it is and the cheapest edition that has it (Rust's
+   `licence::Status::missing`, `QuietCard.svelte`): **built** for the panels;
+   left for controls inside panels (a stem button in a Hobbyist's deck).
 6. **The Auto-Pilot surface.**
 7. **The Apprentice curriculum**: the largest piece, and most of it is
    teaching content the owner's knowledge decides.

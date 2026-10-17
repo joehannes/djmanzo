@@ -2163,6 +2163,12 @@ export async function openShell(
             }
             return Promise.resolve(answers[cmd]);
           }
+          // §131: which provider a sign-in asked for, and which trial, so a
+          // test can check the button reached Rust with the right words.
+          if (cmd === "licence_sign_in") {
+            ((win.__signIns ??= []) as unknown[]).push({ provider: args.provider, trial: args.trial });
+            return Promise.resolve(answers[cmd] ?? null);
+          }
           if (cmd === "set_assistant_model") {
             const chosen = { provider: String(args.provider), model: String(args.model) };
             ((win.__chosenModels ??= []) as unknown[]).push(chosen);

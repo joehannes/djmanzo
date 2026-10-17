@@ -1605,6 +1605,20 @@ the decision. `dj_core::edition` is the parts list every check asks
 (`Modules::has`); nothing reads it yet. When adding a feature, say which
 module it belongs to, or that it is the foundation's.
 
+**One download, a licence, a marketplace (17 October, §131).** The owner
+changed §130's separate downloads to **one download unlocked by the licence
+the DJ's social sign-in fetches**, with a 7-day trial of any edition, and
+asked for a free marketplace and more hardware ([EDITIONS.md](EDITIONS.md),
+[MARKETPLACE.md](MARKETPLACE.md), [FEATURES.md §4](FEATURES.md#4-outlook),
+ADR-0011 and ADR-0012). `dj_app::licence` is the application's half and
+`services/licence` the Cloudflare Worker (plain JavaScript, `npm test` with
+no install); **change the licence format on both sides together**:
+`services/licence/test/vector.txt` is written by the service's test and read
+by a Rust test, and `src/editions.json` is compared with `dj_core::edition`.
+Nothing is refused by the licence yet; that is step 2 of EDITIONS' order of
+work. `docs/screenshots/` holds the shop's pictures, made by
+`scripts/screenshots/` (see its README) from generated demo music.
+
 **The karaoke beta (16–17 October, §126–§129).** The owner asked for a
 night's worth of karaoke features in one afternoon, and they were built in
 two sessions that could not collide ([karaoke_beta_release.md](karaoke_beta_release.md):

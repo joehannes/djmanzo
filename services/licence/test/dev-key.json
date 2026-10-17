@@ -1,0 +1,5 @@
+{
+  "note": "The development key pair. Its private half is public on purpose: a licence it signs is believed only by a debug build of djmanzo (dj_app::licence::DEV_KEY). Never deploy with it.",
+  "pkcs8": "MC4CAQAwBQYDK2VwBCIEIPRHk1/8fhaH7aZj2Lowc3Gwf6zAJy9NYB5g0P2A5mio",
+  "public": "twAB0cH0SC2jfnUNk8epDhSWQAXvQhymLQcLAkwr9r4="
+}

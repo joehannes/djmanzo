@@ -3,7 +3,8 @@
 //! The owner's word (`docs/DIRECTIVE.md` §130): an *Auto-Pilot*, a
 //! *Hobbyist*, an *Apprentice*, a *Pro DJ*, a *Karaoke*, the *Full* version,
 //! and a *Custom* one built from the Hobbyist foundation plus the modules a
-//! DJ picks. Each edition is a separate download (`docs/EDITIONS.md`).
+//! DJ picks. Every edition is the same download, unlocked by the licence the
+//! DJ's sign-in fetches (§131, `docs/EDITIONS.md`).
 //!
 //! # A foundation and modules
 //!
@@ -20,9 +21,9 @@
 //!
 //! # What is not here
 //!
-//! Prices, and which edition this build is. Prices are a business decision
-//! that changes faster than code (`docs/EDITIONS.md`); the build's edition is
-//! chosen where the application is built, one layer up.
+//! Prices, and which edition this djmanzo is. Prices are a business decision
+//! that changes faster than code (`docs/EDITIONS.md`); the edition is the
+//! licence's, read one layer up (`dj_app::licence`).
 
 use serde::{Deserialize, Serialize};
 
@@ -131,6 +132,45 @@ impl Module {
             Self::Sources => "Online sources",
             Self::Events => "Events",
             Self::Replay => "Replay",
+        }
+    }
+
+    /// What it is, in one sentence a DJ reads on the card that stands in
+    /// its place in an edition without it.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::FourDecks => "Decks three and four, for mixing more than two records at once.",
+            Self::Stems => {
+                "Vocals, drums, bass and the rest of a record apart, live, to mix one at a time."
+            }
+            Self::Autopilot => {
+                "djmanzo mixes the night itself, in the style you set, and hands back the moment you touch a control."
+            }
+            Self::Assistant => {
+                "What to play next and why, a whisper when something needs you, and a DJ to talk to."
+            }
+            Self::Teacher => {
+                "Lessons, a coach that listens to your mixes, a practice deck in your headphones, and the road to your first gig."
+            }
+            Self::Karaoke => {
+                "The singers' screen with the words in time, a queue, a sign-up page for phones, and microphones for the singers."
+            }
+            Self::Crowd => {
+                "The room read by camera, microphone and phones, and what each mix did to the floor."
+            }
+            Self::Controllers => "Map any controller yourself, HID devices and motorised platters.",
+            Self::Dvs => "Control the decks with timecode vinyl on real turntables.",
+            Self::Video => {
+                "Video on a deck, layered visuals and the visualiser on a second screen."
+            }
+            Self::Streaming => "Go live, drive OBS, and share a set.",
+            Self::Plugins => "Your own audio plugins in the effect rack.",
+            Self::Sources => "Search, stream and buy beyond your own files.",
+            Self::Events => {
+                "Each event prepared step by step, the night's plan, and your press kit."
+            }
+            Self::Replay => "Hear a set back, and render it again at studio quality.",
         }
     }
 

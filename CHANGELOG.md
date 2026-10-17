@@ -16,9 +16,25 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-- **Editions planned.** djmanzo will come in seven editions, each its own
-  download: Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full and
-  Custom. See `docs/EDITIONS.md` for what each carries and what it costs.
+- **Editions planned.** djmanzo will come in seven editions: Auto-Pilot,
+  Hobbyist, Apprentice, Karaoke, Pro DJ, Full and Custom. All of them are
+  one download, unlocked by signing in with Google, Apple, GitHub, Microsoft
+  or Discord, with a free 7-day trial of any edition. See `docs/EDITIONS.md`
+  for what each carries and what it costs.
+- **A licence, in Settings.** Settings → *Licence* says which edition this
+  djmanzo is, how many days a trial has left, and takes a licence you were
+  sent. A licence that gives you more takes effect at once; one that gives
+  less waits until djmanzo next starts, so nothing you are using disappears
+  in the middle of a set. A paid edition never stops working because you
+  have been offline. Signing in comes with the shop.
+- **A free marketplace planned**, for themes, skins, visuals, controller
+  mappings, knowledge packs, lessons and DJ techniques the autopilot can
+  perform. See `docs/MARKETPLACE.md`.
+- **Screenshots of every screen**, in every theme and skin, in
+  `docs/screenshots/`.
+- **The README and the feature list brought up to date.** The README no
+  longer says djmanzo joins Pioneer and Denon club players over the network:
+  that is planned, not built.
 
 ## v0.46.0 — Two sessions at once: practice, the peak, and what djmanzo learns and reads
 

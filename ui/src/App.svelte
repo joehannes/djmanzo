@@ -1,4 +1,6 @@
 <script lang="ts">
+  import QuietCard from "./QuietCard.svelte";
+  import { edition } from "./edition.svelte";
   import { EDITION, firstActivity } from "./edition";
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
@@ -1949,6 +1951,8 @@
       // this list is empty, and every other way of arranging the cockpit still
       // works.
     }
+    // §130: what this edition carries, before any panel is drawn from it.
+    void edition.load();
     try {
       const resolved = await cockpitWorkspace();
       workspace = resolved.workspace;
@@ -3611,6 +3615,21 @@
         >
           SAFE
         </button>
+        <!--
+          §131: a trial's days, here and nowhere else — never a pop-up, never
+          in the middle of the screen. EDITIONS.md, "The 7-day trial".
+        -->
+        {#if edition.status?.state === "trial" && edition.status.trial_days_left != null}
+          <span
+            class="trial-days"
+            data-trial-days={edition.status.trial_days_left}
+            title={edition.status.trial_days_left <= 1
+              ? `The last day of trying ${edition.status.product}. Buying keeps everything you made, where you left it.`
+              : `Trying ${edition.status.product}. Everything you make is kept, whatever you decide.`}
+          >
+            Trial · {edition.status.trial_days_left <= 1 ? "last day" : `${edition.status.trial_days_left} days`}
+          </span>
+        {/if}
       </div>
       <!--
         §115: the quiet proposer, in the room this row has after the set
@@ -4111,7 +4130,8 @@
 
   {#snippet surfaceContent(name: string)}
     <!-- What a surface draws, wherever it is: a dock, over the decks, or on a board. -->
-    {#if name === "library"}{@render surfaceLibrary()}
+    {#if edition.missingFor(name)}<QuietCard missing={edition.missingFor(name)!} />
+    {:else if name === "library"}{@render surfaceLibrary()}
     {:else if name === "prepare"}{@render surfacePrepare()}
     {:else if name === "next"}{@render surfaceNext()}
     {:else if name === "plan"}{@render surfacePlan()}
@@ -6161,4 +6181,13 @@
     font-size: 0.85em;
   }
 
+  .trial-days {
+    align-self: center;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent, currentColor) 50%, transparent);
+    color: var(--text-dim, inherit);
+    white-space: nowrap;
+  }
 </style>

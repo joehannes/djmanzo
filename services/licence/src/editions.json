@@ -1,0 +1,65 @@
+{
+  "modules": [
+    "four_decks",
+    "stems",
+    "autopilot",
+    "assistant",
+    "teacher",
+    "karaoke",
+    "crowd",
+    "controllers",
+    "dvs",
+    "video",
+    "streaming",
+    "plugins",
+    "sources",
+    "events",
+    "replay"
+  ],
+  "editions": {
+    "autopilot": [
+      "autopilot"
+    ],
+    "hobbyist": [],
+    "apprentice": [
+      "assistant",
+      "teacher"
+    ],
+    "karaoke": [
+      "karaoke"
+    ],
+    "pro": [
+      "four_decks",
+      "stems",
+      "autopilot",
+      "assistant",
+      "crowd",
+      "controllers",
+      "dvs",
+      "video",
+      "streaming",
+      "plugins",
+      "sources",
+      "events",
+      "replay"
+    ],
+    "full": [
+      "four_decks",
+      "stems",
+      "autopilot",
+      "assistant",
+      "teacher",
+      "karaoke",
+      "crowd",
+      "controllers",
+      "dvs",
+      "video",
+      "streaming",
+      "plugins",
+      "sources",
+      "events",
+      "replay"
+    ],
+    "custom": []
+  }
+}

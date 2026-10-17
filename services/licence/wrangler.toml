@@ -1,0 +1,19 @@
+# djmanzo's licence service. The owner deploys it: see README.md.
+name = "djmanzo-licence"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "LICENCES"
+# `npx wrangler kv namespace create LICENCES` prints the id to put here.
+id = "REPLACE_WITH_THE_NAMESPACE_ID"
+
+# Secrets are never written here. Set each with `npx wrangler secret put NAME`:
+#   SIGNING_KEY            the store's Ed25519 private key, PKCS#8, base64
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+#   MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET
+#   APPLE_CLIENT_ID / APPLE_CLIENT_SECRET   (Apple's secret is a signed JWT, renewed every 6 months)
+#   GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
+#   DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET
+#   LEMONSQUEEZY_SECRET    the webhook's signing secret
+#   VARIANTS               {"<variant id>": {"edition": "pro"}, "<id>": {"edition": "custom", "modules": "stems"}}

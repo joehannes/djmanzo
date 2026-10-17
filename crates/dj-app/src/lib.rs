@@ -57,6 +57,7 @@ pub mod crowd;
 pub mod dashboard;
 pub mod decide;
 pub mod downloads;
+pub mod gate;
 pub mod ghost;
 pub mod gig;
 pub mod grid;
@@ -72,6 +73,7 @@ pub mod leader;
 pub mod lens;
 pub mod level;
 pub mod library;
+pub mod licence;
 pub mod listen;
 pub mod listening;
 pub mod live;
@@ -719,7 +721,7 @@ pub fn run() {
             crate::standin::open(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(gate::guard(tauri::generate_handler![
             // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its
             // commands go between these two lines, and nothing else does.
             deck_queue::deck_queue,
@@ -819,6 +821,11 @@ pub fn run() {
             commands::stop_clock,
             commands::follow_clock,
             commands::unfollow_clock,
+            commands::licence_status,
+            commands::licence_install,
+            commands::licence_sign_out,
+            commands::licence_sign_in,
+            commands::licence_renew,
             commands::remote_status,
             commands::audience_start,
             commands::audience_stop,
@@ -1193,7 +1200,7 @@ pub fn run() {
             floor::floor_saw,
             floor::floor_read,
             // End of session 2's commands.
-        ])
+        ]))
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");
 }

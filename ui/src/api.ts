@@ -4661,6 +4661,31 @@ export const followClock = (port: string) =>
   invoke<ClockStatus>("follow_clock", { port });
 export const unfollowClock = () => invoke<ClockStatus>("unfollow_clock");
 
+/** §131: which edition this djmanzo is (`dj_app::licence::Status`). */
+export interface LicenceStatus {
+  state: "signed_out" | "refused" | "licensed" | "trial" | "trial_over";
+  edition: string | null;
+  product: string | null;
+  modules: string[];
+  account: string | null;
+  trial_days_left: number | null;
+  renew_due: boolean;
+  development: boolean;
+  reason: string | null;
+  /** A licence that arrived and waits for the next start. */
+  waiting: boolean;
+  /** What the licence in force does not carry, and the cheapest edition that does. */
+  missing: { module: string; title: string; about: string; edition: string }[];
+}
+
+export const licenceStatus = () => invoke<LicenceStatus>("licence_status");
+export const licenceInstall = (line: string) => invoke<LicenceStatus>("licence_install", { line });
+export const licenceSignOut = () => invoke<LicenceStatus>("licence_sign_out");
+/** Sign in in the DJ's browser; `trial` starts the 7-day trial of that edition. */
+export const licenceSignIn = (provider: string, trial?: string) =>
+  invoke<LicenceStatus>("licence_sign_in", { provider, trial: trial ?? null });
+export const licenceRenew = () => invoke<LicenceStatus>("licence_renew");
+
 export const remoteStatus = () => invoke<RemoteStatus>("remote_status");
 export const startRemote = (address: string, token?: string) =>
   invoke<RemoteStatus>("start_remote", { address, token: token || null });

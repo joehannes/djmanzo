@@ -1,0 +1,14 @@
+[
+ {"file":"golden-hour","title":"Golden Hour","artist":"Lumen Coast","genre":"Deep House","bpm":124,"key":"Am","prog":[0,0,-4,-2],
+  "sections":[[16,"kh"],[16,"khb"],[8,"pr"],[32,"khcbp"],[8,"p"],[16,"khcbp"],[8,"kh"]],"octave":true},
+ {"file":"island-frequency","title":"Island Frequency","artist":"Marisol & The Tide","genre":"Reggae","bpm":92,"key":"G","prog":[0,5,7,5],"skank":true,
+  "sections":[[8,"hbp"],[24,"khbp"],[8,"p"],[24,"khcbp"],[8,"hbp"]]},
+ {"file":"night-market","title":"Night Market","artist":"Kilo Vega","genre":"Tech House","bpm":128,"key":"Fm","prog":[0,0,3,-2],
+  "sections":[[16,"kh"],[16,"khcb"],[8,"pr"],[32,"khcbp"],[16,"khcb"],[8,"kh"]],"octave":true},
+ {"file":"coral-lights","title":"Coral Lights","artist":"Lumen Coast","genre":"Melodic House","bpm":122,"key":"Dm","prog":[0,-2,-4,-5],
+  "sections":[[16,"khp"],[16,"khbp"],[16,"pr"],[32,"khcbp"],[16,"khp"]]},
+ {"file":"paper-moons","title":"Paper Moons","artist":"Ana Ferreira","genre":"Nu-Disco","bpm":112,"key":"C","prog":[0,9,5,7],
+  "sections":[[8,"khp"],[16,"khcbp"],[8,"bp"],[16,"khcbp"],[8,"p"],[16,"khcbp"],[8,"khp"]],"octave":true},
+ {"file":"overdrive-heart","title":"Overdrive Heart","artist":"The Midnight Static","genre":"Synthwave","bpm":118,"key":"Em","prog":[0,-4,-7,-2],
+  "sections":[[8,"kh"],[16,"khbp"],[8,"pr"],[24,"khcbp"],[16,"khcbp"],[8,"p"]]}
+]

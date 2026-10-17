@@ -1,6 +1,6 @@
 # ADR-0011 — One download, unlocked by signing in
 
-- **Status**: accepted — planned, nothing built
+- **Status**: accepted — the application's half (`dj_app::licence`) and the service (`services/licence`) built and tested; not deployed, and nothing refused by it yet
 - **Date**: 2026-10-17
 - **Supersedes**: decisions 2 and 3 of [ADR-0010](0010-editions.md)
 
@@ -29,9 +29,10 @@ sign-in, and a free 7-day trial of the Full edition or any other.
    application. djmanzo keeps no passwords.
 4. **The trial is a KV record**: seven days of any edition, once per
    account, wherever it was started.
-5. **A gig is never interrupted.** Licences last 30 days and renew in the
-   background; a change of licence takes effect at the next start, never
-   while a deck plays; playing never needs a connection.
+5. **A gig is never interrupted.** Licences are renewed in the background
+   every 30 days, and a purchase past its renewal keeps working; a licence
+   that gives more applies at once, one that gives less at the next start,
+   never while a deck plays; playing never needs a connection.
 
 ## Alternatives rejected
 

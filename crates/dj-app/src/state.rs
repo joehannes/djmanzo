@@ -150,6 +150,8 @@ pub struct AppState {
     /// subdirectory to find where you started is the sort of implicit
     /// coupling that breaks silently the first time either path moves.
     config_dir: Mutex<Option<std::path::PathBuf>>,
+    /// §131: the licence this run wears, read once at start.
+    licence: crate::licence::Held,
     /// §111: what the downloads folder filed lately, newest first.
     filed: Mutex<std::collections::VecDeque<crate::downloads::Filed>>,
     /// §108: the words on the stream, shared with the overlay's server.
@@ -582,6 +584,7 @@ impl AppState {
             )),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
+            licence: crate::licence::Held::default(),
             filed: Mutex::new(std::collections::VecDeque::new()),
             live_now: std::sync::Arc::new(dj_net::overlay::NowPlaying::new()),
             live_status: Mutex::new(crate::live::Status::default()),
@@ -1129,6 +1132,7 @@ impl AppState {
         if let Ok(mut slot) = self.config_dir.lock() {
             *slot = Some(dir.clone());
         }
+        self.licence.load(&dir);
         // Before anything can listen: a DJ who switched it off is never
         // listened to, not even for the moment it takes to read the file.
         crate::listening::set_off(self.listening().off);
@@ -1543,6 +1547,12 @@ impl AppState {
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "the DJ's own keys will not survive a restart");
         }
+    }
+
+    /// §131: the licence this run wears.
+    #[must_use]
+    pub fn licence(&self) -> &crate::licence::Held {
+        &self.licence
     }
 
     /// djmanzo's own folder, once the application has told this where it is.

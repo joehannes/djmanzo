@@ -2505,6 +2505,10 @@ pub fn perform_action_by(
     parsed: Action,
     by: dj_control::By,
 ) -> Result<(), String> {
+    // §130: the edition, before anything else. A deck or a stem the licence
+    // does not carry is refused whoever asks, the autopilot included.
+    crate::gate::allowed_action(&parsed, state.licence().in_force())?;
+
     // A hand arrived on a control. Recorded before the action is carried out,
     // so an autopilot tick that lands between the two still sees the takeover
     // -- the wrong order here would let the assistant move a fader in the
@@ -21259,6 +21263,140 @@ pub fn follow_clock(
 pub fn unfollow_clock(state: State<'_, AppState>) -> crate::clock::ClockStatus {
     state.clock_follow().stop(Some(state.bus()));
     state.clock().status(state.clock_follow())
+}
+
+/// §131: which edition this djmanzo is, and how it stands.
+#[tauri::command]
+#[must_use]
+pub fn licence_status(state: State<'_, AppState>) -> crate::licence::Status {
+    state.licence().status()
+}
+
+/// §131: keep a licence line — the one the sign-in fetched, or one pasted.
+/// Worn at once if it gives more than what is worn, else from the next start.
+///
+/// # Errors
+/// It is not a licence djmanzo believes, or it cannot be kept.
+#[tauri::command]
+pub fn licence_install(
+    state: State<'_, AppState>,
+    line: String,
+) -> Result<crate::licence::Status, String> {
+    let dir = state
+        .config_dir()
+        .ok_or("djmanzo has nowhere to keep a licence")?;
+    state.licence().install(&dir, &line)
+}
+
+/// §131: sign out. The licence file goes; nothing the DJ made does, and
+/// nothing worn changes until the next start.
+///
+/// # Errors
+/// The file cannot be removed.
+#[tauri::command]
+pub fn licence_sign_out(state: State<'_, AppState>) -> Result<crate::licence::Status, String> {
+    let dir = state.config_dir().ok_or("djmanzo keeps no licence here")?;
+    state.licence().sign_out(&dir)
+}
+
+/// §131: sign in with `provider` in the DJ's own browser and fetch this
+/// account's licence — starting the 7-day trial of `trial` when asked. The
+/// browser comes back to a loopback address only this waits on, for at most
+/// five minutes, and the grant is traded with PKCE's verifier, so a grant seen
+/// by anything else is no use to it (RFC 8252).
+///
+/// # Errors
+/// No licence service yet, an unknown provider, the browser not opening, the
+/// DJ not finishing, the service refusing, or the licence not being one
+/// djmanzo believes.
+#[tauri::command]
+pub async fn licence_sign_in(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    provider: String,
+    trial: Option<String>,
+) -> Result<crate::licence::Status, String> {
+    use base64::Engine as _;
+    use tauri_plugin_opener::OpenerExt as _;
+    let service = crate::licence::service()
+        .ok_or("Signing in opens with the shop. Until then, paste a licence you were sent.")?;
+    if !crate::licence::PROVIDERS.contains(&provider.as_str()) {
+        return Err(format!("djmanzo cannot sign in with {provider:?}"));
+    }
+    let dir = state
+        .config_dir()
+        .ok_or("djmanzo has nowhere to keep a licence")?;
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let pkce = crate::youtube::pkce(&crate::youtube::random()?);
+    let sent = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(crate::youtube::random()?);
+    app.opener()
+        .open_url(
+            crate::licence::login_address(&service, &provider, &sent, &pkce.challenge, port),
+            None::<&str>,
+        )
+        .map_err(|e| format!("the browser did not open: {e}"))?;
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        crate::youtube::await_callback(&listener, &sent, std::time::Duration::from_secs(300))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let body = serde_json::json!({
+        "code": code,
+        "verifier": pkce.verifier,
+        "trial": trial.map(|edition| serde_json::json!({ "edition": edition })),
+    });
+    let answer: crate::licence::Answer = reqwest::Client::new()
+        .post(format!("{service}/licence"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("the licence service did not answer: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("the licence service's answer was not readable: {e}"))?;
+    if let Some(renew) = &answer.renew {
+        crate::licence::keep_renewal(&dir, renew)?;
+    }
+    match (answer.licence, answer.refused) {
+        (Some(line), _) => state.licence().install(&dir, &line),
+        (None, Some(why)) => Err(why),
+        (None, None) => Err("the licence service sent nothing".to_owned()),
+    }
+}
+
+/// §131: fetch a fresh licence in the background, when one is due and the DJ
+/// has signed in here. Quiet when there is nothing to do: no service, no
+/// sign-in, or not due.
+///
+/// # Errors
+/// The service refusing, or answering with a licence djmanzo does not believe.
+#[tauri::command]
+pub async fn licence_renew(state: State<'_, AppState>) -> Result<crate::licence::Status, String> {
+    let now = crate::licence::now();
+    let (Some(service), Some(dir)) = (crate::licence::service(), state.config_dir()) else {
+        return Ok(state.licence().status());
+    };
+    let Some(renew) = crate::licence::renewal(&dir) else {
+        return Ok(state.licence().status());
+    };
+    if !state.licence().standing().renew_due(now) {
+        return Ok(state.licence().status());
+    }
+    let answer: crate::licence::Answer = reqwest::Client::new()
+        .post(format!("{service}/renew"))
+        .json(&serde_json::json!({ "renew": renew }))
+        .send()
+        .await
+        .map_err(|e| format!("the licence service did not answer: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("the licence service's answer was not readable: {e}"))?;
+    match (answer.licence, answer.refused) {
+        (Some(line), _) => state.licence().install(&dir, &line),
+        (None, Some(why)) => Err(why),
+        (None, None) => Ok(state.licence().status()),
+    }
 }
 
 /// What the network control server is doing.
