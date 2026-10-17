@@ -234,13 +234,41 @@ states, named for what they show, for the shop pages (see its README).
 | Custom | — | Nothing of its own: the licence and the shop below |
 | All of them | The parts list | The licence: the Worker, sign-in in the application, the trial, the shop |
 
+## How the switch works
+
+- **One licence per run** (`crate::licence::Licence`), held on the
+  application's state. Until signed licences exist it is a development
+  licence: Full, or the edition `DJMANZO_EDITION` names (`hobbyist`, `pro`,
+  `karaoke`, …), with `DJMANZO_MODULES` adding modules as a Custom licence
+  lists them.
+- **What each thing needs** is `dj_core::edition::Needs`: the foundation, or
+  any one of a few modules (the singers' screen's looks are karaoke's *or*
+  the visuals'). An action says it itself (`Needs::of_action`); commands,
+  panels, activities, mission-bar readings, waveform layers and windows of
+  their own are placed in `crate::licence`.
+- **Every command is placed.** `licence::MODULE_COMMANDS` lists those a
+  module owns and `FOUNDATION_COMMANDS` the rest; a test reads `lib.rs`'s
+  handler list and fails on a command in neither, or in both. **Adding a
+  command means deciding where it belongs.** A command that only reads how
+  something stands is the foundation's: the interface may always ask, and a
+  panel that is not drawn never does.
+- **Refused at the door.** Every command passes `licence::gate` before it
+  runs; every action passes `Needs::of_action` on the path every pad, key,
+  button, script and the autopilot share; a preset is refused whole; a
+  third deck's load is refused where every load arrives. The sentence names
+  what is missing and the cheapest edition with it: *Stems is not in this
+  edition of djmanzo: it comes with djmanzo Pro DJ*.
+- **Hidden from the screen.** The lists the interface is drawn from leave out
+  what the run lacks, at their source in Rust, so the interface never offers
+  a button that would be refused; the few controls drawn without such a list
+  ask `has()` (`ui/src/edition.svelte.ts`). An arrangement from a larger
+  edition opens as the most of it this one has, with a note per correction.
+
 ## The order of work
 
 1. **The parts list** (`dj_core::edition`): done.
-2. **The switch at run time**: `Modules` from the licence, every command a
-   module owns refusing what is not there with the edition that has it, the
-   interface hiding it. Until the licence exists, a development licence for
-   Full.
+2. **The switch at run time**: done (17 October), as `crate::licence` —
+   see *How the switch works* below.
 3. **The licence in the application**: reading and checking a signed
    licence, the trial's days in the status strip, *Sign in*.
 4. **The licence service**: the Worker, KV, the webhook, the trial (in this

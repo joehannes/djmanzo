@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { has } from "./edition.svelte";
   import { carryTrack } from "./trackdrag";
   /**
    * The DJ's own collection.
@@ -1038,6 +1039,7 @@
         oninput={onQuery}
         aria-label="Search the library"
       />
+      {#if has("sources")}
       <label
         class="outside"
         class:on={outside}
@@ -1050,6 +1052,7 @@
         />
         Include external sources
       </label>
+      {/if}
     {:else if selection.kind === "history"}
       <span class="viewing">Everything played, most recent first.</span>
     {:else if selection.kind === "notes"}
@@ -1496,7 +1499,7 @@
         onFavourite={(track) => void toggleFavourite(track)}
         onDrag={startDrag}
       />
-      {#if outside && searchable && !likeThis}
+      {#if outside && has("sources") && searchable && !likeThis}
         <SourceResults {query} {enabled} {deckCount} />
       {/if}
     {:else}
@@ -1750,7 +1753,7 @@
         §124: the other sources' answers after the collection's own, in the
         same scroll, so the one search box has one list of answers.
       -->
-      {#if outside && searchable && !likeThis}
+      {#if outside && has("sources") && searchable && !likeThis}
         <SourceResults {query} {enabled} {deckCount} />
       {/if}
     </div>

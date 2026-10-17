@@ -72,6 +72,7 @@ pub mod leader;
 pub mod lens;
 pub mod level;
 pub mod library;
+pub mod licence;
 pub mod listen;
 pub mod listening;
 pub mod live;
@@ -213,6 +214,23 @@ pub fn run() {
     }
 
     let state = AppState::new(use_null_backend);
+    // §130/§131: a development licence until signed ones exist; Full unless
+    // the environment names another edition.
+    match crate::licence::Licence::from_environment(
+        std::env::var(crate::licence::EDITION_ENV).ok().as_deref(),
+        std::env::var(crate::licence::MODULES_ENV).ok().as_deref(),
+    ) {
+        Ok(licence) => {
+            if licence != crate::licence::Licence::DEVELOPMENT {
+                tracing::info!(
+                    edition = licence.edition.slug(),
+                    "playing as another edition"
+                );
+            }
+            state.set_licence(licence);
+        }
+        Err(problem) => tracing::warn!(%problem, "the edition asked for was not understood; Full"),
+    }
     let registry = state.registry();
     let deck_count = state.deck_count();
     let waveforms = Arc::clone(state.waveforms());
@@ -719,7 +737,7 @@ pub fn run() {
             crate::standin::open(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(gated(tauri::generate_handler![
             // Karaoke beta, session A (docs/karaoke_beta_release.md §4): its
             // commands go between these two lines, and nothing else does.
             deck_queue::deck_queue,
@@ -1192,10 +1210,36 @@ pub fn run() {
             // commands go between these two lines, and nothing else does.
             floor::floor_saw,
             floor::floor_read,
+            licence::edition,
             // End of session 2's commands.
-        ])
+        ]))
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");
+}
+
+/// §130/§131: every command passes the licence before it runs
+/// (`crate::licence::gate`), refused in the sentence a DJ reads when this run
+/// does not carry the module it belongs to. One door for all of them, so a
+/// command cannot be reached around the interface, and no command has to
+/// remember to ask.
+fn gated<R: tauri::Runtime>(
+    handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    move |invoke| {
+        let licence = invoke
+            .message
+            .webview_ref()
+            .try_state::<AppState>()
+            .map(|state| state.licence());
+        if let Some(licence) = licence
+            && let Err(refusal) = crate::licence::gate(licence, invoke.message.command())
+        {
+            tracing::debug!(command = invoke.message.command(), "refused: {refusal}");
+            invoke.resolver.reject(refusal);
+            return true;
+        }
+        handler(invoke)
+    }
 }
 
 /// Note each deck's hot cues, saving any that moved.

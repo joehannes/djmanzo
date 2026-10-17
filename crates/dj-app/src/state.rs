@@ -79,6 +79,9 @@ const STEMS_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 #[derive(Debug)]
 pub struct AppState {
     bus: Arc<ActionBus<Command>>,
+    /// §130/§131: what this run may use (`crate::licence`). Behind a lock
+    /// because signing in will change it while djmanzo runs.
+    licence: Mutex<crate::licence::Licence>,
     /// How much the assistant is doing, what the night is, and which controls
     /// the human has taken.
     ///
@@ -457,6 +460,18 @@ impl Default for Conduct {
 }
 
 impl AppState {
+    /// What this run may use.
+    pub fn licence(&self) -> crate::licence::Licence {
+        self.licence.lock().map(|l| *l).unwrap_or_default()
+    }
+
+    /// Change what this run may use.
+    pub fn set_licence(&self, licence: crate::licence::Licence) {
+        if let Ok(mut slot) = self.licence.lock() {
+            *slot = licence;
+        }
+    }
+
     #[must_use]
     pub fn new(use_null_backend: bool) -> Self {
         // The consumer created here is discarded: the real queue is built when a
@@ -557,6 +572,7 @@ impl AppState {
 
         Self {
             bus,
+            licence: Mutex::new(crate::licence::Licence::default()),
             conduct: Arc::new(Mutex::new(Conduct::default())),
             focus: Arc::new(Mutex::new(None)),
             marks: Arc::new(crate::snapshot::Marks::default()),

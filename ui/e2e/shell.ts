@@ -713,6 +713,17 @@ export const ANSWERS: Record<string, unknown> = {
     external_bpm: null,
   },
   midi_outputs: { ports: [], unavailable: null },
+  // §130/§131: a development run is Full, as `licence::Licence::DEVELOPMENT`.
+  edition: {
+    edition: "full",
+    product_name: "djmanzo",
+    modules: [
+      "four_decks", "stems", "autopilot", "assistant", "teacher", "karaoke", "crowd",
+      "controllers", "dvs", "video", "streaming", "plugins", "sources", "events", "replay",
+    ],
+    missing: [],
+    development: true,
+  },
   // `control::ControlStatus` whole: a field left out here is one the panel
   // reads and Rust always sends.
   control_status: {

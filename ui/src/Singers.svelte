@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { has } from "./edition.svelte";
   import { GUIDE_LEVEL, karaokeGuideOffer, type GuideOffer } from "./guideOffer";
   import { roomReactions, roomReactionsSet } from "./roomReactions";
   import SkinPicker from "./SkinPicker.svelte";
@@ -1194,7 +1195,8 @@
   {/if}
 
   <div class="search-modes" role="group" aria-label="How to find the song">
-    {#each SEARCH_MODES as mode (mode.id)}
+    <!-- §130/§131: searching online is the Online sources module's. -->
+    {#each SEARCH_MODES.filter((m) => m.id !== "online" || has("sources")) as mode (mode.id)}
       <button type="button" aria-pressed={searchMode === mode.id} onclick={() => (searchMode = mode.id)}
         >{mode.label}</button
       >

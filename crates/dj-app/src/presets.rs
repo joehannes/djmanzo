@@ -67,8 +67,27 @@ fn to_dto(pack: &Pack) -> PackDto {
 
 /// Every pack, built-in and the user's own.
 #[tauri::command]
+///
+/// §130/§131: a preset this run could not apply whole — a stem move in an
+/// edition without the stems — is left out, and a pack left empty with it.
 pub fn list_presets(state: State<'_, AppState>) -> Vec<PackDto> {
-    state.presets().packs().iter().map(to_dto).collect()
+    let licence = state.licence();
+    state
+        .presets()
+        .packs()
+        .iter()
+        .map(|pack| dj_presets::Pack {
+            presets: pack
+                .presets
+                .iter()
+                .filter(|preset| crate::licence::allows_preset(licence, preset))
+                .cloned()
+                .collect(),
+            ..pack.clone()
+        })
+        .filter(|pack| !pack.presets.is_empty())
+        .map(|pack| to_dto(&pack))
+        .collect()
 }
 
 /// Apply a preset, returning what was dispatched.
@@ -85,6 +104,17 @@ pub fn apply_preset(
         .presets()
         .resolve(&id, deck.unwrap_or(1))
         .map_err(|e| e.to_string())?;
+    // §130/§131: and refused whole when this run cannot do all of it, for
+    // the same reason. These go straight to the engine, past the path every
+    // other action's needs are read on, so they are read here.
+    let licence = state.licence();
+    if let Some(needs) = actions
+        .iter()
+        .map(dj_core::edition::Needs::of_action)
+        .find(|needs| !licence.allows(*needs))
+    {
+        return Err(needs.refusal());
+    }
 
     let mut applied = Vec::with_capacity(actions.len());
     for action in actions {

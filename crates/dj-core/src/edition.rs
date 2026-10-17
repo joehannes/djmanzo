@@ -3,7 +3,8 @@
 //! The owner's word (`docs/DIRECTIVE.md` §130): an *Auto-Pilot*, a
 //! *Hobbyist*, an *Apprentice*, a *Pro DJ*, a *Karaoke*, the *Full* version,
 //! and a *Custom* one built from the Hobbyist foundation plus the modules a
-//! DJ picks. Each edition is a separate download (`docs/EDITIONS.md`).
+//! DJ picks. All of them are one download, the parts unlocked by the
+//! licence (`docs/EDITIONS.md`).
 //!
 //! # A foundation and modules
 //!
@@ -18,12 +19,21 @@
 //! not a new code path, and "is this here?" is one question with one answer
 //! everywhere it is asked — [`Modules::has`].
 //!
+//! # What a thing needs
+//!
+//! A command, a panel or an action needs the foundation or one of a few
+//! modules: [`Needs`]. An action's needs are read off the action itself
+//! ([`Needs::of_action`]), so a controller pad, a key and a button that send
+//! the same words are let through or refused alike; the application's
+//! commands and panels are placed one layer up, where they are named.
+//!
 //! # What is not here
 //!
-//! Prices, and which edition this build is. Prices are a business decision
-//! that changes faster than code (`docs/EDITIONS.md`); the build's edition is
-//! chosen where the application is built, one layer up.
+//! Prices, and which modules this run may use. Prices are a business decision
+//! that changes faster than code (`docs/EDITIONS.md`); what this run may use
+//! is the licence's (`docs/adr/0011-licence-by-sign-in.md`), one layer up.
 
+use crate::action::{Action, DeckAction, MixerAction};
 use serde::{Deserialize, Serialize};
 
 /// A part of djmanzo that an edition carries or leaves out.
@@ -331,6 +341,114 @@ impl Edition {
     }
 }
 
+/// What something needs to be used: nothing beyond the foundation, or any
+/// one of a few modules.
+///
+/// *Any one*, because some things belong to more than one edition's reason
+/// for being: the singers' screen's looks are karaoke's and the visuals'
+/// alike, and the room's request page is karaoke's sign-up sheet and the
+/// crowd's voice. A thing that needed *all* of several modules would be a
+/// thing no edition was built around, and there is none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Needs(Modules);
+
+impl Needs {
+    /// The foundation: every edition has it.
+    pub const FOUNDATION: Self = Self(Modules::NONE);
+
+    /// One module.
+    #[must_use]
+    pub const fn one(module: Module) -> Self {
+        Self(Modules::of(&[module]))
+    }
+
+    /// Any one of these modules.
+    #[must_use]
+    pub const fn any(modules: &[Module]) -> Self {
+        Self(Modules::of(modules))
+    }
+
+    /// The modules, any one of which will do. Empty for the foundation.
+    #[must_use]
+    pub const fn modules(self) -> Modules {
+        self.0
+    }
+
+    /// Whether a run carrying `have` may use it.
+    #[must_use]
+    pub const fn met_by(self, have: Modules) -> bool {
+        self.0.0 == 0 || self.0.0 & have.0 != 0
+    }
+
+    /// The cheapest edition, other than Custom, that meets this: where the
+    /// sentence that refuses it points.
+    #[must_use]
+    pub fn cheapest(self) -> Edition {
+        Edition::ALL
+            .into_iter()
+            .filter(|e| *e != Edition::Custom)
+            .find(|e| self.met_by(e.modules()))
+            .unwrap_or(Edition::Full)
+    }
+
+    /// The sentence a refusal says: what it needs, and the cheapest edition
+    /// that has it. Never "not licensed" and never a code: a DJ reads it.
+    #[must_use]
+    pub fn refusal(self) -> String {
+        let titles: Vec<&str> = self.0.iter().map(Module::title).collect();
+        let what = match titles.as_slice() {
+            [] => return String::new(),
+            [one] => (*one).to_owned(),
+            [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
+        };
+        format!(
+            "{what} is not in this edition of djmanzo: it comes with {}",
+            self.cheapest().product_name()
+        )
+    }
+
+    /// What an action needs, read off the action, so every way of sending it
+    /// is let through or refused alike.
+    ///
+    /// - a deck past the second needs [`Module::FourDecks`] — the foundation
+    ///   is two decks;
+    /// - a stem, or swapping stems between decks, needs [`Module::Stems`];
+    /// - how much of a record's singer is left in needs the stems or karaoke,
+    ///   whose guide vocal it is;
+    /// - automix needs [`Module::Autopilot`], the singer rotation
+    ///   [`Module::Karaoke`], push-to-talk [`Module::Assistant`] and the
+    ///   plugin insert [`Module::Plugins`].
+    ///
+    /// Everything else a deck or the mixer does is the foundation's.
+    #[must_use]
+    pub fn of_action(action: &Action) -> Self {
+        match action {
+            Action::Deck { deck, action } => {
+                let what = match action {
+                    DeckAction::Stem { .. } => Self::one(Module::Stems),
+                    DeckAction::SetVoice(_) => Self::any(&[Module::Stems, Module::Karaoke]),
+                    _ => Self::FOUNDATION,
+                };
+                if deck.index() >= 2 {
+                    // A stem on deck three needs both, and no module is two:
+                    // the deck is asked first, and is the likelier lack.
+                    Self::one(Module::FourDecks)
+                } else {
+                    what
+                }
+            }
+            Action::Mixer(mixer) => match mixer {
+                MixerAction::StemSwap { .. } | MixerAction::StemSwapOff => Self::one(Module::Stems),
+                MixerAction::Automix(_) => Self::one(Module::Autopilot),
+                MixerAction::Karaoke(_) => Self::one(Module::Karaoke),
+                MixerAction::Listen(_) => Self::one(Module::Assistant),
+                MixerAction::Clap(_) => Self::one(Module::Plugins),
+                _ => Self::FOUNDATION,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,5 +543,55 @@ mod tests {
         for edition in Edition::ALL {
             assert_eq!(Edition::from_slug(edition.slug()), Some(edition));
         }
+    }
+
+    /// **What a thing needs is met by any one of its modules, and refused in
+    /// a sentence naming the cheapest edition that has it.**
+    #[test]
+    fn a_need_is_met_by_any_one_module_and_refused_in_a_sentence() {
+        assert!(Needs::FOUNDATION.met_by(Modules::NONE));
+        assert_eq!(Needs::FOUNDATION.refusal(), "");
+        let looks = Needs::any(&[Module::Karaoke, Module::Video]);
+        assert!(looks.met_by(Edition::Karaoke.modules()));
+        assert!(looks.met_by(Edition::ProDj.modules()));
+        assert!(!looks.met_by(Edition::Apprentice.modules()));
+        assert_eq!(looks.cheapest(), Edition::Karaoke);
+        assert_eq!(
+            Needs::one(Module::Stems).refusal(),
+            "Stems is not in this edition of djmanzo: it comes with djmanzo Pro DJ"
+        );
+        assert_eq!(
+            Needs::any(&[Module::Teacher, Module::Karaoke, Module::Video]).refusal(),
+            "Teacher, Karaoke or Video and visuals is not in this edition of djmanzo: \
+             it comes with djmanzo Apprentice"
+        );
+        for edition in Edition::ALL {
+            assert!(Needs::FOUNDATION.met_by(edition.modules()));
+        }
+    }
+
+    /// **An action's needs are read off the action**: the third deck, a
+    /// stem, automix and the rotation each need their module, and the two
+    /// decks and the mixer of the foundation need nothing.
+    #[test]
+    fn an_actions_needs_are_read_off_the_action() {
+        let needs = |line: &str| Needs::of_action(&Action::parse(line).expect(line));
+        assert_eq!(needs("deck 1 play"), Needs::FOUNDATION);
+        assert_eq!(needs("deck 2 eq_low 0.5"), Needs::FOUNDATION);
+        assert_eq!(needs("crossfader 0.5"), Needs::FOUNDATION);
+        assert_eq!(needs("deck 3 play"), Needs::one(Module::FourDecks));
+        assert_eq!(
+            needs("deck 4 stem_mute drums"),
+            Needs::one(Module::FourDecks)
+        );
+        assert_eq!(needs("deck 1 stem_mute drums"), Needs::one(Module::Stems));
+        assert_eq!(
+            needs("deck 1 voice 0.25"),
+            Needs::any(&[Module::Stems, Module::Karaoke])
+        );
+        assert_eq!(needs("automix on"), Needs::one(Module::Autopilot));
+        assert!(!needs("automix on").met_by(Edition::Hobbyist.modules()));
+        assert!(needs("automix on").met_by(Edition::AutoPilot.modules()));
+        assert!(!needs("deck 3 play").met_by(Edition::AutoPilot.modules()));
     }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { EDITION, firstActivity } from "./edition";
+  import { editionNow, has, loadEdition } from "./edition.svelte";
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
   import DashboardView from "./Dashboard.svelte";
@@ -1510,12 +1511,13 @@
    */
   let activityRestored = false;
   $effect(() => {
-    if (activityRestored || !activityState || layouts.length === 0) return;
+    if (activityRestored || !activityState || layouts.length === 0 || !editionNow.loaded) return;
     activityRestored = true;
     if (activityState.on && activityState.current) void chooseActivity(activityState.current);
     else {
-      // The karaoke build opens on Karaoke for a DJ who has never chosen.
-      const first = firstActivity(EDITION, activityState.current);
+      // The karaoke build, and an edition built around one activity, open
+      // on it for a DJ who has never chosen.
+      const first = firstActivity(EDITION, activityState.current, editionNow.value?.edition ?? null);
       if (first) void chooseActivity(first);
     }
   });
@@ -2441,6 +2443,10 @@
   $effect(() => {
     void loadWorkspace();
   });
+
+  // §130/§131: which edition this run is. Asked once; what it carries does
+  // not change while djmanzo runs until signing in exists.
+  void loadEdition();
 
   // §53: what the controller now open reaches. Polled slowly, because this is
   // the one question whose answer changes when somebody physically touches the
@@ -3628,6 +3634,8 @@
         mix, and while a night is on, its plans for trouble.
       -->
       <!-- §128: folded behind ⋯ with the readings when the bar is short of room. -->
+      <!-- §130/§131: the guides are the assistant's and the teacher's. -->
+      {#if has("assistant") || has("teacher")}
       <div class="foldable fold-guides">
       <Guides
         bind:this={guidesRef}
@@ -3644,6 +3652,7 @@
         }}
       />
       </div>
+      {/if}
       {#if liveId}
         <Tonight id={liveId} onEnd={() => void endNight()} bind:deciding={tonightDeciding} />
       {/if}

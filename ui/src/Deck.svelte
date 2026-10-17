@@ -11,6 +11,7 @@
     type StemSwap,
   } from "./api";
   import { onMount } from "svelte";
+  import { has } from "./edition.svelte";
   import JogWheel from "./JogWheel.svelte";
   import DeckDrawer from "./DeckDrawer.svelte";
   import { deckFocus, setSlim } from "./deckFocus.svelte";
@@ -142,6 +143,12 @@
       });
 
     const askSuggestions = () => {
+      // §130/§131: the hover's suggestions are the assistant's; an edition
+      // without it does not ask a question it would be refused.
+      if (!has("assistant")) {
+        suggestions = {};
+        return;
+      }
       void controlSuggestions(deck.number)
         .then((got) => {
           const next: Record<string, ControlSuggestion> = {};
@@ -827,7 +834,8 @@
   </div>
   {/snippet}
   {#snippet zoneStems(props: Record<string, unknown>)}
-  {#if deck.loaded}
+  <!-- §130/§131: an edition without the stems draws none of their controls. -->
+  {#if deck.loaded && has("stems")}
     <!--
       Below the waveform, not above it. Mounted above, this pushed the one
       thing a DJ actually watches down by its own height the instant a track

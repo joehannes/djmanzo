@@ -126,7 +126,14 @@ pub struct PanelDto {
 /// Which panels can be detached, and which are.
 #[tauri::command]
 pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
+    let licence = state.licence();
     panels_dto(&state.detached())
+        .into_iter()
+        .filter(|dto| {
+            crate::monitors::Panel::parse(&dto.id)
+                .is_none_or(|panel| licence.allows(crate::licence::panel_needs(panel)))
+        })
+        .collect()
 }
 
 /// §121: what a panel in a window of its own may ask of the main window,
@@ -866,6 +873,10 @@ pub fn detach_panel(
     use tauri::Manager;
     let panel = crate::monitors::Panel::parse(&panel)
         .ok_or_else(|| format!("no panel called {panel:?}"))?;
+    let needs = crate::licence::panel_needs(panel);
+    if !state.licence().allows(needs) {
+        return Err(needs.refusal());
+    }
     let label = panel.label();
 
     // Already open: bring it forward rather than opening a second one. A DJ
@@ -2165,6 +2176,14 @@ pub fn put_on_deck(
     decoded: dj_decode::DecodedTrack,
 ) -> Result<LoadedTrackDto, String> {
     let deck = deck_id.human_number();
+    // §130/§131: every load comes through here -- a browser row, a playlist,
+    // the rotation, a session file -- so a third deck is refused once.
+    if deck_id.index() >= 2 {
+        let needs = dj_core::edition::Needs::one(dj_core::edition::Module::FourDecks);
+        if !state.licence().allows(needs) {
+            return Err(needs.refusal());
+        }
+    }
 
     // The record's names as the collection knows them, where it does: the
     // scan read every tag with `lofty`, and the decoder reads fewer — none
@@ -2305,14 +2324,21 @@ pub fn put_on_deck(
     restore_deck_state(state, deck_id, track_id, sample_rate);
 
     // Queue stem separation in the background, outward from this deck's
-    // playhead.
-    let registry = state.registry();
-    separate_in_background(state, &buffer, track_id, sample_rate, move || {
-        f64::from(registry.get(dj_core::param::ParamId::Deck(
-            deck_id,
-            dj_core::param::DeckParam::Position,
-        )))
-    });
+    // playhead -- in an edition that uses the parts: the stems, or karaoke's
+    // vocals out. Without either, separating would spend a core on audio
+    // nothing can play.
+    if state.licence().allows(dj_core::edition::Needs::any(&[
+        dj_core::edition::Module::Stems,
+        dj_core::edition::Module::Karaoke,
+    ])) {
+        let registry = state.registry();
+        separate_in_background(state, &buffer, track_id, sample_rate, move || {
+            f64::from(registry.get(dj_core::param::ParamId::Deck(
+                deck_id,
+                dj_core::param::DeckParam::Position,
+            )))
+        });
+    }
 
     // Analysis runs *after* the track is playable, on its own worker.
     //
@@ -2505,6 +2531,15 @@ pub fn perform_action_by(
     parsed: Action,
     by: dj_control::By,
 ) -> Result<(), String> {
+    // §130/§131: what the action needs, read off its words, before anything
+    // else -- every pad, key, button, script and the autopilot come through
+    // here, so a third deck or a stem is refused the same way from all of
+    // them, and a refused action is not a hand on a control.
+    let needs = dj_core::edition::Needs::of_action(&parsed);
+    if !state.licence().allows(needs) {
+        return Err(needs.refusal());
+    }
+
     // A hand arrived on a control. Recorded before the action is carried out,
     // so an autopilot tick that lands between the two still sees the takeover
     // -- the wrong order here would let the assistant move a fader in the
@@ -6352,7 +6387,7 @@ mod stem_out_tests {
             stored
                 .locked
                 .retain(|lock| *lock != crate::cockpit::Lock::Theme);
-            state.set_workspace(&crate::cockpit::resolve(&stored).workspace);
+            state.set_workspace(&crate::licence::resolve(&stored, state.licence()).workspace);
 
             let said = standing_of(&state).unwrap();
             assert_eq!(
@@ -10883,7 +10918,7 @@ pub fn night_fits(state: State<'_, AppState>, density: Option<String>) -> Result
         .map_err(|_| "the conduct lock is poisoned".to_owned())?
         .posture;
     let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
-    let permits = crate::cockpit::resolve(&stored).permits;
+    let permits = crate::licence::resolve(&stored, state.licence()).permits;
     let now = density.as_deref().and_then(crate::cockpit::Density::named);
 
     let fits = crate::profile::fits(&profile, now, posture, permits);
@@ -12313,16 +12348,45 @@ pub fn interface_run(state: &AppState, line: &str) -> Option<Result<String, Stri
     Some(crate::leader::runnable(run, &switches).map(|()| run.to_owned()))
 }
 
-/// The tree djmanzo ships for this state, and the switches a key may name.
-fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String>) {
-    let activities = crate::activity::all(&state.activities().mine);
+/// The activities this run offers: djmanzo's and the DJ's own, less those
+/// that exist for a module the licence does not carry (`crate::licence`).
+fn offered_activities(
+    state: &AppState,
+    kept: &crate::activity::Kept,
+) -> Vec<crate::activity::Activity> {
+    let licence = state.licence();
+    crate::activity::all(&kept.mine)
+        .into_iter()
+        .filter(|activity| licence.allows(crate::licence::activity_needs(&activity.slug)))
+        .collect()
+}
+
+/// The arrangements this run offers: the DJ's own, then djmanzo's, less
+/// those needing panels or decks the licence does not carry.
+fn offered_workspaces(state: &AppState) -> Vec<crate::cockpit::Workspace> {
+    let licence = state.licence();
     let mut workspaces = state.my_workspaces();
     workspaces.extend(crate::cockpit::workspaces());
+    workspaces.retain(|workspace| crate::licence::offers_workspace(licence, workspace));
+    workspaces
+}
+
+/// The tree djmanzo ships for this state, and the switches a key may name.
+fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String>) {
+    let activities = offered_activities(state, &state.activities());
+    let workspaces = offered_workspaces(state);
     let packs = state.presets().packs();
-    (
-        crate::leader::tree(decks, &activities, &workspaces, packs),
-        switch_runs(&activities, &workspaces, packs, decks),
-    )
+    let boards = boards_of(state);
+    let offer = crate::licence::Offer {
+        licence: state.licence(),
+        workspaces: &workspaces,
+        packs,
+        boards: &boards,
+    };
+    let tree = crate::leader::tree(decks, &activities, &workspaces, packs);
+    let mut switches = switch_runs(&activities, &workspaces, packs, decks);
+    switches.retain(|run| offer.line(run));
+    (offer.prune(tree.clone()).unwrap_or(tree), switches)
 }
 
 /// §117: the dashboard for what the DJ has and the activity they are in
@@ -12330,17 +12394,30 @@ fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String
 #[tauri::command]
 #[must_use]
 pub fn dashboard(state: State<'_, AppState>, current: String) -> crate::dashboard::Dashboard {
-    let activities = crate::activity::all(&state.activities().mine);
-    let mut workspaces = state.my_workspaces();
-    workspaces.extend(crate::cockpit::workspaces());
+    let activities = offered_activities(&state, &state.activities());
+    let workspaces = offered_workspaces(&state);
     let current = activities.iter().find(|activity| activity.slug == current);
-    crate::dashboard::build(
+    let mut dashboard = crate::dashboard::build(
         &activities,
         current,
         &workspaces,
         state.presets().packs(),
         &state.interface(),
-    )
+    );
+    let boards = boards_of(&state);
+    let offer = crate::licence::Offer {
+        licence: state.licence(),
+        workspaces: &workspaces,
+        packs: state.presets().packs(),
+        boards: &boards,
+    };
+    for section in &mut dashboard.sections {
+        section.tiles.retain(|tile| offer.line(&tile.run));
+    }
+    dashboard
+        .sections
+        .retain(|section| !section.tiles.is_empty());
+    dashboard
 }
 
 /// §121: the boards — whole views for one kind of work that take the place
@@ -12353,12 +12430,18 @@ pub fn boards(state: State<'_, AppState>) -> Vec<crate::boards::Board> {
 
 /// The boards as the DJ has them: djmanzo's, with their own arrangements
 /// laid over.
+///
+/// §130/§131: each held to what this run carries (`licence::board_for`).
 fn boards_of(state: &AppState) -> Vec<crate::boards::Board> {
+    let licence = state.licence();
     state
         .config_dir()
         .map_or_else(crate::boards::all, |config| {
             crate::boards::arranged(&crate::boards::kept(&config), &crate::boards::mine(&config))
         })
+        .into_iter()
+        .filter_map(|board| crate::licence::board_for(licence, board))
+        .collect()
 }
 
 /// §117: keep the DJ's arrangement of a board, held to what a board can be,
@@ -12515,15 +12598,26 @@ pub fn forget_mnemonic(state: State<'_, AppState>, keys: Vec<String>) -> Vec<cra
 #[must_use]
 pub fn palette(state: State<'_, AppState>, query: String, decks: u8) -> PaletteDto {
     let snapshot = crate::Snapshot::capture(&state.registry(), state.deck_count());
-    let activities = crate::activity::all(&state.activities().mine);
-    let mut workspaces = state.my_workspaces();
-    workspaces.extend(crate::cockpit::workspaces());
-    offered_with(
+    let activities = offered_activities(&state, &state.activities());
+    let workspaces = offered_workspaces(&state);
+    let mut offered = offered_with(
         &query,
         decks,
         crate::cockpit::Attention::for_context(&snapshot).room_for,
         &switches(&activities, &workspaces, state.presets().packs(), decks),
-    )
+    );
+    let boards = boards_of(&state);
+    let offer = crate::licence::Offer {
+        licence: state.licence(),
+        workspaces: &workspaces,
+        packs: state.presets().packs(),
+        boards: &boards,
+    };
+    offered.entries.retain(|entry| match entry.kind {
+        "surface" => offer.line(&format!("surface {}", entry.run)),
+        _ => offer.line(&entry.run),
+    });
+    offered
 }
 
 /// §115's *preset-packages and easy switching everywhere*: every preset a DJ
@@ -15251,14 +15345,34 @@ pub fn set_watershed(state: State<'_, AppState>, showing: bool) {
 /// action strings are pre-rendered against a deck number so the interface can
 /// dispatch them without knowing the grammar — a pad is a label, an action and
 /// a reason to light up.
+///
+/// §130/§131: a page is offered only when this run may do what every pad on
+/// it does, read off the pads' own actions -- so the stem page goes with the
+/// stems, and a page added later is held to the same rule without anyone
+/// naming it here.
 #[must_use]
 #[tauri::command]
-pub fn pad_pages(deck: u8) -> Vec<PadPageDto> {
+pub fn pad_pages(state: State<'_, AppState>, deck: u8) -> Vec<PadPageDto> {
+    pad_pages_for(state.licence(), deck)
+}
+
+/// [`pad_pages`], for a licence.
+#[must_use]
+pub fn pad_pages_for(licence: crate::licence::Licence, deck: u8) -> Vec<PadPageDto> {
     let Some(id) = DeckId::from_human(deck) else {
         return Vec::new();
     };
     dj_core::PadPage::ALL
         .into_iter()
+        .filter(|page| {
+            page.pads().into_iter().all(|pad| {
+                [pad.press, pad.release, pad.clear]
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|action| Action::parse(&render(id, action)).ok())
+                    .all(|action| licence.allows(dj_core::edition::Needs::of_action(&action)))
+            })
+        })
         .map(|page| {
             let (title, glyph) = page_face(page);
             PadPageDto {
@@ -15591,8 +15705,13 @@ pub fn layout_tree(state: State<'_, AppState>) -> crate::widgets::Resolved {
 /// rather than against a list somebody typed twice.
 #[tauri::command]
 #[must_use]
-pub fn cockpit_surfaces() -> &'static [crate::cockpit::Surface] {
+pub fn cockpit_surfaces(state: State<'_, AppState>) -> Vec<crate::cockpit::Surface> {
+    let licence = state.licence();
     crate::cockpit::surfaces()
+        .iter()
+        .filter(|surface| licence.allows(crate::licence::surface_needs(surface.name)))
+        .cloned()
+        .collect()
 }
 
 /// The window heights each density band starts at, and what each one scales to.
@@ -15632,8 +15751,12 @@ pub fn phase_priorities(state: State<'_, AppState>) -> Vec<String> {
 /// The arrangements that ship, for the picker.
 #[tauri::command]
 #[must_use]
-pub fn cockpit_workspaces() -> Vec<crate::cockpit::Workspace> {
+pub fn cockpit_workspaces(state: State<'_, AppState>) -> Vec<crate::cockpit::Workspace> {
+    let licence = state.licence();
     crate::cockpit::workspaces()
+        .into_iter()
+        .filter(|workspace| crate::licence::offers_workspace(licence, workspace))
+        .collect()
 }
 
 /// How the cockpit is arranged, checked against what can actually be drawn.
@@ -15646,7 +15769,7 @@ pub fn cockpit_workspaces() -> Vec<crate::cockpit::Workspace> {
 #[must_use]
 pub fn cockpit_workspace(state: State<'_, AppState>) -> crate::cockpit::Resolved {
     let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
-    crate::cockpit::resolve(&stored)
+    crate::licence::resolve(&stored, state.licence())
 }
 
 /// Remember how the cockpit is arranged, and hand back what was kept.
@@ -15663,7 +15786,7 @@ pub fn set_cockpit_workspace(
     workspace: crate::cockpit::Workspace,
 ) -> crate::cockpit::Resolved {
     use tauri::Emitter;
-    let resolved = crate::cockpit::resolve(&workspace);
+    let resolved = crate::licence::resolve(&workspace, state.licence());
     state.set_workspace(&resolved.workspace);
     // §121: the arrangement is the main window's to write; the settings in a
     // window of their own draw §79's locks from it, so they are told.
@@ -16004,9 +16127,11 @@ pub fn layer_choices() -> Vec<LayerChoiceDto> {
 #[tauri::command]
 #[must_use]
 pub fn chosen_layers(state: State<'_, AppState>) -> Vec<String> {
+    let licence = state.licence();
     dj_render::choosing(&state.waveform_layers())
         .into_iter()
         .map(|layer| layer.name.to_owned())
+        .filter(|name| licence.allows(crate::licence::layer_needs(name)))
         .collect()
 }
 
@@ -19560,9 +19685,9 @@ pub struct ActivitiesDto {
 /// The strip for a given kept state. Public so the browser fixture can be
 /// generated from it rather than typed out.
 #[must_use]
-pub fn activities_dto(kept: &crate::activity::Kept) -> ActivitiesDto {
+pub fn activities_dto(state: &AppState, kept: &crate::activity::Kept) -> ActivitiesDto {
     ActivitiesDto {
-        activities: crate::activity::all(&kept.mine)
+        activities: offered_activities(state, kept)
             .into_iter()
             .enumerate()
             .map(|(index, activity)| ActivityDto {
@@ -19586,7 +19711,7 @@ pub fn activities_dto(kept: &crate::activity::Kept) -> ActivitiesDto {
 #[tauri::command]
 #[must_use]
 pub fn activities(state: State<'_, AppState>) -> ActivitiesDto {
-    activities_dto(&state.activities())
+    activities_dto(&state, &state.activities())
 }
 
 /// §109: turn activity mode on or off, or move to another activity.
@@ -19609,12 +19734,16 @@ pub fn set_activity_mode(
     if !current.is_empty() && !known.iter().any(|activity| activity.slug == current) {
         return Err(format!("there is no activity called {current:?}"));
     }
+    let needs = crate::licence::activity_needs(&current);
+    if !state.licence().allows(needs) {
+        return Err(needs.refusal());
+    }
     if current != kept.current {
         kept.previous = std::mem::replace(&mut kept.current, current);
     }
     kept.on = on;
     state.set_activities(&kept);
-    Ok(activities_dto(&kept))
+    Ok(activities_dto(&state, &kept))
 }
 
 /// §109: keep the arrangement on screen as an activity of the DJ's own.
@@ -19631,7 +19760,7 @@ pub fn keep_activity(
     kept.mine = crate::activity::keep(&kept.mine, &title, workspace)
         .map_err(|refused| refused.to_string())?;
     state.set_activities(&kept);
-    Ok(activities_dto(&kept))
+    Ok(activities_dto(&state, &kept))
 }
 
 /// §109: forget one of the DJ's own. Leaving it while it is on screen drops
@@ -19648,7 +19777,7 @@ pub fn forget_activity(state: State<'_, AppState>, slug: String) -> ActivitiesDt
         kept.previous.clear();
     }
     state.set_activities(&kept);
-    activities_dto(&kept)
+    activities_dto(&state, &kept)
 }
 
 /// §118: where events are kept, `events/` beside the settings.
@@ -19994,7 +20123,7 @@ pub fn welcome_apply(
     Ok(WelcomeApplied {
         workspace: applied.map(|a| a.workspace).unwrap_or_default(),
         theme,
-        activities: activities_dto(&kept),
+        activities: activities_dto(&state, &kept),
         plan,
         answers,
     })
@@ -20448,7 +20577,7 @@ pub fn keep_workspace(
     name: String,
     workspace: crate::cockpit::Workspace,
 ) -> Result<Vec<crate::cockpit::Workspace>, String> {
-    let resolved = crate::cockpit::resolve(&workspace);
+    let resolved = crate::licence::resolve(&workspace, state.licence());
     let kept = crate::cockpit::keep(
         &state.my_workspaces(),
         &crate::cockpit::workspaces(),
@@ -20687,7 +20816,7 @@ pub fn standing_of(state: &AppState) -> Result<StandingDto, String> {
         .map_err(|_| "the conduct lock is poisoned".to_owned())?
         .posture;
     let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
-    let permits = crate::cockpit::resolve(&stored).permits;
+    let permits = crate::licence::resolve(&stored, state.licence()).permits;
     Ok(StandingDto {
         level: level.slug().to_owned(),
         departures: level
@@ -20753,7 +20882,7 @@ pub fn set_adaptation_level_of(state: &AppState, level: &str) -> Result<Standing
         .copied()
         .filter(|lock| !permits.allows(lock.stops()))
         .collect();
-    state.set_workspace(&crate::cockpit::resolve(&workspace).workspace);
+    state.set_workspace(&crate::licence::resolve(&workspace, state.licence()).workspace);
 
     state.set_adaptation_level(chosen.slug());
     standing_of(state)
@@ -20795,8 +20924,14 @@ pub fn cockpit_locks() -> Vec<LockDto> {
 /// twenty-first.
 #[tauri::command]
 #[must_use]
-pub fn waveform_layers() -> Vec<LayerChoiceDto> {
+pub fn waveform_layers(state: State<'_, AppState>) -> Vec<LayerChoiceDto> {
+    // §130/§131: a layer drawn from a module this run does not carry would
+    // be an empty lane under a real name.
+    let licence = state.licence();
     layer_choices()
+        .into_iter()
+        .filter(|layer| licence.allows(crate::licence::layer_needs(&layer.name)))
+        .collect()
 }
 
 // -- the typed UI vocabulary -------------------------------------------------
@@ -20920,7 +21055,11 @@ fn carry_out(
     op: &crate::uiop::UiOp,
     stored: crate::cockpit::Workspace,
 ) -> crate::uiop::Applied {
-    let applied = crate::uiop::apply(op, &stored);
+    let mut applied = crate::uiop::apply(op, &stored);
+    // §130/§131: an operation that opens a panel this run does not carry --
+    // the assistant asking for the karaoke panel in the Hobbyist edition --
+    // is resolved away with a note, as a workspace file asking for it is.
+    applied.workspace = crate::licence::resolve(&applied.workspace.workspace, state.licence());
     state.set_workspace(&applied.workspace.workspace);
     // Announced rather than returned only, because the interesting caller is
     // the assistant: a panel that opened because the machine asked for it has
@@ -21633,7 +21772,8 @@ pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
             says: glance.because,
         });
 
-    crate::mission::bar(&Reading {
+    let licence = state.licence();
+    let mut items = crate::mission::bar(&Reading {
         phase: read.map(|read| read.phase.name().replace('_', " ")),
         phase_certainty: read.map(|read| read.certainty.name().to_owned()),
         occasion: occasion.name().to_owned(),
@@ -21657,7 +21797,12 @@ pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
             sample_rate: master.sample_rate,
             latency_ms: master.output_latency_ms,
         }),
-    })
+    });
+    // §130/§131: a reading of a module this run does not carry is not on
+    // the bar -- the room's verdict with no room to read, the assistant's
+    // posture with no assistant.
+    items.retain(|item| licence.allows(crate::licence::mission_needs(item.slug)));
+    items
 }
 
 /// §11's `DJContext`, gathered in one pass.
@@ -25187,5 +25332,190 @@ mod night_actions_tests {
             older.moves.is_none(),
             "a night kept before actions were drew an empty row"
         );
+    }
+}
+
+#[cfg(test)]
+mod edition_tests {
+    use super::*;
+    use crate::licence::Licence;
+    use dj_core::edition::{Edition, Modules};
+
+    /// Every run line a tree holds, depth first.
+    fn runs(node: &crate::leader::Node, out: &mut Vec<String>) {
+        out.extend(node.run.clone());
+        for child in &node.children {
+            runs(child, out);
+        }
+    }
+
+    /// **§130/§131: a Hobbyist run offers nothing the Hobbyist edition does
+    /// not carry, wherever the interface looks — and Full offers it all.**
+    /// The activities, the arrangements, the tree under Space and the
+    /// arrangement itself, read through the same functions the commands
+    /// answer with; and an action or a load the edition lacks is refused in
+    /// the DJ's words, whichever way it arrives.
+    #[test]
+    fn a_hobbyist_run_offers_only_what_the_hobbyist_edition_carries() {
+        let state = AppState::new(true);
+        let full_activities: Vec<String> = offered_activities(&state, &state.activities())
+            .into_iter()
+            .map(|a| a.slug)
+            .collect();
+        assert!(full_activities.iter().any(|a| a == "karaoke"));
+        let mut full_runs = Vec::new();
+        runs(&leader_parts(&state, 4).0, &mut full_runs);
+        assert!(
+            full_runs.iter().any(|r| r == "surface karaoke"),
+            "{full_runs:?}"
+        );
+
+        state.set_licence(Licence::development(Edition::Hobbyist, Modules::NONE));
+        let activities: Vec<String> = offered_activities(&state, &state.activities())
+            .into_iter()
+            .map(|a| a.slug)
+            .collect();
+        for gone in ["karaoke", "autopilot", "practice", "event", "requests"] {
+            assert!(
+                !activities.iter().any(|a| a == gone),
+                "{gone} offered: {activities:?}"
+            );
+        }
+        assert!(activities.iter().any(|a| a == "mix"));
+        // The digit keys follow what is offered, with no gaps.
+        let dto = activities_dto(&state, &state.activities());
+        assert_eq!(dto.activities[1].key.as_deref(), Some("Digit2"));
+
+        let workspaces = offered_workspaces(&state);
+        assert!(
+            workspaces.iter().all(|w| w.decks <= 2),
+            "a four-deck arrangement offered"
+        );
+        // "Karaoke / MC" is the booth and the library -- an MC's arrangement,
+        // the foundation's -- so it stays; one with a module's panel does not.
+        assert!(workspaces.iter().any(|w| w.name == "Classic DJ"));
+        assert!(workspaces.iter().any(|w| w.name == "Karaoke / MC"));
+        for workspace in &workspaces {
+            for placement in &workspace.surfaces {
+                assert!(
+                    state
+                        .licence()
+                        .allows(crate::licence::surface_needs(&placement.surface)),
+                    "{} offers {}",
+                    workspace.name,
+                    placement.surface
+                );
+            }
+        }
+        assert!(
+            crate::cockpit::workspaces().len() > workspaces.len(),
+            "nothing was left out"
+        );
+
+        let mut runs_now = Vec::new();
+        runs(&leader_parts(&state, 4).0, &mut runs_now);
+        assert!(!runs_now.is_empty());
+        let boards = boards_of(&state);
+        let offer = crate::licence::Offer {
+            licence: state.licence(),
+            workspaces: &workspaces,
+            packs: state.presets().packs(),
+            boards: &boards,
+        };
+        for run in &runs_now {
+            assert!(offer.line(run), "the tree offers `{run}`");
+        }
+        for gone in [
+            "lift karaoke",
+            "board karaoke",
+            "switch preset karaoke-vocals-out 1",
+        ] {
+            assert!(
+                !runs_now.iter().any(|r| r == gone),
+                "the tree offers `{gone}`"
+            );
+        }
+        assert!(
+            !runs_now
+                .iter()
+                .any(|r| r == "surface karaoke" || r == "surface stems")
+        );
+        assert!(
+            !runs_now
+                .iter()
+                .any(|r| r.starts_with("action") && r.contains("stem")),
+            "a stem leaf: {runs_now:?}"
+        );
+
+        // A Full arrangement opens as the most of it the edition has.
+        let four = crate::cockpit::workspaces()
+            .into_iter()
+            .find(|w| w.decks == 4)
+            .expect("a four-deck arrangement");
+        let mut asked = four.clone();
+        let karaoke = crate::activity::shipped()
+            .into_iter()
+            .find(|a| a.slug == "karaoke")
+            .expect("the karaoke activity")
+            .workspace;
+        asked.surfaces.extend(karaoke.surfaces);
+        let resolved = crate::licence::resolve(&asked, state.licence());
+        assert_eq!(resolved.workspace.decks, 2);
+        assert!(
+            !resolved
+                .workspace
+                .surfaces
+                .iter()
+                .any(|p| p.surface == "karaoke")
+        );
+        assert!(
+            resolved.notes.iter().any(|n| n.contains("djmanzo Karaoke")),
+            "{:?}",
+            resolved.notes
+        );
+
+        // Refused in words, whichever way it comes.
+        let refused = perform(&state, "deck 3 play").unwrap_err();
+        assert!(
+            refused.contains("Four decks") && refused.contains("Pro DJ"),
+            "{refused}"
+        );
+        assert!(
+            perform(&state, "automix on")
+                .unwrap_err()
+                .contains("Auto-pilot")
+        );
+        let load = put_on_deck(
+            &state,
+            dj_core::DeckId::new(2).expect("deck 3"),
+            test_track(),
+        );
+        assert!(load.unwrap_err().contains("Four decks"));
+
+        // The stem page goes with the stems; the cue page stays.
+        let pages = |licence| -> Vec<String> {
+            pad_pages_for(licence, 1)
+                .into_iter()
+                .map(|p| p.name)
+                .collect()
+        };
+        let hobbyist = pages(state.licence());
+        assert!(hobbyist.iter().any(|p| p == "cues"), "{hobbyist:?}");
+        assert!(!hobbyist.iter().any(|p| p == "stems"), "{hobbyist:?}");
+        assert!(pages(Licence::DEVELOPMENT).iter().any(|p| p == "stems"));
+    }
+
+    fn test_track() -> dj_decode::DecodedTrack {
+        dj_decode::DecodedTrack {
+            id: dj_core::TrackId::from_bytes([7; 32]),
+            path: "edition.wav".into(),
+            buffer: dj_decode::AudioBuffer::from_interleaved(
+                vec![0.0; 200],
+                dj_core::SampleRate::DEFAULT,
+            ),
+            title: None,
+            artist: None,
+            album: None,
+        }
     }
 }

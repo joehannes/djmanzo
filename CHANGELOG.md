@@ -16,9 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-- **Editions planned.** djmanzo will come in seven editions, each its own
-  download: Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full and
-  Custom. See `docs/EDITIONS.md` for what each carries and what it costs.
+- **Editions planned.** djmanzo will come in seven editions, all one
+  download unlocked by signing in: Auto-Pilot, Hobbyist, Apprentice,
+  Karaoke, Pro DJ, Full and Custom. See `docs/EDITIONS.md` for what each
+  carries and what it costs.
+- **Each edition shows only what it carries.** In an edition without a
+  feature, its panels, activities, layouts, pad pages, presets, settings and
+  palette entries are not offered, and anything that reaches for it anyway
+  — a controller pad, a key, a script — is told which edition has it. Every
+  run is the whole of djmanzo until licences exist; `DJMANZO_EDITION=hobbyist`
+  shows another edition, for testing.
 
 ## v0.46.0 — Two sessions at once: practice, the peak, and what djmanzo learns and reads
 

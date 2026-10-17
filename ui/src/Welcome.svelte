@@ -1,5 +1,9 @@
 <script lang="ts">
   import { PRODUCT } from "./edition";
+  import { editionNow } from "./edition.svelte";
+
+  /** The licence's name for this run once Rust has said it; the build's until then. */
+  const product = $derived(editionNow.value?.product_name ?? PRODUCT);
   /**
    * §118b: the welcome.
    *
@@ -207,7 +211,7 @@
 </script>
 
 <div class="welcome-backdrop" use:portal>
-  <div class="welcome" role="dialog" aria-modal="true" aria-label="Welcome to {PRODUCT}" data-welcome-step={step}>
+  <div class="welcome" role="dialog" aria-modal="true" aria-label="Welcome to {product}" data-welcome-step={step}>
     <header>
       <ol class="dots" aria-label="Step {at + 1} of {STEPS.length}">
         {#each STEPS as s, i (s)}
@@ -218,7 +222,7 @@
     </header>
 
     {#if step === "hello"}
-      <h2>Welcome to {PRODUCT}</h2>
+      <h2>Welcome to {product}</h2>
       <p class="lead">
         A DJ application that learns how you play. Two decks and a mixer in the middle; panels
         that dock beside them and lift over them when you need room; <strong>activities</strong>

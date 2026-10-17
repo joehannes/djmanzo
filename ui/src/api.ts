@@ -3903,6 +3903,25 @@ export const densityBands = () => invoke<DensityBand[]>("density_bands");
 export const phasePriorities = () => invoke<string[]>("phase_priorities");
 
 export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
+
+/** A module this run does not carry, and the cheapest edition that does. */
+export interface WithinReach {
+  module: string;
+  title: string;
+  edition: string;
+}
+
+/** §130/§131: which edition this run is (`crate::licence::EditionDto`). */
+export interface Edition {
+  edition: string;
+  product_name: string;
+  /** The modules carried, by slug. */
+  modules: string[];
+  missing: WithinReach[];
+  development: boolean;
+}
+
+export const edition = () => invoke<Edition>("edition");
 export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
 
 /**

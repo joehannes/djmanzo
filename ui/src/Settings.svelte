@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { has } from "./edition.svelte";
   /**
    * Sources, credentials, folders and branding.
    *
@@ -831,6 +832,7 @@
     because §16 ends "Do not hard-code this logic into UI components" and a
     picker that spelled out a genre list would be exactly that.
   -->
+  {#if has("assistant")}
   <div class="block packs">
     <h3>What djmanzo knows</h3>
     <p class="hint">
@@ -866,6 +868,7 @@
       {/each}
     </ul>
   </div>
+  {/if}
 
   <!--
     Screens first, because it is the one setting that changes the shape of the
@@ -882,6 +885,7 @@
     screen" had to find the posture in one panel and six locks in another, know
     which of the six mattered, and get both right.
   -->
+  {#if has("assistant") || has("autopilot")}
   <div class="block levels">
     <h3>How far djmanzo may go</h3>
     <p class="hint">
@@ -926,6 +930,7 @@
       </p>
     {/if}
   </div>
+  {/if}
 
   <!--
     §120: which AI the assistant uses. Beside how far it may go, because the
@@ -948,6 +953,7 @@
     </div>
   {/if}
 
+  {#if has("assistant") || has("karaoke") || has("crowd") || has("video")}
   <div class="block ai" data-settings="ai">
     <h3>AI assistant</h3>
     <p class="hint">
@@ -956,6 +962,7 @@
     </p>
     <AiSetup />
   </div>
+  {/if}
 
   <!--
     §78 and §79, above Appearance on purpose: everything below this point is a
@@ -1261,6 +1268,7 @@
     {/if}
   </div>
 
+  {#if has("karaoke") || has("assistant")}
   <div class="block" data-block="listening">
     <h3>Speech recognition</h3>
     <p class="hint">
@@ -1309,7 +1317,9 @@
       </p>
     {/if}
   </div>
+  {/if}
 
+  {#if has("stems")}
   <div class="block">
     <h3>Stems out</h3>
     <p class="hint">
@@ -1363,6 +1373,7 @@
       </p>
     {/if}
   </div>
+  {/if}
 
   <div class="block">
     <h3>Decks out</h3>
@@ -1397,7 +1408,7 @@
       >
         Off
       </button>
-      {#each [2, 4, 6] as n (n)}
+      {#each has("four_decks") ? [2, 4, 6] : [2] as n (n)}
         <button
           class:active={stems.decks === n}
           disabled={n > stems.deckCapacity}
@@ -1419,6 +1430,7 @@
     {/if}
   </div>
 
+  {#if has("dvs")}
   <div class="block">
     <h3>Timecode vinyl</h3>
     <p class="hint">
@@ -1519,7 +1531,9 @@
       <p class="hint" role="status">{vinylError}</p>
     {/if}
   </div>
+  {/if}
 
+  {#if has("controllers")}
   <div class="block">
     <h3>Network tempo sync</h3>
     <p class="hint">
@@ -1568,7 +1582,9 @@
       </p>
     {/if}
   </div>
+  {/if}
 
+  {#if has("controllers")}
   <div class="block">
     <h3>MIDI clock</h3>
     <p class="hint">
@@ -1652,7 +1668,9 @@
       <p class="warn">{clock.error}</p>
     {/if}
   </div>
+  {/if}
 
+  {#if has("controllers")}
   <div class="block">
     <h3>Remote control</h3>
     <p class="hint">
@@ -1733,6 +1751,7 @@
       <p class="warn">{remote.error}</p>
     {/if}
   </div>
+  {/if}
 
   <div class="block">
     <h3>Your logo</h3>
@@ -1754,6 +1773,7 @@
     </div>
   </div>
 
+  {#if has("streaming")}
   <div class="block">
     <h3>Going live</h3>
     <p class="hint">
@@ -1763,7 +1783,9 @@
     </p>
     <GoingLive />
   </div>
+  {/if}
 
+  {#if has("streaming")}
   <div class="block" data-settings="obs">
     <h3>OBS</h3>
     <p class="hint">
@@ -1772,7 +1794,9 @@
     </p>
     <Obs />
   </div>
+  {/if}
 
+  {#if has("streaming") || has("crowd")}
   <div class="block" data-settings="youtube">
     <h3>YouTube live chat</h3>
     <p class="hint">
@@ -1781,6 +1805,7 @@
     </p>
     <YouTube />
   </div>
+  {/if}
 
   <div class="block">
     <h3>Music folders <em class="mono">{library.tracks} tracks</em></h3>
@@ -1799,6 +1824,7 @@
     </button>
   </div>
 
+  {#if has("sources")}
   <div class="block">
     <h3>New music from stores</h3>
     <p class="hint">
@@ -1812,7 +1838,9 @@
     </p>
     <Downloads />
   </div>
+  {/if}
 
+  {#if has("sources")}
   <div class="block" data-settings="sources">
     <h3>Sources</h3>
     {#if !persist}
@@ -1884,6 +1912,7 @@
       </article>
     {/each}
   </div>
+  {/if}
 </section>
 
 <style>

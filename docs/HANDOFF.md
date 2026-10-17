@@ -200,6 +200,23 @@ without a microphone has, for driving anything that listens to a strip (K6).
   deleting all but the newest `name-hash` executable per crate freed 13 GB
   without a rebuild.
 
+**Editions (17 October):**
+
+- **A new command fails `licence::tests::every_command_is_placed`** until it
+  is put in `licence::MODULE_COMMANDS` (with the module it belongs to) or
+  `FOUNDATION_COMMANDS`. That is on purpose; decide, do not default. A
+  read of how something stands goes in the foundation.
+- **A control drawn without asking Rust for a list must ask `has()`**
+  (`ui/src/edition.svelte.ts`). Rust filters every list it hands over;
+  a hard-coded button for a module's feature is the one way a refused
+  button still reaches the screen. To find them, run as another edition
+  with `RUST_LOG=warn,dj_app=debug DJMANZO_EDITION=hobbyist` and read the
+  refusals (`sed 's/\x1b\[[0-9;]*m//g'` first: the colour codes split
+  `command` from its value, and a grep for `command=` finds nothing).
+- **`apply_preset` sends to the engine bus directly**, past
+  `perform_action_by`, so it reads its actions' needs itself. Anything new
+  that dispatches on the bus directly must do the same.
+
 **From the karaoke beta's session A** (its notes, kept here):
 
 - The drawer can only be driven so far under Xvfb: its playlist `select` is

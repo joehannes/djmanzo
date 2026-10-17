@@ -553,7 +553,10 @@ fn the_browser_fixture_has_the_nights_djmanzo_knows() {
 #[test]
 fn the_browser_fixture_has_the_pad_pages_the_interface_asks_for() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/pad-pages.json");
-    let fresh = serde_json::to_string_pretty(&dj_app::commands::pad_pages(1))
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::pad_pages_for(
+        dj_app::licence::Licence::DEVELOPMENT,
+        1,
+    ))
         .expect("the pad pages serialise");
 
     if std::env::var_os("DJMANZO_BLESS").is_some() {
@@ -876,7 +879,9 @@ fn the_browser_fixture_has_what_the_assistant_can_and_cannot_see() {
 fn the_browser_fixture_has_the_activities_djmanzo_ships() {
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/activities.json");
+    let state = dj_app::AppState::new(true);
     let fresh = serde_json::to_string_pretty(&dj_app::commands::activities_dto(
+        &state,
         &dj_app::activity::Kept::default(),
     ))
     .expect("the activities serialise");
