@@ -68,9 +68,12 @@ in §5. Same rule: each milestone committed and pushed when green.
 | **B5** | **A song for the singer, sent.** The song brief also draws on the venue, the night's genre and the DJ's branding (`kit`, `brand.rs`); one press copies lyrics and style for Suno's window; *Send their song*: the host pastes the suno.com link and djmanzo opens WhatsApp to that guest (only with their contact consent) with a personal message ready. | Rust builds the brief and the `wa.me` address; tests of both; driven up to the WhatsApp window |
 
 **Order for session B:** B1, B2, B6, B7, B3, B4, B5, B8 — the visible and
-the asked-for first. **Session A:** A1–A7 **all done** (16 October, on
-`claude/vigilant-tesla-xdqpmf`); what is left is §6, once session B is done. What each milestone did and what it left is in
-[karaoke-beta/session-a.md](karaoke-beta/session-a.md).
+the asked-for first. **Both sessions are done** — A1–A7 on
+`claude/vigilant-tesla-xdqpmf`, B1–B8 on `claude/karaoke-beta-session-b` —
+and merged into `main` on 17 October (§6), with the notes folded into the
+shared documents. What each milestone did and left is in
+[karaoke-beta/session-a.md](karaoke-beta/session-a.md) and
+[karaoke-beta/session-b.md](karaoke-beta/session-b.md).
 
 ## 4. How the two sessions stay out of each other's way
 
@@ -154,7 +157,7 @@ One short step, by whichever session finishes last:
 
 | Asked for | Why not today |
 |---|---|
-| **Suno through an official API** | Suno has no public API. It runs a partner intake with no launch date ([MBW](https://www.musicbusinessworldwide.com/suno-explores-developer-api-seeking-apps-that-unlock-experiences-generative-music-makes-possible-for-the-first-time/)). Every "Suno API" offered elsewhere reverse-engineers the web app, against Suno's terms, and accounts are suspended for it. Built instead: the brief, the Suno window, and B5's copy and send. djmanzo fills Suno's form the day its API opens. |
+| **Suno through an official API** | Suno has no public API. It runs a partner intake with no launch date ([MBW](https://www.musicbusinessworldwide.com/suno-explores-developer-api-seeking-apps-that-unlock-experiences-generative-music-makes-possible-for-the-first-time/)). Every "Suno API" offered elsewhere reverse-engineers the web app, against Suno's terms, and accounts are suspended for it. Built instead (the owner's choice, 16 October): the brief, and Suno's form filled in djmanzo's own window as an autofill — the DJ presses Create, djmanzo never does and never reads the page; the link read from that window's address and sent through WhatsApp Web or `wa.me`, the DJ pressing send. |
 | **Sending to WhatsApp automatically** | Needs WhatsApp's Business Cloud API: a Meta business account, a verified sending number, templates approved in advance for any message the business starts, per-message pricing, and each guest's opt-in. None of it can be set up in an afternoon, and it is the owner's account to open. Today: `wa.me` with the message ready, the host presses send (A6's rule: djmanzo prepares, a person sends). |
 | **Duet parts** (lead apart from backing vocals) | Needs a separation model whose licence ADR-0002 admits; none has been read yet. |
 | **Phones as microphones** | A phone's browser opens its microphone only on a secure page; the room page is plain HTTP on the LAN. Needs the DJ's own domain and certificate, or an app. |

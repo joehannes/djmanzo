@@ -144,7 +144,7 @@ Only session B edits this file.
   (7 mutants fail it) and `e2e/vocal-presets.spec.ts` (the menu, drawn from
   Rust's list, has them; choosing one sends `radio-voice`). Nothing here
   can say how they *sound*: no microphone or speaker in this container.
-  Not done: an echo timed to the deck's tempo (an idea in `Resume.md`, not
+  Not done: an echo timed to the deck's tempo (an idea in the old pause notes, not
   in B4).
 
 - **B3 built**: `ui/src/lyricBreak.ts` (`breakAt`, `partOf`; pure, held

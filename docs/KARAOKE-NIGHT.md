@@ -103,6 +103,39 @@ across the top; **Karaoke prep** is for the hour before. The theme button at
 the top left has three made for karaoke rooms: *Karaoke Neon*, *Spotlight*
 and *Velvet*.
 
+**A filler deck.** Put your jingles and fillers in a playlist. Under the
+deck you want them on, press the *Playlist* tab, choose it, and tick *Next
+when this ends* and *Repeat*: when one ends the next starts, round and
+round. A press on any record in the drawer loads it on that deck; ▶ loads
+and plays it.
+
+**Emoji from the room.** In the Singers panel, tick *Emoji from phones on
+the singers' screen*. Guests then see a row of emoji on the room's page;
+each tap shows small in the corner of the singers' screen and fades within
+seconds. It is off until you turn it on.
+
+**The guide voice.** When the song up next is new to the singer, the
+up-next card shows *Guide voice*, already ticked. Load as usual and the
+original singer stays quietly under them; untick it if they know the song.
+
+**Duets.** Put each singer on their microphone (Singers panel, *Mic 1*,
+*Mic 2*). Their names appear on the singers' screen in their own colours,
+lit while they sing; a lyric line starting with a name ("Ana: …") is
+wiped in that singer's colour.
+
+**Karaoke presets.** Each microphone's *is for* menu now has *Stadium*,
+*Radio voice*, *Big echo* and *Duet* beside *Singer*. They change only the
+sound of the voice; the fader, pan and where it is sent stay as you set
+them.
+
+**A guest's song, sent.** In the guest's record, *Fill in Suno's form*
+opens Suno in djmanzo's own window and puts in the words and the style.
+Sign in there the first time; check what it filled and press Create
+yourself. Open the finished song in that window and its link appears in the
+card. Then *In djmanzo's window* opens WhatsApp Web at the guest's chat with
+the message written (sign in once with your phone's QR code) — or
+*WhatsApp* for the app. You always press send.
+
 **If anything goes wrong:** the **SAFE** button in the top bar takes every
 control back, clears every effect and flattens the sound.
 

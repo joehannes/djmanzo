@@ -818,7 +818,16 @@ export interface VocalsState {
 export const MONITOR_MUSIC_OFF_DB = -60;
 
 /** What a strip is for. See `dj_vocal::Preset`. */
-export type VocalPreset = "singer" | "soft-singer" | "loud-singer" | "mc" | "instrument";
+export type VocalPreset =
+  | "singer"
+  | "soft-singer"
+  | "loud-singer"
+  | "mc"
+  | "instrument"
+  | "stadium"
+  | "radio-voice"
+  | "big-echo"
+  | "duet";
 
 /** Everything the host sets on a strip. See `dj_vocal::StripSettings`. */
 export interface StripSettings {

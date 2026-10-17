@@ -113,6 +113,34 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 ## Traps that have each cost real time
 
+**From the karaoke beta's session A** (its notes, kept here):
+
+- The drawer can only be driven so far under Xvfb: its playlist `select` is
+  native and does not answer synthetic input. Set `deck_queue.json` in the
+  settings folder instead (`[{"playlist": <id>, "advance": true, "repeat": true}]`).
+- A playlist row made by hand in `library.db` needs `system` NULL, not 0, or
+  `playlists()` leaves it out.
+- **A djmanzo left running under Xvfb starves `framerate.spec.ts`**: its
+  slow-interface chip never appears, on untouched code too. `pkill -x
+  djmanzo` before the browser suite. Cost three runs on 16 October.
+- The top bar's fitting is in `App.svelte` (`fit`, `refit`): levels 0–3,
+  measured with a ResizeObserver. A new item in the bar is fitted for free;
+  one that must never fold away must not carry `foldable`.
+
+**A worker restart in the middle of a mutation run leaves the mutant in
+the tree.** Twice on 16–17 October the session's worker restarted while a
+mutated file was on disk with its `.bak` beside it. Write mutation scripts
+that hold the original in memory and write it back in a `finally`, and after
+any restart check `git status` and look for `*.bak` before anything else.
+
+**WebKitGTK under Xvfb takes typed text late, and a click does not always
+move focus between two inputs.** The Singers panel's name and song fields
+looked empty after `xdotool type` and filled in seconds later; the first
+characters of a second field went to the first. Use Tab between fields,
+type with `--delay 150`, and look again before deciding it failed. The
+rotation (`karaoke.json`) and the guest book (`guests.json`) are read from
+the settings folder on every request, so a drive can be set up there.
+
 **`pkill -f` matches its own command line.** `pkill -f target/debug/djmanzo`
 inside a longer shell command kills that shell too, because the pattern is
 in its own arguments — the build or test chain after it silently never runs
@@ -1459,6 +1487,27 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
   A2's take ends by itself at eight seconds for exactly this reason.
 
 ## Where the work stands, and what is next
+
+**The karaoke beta (16–17 October, §126–§129).** The owner asked for a
+night's worth of karaoke features in one afternoon, and they were built in
+two sessions that could not collide ([karaoke_beta_release.md](karaoke_beta_release.md):
+file ownership, two marked blocks in `lib.rs`, notes kept apart), then merged
+into `main` together. Session A: a playlist under every deck and a filler
+deck (`dj_app::deck_queue`, `DeckDrawer.svelte`), shuffle and the list's
+flow, one deck slim, the one-line top bar, ⚙ *Sources and connections*,
+*What do they remember?* (`dj_app::find_song`). Session B: four Caribbean
+themes, skins (`ui/src/skins/`), emoji from the room (`dj_net::reactions`),
+the guide offer (`dj_app::guide_offer`), the singers' screen's break bar,
+glow and duet colours (`ui/src/lyricBreak.ts`, `ui/src/micColours.ts`), four
+vocal presets, Suno's form filled in djmanzo's own window and WhatsApp Web
+(`dj_app::suno`), and the karaoke screens' design pass. **What each left
+open is in the two notes files** ([karaoke-beta/session-a.md](karaoke-beta/session-a.md),
+[karaoke-beta/session-b.md](karaoke-beta/session-b.md)) — chiefly *Like
+this one*, the fast search modes, a way into *Find a song* from the Singers
+panel, a *not sure* mark for the guide offer, the room's taps in the crowd
+log, and nothing yet proved on a signed-in Suno or WhatsApp. The skin
+picker lives in the Singers panel; Settings → Appearance is its natural
+second home.
 
 **The karaoke build for older Macs (15–16 October).** The owner asked for a
 karaoke-ready djmanzo a friend could run on a 2011 MacBook, whose last macOS
