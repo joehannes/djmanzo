@@ -25,7 +25,7 @@ use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
 use dj_core::{Action, DeckAction, DeckId, MixerAction, ParamId, SampleRate};
 use dj_decode::{AudioBuffer, TrackSource};
-use dj_engine::{Command, Engine, Retired};
+use dj_engine::{Command, Engine, Practice, Retired};
 
 // ---------------------------------------------------------------------------
 // Allocation counting
@@ -989,6 +989,83 @@ fn auditioning_never_allocates() {
         }
     });
     assert_eq!(allocations, 0, "auditioning allocated {allocations} times");
+}
+
+/// **§69: practising never allocates** — a record put on the practice deck,
+/// played, looped, its stems muted and an effect switched in, over and over
+/// while a deck plays to the room. Practising happens mid-set, so every one
+/// of these presses lands in the middle of a mix.
+#[test]
+fn practising_never_allocates() {
+    let mut rig = rig(4, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.warm_up(64);
+    let records: Vec<Arc<dyn TrackSource>> = (0..32).map(|_| tone_with_stems(40_000)).collect();
+    let presses = [
+        DeckAction::Play,
+        DeckAction::LoopBeats(4.0),
+        DeckAction::LoopHalve,
+        DeckAction::Stem {
+            stem: dj_core::Stem::Drums,
+            change: dj_core::action::StemChange::ToggleMute,
+        },
+        DeckAction::Fx {
+            slot: 1,
+            change: dj_core::FxChange::Select(dj_core::EffectKind::Echo),
+        },
+        DeckAction::Fx {
+            slot: 1,
+            change: dj_core::FxChange::SetEnabled(true),
+        },
+        DeckAction::LoopOff,
+        DeckAction::Pause,
+    ];
+
+    let (_, allocations) = count_allocations(|| {
+        for source in &records {
+            rig.send(Command::Practice(Practice::Load {
+                source: Arc::clone(source),
+                grid: None,
+                phrase: None,
+            }));
+            rig.renderer.render_block();
+            for press in presses {
+                rig.send(Command::Practice(Practice::Act(press)));
+                rig.renderer.render_block();
+            }
+            rig.send(Command::Practice(Practice::Eject));
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+    assert_eq!(allocations, 0, "practising allocated {allocations} times");
+}
+
+/// **An eject never allocates.** It used to: `Deck::eject` built a fresh empty
+/// record — three allocations — on the audio thread, every time a DJ took a
+/// record off a deck mid-set. The engine now hands the deck its own silence,
+/// made once.
+#[test]
+fn ejecting_never_allocates() {
+    let mut rig = rig(4, 256);
+    rig.warm_up(16);
+    let records: Vec<Arc<dyn TrackSource>> = (0..32).map(|_| tone(40_000)).collect();
+    let (_, allocations) = count_allocations(|| {
+        for source in &records {
+            rig.send(Command::Load {
+                deck: DeckId::from_human(1).expect("deck 1"),
+                source: Arc::clone(source),
+            });
+            rig.renderer.render_block();
+            rig.send(Command::Action(Action::Deck {
+                deck: DeckId::from_human(1).expect("deck 1"),
+                action: DeckAction::Eject,
+            }));
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+    assert_eq!(allocations, 0, "ejecting allocated {allocations} times");
 }
 
 /// The effect rack, switched and swept the way a DJ actually uses it.

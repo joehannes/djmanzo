@@ -35,6 +35,7 @@
    * pair view's, and is drawn there rather than a second time here.
    */
   import { onMount, untrack } from "svelte";
+  import PracticeLive from "./PracticeLive.svelte";
   import {
     formatTime,
     practiceRehearse,
@@ -244,6 +245,16 @@
       </ol>
     {/if}
   {/if}
+  <!-- §69, live: a record in the headphones, the held pair's two offered first. -->
+  <PracticeLive
+    {enabled}
+    records={pair
+      ? [
+          { id: pair.outgoing.track.id, title: pair.outgoing.track.title },
+          { id: pair.incoming.track.id, title: pair.incoming.track.title },
+        ]
+      : []}
+  />
 </section>
 
 <style>

@@ -20,6 +20,23 @@ the shared documents at the fold (§5).
 - **`main` at v0.45.0 merged** into this branch; every gate green on the
   merged tree (920 browser tests on a fresh bundle).
 
+### After round 2 (17 October, the owner's word)
+
+- **`main` brought up to date** with everything above (fast-forward to
+  04c9e67), as §125 asks.
+- **§17 closed, as the owner chose**: a quiet warm-up (the whisper says
+  only what cannot wait; the rail and guides unchanged) and effects and
+  stems forward at the peak, between mixes (`peak.svelte.ts`). And a fault
+  in this morning's drawer fixed: it asked for the lists forever when the
+  DJ had no plain lists.
+- **§69 closed: the practice deck** — see DIRECTIVE-STATUS §69. A fifth
+  engine deck that only the headphones hear, its actions the deck
+  vocabulary's (`engine::act` now shared with the four decks), loaded with a
+  grid and stems (`commands::separate_in_background`, shared with a deck's
+  load), *Live, in your headphones* in the Practice panel. And an old
+  real-time fault fixed on the way: `Deck::eject` allocated on the audio
+  thread; the engine hands decks its own silence now.
+
 ### Round 2
 
 - **The phone's *not sure of it* — built.** The room's page has the box

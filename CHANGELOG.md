@@ -16,6 +16,21 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A quiet warm-up.** Early in the night djmanzo's whisper line says only
+  what cannot wait (a record running out, a deck clipping); the next-record
+  list and the guides are as they were.
+- **Effects and stems come forward at the peak.** When the night reaches its
+  peak, between mixes, each deck's effects open and the stem buttons grow a
+  little. Nothing you open is ever closed, and a deck's effects you close
+  stay closed for the night.
+- **Fixed: the playlist drawer could ask for your lists forever** when you
+  had no plain playlists, freezing the drawer.
+- **Practise live, in your headphones.** The Practice panel has a deck of
+  its own that only your headphones hear: put any record on it, loop it,
+  take its stems apart, kill a band, try an effect — while the set goes on.
+  With no headphone output it stays silent rather than playing out loud.
+- **Taking a record off a deck no longer allocates on the audio thread**, a
+  small risk of a glitch every eject, found while building the practice deck.
 - **Can't name it? on the Singers panel.** The guided questions of *Find a
   song* open under the request form, and what they find goes straight into
   the request — the record itself when your collection has it.

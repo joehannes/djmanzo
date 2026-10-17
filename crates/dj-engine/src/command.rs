@@ -252,6 +252,37 @@ pub enum Command {
         deck: DeckId,
         input: Option<Box<TimecodeInput>>,
     },
+    /// §69: the practice deck, which only the headphones hear.
+    ///
+    /// A command of its own rather than a fifth [`DeckId`], because a deck
+    /// id is a deck the room can hear — it has a channel on the crossfader,
+    /// a place in the sync chain and a row in the parameter table — and
+    /// this one must never have any of those. See [`Practice`].
+    Practice(Practice),
+}
+
+/// §69: what the practice deck is told.
+#[derive(Debug)]
+pub enum Practice {
+    /// A record to practise on, with what the analyser found in it. The
+    /// displaced record comes back through [`Retired::Source`].
+    Load {
+        source: Arc<dyn TrackSource>,
+        grid: Option<Beatgrid>,
+        phrase: Option<Phrase>,
+    },
+    /// The grid, when the analyser finishes after the load.
+    Grid {
+        grid: Option<Beatgrid>,
+        phrase: Option<Phrase>,
+    },
+    /// Anything a DJ does to a deck — play, a loop, a stem, an effect —
+    /// done to the practice deck. What only a deck the room hears can do
+    /// (sync, the crossfader's side, eject) is ignored; [`Practice::Eject`]
+    /// is the eject.
+    Act(dj_core::action::DeckAction),
+    /// Take the record off.
+    Eject,
 }
 
 /// A deck's timecode input: where the signal comes from, and what reads it.

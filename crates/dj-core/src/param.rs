@@ -769,6 +769,15 @@ pub enum GlobalParam {
     /// K9: how many singers have a wedge of their own now; zero while they
     /// share the one monitor.
     MonitorWedges,
+    /// §69: 1.0 while the practice deck — the headphones' own, never the
+    /// room's — is playing.
+    PracticePlaying,
+    /// §69: the practice deck's playhead, in its record's frames.
+    PracticePosition,
+    /// §69: 1.0 while the practice deck is looping.
+    PracticeLooping,
+    /// §69: the practice deck's peak this block, as it reaches the headphones.
+    PracticeLevel,
 }
 
 impl DeckParam {
@@ -968,7 +977,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since, two for §22's audition, and five for K3's singers.
-    pub const COUNT: usize = 147;
+    pub const COUNT: usize = 151;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -1126,6 +1135,10 @@ impl GlobalParam {
             MonitorSplit,
             MonitorPairs,
             MonitorWedges,
+            PracticePlaying,
+            PracticePosition,
+            PracticeLooping,
+            PracticeLevel,
         ]
     }
 }
@@ -1512,6 +1525,10 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::MonitorSplit => "monitor_split",
         GlobalParam::MonitorPairs => "monitor_pairs",
         GlobalParam::MonitorWedges => "monitor_wedges",
+        GlobalParam::PracticePlaying => "practice_playing",
+        GlobalParam::PracticePosition => "practice_position",
+        GlobalParam::PracticeLooping => "practice_looping",
+        GlobalParam::PracticeLevel => "practice_level",
         GlobalParam::Quantize => "quantize",
     }
 }
