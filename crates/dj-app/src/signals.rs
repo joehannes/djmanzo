@@ -384,6 +384,96 @@ pub fn effects_used(events: &[TimedEvent]) -> Vec<EffectKind> {
     used
 }
 
+/// Two effects the DJ ran together, and how often.
+///
+/// §12's *FX combinations*. A fact about tonight, not a preference: "echo with
+/// a filter, five times" is what happened; "this DJ likes echo with a filter"
+/// is a claim §13 makes wait for more than one night.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Combination {
+    /// The two, in the order effects are offered ([`EffectKind::ALL`]).
+    pub first: EffectKind,
+    pub second: EffectKind,
+    /// How many times the DJ brought one in while the other was running.
+    pub times: usize,
+}
+
+/// Which effects the DJ ran together tonight, most often first.
+///
+/// Together means **in one rack** — one deck's chain, or the master's — because
+/// that is what a listener hears as one sound: a reverb on deck 1 and an echo
+/// on deck 2 are two records' effects, not a combination. A pair is counted
+/// when the DJ's hand brings an effect into the room (the rule
+/// [`effects_used`] uses) while another slot of the same rack is already on
+/// with an effect in it. djmanzo's own throws make no pair, but are followed,
+/// so an echo the automix left running is still running when the DJ adds a
+/// filter to it.
+#[must_use]
+pub fn effect_combinations(events: &[TimedEvent]) -> Vec<Combination> {
+    type Rack = Option<DeckId>;
+    let mut held: BTreeMap<(Rack, u8), EffectKind> = BTreeMap::new();
+    let mut on: BTreeMap<(Rack, u8), bool> = BTreeMap::new();
+    let mut pairs: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    let place = |kind: EffectKind| EffectKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    for entry in events {
+        let (slot, change) = match entry.event {
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Fx { slot, change },
+            }) => ((Some(deck), slot), change),
+            SessionEvent::Action(Action::Mixer(MixerAction::Fx { slot, change })) => {
+                ((None, slot), change)
+            }
+            _ => continue,
+        };
+        let was_on = on.get(&slot).copied().unwrap_or(false);
+        let heard = match change {
+            FxChange::Select(kind) => {
+                held.insert(slot, kind);
+                was_on
+            }
+            FxChange::SetEnabled(now) => {
+                on.insert(slot, now);
+                now && !was_on
+            }
+            FxChange::ToggleEnabled => {
+                on.insert(slot, !was_on);
+                !was_on
+            }
+            _ => false,
+        };
+        if !heard || entry.by != By::Hand {
+            continue;
+        }
+        let Some(kind) = held
+            .get(&slot)
+            .copied()
+            .filter(|kind| *kind != EffectKind::None)
+        else {
+            continue;
+        };
+        for (other, other_kind) in &held {
+            let running = on.get(other).copied().unwrap_or(false);
+            if *other == slot || other.0 != slot.0 || !running || *other_kind == EffectKind::None {
+                continue;
+            }
+            let (a, b) = (place(kind), place(*other_kind));
+            *pairs.entry((a.min(b), a.max(b))).or_default() += 1;
+        }
+    }
+    let mut out: Vec<Combination> = pairs
+        .into_iter()
+        .map(|((a, b), times)| Combination {
+            first: EffectKind::ALL[a],
+            second: EffectKind::ALL[b],
+            times,
+        })
+        .collect();
+    // Most often first; ties keep the order effects are offered in.
+    out.sort_by_key(|pair| std::cmp::Reverse(pair.times));
+    out
+}
+
 /// The gesture an event is, if it is one of §14's — also what §119 draws a
 /// night's actions by (`crate::crowd::moves`).
 pub(crate) fn did(event: &SessionEvent) -> Option<Did> {
@@ -605,6 +695,58 @@ mod tests {
             effects_used(&log),
             vec![EffectKind::Echo, EffectKind::Echo, EffectKind::Flanger]
         );
+    }
+
+    /// **§12's FX combinations: two effects in one rack, the DJ bringing one
+    /// in while the other runs.** Two decks' effects are not a combination;
+    /// djmanzo's own throw makes no pair but is still running when the DJ adds
+    /// to it; switching off ends a pair; the same effect twice in a rack is a
+    /// pair of one kind.
+    #[test]
+    fn effects_run_together_in_one_rack_by_the_djs_hand() {
+        use FxChange::{Select, SetEnabled, ToggleEnabled};
+        let on_deck = |n: u8, secs: f64, slot: u8, change: FxChange| {
+            at(
+                secs,
+                Action::Deck {
+                    deck: deck(n),
+                    action: DeckAction::Fx { slot, change },
+                },
+            )
+        };
+        let machine = |mut entry: TimedEvent| {
+            entry.by = By::Machine;
+            entry
+        };
+        let log = [
+            // The automix leaves an echo running on deck 1.
+            machine(on_deck(1, 0.0, 1, Select(EffectKind::Echo))),
+            machine(on_deck(1, 1.0, 1, SetEnabled(true))),
+            // The DJ adds a filter to it: echo with filter, once.
+            on_deck(1, 2.0, 2, Select(EffectKind::Filter)),
+            on_deck(1, 3.0, 2, ToggleEnabled),
+            // A reverb on deck 2 while deck 1's two run: not a combination.
+            on_deck(2, 4.0, 1, Select(EffectKind::Reverb)),
+            on_deck(2, 5.0, 1, SetEnabled(true)),
+            // Filter off and on again over the echo: echo with filter, twice.
+            on_deck(1, 6.0, 2, ToggleEnabled),
+            on_deck(1, 7.0, 2, ToggleEnabled),
+            // Echo off; filter off and on: nothing running beside it.
+            on_deck(1, 8.0, 1, SetEnabled(false)),
+            on_deck(1, 9.0, 2, ToggleEnabled),
+            on_deck(1, 10.0, 2, ToggleEnabled),
+            // The machine's own throw beside a running filter makes no pair.
+            machine(on_deck(1, 11.0, 1, SetEnabled(true))),
+        ];
+        assert_eq!(
+            effect_combinations(&log),
+            vec![Combination {
+                first: EffectKind::Echo,
+                second: EffectKind::Filter,
+                times: 2,
+            }]
+        );
+        assert!(effect_combinations(&[]).is_empty());
     }
 
     /// The master rack is a rack too, and djmanzo's own throws are its own:

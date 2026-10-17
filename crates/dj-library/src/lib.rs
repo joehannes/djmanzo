@@ -23,6 +23,7 @@
 //! is a decoded buffer and a `Beatgrid`, handed over through the command
 //! queue like everything else.
 
+pub mod conventions;
 pub mod filter;
 pub mod functions;
 pub mod import;
