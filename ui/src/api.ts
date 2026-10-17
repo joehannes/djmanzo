@@ -6775,3 +6775,30 @@ export const crowdSettingsSave = (
 ) => invoke<CrowdView>("crowd_settings_save", { session, settings });
 /** §119: ask the DJ's provider now about everything still waiting. */
 export const crowdReadNow = (session: string | null) => invoke<CrowdView>("crowd_read_now", { session });
+
+/** `account::Standing`: where this machine stands with its licence. */
+export type AccountStanding =
+  | { kind: "unlicensed" }
+  | { kind: "licensed"; edition: string; plan: string; until: number | null; offline_until: number; demo: boolean }
+  | { kind: "lapsed"; reason: string };
+
+/** `account::Status`: the DJ's account on djmanzo's website, and the licence it holds. */
+export interface AccountStatus {
+  site: string;
+  signed_in: boolean;
+  name: string | null;
+  email: string | null;
+  standing: AccountStanding;
+  licences: { edition: string; plan: string; until: number | null; demo: boolean; here: boolean }[];
+  /** A link waiting for the DJ to say yes in the browser. */
+  pending: { code: string; address: string } | null;
+  /** False in the beta: nothing is switched off whatever the licence says. */
+  enforced: boolean;
+  machine_name: string;
+  note: string | null;
+}
+
+export const accountStatus = () => invoke<AccountStatus>("account_status");
+export const accountLink = () => invoke<AccountStatus>("account_link");
+export const accountRefresh = () => invoke<AccountStatus>("account_refresh");
+export const accountSignOut = () => invoke<AccountStatus>("account_sign_out");

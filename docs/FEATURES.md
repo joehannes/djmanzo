@@ -249,6 +249,13 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **The waveform says where the record can be left** | **shipped** — the window in which a mix out can begin, from the last beat where the longest transition djmanzo proposes still fits to the last beat where the shortest one does. Drawn over the whole record in the overview, where it can be seen from the moment the record loads, and to scale in the lane. Both edges come from the planner's own lengths and tail margin, so the band and its "rushed" warning cannot disagree |
 | **The waveform says when the grid is a guess** | **shipped** — a hatch under a record whose beat grid the analyser is unsure of, over the record's own length. The rasteriser already draws the grid at the weight it deserves; at overview zoom it is suppressed for density, so faint and absent look the same, and this is the part that says which |
 
+### Account and licence
+
+| Feature | Milestone |
+|---|---|
+| **Sign in to djmanzo's website from the application** | **shipped** — the OAuth device flow: a short code shown here, a yes in the DJ's own browser, a token kept in the keychain. See [WEBSITE.md](WEBSITE.md) |
+| **Licences verified offline** | **shipped** — Ed25519-signed by the site, checked here; thirty days of grace, renewed daily while online. **Nothing is locked in the beta** (`account::ENFORCED`) |
+
 ### Deliberately not planned
 
 - **DRM'd content** of any kind.

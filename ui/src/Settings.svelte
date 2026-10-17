@@ -13,6 +13,7 @@
   import GoingLive from "./GoingLive.svelte";
   import Obs from "./Obs.svelte";
   import YouTube from "./YouTube.svelte";
+  import Account from "./Account.svelte";
   import Screens from "./Screens.svelte";
   import {
     adaptationLevels,
@@ -825,6 +826,15 @@
     because §16 ends "Do not hard-code this logic into UI components" and a
     picker that spelled out a genre list would be exactly that.
   -->
+  <div class="block" data-settings="account">
+    <h3>Account</h3>
+    <p class="hint">
+      Your djmanzo licence, from the account you bought it with on djmanzo's
+      website.
+    </p>
+    <Account />
+  </div>
+
   <div class="block packs">
     <h3>What djmanzo knows</h3>
     <p class="hint">

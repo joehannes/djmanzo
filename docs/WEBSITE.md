@@ -159,11 +159,19 @@ wish may take that long to appear on the wall), and a promo code's use count
 can run one over its limit across two places in the same second. Both were
 accepted rather than paid for with a Durable Object.
 
-## What this container could not prove
+## What has been proven, and what has not
 
-No real payment, no real provider sign-in: no keys exist yet. The flows are
-tested against the Worker's own code (37 tests, the regional rule mutated
-twice) and the demo path was run end to end in production, including a
-refused regional claim (a US card with a Dominican address). The account
-flow in the application was tested against tokens the site's code signed,
-not against a live sign-in from a running djmanzo.
+**Proven here:** the Worker's logic (37 tests, the regional rule mutated
+twice), the island in a browser (four Playwright journeys, one mutated), the
+demo checkout end to end in production — including a refused regional claim
+(a US card with a Dominican address) — and **the whole link from a running
+djmanzo to the live site**: the application asked for a code, the code was
+approved as a buyer, djmanzo fetched the licence, activated it, verified the
+production signature offline and showed it; signing out freed the seat on
+the site. The test accounts were deleted from production afterwards.
+
+**Not proven:** any real payment or real provider sign-in — no keys exist
+yet. Blog drafting could not be tried in production: the Cloudflare
+account's Workers AI daily allocation was already spent by its other Workers,
+and no `ANTHROPIC_API_KEY` is set. The desk reports that failure in words, as
+it should.

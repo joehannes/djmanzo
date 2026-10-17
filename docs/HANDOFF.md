@@ -1488,6 +1488,19 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
 
 ## Where the work stands, and what is next
 
+**The website and the account (17 October).** The owner asked for a site to
+present and sell djmanzo, and for the application to sign in to it. Both are
+built: [WEBSITE.md](WEBSITE.md) is the page to read. The site is `website/`,
+one Cloudflare Worker with one KV namespace, live at
+`djmanzo.johannes-neugschwentner.workers.dev`, with its own tests (`npm test`
+in `website/`) that are not part of the gates above. In the application,
+`dj_app::account` links a machine through the OAuth device flow, verifies
+Ed25519-signed licences offline, and **locks nothing** (`account::ENFORCED`
+is `false`) — whether and when to enforce is the owner's call. What waits on
+the owner: provider keys (OAuth, Stripe, PayPal) and a decision on
+enforcement; until the keys exist the shop runs in its labelled demo mode.
+
+
 **The karaoke beta (16–17 October, §126–§129).** The owner asked for a
 night's worth of karaoke features in one afternoon, and they were built in
 two sessions that could not collide ([karaoke_beta_release.md](karaoke_beta_release.md):

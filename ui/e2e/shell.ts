@@ -828,6 +828,18 @@ export const ANSWERS: Record<string, unknown> = {
   },
   youtube_settings: { on: false, client_id: "", client_secret: "" },
   youtube_status: { on: false, client: false, signed_in: false, reading: null, read: 0, note: null },
+  account_status: {
+    site: "https://djmanzo.example",
+    signed_in: false,
+    name: null,
+    email: null,
+    standing: { kind: "unlicensed" },
+    licences: [],
+    pending: null,
+    enforced: false,
+    machine_name: "Booth laptop (Linux)",
+    note: null,
+  },
   leader_tree: leaderTree,
   boards: boardList,
   // §123: the questions a guest is asked, in Rust's words.
@@ -2782,6 +2794,16 @@ export async function openShell(
           // §119: YouTube's live chat, held the way Rust holds it -- what
           // signing in gives is never shown -- and every ask recorded. A test
           // sets `__youtubeStatus` for what the reading is doing.
+          // The account on djmanzo's website, held the way Rust holds it: a
+          // link waits for a yes in the browser, which a test gives by
+          // setting `__accountStatus`.
+          if (cmd.startsWith("account_")) {
+            const status = (win.__accountStatus ??= structuredClone(answers.account_status)) as Record<string, unknown>;
+            ((win.__accountAsked ??= []) as unknown[]).push({ cmd, ...args });
+            if (cmd === "account_link") status.pending = { code: "ABCD-EFGH", address: "https://djmanzo.example/link?code=ABCD-EFGH" };
+            if (cmd === "account_sign_out") Object.assign(status, { signed_in: false, name: null, email: null, standing: { kind: "unlicensed" }, licences: [], pending: null });
+            return Promise.resolve(structuredClone(status));
+          }
           if (cmd.startsWith("youtube_")) {
             const kept = (win.__youtube ??= structuredClone(answers.youtube_settings)) as Record<string, unknown>;
             const status = (win.__youtubeStatus ??= structuredClone(answers.youtube_status)) as Record<string, unknown>;

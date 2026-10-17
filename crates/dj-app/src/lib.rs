@@ -19,6 +19,7 @@
 //! makes a session replayable. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
+pub mod account;
 pub mod activity;
 pub mod analysis;
 pub mod art;
@@ -410,6 +411,22 @@ pub fn run() {
                 analysis.set_cache_dir(crate::analysis::cache_subdir(&dir));
             }
 
+            // The DJ's account on djmanzo's website and the licence it holds,
+            // renewed once a day on its own thread. Managed whether or not the
+            // config folder resolves, so the account commands always have
+            // something to answer with.
+            {
+                let state: tauri::State<'_, AppState> = handle.state();
+                let dir = app
+                    .path()
+                    .app_config_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir().join("djmanzo"));
+                let account =
+                    crate::account::Account::new(dir, std::sync::Arc::clone(state.secrets()));
+                account.keep_fresh();
+                handle.manage(account);
+            }
+
             // The library goes in the *config* directory rather than the cache
             // one. A cache is something the system may delete to reclaim space;
             // a DJ's cues, corrected grids and play history are not that.
@@ -742,6 +759,10 @@ pub fn run() {
             commands::youtube_settings_set,
             commands::youtube_sign_in,
             commands::youtube_sign_out,
+            account::account_status,
+            account::account_link,
+            account::account_refresh,
+            account::account_sign_out,
             commands::obs_stream,
             commands::obs_scene,
             commands::attach_panel,

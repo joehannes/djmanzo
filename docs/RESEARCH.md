@@ -776,3 +776,25 @@ started is `0:00`, a record that lasted under ten seconds before the next is
 dropped as a preview, and the sheet says when there are fewer than three.
 Mixcloud asks for each record's start time on upload; the same lines serve.
 
+
+### The website (`website/`)
+
+The site that presents and sells djmanzo is a separate program — a Cloudflare
+Worker with a Svelte interface — and ships nothing into the application. Its
+dependencies were read from each package's own `package.json` on 17 October
+2026; `npx license-checker-rseidelsohn --production` finds only MIT,
+Apache-2.0, Unlicense and 0BSD in the tree.
+
+| Need | Choice | Licence | Note |
+|---|---|---|---|
+| Interface | `svelte` 5 | MIT | The same framework as the application's interface. |
+| 3D (the lighthouse) | `three` | MIT | Loaded only when a visitor opens the lighthouse. |
+| Animation | `motion` | MIT | The camera's glide between places. |
+| Schema for the blog's drafts | `zod` | MIT | Shapes what the model returns. |
+| Drafting the blog | `@anthropic-ai/sdk` | MIT | Only in the Worker, only when the crew asks for a draft. |
+| Build and deploy | `vite`, `@sveltejs/vite-plugin-svelte`, `wrangler`, `@cloudflare/workers-types` | MIT; MIT OR Apache-2.0 | Development only. |
+| Checks | `svelte-check`, `typescript`, `vitest`, `@playwright/test` | MIT; Apache-2.0 | Development only. |
+| Type | Bungee, Figtree and one display face per genre, from Google Fonts | SIL Open Font License | Linked from Google's servers, not bundled. |
+
+The application side of the account (`dj_app::account`) adds **no crate**:
+Ed25519 verification is `ring`, already in the build for TLS.

@@ -68,6 +68,9 @@ pub enum SecretKind {
     /// §119: what Google gave djmanzo when the DJ signed in to read their
     /// own YouTube live chat — a refresh token, never typed by anyone.
     YouTubeSignIn,
+    /// djmanzo's own account on its website: the token the device link
+    /// gives back, good only for the site's small app API. See `dj_app::account`.
+    DjmanzoAccount,
 }
 
 impl SecretKind {
@@ -99,6 +102,7 @@ impl SecretKind {
             SecretKind::SoundCloudClientSecret => "soundcloud.client_secret",
             SecretKind::ObsPassword => "obs.password",
             SecretKind::YouTubeSignIn => "youtube.sign-in",
+            SecretKind::DjmanzoAccount => "djmanzo.account",
         }
     }
 
@@ -127,6 +131,7 @@ impl SecretKind {
             SecretKind::SoundCloudClientSecret => "SoundCloud client secret",
             SecretKind::ObsPassword => "OBS WebSocket password",
             SecretKind::YouTubeSignIn => "YouTube sign-in",
+            SecretKind::DjmanzoAccount => "djmanzo account",
         }
     }
 
@@ -165,6 +170,9 @@ impl SecretKind {
             SecretKind::ObsPassword => "https://obsproject.com/kb/remote-control-guide",
             SecretKind::YouTubeSignIn => {
                 "https://developers.google.com/youtube/v3/live/docs/liveChatMessages/list"
+            }
+            SecretKind::DjmanzoAccount => {
+                "https://djmanzo.johannes-neugschwentner.workers.dev/#/pase"
             }
         }
     }
@@ -223,6 +231,10 @@ impl SecretKind {
                 "Free: signing in with Google from djmanzo's settings; reading a \
                  chat costs the app's YouTube quota, not the DJ's money."
             }
+            SecretKind::DjmanzoAccount => {
+                "Free to sign in; a licence is bought on the website. In the beta \
+                 every feature is open whatever the licence says."
+            }
         }
     }
 
@@ -262,6 +274,7 @@ impl SecretKind {
             SoundCloudClientSecret,
             ObsPassword,
             YouTubeSignIn,
+            DjmanzoAccount,
         ]
     }
 }

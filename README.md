@@ -102,6 +102,7 @@ they stay fast under WebKitGTK on Linux. Permissively licensed throughout (MIT O
 | [**ROADMAP.md**](docs/ROADMAP.md) | M0–M8 with acceptance criteria |
 | [**RESEARCH.md**](docs/RESEARCH.md) | The OSS landscape, licences, and the clean-room rules |
 | [**adr/**](docs/adr/) | The decisions, with the alternatives that were rejected and why |
+| [**WEBSITE.md**](docs/WEBSITE.md) | The website — Isla Manzo — that presents and sells djmanzo, and the account and licences it connects to |
 
 ## A note on originals
 

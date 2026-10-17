@@ -147,6 +147,11 @@
   {/if}
 {/if}
 
+<figure class="inapp">
+  <img class="shot" src="/shots/account.webp" alt="djmanzo's Account settings: signed in, djmanzo Pro yearly, works offline for thirty days" loading="lazy" width="380" height="280" />
+  <figcaption>What djmanzo shows once it is linked — a real screenshot, from a test purchase in the demo shop.</figcaption>
+</figure>
+
 <h2>Your passport</h2>
 <div class="stamps">
   {#each stampable as p (p.id)}
@@ -285,6 +290,10 @@
   .prize {
     font-size: 1.2rem;
     letter-spacing: 0.06em;
+  }
+  .inapp {
+    max-width: 380px;
+    margin-top: 14px;
   }
   .known {
     padding-left: 18px;
