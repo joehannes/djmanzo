@@ -1,6 +1,6 @@
 # ADR-0010 — Editions from one codebase
 
-- **Status**: accepted — the parts list built, the build switch next
+- **Status**: accepted, with decisions 2 and 3 superseded by [ADR-0011](0011-licence-by-sign-in.md) (one download, unlocked by signing in) — the parts list built
 - **Date**: 2026-10-17
 
 ## Context
@@ -16,12 +16,12 @@ charge on average.
 1. **One codebase, never a fork per edition.** An edition is a set of
    *modules* on top of a *foundation* every edition has
    (`dj_core::edition`). Adding an edition adds a row.
-2. **The edition is chosen when the application is built.** Heavy parts an
+2. *(Superseded by ADR-0011: the edition now comes from the licence at run time.)* **The edition is chosen when the application is built.** Heavy parts an
    edition does not carry are not compiled in (cargo features); the rest are
    compiled in and refused at the boundary, in Rust, where a command a module
    owns answers with the edition that has it. The interface hides what is
    refused. It never decides on its own.
-3. **Custom is one download unlocked by a signed licence file**, checked
+3. *(Superseded by ADR-0011: every edition is that download.)* **Custom is one download unlocked by a signed licence file**, checked
    offline. It is the only edition that is not its own build, because fifteen
    modules make 32,768 choices.
 4. **The platform is not the edition.** The macOS 10.13 build is a target any

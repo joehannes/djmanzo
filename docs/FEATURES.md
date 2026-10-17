@@ -468,3 +468,71 @@ underneath it, which is a design problem rather than a coding one.
 [ADR-0008](adr/0008-one-widget-vocabulary.md) is that design: a widget registry, and a layout as
 a tree of addressed instances in named slots rather than a struct of feature flags. Decided, not
 yet implemented.
+
+---
+
+## 4. Outlook
+
+What is planned, beyond finishing the rows above that are not yet done. Each
+item names where it is planned in full.
+
+### Editions, one download, and a trial
+
+djmanzo will be sold as **Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ,
+Full and Custom**, all one download, the parts unlocked by a licence the DJ's
+social sign-in fetches (Google, Apple, GitHub, Microsoft, Discord). A **free
+7-day trial** of any edition, Full included, once per account. Prices at half
+of what the professional competitors charge on average, with regional and
+student discounts. A licence never runs out mid-set, and playing never needs
+a connection. [EDITIONS.md](EDITIONS.md), [ADR-0011](adr/0011-licence-by-sign-in.md).
+
+Still to build for the editions themselves: the **Auto-Pilot surface** (style
+the night, fill the playlist, start, take over), the **Apprentice
+curriculum** (from the first beatmatch to the first gig, with exercises the
+teacher checks), and the quiet cards that show a Hobbyist what more there is.
+
+### A free marketplace
+
+Themes, skins, visuals, controller mappings, knowledge packs, lessons,
+karaoke screens, audio plugins, and **DJ techniques as performances** that
+the autopilot can perform and the teacher can teach, through the same gates
+as a person's hands. Everything in it free, so that the owner runs no shop
+for others; creators may link to their own pages. Built on the signed
+`.djpack` and the pack indexes djmanzo already reads.
+[MARKETPLACE.md](MARKETPLACE.md), [ADR-0012](adr/0012-a-free-marketplace.md).
+
+### More hardware
+
+Every mapping is written from the maker's published MIDI or HID
+documentation or from the device in hand, never from Mixxx's GPL mappings
+(ADR-0002), and none is called working until someone has played it.
+
+| Area | Planned | What it needs |
+|---|---|---|
+| **Pioneer DJ controllers** | DDJ-FLX4, DDJ-400, DDJ-FLX6, DDJ-REV1, DDJ-REV5, DDJ-REV7, DDJ-1000; XDJ-RX3, XDJ-XZ and Opus Quad in controller mode | Pioneer publishes MIDI message lists; the jog screens of the REV7 need the device |
+| **Numark** | Mixtrack Pro FX and Platinum FX, Party Mix II, NS4FX | Published MIDI charts |
+| **Hercules** | DJControl Inpulse 200, 300 and 500, Starlight | Published MIDI charts |
+| **Native Instruments** | Traktor Kontrol S2, S3 and S4 MK3, Z1, X1 | HID, so the device in hand |
+| **Denon DJ and Rane** | MC7000, SC Live 2 and 4, Prime Go and Prime 4+ in controller mode, Rane One, Rane Seventy-Two | Published MIDI charts; the Rane One's motorised platter rides on the platter support already built |
+| **Reloop, Roland, Allen & Heath** | Mixon 8, Ready, Buddy; DJ-202, DJ-505, DJ-707M; Xone:K2 and K3 | Published MIDI charts |
+| **Pads and extra controls** | Novation Launchpad and Launch Control, Akai APC and MPD, DJ TechTools Midi Fighter Twister and 3D, foot switches, Elgato Stream Deck | MIDI charts; Stream Deck over HID |
+| **Club players** | **Pro DJ Link** (Pioneer CDJ and XDJ players: tempo and beat, what is loaded, on air from the mixer) and **StagelinQ** (Denon Prime players) | Built against a simulated peer first; neither is proved until it meets a real player |
+| **Tempo with other software** | **Ableton Link** | Ableton's licence on its own terms: the GPL one cannot be used (ADR-0002) |
+| **Mixers as sound cards** | Pioneer DJM-S and DJM-A series, Allen & Heath Xone:96 and Xone:92, Rane Seventy and Seventy-Two: their channels named and routed as the mixer's panel is | The mixer's channel layout, from its manual |
+| **Lighting** | **Art-Net and sACN** over the network and USB DMX interfaces (Enttec), scenes on the beat and on the phrase, the drop cued from the structure djmanzo already finds | A DMX interface or a network node to test against |
+| **MIDI 2.0** | High-resolution controls and devices that describe themselves | A MIDI 2.0 device and the platforms' MIDI 2.0 support |
+| **Phones and tablets** | A remote for the DJ on the same secure page the singers' phones use, and phones as karaoke microphones (K9) | A secure page on the local network |
+| **Microphones and headsets** | Wireless microphone systems and USB headsets recognised and set up for karaoke and talkover | The devices |
+
+### Platforms
+
+The karaoke build for older Macs becomes one more target any edition can be
+built for. **Windows** is built, tested in CI and packaged with every release,
+and has never been run by a person (see [BUILDING.md](BUILDING.md)); running
+it on a Windows machine is what makes it a promised platform beside macOS
+and Linux.
+
+### A real gig
+
+Nothing here has played in front of a crowd. The next step that matters
+most is a night on real hardware, with what it finds written down here.

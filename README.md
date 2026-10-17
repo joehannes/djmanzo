@@ -3,20 +3,19 @@
 A VirtualDJ-class DJ application for **macOS** and **Linux/Xubuntu** — built to match
 VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 
-> **Status: beta (v0.14.0).** Two to six decks, mixer, headphone cue, isolator
-> EQ, filter, keylock, hot cues, loops, an FX rack, a sampler, stems, timecode
-> vinyl, CLAP plugins, an SQLite collection with importers, and a Rust-rendered
-> scrolling waveform — on a realtime engine proven allocation-free by test. The
-> keyboard is a first-class controller, so a laptop with nothing plugged into it
-> is a playable instrument.
+> **Status: beta (v0.46.0, October 2026).** A complete DJ application that
+> has not yet been through a real gig: two to six decks, the mixer, keylock,
+> sync, cues, loops, pads, effects, a sampler, live stems, timecode vinyl,
+> controllers, CLAP plugins, video and visuals, broadcasting, a night of
+> karaoke, an assistant that suggests, explains, teaches and can run the mix,
+> and a sense of the room. Twenty-two Rust crates behind a Svelte interface,
+> on a realtime engine a test proves allocation-free. The keyboard is a
+> first-class controller, so a laptop with nothing plugged into it is a
+> playable instrument.
 >
-> The interface is a cockpit of dockable surfaces: the browser, Prepare, the
-> next-track rail, the set plan, the booth and the assistant can be open
-> together and are placed by their own preferred size. `Ctrl/Cmd + K` opens a
-> command palette generated from the action vocabulary itself.
->
-> Start at [QUICKSTART.md](docs/QUICKSTART.md). Nothing here has been through a
-> real gig yet — that is what a beta is.
+> Start at [QUICKSTART.md](docs/QUICKSTART.md). What is built, part-built and
+> planned is in [FEATURES.md](docs/FEATURES.md); what comes next is
+> [below](#whats-coming).
 >
 > **Continuing the work?** Read [docs/HANDOFF.md](docs/HANDOFF.md) first. It is
 > written for someone arriving with no context: what to read, how the project is
@@ -62,27 +61,69 @@ them, see [BUILDING.md](docs/BUILDING.md).
 
 ## What it is
 
-A native desktop DJ application with a Rust realtime audio engine and a skinnable web UI:
+A native desktop DJ application with a Rust realtime audio engine and a skinnable web UI.
 
-- **2–6 decks**, full mixer, keylock, sync, hot cues, loops, pads, FX rack, sampler
-- **Real hardware** — class-compliant MIDI controllers, HID controllers, and **motorized
-  turntable controllers** (Rane Twelve, Hercules Inpulse T7, Denon SC5000M class)
-- **The keyboard as a controller**, not a pile of shortcuts — the same vocabulary and the
-  same file format as a MIDI mapping, so a laptop with nothing plugged into it is a playable
-  instrument. Press **Keys** to see the layout
-- **Club interop** — Pro DJ Link (Pioneer CDJ/XDJ) and StagelinQ (Denon Prime) over the network
-- **Neural stems** — separated ahead of the playhead, so the audio path adds zero latency
+**For mixing**
+- **2–6 decks**, full mixer, keylock, sync, hot cues, loops, pads, an FX rack, a
+  sampler, slip, reverse, brake and backspin, a scrolling waveform rendered in Rust
+- **Live stems**: vocals, drums, bass and the rest apart, separated ahead of the
+  playhead into a cache, so the audio path adds no latency
+- **A practice deck** only the headphones hear, to try a record, a loop or an
+  effect while the set goes on
+
+**For the hands**
+- **The keyboard as a controller**, not a pile of shortcuts: the same vocabulary and
+  file format as a MIDI mapping. Press **Keys** to see the layout
+- **MIDI and HID controllers**, with lights, a learn mode, Lua for what a table
+  cannot say, and shipped mappings (Pioneer DDJ-200, DDJ-SR, CDJ-3000 in HID mode,
+  generic 2-deck)
+- **Motorised platters** and **timecode vinyl** (DVS), with a control signal you can
+  write to a file and play from any deck
+
+**For the night**
+- **An assistant** that says what to play next and why, whispers what cannot wait,
+  explains, teaches, and **runs the mix on autopilot**, giving way the moment a
+  hand touches a control. Bring your own AI provider, or none
+- **Knowledge packs** for a genre's or a night's shape, a set plan, events kept step
+  by step, a press kit
+- **Reading the room**: the floor by microphone and camera, the crowd's reactions
+  from their phones, and what each mix did, stated with how sure it is
+- **Karaoke**: the singers' screen with words in time, a queue and a sign-up page,
+  vocals out, the singers' microphones with their own effects, duets, a guide voice,
+  finding the song a singer cannot name, a build for Macs back to 10.13
+- **Video and visuals**: video on a deck, layered WebGL looks, MilkDrop presets,
+  cameras; **going live** to a stream, with OBS driven from djmanzo
+- **Themes and skins**: palettes, Caribbean themes, artwork layers over them, panels
+  you move, zoom and pop out into windows of their own
+
+**Under it**
+- **Deterministic set replay**: every action is a timestamped event, so a set can be
+  replayed, re-rendered offline at studio quality, or looped to practise a transition
 - **Linux as a first-class target**, with PipeWire and JACK supported properly
+- **An open surface**: CLAP plugins, a WebSocket/OSC control API, MIDI clock,
+  djmanzo-to-djmanzo tempo sync, signed packs to make and share
 
 ## What makes it different
 
 | | |
 |---|---|
-| **Stem engine done right** | Look-ahead separation into a persistent cache — no added latency, instant on reload, per-stem EQ/FX, stem swapping across decks |
-| **Universal hardware bridge** | Pro DJ Link *and* StagelinQ *and* network tempo sync *and* MIDI clock, in one app. Join a running club setup as a peer. |
-| **Deterministic set replay** | Every action is a timestamped event, so a set is data: replay it, re-render it offline at studio quality, loop a transition to practise it, diff two takes |
-| **Structure-aware assistance** | Phrase detection driving phrase-locked loops and transition planning, with suggestions that explain their reasoning |
-| **Open extension surface** | CLAP plugin hosting, a documented WebSocket/OSC control API, Art-Net/DMX out, community controller mappings as data files |
+| **Stem engine done right** | Look-ahead separation into a persistent cache: no added latency, instant on reload, per-stem EQ/FX, stem swapping across decks |
+| **An assistant that speaks only actions** | Everything it does is a command a DJ could have pressed, so it can explain, be undone, and never fight a hand on a control |
+| **Deterministic set replay** | A set is data: replay it, re-render it, loop a transition to practise it, diff two takes |
+| **Structure-aware** | Phrase detection driving phrase-locked loops and transition planning, with suggestions that explain their reasoning |
+| **Karaoke and DJing in one** | The same decks, effects and room sense, so a karaoke night can become a dance floor without changing application |
+| **Open** | CLAP hosting, a documented control API, mappings and packs as data files anyone can share |
+
+## What's coming
+
+| | |
+|---|---|
+| **Editions, one download** | Auto-Pilot, Hobbyist, Apprentice, Karaoke, Pro DJ, Full and Custom, all one application, unlocked by signing in with Google, Apple, GitHub, Microsoft or Discord. A **free 7-day trial** of any edition, Full included. Priced at half of what the professional competitors charge on average, with regional and student discounts. [EDITIONS.md](docs/EDITIONS.md) |
+| **A free marketplace** | Themes, skins, visuals, controller mappings, knowledge packs, lessons, audio plugins, and **DJ techniques the autopilot can perform** and the teacher can teach. Everything in it free. [MARKETPLACE.md](docs/MARKETPLACE.md) |
+| **More hardware** | Mappings for the controllers people own (Pioneer DDJ-FLX4 and DDJ-400, Numark Mixtrack and Party Mix, Hercules Inpulse, Traktor Kontrol S2/S4, Denon and Rane, Reloop), Pro DJ Link and StagelinQ for club players, Ableton Link, DJ mixers as sound cards, MIDI 2.0, lighting through DMX, phones and tablets as remotes. [FEATURES.md §4](docs/FEATURES.md#4-outlook) |
+| **The Auto-Pilot surface** | Style the night (genres, energy over time, tempo, era), fill the playlist, start it, take over |
+| **The Apprentice curriculum** | A course from the first beatmatch to the first gig, with exercises the teacher checks |
+| **A real gig** | Everything above has been tested in this repository, none of it in front of a crowd. That is the step that matters most |
 
 ## Stack
 
@@ -95,12 +136,17 @@ they stay fast under WebKitGTK on Linux. Permissively licensed throughout (MIT O
 | | |
 |---|---|
 | [**QUICKSTART.md**](docs/QUICKSTART.md) | Five minutes with djmanzo, for somebody with a laptop and no controller |
+| [**FEATURES.md**](docs/FEATURES.md) | Everything VirtualDJ does and where djmanzo stands on each, what goes beyond it, and the outlook |
+| [**EDITIONS.md**](docs/EDITIONS.md) | The editions, their prices, the licence and the trial |
+| [**MARKETPLACE.md**](docs/MARKETPLACE.md) | The free marketplace that is planned |
+| [**KARAOKE-NIGHT.md**](docs/KARAOKE-NIGHT.md) | For the person hosting a karaoke night |
+| [**CONTROLLERS.md**](docs/CONTROLLERS.md) | The keyboard, MIDI and HID mappings, and why a mapping from a stranger is safe to open |
 | [**BUILDING.md**](docs/BUILDING.md) | Building it yourself on either platform, and what CI does |
-| [**CONTROLLERS.md**](docs/CONTROLLERS.md) | The keyboard, MIDI mappings, and why a mapping from a stranger is safe to open |
 | [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) | Threading model, signal flow, crate map, control model, stem engine, extension points |
-| [**FEATURES.md**](docs/FEATURES.md) | VirtualDJ parity matrix with milestones, differentiators, UI/workflow map |
-| [**ROADMAP.md**](docs/ROADMAP.md) | M0–M8 with acceptance criteria |
+| [**ROADMAP.md**](docs/ROADMAP.md) | The milestones, with acceptance criteria and where each actually stands |
+| [**DIRECTIVE-STATUS.md**](docs/DIRECTIVE-STATUS.md) | Every section the owner asked for, and where it stands |
 | [**RESEARCH.md**](docs/RESEARCH.md) | The OSS landscape, licences, and the clean-room rules |
+| [**screenshots/**](docs/screenshots/) | The screens, in their themes, skins and states |
 | [**adr/**](docs/adr/) | The decisions, with the alternatives that were rejected and why |
 
 ## A note on originals

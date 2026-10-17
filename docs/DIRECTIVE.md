@@ -2761,3 +2761,15 @@ And, asked which editions, how they are downloaded and what they cost:
 > Prices: Typical Average Pricing, but 50% off by default of the common pro competitors average, + regional discounts for poorer regions/student reductions/similar ...
 
 *Planned the same day in [EDITIONS.md](EDITIONS.md) and [ADR-0010](adr/0010-editions.md).*
+
+
+---
+# 131. ASKED SINCE: ONE DOWNLOAD UNLOCKED BY A LICENCE, A TRIAL, A MARKETPLACE, MORE HARDWARE
+Added by the owner in conversation, 2026-10-17. Quoted as written.
+> so before you go ahead and build the versions (and please do switch to one full version with the different parts unlocked per license .. maybe some KV entry on cloudflare as of the user buying his version that is secured via social OAUTH and the social OAUTH login on the app checks the version that is unlocked ... let there also be a  free 7 day TRIAL available for just the full version or any version) ...
+> update the README and FEATURE documents as to the current status and also the outlook (what's planned in the future already) ...
+> (also add more hardware support to be planned, plus a marketplace of plugins and themes, possibly DJ techniques, maybe even compatible with the autopilot ... enusre this marketplace doesn't need a businne/commercial license for me ... if necessary to make all available for free in the marketplace, so be it ...)
+> then print/let me know immediately before you continue with any work that the docs were updated ...
+> then continue with the next features/continue
+
+*Planned the same day: the licence and the trial in [EDITIONS.md](EDITIONS.md) and [ADR-0011](adr/0011-licence-by-sign-in.md) (which replaces "downloads: separate" from §130), the marketplace in [MARKETPLACE.md](MARKETPLACE.md) and [ADR-0012](adr/0012-a-free-marketplace.md), the hardware in [FEATURES.md](FEATURES.md#4-outlook).*

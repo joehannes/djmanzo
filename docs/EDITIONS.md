@@ -1,8 +1,8 @@
 # Editions
 
-djmanzo sold at different levels, from one codebase: the owner's word is
-[`DIRECTIVE.md`](DIRECTIVE.md) §130, the decision is
-[ADR-0010](adr/0010-editions.md), and the parts list is `dj_core::edition`.
+djmanzo sold at different levels, from one codebase and one download: the owner's word is
+[`DIRECTIVE.md`](DIRECTIVE.md) §130 and §131, the decisions are
+[ADR-0010](adr/0010-editions.md) and [ADR-0011](adr/0011-licence-by-sign-in.md), and the parts list is `dj_core::edition`.
 
 ## The editions, as the owner named them
 
@@ -124,34 +124,103 @@ A *merchant of record* (Paddle, FastSpring or Lemon Squeezy among them)
 handles tax in every country and regional prices, and is the owner's choice
 when selling starts.
 
-## Separate downloads
+## One download, unlocked by signing in
 
-The owner's word: **each edition is its own download**, built with only what
-it carries.
+The owner first asked for a download per edition (§130), then for **one full
+download with the parts unlocked by the licence** (§131). That is what is
+planned; [ADR-0011](adr/0011-licence-by-sign-in.md) is the decision.
 
-1. **The build names its edition.** `DJMANZO_EDITION=karaoke` (any slug of
-   `dj_core::edition::Edition`) when the application is built; the
-   application knows its edition from then on.
-2. **The heavy parts are left out of builds that don't carry them**, by
-   cargo features: speech recognition (`whisper`, karaoke's words in time),
-   stem separation, plugin hosting and timecode vinyl. Smaller downloads, and
-   nothing to switch back on.
-3. **Everything else is there and refused**: a command a module owns answers
-   *"that is in djmanzo Pro DJ"*, and the interface draws the quiet card above
-   instead of the panel.
-4. **Each edition gets its own name, identifier and icon** (a Tauri config
-   per edition, as `tauri.karaoke.conf.json` already is) and its own row in
-   the release build.
+- **Everyone downloads the same application**, with every module in it.
+  What the DJ may use is decided by their licence, not by what was compiled.
+- **The licence is fetched by signing in**, with an account the DJ already
+  has: Google, Apple, GitHub, Microsoft or Discord (social OAuth). There is
+  no djmanzo password to forget or leak.
+- **A purchase writes a record in Cloudflare KV**, under that account. The
+  application never reads KV itself; it asks a small Cloudflare Worker,
+  which answers with a **licence signed with the store's key**. The
+  application checks the signature with a public key built into it.
+- **Custom is no longer the exception.** Its licence lists its modules, like
+  every other edition's.
 
-**Custom is the one exception.** Fifteen modules make 32,768 possible
-choices, too many to build one download for each. So Custom is a single
-download carrying everything, unlocked module by module by a licence file
-the store signs and the application checks offline, with no server.
+### How it works, end to end
 
-**The old-Mac build is a platform, not an edition.** Today's
-*djmanzo Karaoke* download is the whole application for Macs back to 10.13,
-opening on karaoke. Once editions are built it becomes the Karaoke edition for
-those Macs. Any edition whose modules run there can be built for them.
+1. **Buying.** On the shop page the DJ signs in, picks an edition (or
+   Custom's modules), and pays through the *merchant of record*. The
+   checkout carries their account's identifier.
+2. **The record.** The merchant calls the Worker's webhook when the payment
+   clears. The Worker checks the webhook's signature and writes
+   `account:<provider>:<subject>` in KV: the edition, Custom's modules,
+   the purchase, any trial.
+3. **Signing in from the application.** *Sign in* opens the system browser
+   (never a web view inside djmanzo, so the DJ types their Google password
+   into Google and nowhere else) on the Worker's login page, which hands over
+   to the provider. The answer comes back to djmanzo on a port on
+   `127.0.0.1` only djmanzo is listening on, with a PKCE check, as RFC 8252
+   asks of native applications.
+4. **The licence.** The Worker reads the KV record and signs a short licence:
+   the account, the edition, its modules, the trial's end if there is one,
+   when it was issued and when it expires (30 days). djmanzo keeps it on
+   disk and checks its Ed25519 signature offline; `dj_core::edition::Modules`
+   comes from it, and every check asks `Modules::has` as before.
+5. **Renewing.** While online, djmanzo renews the licence in the background
+   every few days. Offline, it works until the licence expires: 30 days
+   without a connection is a long tour.
+
+### Rules that keep a gig safe
+
+- **A licence never runs out mid-set.** Expiry, a lapsed trial or a refund
+  takes effect the next time the application starts, never while a deck is
+  playing.
+- **No connection is ever needed to play.** Signing in and renewing need
+  one; playing does not.
+- **Nothing the DJ made is held hostage.** The collection, cues, playlists,
+  recordings, sets and settings belong to the DJ in every state of the
+  licence.
+
+### The 7-day trial
+
+- **Any edition, Full included**, for seven days, once per account. The DJ
+  picks which when they start it, and may buy any edition during or after it.
+- **The trial is a KV record too**, so it starts once whichever machine it is
+  started on, and reinstalling does not restart it.
+- **The application says how many days are left**, in the status strip only
+  (never as a pop-up, never while mixing), and the last day says what buying
+  keeps.
+- **When it ends without a purchase,** the application opens on the shop.
+  What the DJ made is kept, and a purchase unlocks it where it was. Whether a
+  free tier exists after the trial (a player with two decks and nothing else,
+  for instance) is the owner's decision, not made here.
+
+### What the owner sets up, which this container cannot
+
+- A Cloudflare account: the Worker, one KV namespace, the shop page.
+- An OAuth client with each provider (Google, Apple, GitHub, Microsoft,
+  Discord); each is free, Apple's needs the $99-a-year developer programme
+  the macOS build already wants for signing.
+- The merchant of record, and its webhook secret.
+- The signing key pair: the private key a Worker secret, the public key in
+  the application.
+
+Cloudflare's free plan covers 100,000 Worker requests and 100,000 KV reads a
+day, and 1,000 KV writes; a renewal is one read, a purchase one write. The
+paid plan ($5 a month) is there when sales outgrow it.
+
+### What it does not try to be
+
+An offline application can always be patched by someone determined, and no
+licence scheme changes that. This one is built so that an honest DJ is never
+locked out and a casual copy does not work, and stops there: no device
+fingerprints, no always-online check, nothing that could fail at a gig.
+
+**The old-Mac build is a platform, not an edition.** Today's *djmanzo
+Karaoke* download is the whole application for Macs back to 10.13, opening on
+karaoke. With licences it becomes the one application for those Macs, signed
+in like any other.
+
+## Pictures for the shop
+
+`docs/screenshots/` holds the application's screens in its themes, skins and
+states, named for what they show, for the shop pages (see its README).
 
 ## What is built, and what is left
 
@@ -162,17 +231,22 @@ those Macs. Any edition whose modules run there can be built for them.
 | Apprentice | Guides, the welcome, the practice lab and practice deck, the coach, the quiz, the event workflow | A curriculum in order (beatmatching, phrasing, EQ, each genre's basics from its pack, crowd dynamics, a DJ's life, first gigs, preparing them, the road ahead), with exercises the teacher checks and a record of progress |
 | Karaoke | All of it | Nothing for the edition itself |
 | Pro DJ, Full | All of it | Nothing for the edition itself |
-| Custom | — | The signed licence file, and the store |
+| Custom | — | Nothing of its own: the licence and the shop below |
+| All of them | The parts list | The licence: the Worker, sign-in in the application, the trial, the shop |
 
 ## The order of work
 
 1. **The parts list** (`dj_core::edition`): done.
-2. **The build switch**: the edition at build time, commands refusing what is
-   not there, the interface hiding it, the heavy parts left out, a Tauri
-   config and a release row per edition. Next: it touches files Session 2
-   works in, and Session 2's round 2 is merged (v0.46.0).
-3. **The quiet cards.**
-4. **The Auto-Pilot surface.**
-5. **The Apprentice curriculum**: the largest piece, and most of it is
+2. **The switch at run time**: `Modules` from the licence, every command a
+   module owns refusing what is not there with the edition that has it, the
+   interface hiding it. Until the licence exists, a development licence for
+   Full.
+3. **The licence in the application**: reading and checking a signed
+   licence, the trial's days in the status strip, *Sign in*.
+4. **The licence service**: the Worker, KV, the webhook, the trial (in this
+   repository, deployed by the owner).
+5. **The quiet cards.**
+6. **The Auto-Pilot surface.**
+7. **The Apprentice curriculum**: the largest piece, and most of it is
    teaching content the owner's knowledge decides.
-6. **Custom's licence file**, then the store.
+8. **The shop page**, with the pictures from `docs/screenshots/`.
