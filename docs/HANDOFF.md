@@ -1488,6 +1488,17 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
 
 ## Where the work stands, and what is next
 
+**Two sessions at once (17 October, after v0.45.0).** The owner runs two
+sessions side by side again, the karaoke beta's shape made general:
+[PARALLEL-SESSIONS.md](PARALLEL-SESSIONS.md) names who owns which files, the
+marked blocks in `lib.rs`, and that one session folds the other's branch.
+Session 1 (*Interface and karaoke*, `claude/vigilant-tesla-xdqpmf`) and
+Session 2 (*Intelligence* — the assistant's briefing, learning, packs, crowd
+signals, hardware stand-ins) keep their state in
+[parallel/session-1.md](parallel/session-1.md) and
+[parallel/session-2.md](parallel/session-2.md); read those before this
+section, which is written at the fold.
+
 **The karaoke beta (16–17 October, §126–§129).** The owner asked for a
 night's worth of karaoke features in one afternoon, and they were built in
 two sessions that could not collide ([karaoke_beta_release.md](karaoke_beta_release.md):
@@ -1504,8 +1515,9 @@ vocal presets, Suno's form filled in djmanzo's own window and WhatsApp Web
 open is in the two notes files** ([karaoke-beta/session-a.md](karaoke-beta/session-a.md),
 [karaoke-beta/session-b.md](karaoke-beta/session-b.md)) — chiefly *Like
 this one*, the fast search modes, a way into *Find a song* from the Singers
-panel, a *not sure* mark for the guide offer, the room's taps in the crowd
-log, and nothing yet proved on a signed-in Suno or WhatsApp. The skin
+panel and a *not sure* mark for the guide offer (both since built — see
+[parallel/session-1.md](parallel/session-1.md)), the room's taps in the
+crowd log, and nothing yet proved on a signed-in Suno or WhatsApp. The skin
 picker lives in the Singers panel; Settings → Appearance is its natural
 second home.
 

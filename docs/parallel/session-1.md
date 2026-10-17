@@ -72,6 +72,15 @@ the shared documents at the fold (§5).
   fail them. Not read with one singer on the microphones, where the marks
   still show — a duet sung alone is rare and the marks say whose line it is.
 
+### Session 2 folded in
+
+- **§40 and §12/§14 merged** into this branch (17 October). Its *Needed*
+  lines in `commands.rs` made here: `dj_context` is now
+  `context::gather_from(&state, &snapshot_now(&state))`, and
+  `staged_accept` / `staged_reject` note the DJ's verdict
+  (`Night::note_verdict`). Not held by a test through the commands
+  themselves — Session 2's `staged` tests hold the verdicts.
+
 ### Changes in shared files (for the fold)
 
 - `crates/dj-app/src/lib.rs`: a *Parallel, session 1* modules block after

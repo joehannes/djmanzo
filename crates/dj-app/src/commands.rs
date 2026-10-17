@@ -8676,6 +8676,10 @@ pub fn staged_choose(
 /// Throw it away. **Reject.**
 #[tauri::command]
 pub fn staged_reject(state: State<'_, AppState>) {
+    // §12: a transaction turned down is the DJ's verdict on it, counted.
+    if state.staged().is_some() {
+        state.night().note_verdict(crate::staged::Verdict::Rejected);
+    }
     state.clear_staged();
 }
 
@@ -8688,6 +8692,8 @@ pub fn staged_reject(state: State<'_, AppState>) {
 #[tauri::command]
 pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcome, String> {
     let staged = state.staged().ok_or("nothing is staged")?;
+    // §12: accepted as offered, or after the DJ changed it — counted.
+    state.night().note_verdict(staged.accepted());
     let mut done = Vec::new();
     let mut stopped = None;
     for (index, step) in staged.chosen() {
@@ -21403,46 +21409,7 @@ pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
 /// an absent reading is the honest answer rather than a failure.
 #[tauri::command]
 pub fn dj_context(state: State<'_, AppState>) -> Result<crate::context::DjContext, String> {
-    let snapshot = snapshot_now(&state);
-
-    let occasion = state
-        .conduct()
-        .lock()
-        .map_err(|_| "the conduct lock is poisoned".to_owned())?
-        .occasion
-        .name()
-        .to_owned();
-
-    // §14's gestures over tonight's log, which is the only window there is:
-    // the log does not outlive the run that made it.
-    let night = state.night();
-    let log = state.bus().log();
-    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
-
-    let (taken, ignored) = state
-        .fatigue()
-        .lock()
-        .map_or((0, 0), |fatigue| (fatigue.taken(), fatigue.ignored()));
-
-    // A room nothing is watching has not been read. `Glance` is already `None`
-    // in that case, so this needs no second rule about it.
-    let audience = state
-        .room()
-        .lock()
-        .ok()
-        .and_then(|room| room.glance())
-        .map(|glance| glance.because);
-
-    Ok(crate::context::DjContext {
-        session_phase: snapshot.context.session.map(|read| read.phase),
-        occasion,
-        music: crate::context::music(&snapshot),
-        hardware: crate::context::hardware(&snapshot, &state.control().status(None)),
-        audience,
-        behaviour: crate::context::behaviour(&signals, night.elapsed(), taken, ignored),
-        attention: snapshot.attention,
-        health: crate::context::health(&snapshot, state.worker_load()),
-    })
+    crate::context::gather_from(&state, &snapshot_now(&state))
 }
 
 /// What the room has been doing, and whether it matches the night.
