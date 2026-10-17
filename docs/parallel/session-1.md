@@ -60,7 +60,17 @@ the shared documents at the fold (§5).
   interface mutants fail them. **Not yet: the phone's form** — the room's
   page (`dj_net`) has no such mark; a phone can already ask for the guide
   itself (K4).
-- **Not yet:** a duet whose lines carry no names told apart.
+- **A duet marked by part — built.** Lyrics that mark parts rather than
+  name singers — "M:", "F:", "D:" (the karaoke `.lrc` convention) and the
+  words spelled out — are read on the singers' screen (`lyricBreak.ts`:
+  `partsOf`, `partOf`'s `order`): the first part the song gives goes to the
+  first singer on a microphone, the other to the second (who is the man and
+  who the woman is not djmanzo's to guess; who comes in first is the
+  song's); the mark is neither drawn nor sung as a timed word; a line sung
+  together is everyone's (`data-together`), in no one singer's colour.
+  Held by a unit test and `lyric-visuals.spec.ts`'s new test; 5 mutants
+  fail them. Not read with one singer on the microphones, where the marks
+  still show — a duet sung alone is rare and the marks say whose line it is.
 
 ### Changes in shared files (for the fold)
 
@@ -82,8 +92,10 @@ the shared documents at the fold (§5).
   tempo of the record the room is hearing.
 - *Not sure of it* beside a request: the guide voice is offered for that
   song even if the singer has sung it before.
+- A duet whose lyrics mark parts ("M:", "F:", "D:") rather than name the
+  singers gives each part to a singer on a microphone, in their colour.
 
 ### DIRECTIVE-STATUS text (for the fold)
 
 - §128 / §126: the three above, as *built*, with the phone's *not sure* mark
-  and duets without names as what is left.
+  as what is left.

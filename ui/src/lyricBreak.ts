@@ -45,25 +45,81 @@ export function breakAt(lines: LyricLine[], seconds: number): Break | null {
 
 /** One part of a duet: a line that begins with a singer's name and a colon. */
 export interface Part {
-  /** Which of `names` sings it; `null` for a line without a name. */
+  /** Which of `names` sings it; `null` for a line without a name, and for one sung together. */
   singer: number | null;
   /** The line without the name. */
   text: string;
+  /** The line began with a name or a part's mark, taken off `text`. */
+  marked: boolean;
+  /** Marked as sung together ("D:", "Both:"). */
+  together: boolean;
 }
 
 const fold = (s: string) => s.trim().toLocaleLowerCase();
 
 /**
+ * The marks a duet's lyrics use where they carry no singer's name: a man's
+ * part, a woman's, and the lines sung together — "M:", "F:", "D:" as the
+ * karaoke `.lrc` convention writes them, and the words spelled out.
+ */
+const MARKS: Record<string, "m" | "f" | "d"> = {
+  m: "m",
+  male: "m",
+  man: "m",
+  f: "f",
+  female: "f",
+  woman: "f",
+  d: "d",
+  duet: "d",
+  both: "d",
+  all: "d",
+};
+
+/** A line's mark and the rest of it, or none. */
+function markOf(text: string): { mark: "m" | "f" | "d"; rest: string } | null {
+  const colon = text.indexOf(":");
+  if (colon <= 0 || colon > 8) return null;
+  const mark = MARKS[fold(text.slice(0, colon))];
+  return mark ? { mark, rest: text.slice(colon + 1).trimStart() } : null;
+}
+
+/**
+ * A duet's parts by mark, in the order the song first gives them: the
+ * first singer on a microphone takes the first part sung, the second the
+ * other. Who is the man and who the woman is not djmanzo's to guess; who
+ * comes in first is the song's.
+ */
+export function partsOf(lines: { text: string }[]): ("m" | "f")[] {
+  const order: ("m" | "f")[] = [];
+  for (const line of lines) {
+    const found = markOf(line.text);
+    if (found && found.mark !== "d" && !order.includes(found.mark)) order.push(found.mark);
+    if (order.length === 2) break;
+  }
+  return order;
+}
+
+/**
  * Whose line `text` is: "Ana: so long" is Ana's when Ana is one of `names`
  * (the singers on the microphones, by strip). A name that is not one of
- * them is left as part of the line — a lyric can begin "Oh:".
+ * them is left as part of the line — a lyric can begin "Oh:". Where the
+ * song marks parts rather than names them ("M:", "F:"), `order` — from
+ * [`partsOf`] — gives each part to a singer on a microphone, in turn; a
+ * line sung together ("D:") is everyone's.
  */
-export function partOf(text: string, names: (string | null)[]): Part {
+export function partOf(text: string, names: (string | null)[], order: ("m" | "f")[] = []): Part {
   const colon = text.indexOf(":");
   if (colon > 0 && colon <= 24) {
     const who = fold(text.slice(0, colon));
     const singer = names.findIndex((name) => name !== null && fold(name) === who);
-    if (singer >= 0) return { singer, text: text.slice(colon + 1).trimStart() };
+    if (singer >= 0) return { singer, text: text.slice(colon + 1).trimStart(), marked: true, together: false };
   }
-  return { singer: null, text };
+  const found = markOf(text);
+  if (found) {
+    if (found.mark === "d") return { singer: null, text: found.rest, marked: true, together: true };
+    const on = names.flatMap((name, strip) => (name !== null ? [strip] : []));
+    const turn = order.indexOf(found.mark);
+    return { singer: on[turn] ?? null, text: found.rest, marked: true, together: false };
+  }
+  return { singer: null, text, marked: false, together: false };
 }
