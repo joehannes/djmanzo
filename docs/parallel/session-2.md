@@ -52,6 +52,11 @@ this round's.
 
 ### Round 2 status
 
+**Folded on 17 October** into CHANGELOG (v0.46.0), DIRECTIVE-STATUS (§12,
+§25, §34, §36, §75, §106 and the library-quality row) and HANDOFF (traps and
+where the work stands), merged into `main` and released as v0.46.0. The
+sections below are kept as the record of what was folded.
+
 - **1. §12 across nights — built.** Three more figures kept on each night's
   row (migration 22: `pair`, `verdicts`, `swaps`), written by
   `night_setting` (its body now `commands::note_tonight`, so a test drives

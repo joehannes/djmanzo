@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.46.0 — Two sessions at once: practice, the peak, and what djmanzo learns and reads
+
 - **A quiet warm-up.** Early in the night djmanzo's whisper line says only
   what cannot wait (a record running out, a deck clipping); the next-record
   list and the guides are as they were.
@@ -113,6 +115,32 @@ Versioning follows semver, with one project-specific convention:
 - **High-resolution faders no longer step backwards.** A pitch fader sent as
   two control changes, as Pioneer's are, jumped back a fraction each time it
   crossed a step while being pushed one way; a slow push now reads one way.
+
+- **What the DJ does, kept across nights.** The effects they run together,
+  what they do with what djmanzo stages (taken as offered, changed, turned
+  down), and how often they change the record they have cued before playing
+  it — and how soon — are now kept with each night and read back into "how
+  you play here", fading on the same curve as everything else learned.
+  Counts, never a preference: nothing here changes what djmanzo stages next.
+- **A breakdowns column.** The library table can show where each record's
+  first breakdown starts, a dash for a record with none, and sorts by it.
+- **Fixed: a breakdown shorter than sixteen bars was missed on any record
+  with thirty-two-beat phrases.** The finder asked for two of its windows,
+  and a window is a phrase. It now asks for four bars whatever the window.
+  Records already analysed are analysed again on their next load.
+- **Four more of the floor's signals.** How much of the picture is
+  occupied, how tightly it packs, whether the lighting is moving (a sweeping
+  beam, which is not a change of scene), and whether the room's voices rise
+  above the music on their own. Each on its own line beside its blind spot,
+  measured from the same frames and sound the room surface already reads.
+  Built and tested against drawn footage and generated sound only.
+- **Stand-ins for a turntable and a controller in the running
+  application** (development only): `DJMANZO_STANDIN_TIMECODE=1` puts deck 1
+  on a scripted control record on a machine with no turntable, and
+  `DJMANZO_STANDIN_CONTROLLER=generic-2-deck` opens a controller that is not
+  there, with a button to press every control of it. The Controllers panel
+  now shows an open controller on a machine with no MIDI service, which is
+  where the stand-in is for.
 
 ## v0.45.0 — The karaoke beta
 
