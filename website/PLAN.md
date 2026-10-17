@@ -1,23 +1,21 @@
 # The djmanzo website — progress notes
 
-Isla Manzo: a Svelte 5 island on one Cloudflare Worker (`djmanzo`) with one KV
-namespace (`DJMANZO_KV`, bound as `KV`). Read this first when resuming.
+Read [docs/WEBSITE.md](../docs/WEBSITE.md) first; it is the full account.
 
-## Done
-- Worker (`worker/`): catalogue, regional proof, promo codes and vouchers,
-  OAuth sign-in, Ed25519 licences, device link, Stripe/PayPal/transfer/demo
-  checkout, wishlist, comments, blog with AI drafts, Backstage API. 34 tests.
-- Island: map, MC, HUD, booth, dock, genre islets, real app screenshots.
+## Done (17 October 2026)
+- Worker: catalogue, regional proof, promo codes and vouchers, OAuth,
+  Ed25519 licences, device link, Stripe/PayPal/transfer/demo checkout,
+  wishlist, comments, blog with AI drafts, Backstage. Deployed.
+- Island: every place, the MC, the HUD, genre islets, endless cays.
+- App: `dj_app::account` and Settings → Account; proven live end to end.
 
-## Next, in order
-1. Places still stubs: Taquilla (shop), Tarima, Tienda, Faro (three.js),
-   Muro, Radio, Arena, Gigs, Plaza, Pase (+ /link), Backstage.
-2. Deploy: `npm run build` (read "✓ built"), `npx wrangler deploy`;
-   secrets ADMIN_TOKEN, ADMIN_EMAILS, LICENCE_PRIVATE_KEY.
-3. App side: `dj_app::account` — device link + licence verification + panel.
-4. Docs: README section, RESEARCH.md licences (three, motion, svelte, zod,
-   @anthropic-ai/sdk, wrangler: all MIT/Apache).
+## Waiting on the owner
+- Provider keys: OAuth clients, Stripe, PayPal (see WEBSITE.md, Secrets).
+- `ANTHROPIC_API_KEY` for blog drafts (Workers AI's daily allocation on this
+  Cloudflare account is used up by its other Workers).
+- Whether and when `account::ENFORCED` turns on.
+- A copy of the licence signing key kept somewhere safe.
 
-## Checks
-`npm test` · `npx svelte-check` · `npm run build` · `node e2e/shoot.mjs URL out.png`
-(with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`).
+## Ideas not built
+- A Spanish interface for the island (the blog is already multilingual).
+- A custom domain instead of workers.dev.
