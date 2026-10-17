@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "djmanzo",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-16",
+  // The Svelte build. The Worker runs first only for the API and the
+  // sign-in routes; everything else is the single-page island.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+  "kv_namespaces": [{ "binding": "KV", "id": "63033c23be2046b08d74b2dc6d3902b1" }],
+  // Workers AI writes blog drafts when no ANTHROPIC_API_KEY secret is set.
+  "ai": { "binding": "AI" },
+  "vars": {
+    "SITE_NAME": "djmanzo",
+    // Any of these may also be set as secrets; a provider whose client id is
+    // missing is simply not offered. With none configured the site runs in
+    // demo mode and says so on every checkout and sign-in screen.
+    // ADMIN_EMAILS and ADMIN_TOKEN are secrets, never committed.
+    "DEMO_MODE": "auto",
+    "MAJOR_VERSION": "1",
+    "DOWNLOAD_BASE": "https://github.com/joehannes/djmanzo/releases/latest"
+  },
+  "observability": { "enabled": true, "traces": { "enabled": true } }
+}
