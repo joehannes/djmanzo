@@ -15,7 +15,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { EDITION_INFO, FEATURES, type Edition } from "../shared/catalog";
+import { EDITION_INFO, MODULE_TITLE, type Edition } from "../shared/catalog";
+import { FACTS, STATUS_LINE } from "../shared/facts";
 import type { AppEnv } from "./env";
 import { fail, text } from "./http";
 import { get, put, type Post, type PostSummary } from "./store";
@@ -56,9 +57,9 @@ export function slugify(s: string): string {
 }
 
 function facts(): string {
-  const lines = FEATURES.map((f) => `- ${f.name} [${f.status}]: ${f.about}`);
-  const eds = Object.values(EDITION_INFO).map((e) => `- ${e.name}: ${e.tagline} ${e.forWho}`);
-  return `What djmanzo does today (status in brackets; "beta" means built but not yet through a real gig, "coming" means NOT in the app yet):\n${lines.join("\n")}\n\nThe four editions:\n${eds.join("\n")}`;
+  const lines = FACTS.map((f) => `- ${f.name} [${f.status}; ${f.module === "foundation" ? "every edition" : `module: ${MODULE_TITLE[f.module]}`}]: ${f.about}${f.caveat ? ` (${f.caveat})` : ""}`);
+  const eds = Object.values(EDITION_INFO).map((e) => `- ${e.name}: ${e.tagline} For: ${e.forWho}`);
+  return `${STATUS_LINE}\n\nWhat djmanzo does (status in brackets: "shipped" is built and tested but has not been through a real gig; "part" is partly built; "planned" means NOT in the app yet; caveats in parentheses must be kept when the feature is mentioned):\n${lines.join("\n")}\n\nThe seven editions, one download unlocked by signing in, with a free seven-day trial of any of them:\n${eds.join("\n")}`;
 }
 
 const SYSTEM = `You write the blog for djmanzo, a DJ and karaoke application for macOS and Linux that treats Dominican and Caribbean music as first-class alongside club music.
@@ -66,7 +67,7 @@ const SYSTEM = `You write the blog for djmanzo, a DJ and karaoke application for
 Readers are DJs and karaoke hosts, from bedroom hobbyists to working professionals. Write like a working DJ who knows the culture: concrete, warm, specific about music, gear, rooms and crowds. Short paragraphs. Markdown body with ## headings, lists where they help, no tables, no images, no HTML.
 
 Honesty is the house rule:
-- Only describe djmanzo features from the list you are given, at the status given. Never present a "coming" feature as available; say "beta" where it is.
+- Only describe djmanzo features from the list you are given, at the status given. Never present a "planned" or "part" feature as available, and keep its caveat.
 - Do not invent quotes, testimonials, statistics, customers, prices or release dates.
 - Name other DJ software only fairly and factually.
 

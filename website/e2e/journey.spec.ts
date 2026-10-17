@@ -33,7 +33,7 @@ test("a regional price must be proven, and a licence comes out", async ({ page }
   await page.goto("/#/taquilla");
   const sleeve = page.getByRole("region", { name: "La Taquilla" });
   await expect(sleeve.getByRole("heading", { name: "Pick your edition" })).toBeVisible();
-  await sleeve.getByRole("button", { name: "Choose" }).nth(1).click(); // Pro
+  await sleeve.locator(".slot", { has: page.getByRole("heading", { name: "Pro DJ", exact: true }) }).getByRole("button", { name: "Choose" }).click();
   await sleeve.getByRole("combobox").first().selectOption("DO");
   await expect(sleeve.getByText("−40 %").first()).toBeVisible();
   await sleeve.getByRole("textbox", { name: "Your DJ name" }).fill("Tester");
@@ -64,6 +64,29 @@ test("djmanzo's code is approved on the /link page", async ({ page, request }) =
   const token = await (await request.post("/api/device/token", { data: { device_code: start.device_code } })).json();
   expect(token.access_token).toMatch(/^djm_/);
   expect(token.user.name).toBe("Linker");
+});
+
+test("djmanzo's loopback: the DJ says yes and the browser carries the answer back", async ({ page, request }) => {
+  const verifier = "loopback-verifier-0123456789-abcdefghijklmnop";
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const challenge = Buffer.from(digest).toString("base64url");
+  const port = 53682;
+  let back: URL | null = null;
+  // djmanzo's own port, played by the test: record where the browser was sent.
+  await page.route(`http://127.0.0.1:${port}/**`, (route) => {
+    back = new URL(route.request().url());
+    return route.fulfill({ status: 200, contentType: "text/html", body: "<p>djmanzo is linked</p>" });
+  });
+  await page.goto(`/link?port=${port}&challenge=${challenge}&state=state-0123456789&machine=Booth%20laptop`);
+  const pass = page.getByRole("region", { name: "Tu Pase" });
+  await expect(pass.getByText("Booth laptop").first()).toBeVisible();
+  await pass.getByRole("textbox", { name: "Your DJ name" }).fill("Loop");
+  await pass.getByRole("button", { name: "Sign in for the demo" }).click();
+  await pass.getByRole("button", { name: "Yes — link it" }).click();
+  await expect.poll(() => back?.searchParams.get("state")).toBe("state-0123456789");
+  const token = await (await request.post("/api/device/exchange", { data: { code: back!.searchParams.get("code"), verifier } })).json();
+  expect(token.access_token).toMatch(/^djm_/);
+  expect(token.user.name).toBe("Loop");
 });
 
 test("the phone gets the same island", async ({ browser }) => {

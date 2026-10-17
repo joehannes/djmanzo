@@ -10,9 +10,15 @@
  * valid for thirty days and renewed whenever djmanzo is online. The thirty
  * days are the grace a DJ gets without a connection, and the only thing a
  * cancelled subscription keeps.
+ *
+ * Both carry the licence's **modules** (`dj_core::edition`'s slugs), as
+ * ADR-0011 asks: for every edition but Custom they are the edition's own,
+ * and the application trusts its own table for those; for Custom they are
+ * what was bought. A trial is a licence whose plan is `trial` and whose end
+ * is the trial's.
  */
 
-import { SEATS, type Edition, type Plan } from "../shared/catalog";
+import { SEATS, TRIAL_DAYS, modulesOf, type Edition, type Module, type Plan } from "../shared/catalog";
 import { b64url, unb64url } from "./http";
 import type { AppEnv } from "./env";
 import type { Licence, User } from "./store";
@@ -26,6 +32,7 @@ export interface LicenceClaims {
   name: string;
   email: string | null;
   edition: Edition;
+  modules: Module[];
   plan: Plan;
   major: number;
   seats: number;
@@ -41,6 +48,7 @@ export interface ActivationClaims {
   lid: string;
   machine: string;
   edition: Edition;
+  modules: Module[];
   plan: Plan;
   major: number;
   iat: number;
@@ -104,6 +112,7 @@ export function claims(licence: Licence, user: User): LicenceClaims {
     name: user.name,
     email: user.email,
     edition: licence.edition,
+    modules: modulesOf(licence.edition, licence.modules),
     plan: licence.plan,
     major: licence.major,
     seats: SEATS[licence.edition],
@@ -126,6 +135,7 @@ export function activationToken(env: AppEnv, licence: Licence, machine: string):
     lid: licence.id,
     machine,
     edition: licence.edition,
+    modules: modulesOf(licence.edition, licence.modules),
     plan: licence.plan,
     major: licence.major,
     iat: now,
@@ -143,6 +153,8 @@ export function inForce(licence: Licence, now = Date.now()): boolean {
 /** When a term that starts now (or extends `from`) ends. */
 export function termEnd(plan: Plan, from: number, months?: number): number | null {
   if (plan === "perpetual") return null;
+  // A trial is seven days to the minute: no grace, it was never paid for.
+  if (plan === "trial") return from + TRIAL_DAYS * 86400_000;
   const d = new Date(from);
   d.setUTCMonth(d.getUTCMonth() + (months ?? (plan === "yearly" ? 12 : 1)));
   // Three days' grace, so a renewal that lands a day late does not lock a DJ out mid-set.

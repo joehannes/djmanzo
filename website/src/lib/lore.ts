@@ -43,7 +43,7 @@ export const LORE: Lore[] = [
   { kind: "karaoke", title: "Rotation fairness", body: "One song each, in turn, and the regulars wait like everybody else. djmanzo's rotation keeps the order and says who is next." },
   { kind: "karaoke", title: "The voice knob", body: "Take the original singer out of any record you own — stems separate the vocal — and leave a guide voice in for a song someone barely knows." },
   { kind: "karaoke", title: "Let the room help", body: "Guests can put their names down from their phones, and send emoji to the singers' screen. Nobody needs an app." },
-  { kind: "djmanzo", title: "It speaks only in actions", body: "djmanzo's assistant never chats at you mid-set. It proposes an action — a mix, a record, a loop — and you accept, change or reject it." },
+  { kind: "djmanzo", title: "It speaks only in actions", body: "djmanzo's assistant acts in actions you could have pressed: it stages a mix, a record or a loop, and you accept, change or reject it. Only what cannot wait is whispered." },
   { kind: "djmanzo", title: "Take it back with a touch", body: "Whatever the assistant is doing, touching a control takes it back. SAFE takes everything back at once." },
   { kind: "djmanzo", title: "A laptop is an instrument", body: "With nothing plugged in, the keyboard is a full controller with the same vocabulary as a MIDI mapping." },
   { kind: "djmanzo", title: "Your set is data", body: "Every action is timestamped, so a set can be replayed, re-rendered at studio quality, or compared with last week's." },

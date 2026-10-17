@@ -1,3 +1,4 @@
+import type { Edition } from "../../shared/catalog";
 /**
  * The genres the island knows, and what each looks, sounds, dresses and
  * dances like.
@@ -57,7 +58,8 @@ export interface Genre {
   mixing: string;
   /** djmanzo's own theme and skin for this room. */
   theme: string;
-  skin: string;
+  /** A skin the app offers with that theme (`ui/src/skins/skins.ts` `suits`), or none. */
+  skin: string | null;
   /** An emoji that reads as the scene. */
   emoji: string;
   /** The root note for the loop, in Hz. */
@@ -65,7 +67,7 @@ export interface Genre {
   scale: "minor" | "major" | "dorian";
   pattern: Pattern;
   /** Which edition a DJ in this scene most often needs first. */
-  leaning: "hobbyist" | "pro" | "karaoke" | "full";
+  leaning: Edition;
 }
 
 const FOUR = [0, 4, 8, 12];
@@ -140,7 +142,7 @@ export const GENRES: Genre[] = [
     fx: ["crush", "echo", "gate"],
     mixing: "Short songs, quick cuts, airhorns and drops; double-drop two records on the same snare and ride the crowd's call-and-response.",
     theme: "Malecón Night",
-    skin: "Halftone",
+    skin: "Palm shadows",
     emoji: "🔊",
     root: 147,
     scale: "minor",
@@ -191,7 +193,7 @@ export const GENRES: Genre[] = [
     fx: ["reverb", "filter"],
     mixing: "Clave decides everything: never cross a 3-2 into a 2-3. Most salsa DJs play whole songs and mix gently between them.",
     theme: "Latin",
-    skin: "Halftone",
+    skin: "Papel picado",
     emoji: "💃",
     root: 196,
     scale: "minor",
@@ -237,7 +239,7 @@ export const GENRES: Genre[] = [
     dances: [{ name: "Kompa sway", how: "Close hold, a small two-step, hips sway on the cymbal's lilt." }],
     fx: ["reverb", "echo"],
     mixing: "Long, smooth blends on the steady cymbal; the guitar answers the vocal, so do not step on either.",
-    theme: "Beach Sunset",
+    theme: "Sunset",
     skin: "Waves",
     emoji: "🌊",
     root: 185,
@@ -263,7 +265,7 @@ export const GENRES: Genre[] = [
     fx: ["echo", "reverb", "filter"],
     mixing: "Juggling: many records on one riddim, cut fast, rewind the tune when the crowd demands — the pull-up is part of the show.",
     theme: "Festival",
-    skin: "Trash polka",
+    skin: "Halftone",
     emoji: "📢",
     root: 147,
     scale: "minor",
@@ -287,7 +289,7 @@ export const GENRES: Genre[] = [
     ],
     fx: ["reverb", "filter", "echo"],
     mixing: "Long blends; let the log drum carry across both records, and filter the low end of the one coming in.",
-    theme: "Beach Sunset",
+    theme: "Sunset",
     skin: "Palm shadows",
     emoji: "🌅",
     root: 175,
@@ -313,7 +315,7 @@ export const GENRES: Genre[] = [
     fx: ["echo", "filter", "crush"],
     mixing: "Cuts, scratches and quick blends on the break; know your doubles, and never mix over the hook.",
     theme: "Scratch",
-    skin: "Halftone",
+    skin: null,
     emoji: "🎤",
     root: 110,
     scale: "minor",
@@ -338,7 +340,7 @@ export const GENRES: Genre[] = [
     fx: ["filter", "echo", "reverb"],
     mixing: "Long beatmatched blends, EQ swaps on the phrase: bass out of one, bass into the other, on the 16 or the 32.",
     theme: "Club",
-    skin: "Glowing plankton",
+    skin: "Halftone",
     emoji: "🏠",
     root: 110,
     scale: "dorian",
@@ -384,7 +386,7 @@ export const GENRES: Genre[] = [
     ],
     fx: ["crush", "flanger", "echo", "filter"],
     mixing: "Double drops, quick rewinds, mixing on the 32; the MC hypes the drop, the selector chooses it.",
-    theme: "Cyber / Experimental",
+    theme: "Cyber Trance",
     skin: "Trash polka",
     emoji: "⚡",
     root: 73,
@@ -410,7 +412,7 @@ export const GENRES: Genre[] = [
     fx: ["filter", "flanger", "echo"],
     mixing: "Live drums drift, so ride the pitch; the edits and extended mixes give you long intros to mix into.",
     theme: "Velvet",
-    skin: "Halftone",
+    skin: "Glowing plankton",
     emoji: "🪩",
     root: 147,
     scale: "dorian",
@@ -435,7 +437,7 @@ export const GENRES: Genre[] = [
     fx: ["reverb", "echo"],
     mixing: "Mix to the singalong: keep the hits coming, shorten the outros, let the room sing the last chorus a cappella.",
     theme: "Karaoke Neon",
-    skin: "Glowing plankton",
+    skin: "Halftone",
     emoji: "🎶",
     root: 262,
     scale: "major",
@@ -456,8 +458,8 @@ export const GENRES: Genre[] = [
     dances: [{ name: "Headbang & air guitar", how: "Nod with the snare; on the solo, the guitar is invisible but very real." }],
     fx: ["reverb", "echo", "filter"],
     mixing: "Mostly whole songs; segue on the last chord ringing out, or cut tight on the count-in.",
-    theme: "Pro Dark",
-    skin: "Trash polka",
+    theme: "Booth",
+    skin: null,
     emoji: "🎸",
     root: 82,
     scale: "minor",

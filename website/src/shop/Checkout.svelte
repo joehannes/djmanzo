@@ -13,18 +13,19 @@
   import { catalog } from "../lib/catalog.svelte";
   import { session } from "../lib/session.svelte";
   import { countries, flag } from "../lib/countries";
-  import type { Edition, Plan } from "../../shared/catalog";
+  import type { Edition, Module, Plan } from "../../shared/catalog";
 
   interface Props {
     edition: Edition;
-    plan: Plan;
+    modules: Module[];
+    plan: Exclude<Plan, "trial">;
     country: string;
     promo: string;
     total: number;
     display: string;
-    ondone: (r: { licence: { id: string; edition: string; plan: string; expires: number | null; demo?: boolean }; token?: string }) => void;
+    ondone: (r: { licence: { id: string; edition: string; modules?: string[]; plan: string; expires: number | null; demo?: boolean }; token?: string }) => void;
   }
-  let { edition, plan, country, promo, total, display, ondone }: Props = $props();
+  let { edition, modules, plan, country, promo, total, display, ondone }: Props = $props();
 
   type Method = "card" | "paypal" | "transfer" | "demo";
   const pay = $derived(catalog.data?.pay);
@@ -46,7 +47,7 @@
   let demoCard = $state(untrack(() => country));
   let demoBilling = $state(untrack(() => country));
 
-  const input = $derived({ edition, plan, country, promo: promo || null });
+  const input = $derived({ edition, modules, plan, country, promo: promo || null });
 
   function handle(e: unknown) {
     if (e instanceof ApiError && e.status === 409 && e.data.needsConfirm) {

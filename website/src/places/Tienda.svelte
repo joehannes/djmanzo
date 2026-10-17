@@ -12,7 +12,7 @@
   const CRATE = [
     { t: "Your collection, imported", b: "rekordbox, Serato, Traktor and iTunes collections come in with their cues, loops and beat grids. Serato's hot cues are read straight out of the files.", c: "#ff7eb6" },
     { t: "Analysis you can see", b: "BPM, key on the Camelot wheel, loudness (EBU R128), phrases of 16 and 32 beats — and a hatch on the waveform where the beat grid is a guess.", c: "#ffd166" },
-    { t: "31 genre families", b: "From bachata and merengue to amapiano and techno, with their felt tempo and rhythmic grammar, so a suggestion never blends across a grammar that clashes.", c: "#5ef2d6" },
+    { t: "31 genre families", b: "From bachata and merengue to amapiano and techno, with their felt tempo and rhythmic grammar, so a set djmanzo assembles never blends across a grammar that clashes.", c: "#5ef2d6" },
     { t: "Find it from memory", b: "Hum it. Type a half-remembered line — accents and commas don't matter. Or describe it: \"bachata with a piano hook, heard it at a beach bar\".", c: "#a58bff" },
     { t: "The Next rail", b: "Up to eight records that would follow the one playing, each with its reasons — harmonic, tempo, loudness, phrase. It suggests; you choose.", c: "#ff5d73" },
     { t: "Set plans with an arc", b: "Pick a length and a shape, and djmanzo assembles a set from your library — no repeats, no artist twice in a row, the opener protected.", c: "#2ec4b6" },

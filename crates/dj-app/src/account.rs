@@ -1,41 +1,51 @@
 //! The DJ's account on djmanzo's website, and the licence that comes with it.
 //!
 //! The owner asked for the website's sign-in and licences to reach the
-//! application. A DJ signs in *on the website* — with Google, GitHub or
-//! whichever account they bought with — and djmanzo never sees that
-//! password. What djmanzo does is the OAuth device flow (RFC 8628): it asks
-//! the site for a pair of codes, shows the short one, opens the browser at
-//! the site's `/link` page, and polls until the DJ has said yes there. The
-//! token it then receives is good for nothing but the site's small app API,
-//! is kept in the system keychain
-//! ([`dj_secrets::SecretKind::DjmanzoAccount`]), and can be revoked from
-//! either end.
+//! application (`docs/DIRECTIVE.md` §131, §132; ADR-0011). A DJ signs in *on
+//! the website* — with Google, Apple, GitHub or whichever account they
+//! bought with — in their own browser, and djmanzo never sees that password.
+//! Two ways to get there, both ending in a token good for nothing but the
+//! site's small app API, kept in the system keychain
+//! ([`dj_secrets::SecretKind::DjmanzoAccount`]) and revocable from either end:
+//!
+//! - **The loopback redirect** (RFC 8252 with PKCE, ADR-0011's choice).
+//!   djmanzo listens on a port of `127.0.0.1` only it holds, opens the site's
+//!   `/link` page, and the browser comes back to that port with a one-time
+//!   code once the DJ says yes; djmanzo trades the code and a verifier only
+//!   it knows for the token.
+//! - **The device flow** (RFC 8628), when no port will open: djmanzo shows a
+//!   short code, the DJ checks it on the site and says yes, djmanzo polls.
 //!
 //! # Licences are verified here, not trusted
 //!
 //! The site signs every licence and every activation with Ed25519; djmanzo
 //! carries the public key ([`PUBLIC_KEYS`]) and checks the signature itself.
-//! An *activation* is one licence on one machine for thirty days, renewed
-//! whenever djmanzo is online — so a night in a basement with no signal is
-//! a night the licence still works, and a cancelled subscription keeps only
-//! what was paid for. The format is pinned on both sides by one test vector
+//! A licence names its edition and its modules ([`dj_core::edition`]'s
+//! slugs); for every edition but Custom the application trusts its own
+//! parts list over the token's, and for Custom the token's list is what was
+//! bought. An *activation* is one licence on one machine for thirty days,
+//! renewed whenever djmanzo is online — so a night in a basement with no
+//! signal is a night the licence still works. A trial is a licence whose plan
+//! is [`Plan::Trial`]. The format is pinned on both sides by one test vector
 //! (`website/test/vector.test.ts` and `tests::the_website_s_tokens_verify`).
 //!
 //! # Nothing is locked yet
 //!
-//! djmanzo is in beta, and [`ENFORCED`] is `false`: every feature stays open
+//! djmanzo is in beta, and [`ENFORCED`] is `false`: every module stays open
 //! whatever the licence says, and the account panel says what the licence
-//! *covers* rather than switching anything off. Turning enforcement on is a
+//! *carries* rather than switching anything off. Turning enforcement on is a
 //! product decision for the owner, not something a sign-in should do by
-//! surprise to a DJ mid-set — and when it is turned on, [`Standing::covers`]
-//! is the one place that answers.
+//! surprise to a DJ mid-set — and when it is turned on,
+//! [`Standing::usable`] is the [`Modules`] every `Modules::has` asks.
 //!
 //! Network calls run on their own thread or task, never near the audio.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use dj_core::edition::{Edition, Module, Modules};
 use dj_secrets::{Secret, SecretKind, SecretStore};
 use serde::de::DeserializeOwned;
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,7 +61,7 @@ pub const SITE_ENV: &str = "DJMANZO_SITE";
 /// one before it.
 pub const PUBLIC_KEYS: &[&str] = &["v_49WdbmMIr-dpxWg_bHppIJdOZqBJzGYnyrvUwzqoQ"];
 
-/// Beta: no feature is switched off by the licence. See the module docs.
+/// Beta: no module is switched off by the licence. See the module docs.
 pub const ENFORCED: bool = false;
 
 /// The major version this build is. A perpetual licence covers its own major
@@ -60,58 +70,52 @@ pub const MAJOR: u32 = 1;
 
 const FILE: &str = "account.json";
 
-/// One of the four editions the site sells.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum Edition {
-    Hobbyist,
-    Karaoke,
-    Pro,
-    Full,
+/// How long the loopback port waits for the browser to come back.
+const LOOPBACK_WAIT: Duration = Duration::from_secs(10 * 60);
+
+/// An edition as the website writes it: [`Edition::slug`].
+mod edition_slug {
+    use dj_core::edition::Edition;
+
+    pub fn serialize<S: serde::Serializer>(edition: &Edition, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(edition.slug())
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Edition, D::Error> {
+        let slug = <String as serde::Deserialize>::deserialize(d)?;
+        Edition::from_slug(&slug)
+            .ok_or_else(|| serde::de::Error::custom(format!("{slug:?} is not a djmanzo edition")))
+    }
 }
 
+/// A set of modules as the panel reads it: their slugs.
+fn module_slugs<S: serde::Serializer>(modules: &Modules, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(modules.iter().map(Module::slug))
+}
+
+/// How a licence was had.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Plan {
     Monthly,
     Yearly,
     Perpetual,
+    /// Seven days of any edition, once per account.
+    Trial,
 }
 
-/// The parts of djmanzo an edition is about. Coarse on purpose: the site's
-/// catalogue (`website/shared/catalog.ts`) lists features one by one for
-/// buyers; the application only ever needs to ask which half a thing is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Area {
-    /// Decks, mixer, effects, library, the keyboard and MIDI, the assistant.
-    Core,
-    /// Six decks, stems, timecode vinyl, HID, recording, streams, commercial use.
-    Pro,
-    /// The rotation, the singers' screen, the voice knob, microphones per singer.
-    Karaoke,
-}
-
-impl Edition {
-    #[must_use]
-    pub const fn covers(self, area: Area) -> bool {
-        match area {
-            Area::Core => true,
-            Area::Pro => matches!(self, Self::Pro | Self::Full),
-            Area::Karaoke => matches!(self, Self::Karaoke | Self::Full),
-        }
+/// The modules a licence carries: the edition's own, or for Custom the ones
+/// the token lists. A slug this build does not know (from a newer site) is
+/// passed over rather than refusing the whole licence.
+#[must_use]
+pub fn modules_of(edition: Edition, listed: &[String]) -> Modules {
+    if edition != Edition::Custom {
+        return edition.modules();
     }
-
-    /// Which licence to use when a DJ holds several: the one covering most.
-    const fn rank(self) -> u8 {
-        match self {
-            Self::Hobbyist => 0,
-            Self::Karaoke | Self::Pro => 1,
-            Self::Full => 2,
-        }
-    }
+    listed
+        .iter()
+        .filter_map(|m| Module::from_slug(m))
+        .fold(Modules::NONE, Modules::with)
 }
 
 /// What a licence token says, once its signature has been checked.
@@ -121,7 +125,11 @@ pub struct LicenceClaims {
     pub uid: String,
     pub name: String,
     pub email: Option<String>,
+    #[serde(with = "edition_slug")]
     pub edition: Edition,
+    /// The modules, as slugs; only Custom's are read (see [`modules_of`]).
+    #[serde(default)]
+    pub modules: Vec<String>,
     pub plan: Plan,
     pub major: u32,
     pub seats: u32,
@@ -133,18 +141,35 @@ pub struct LicenceClaims {
     pub demo: bool,
 }
 
+impl LicenceClaims {
+    #[must_use]
+    pub fn carries(&self) -> Modules {
+        modules_of(self.edition, &self.modules)
+    }
+}
+
 /// What an activation token says: one licence, one machine, until `exp`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ActivationClaims {
     pub lid: String,
     pub machine: String,
+    #[serde(with = "edition_slug")]
     pub edition: Edition,
+    #[serde(default)]
+    pub modules: Vec<String>,
     pub plan: Plan,
     pub major: u32,
     pub iat: i64,
     pub exp: i64,
     #[serde(default)]
     pub demo: bool,
+}
+
+impl ActivationClaims {
+    #[must_use]
+    pub fn carries(&self) -> Modules {
+        modules_of(self.edition, &self.modules)
+    }
 }
 
 /// Check `token`'s signature against any of `keys` and return its claims.
@@ -185,7 +210,10 @@ pub enum Standing {
     Unlicensed,
     /// A licence in force on this machine.
     Licensed {
+        #[serde(with = "edition_slug")]
         edition: Edition,
+        #[serde(serialize_with = "module_slugs")]
+        modules: Modules,
         plan: Plan,
         /// When the licence itself ends, in seconds; `None` for perpetual.
         until: Option<i64>,
@@ -198,15 +226,22 @@ pub enum Standing {
 }
 
 impl Standing {
-    /// Whether this standing covers `area`. Everything, while [`ENFORCED`] is off.
+    /// What this machine may use: every module while [`ENFORCED`] is off,
+    /// otherwise the licence's, and the foundation alone without one.
     #[must_use]
-    pub const fn covers(&self, area: Area) -> bool {
+    pub const fn usable(&self) -> Modules {
         if !ENFORCED {
-            return true;
+            return Modules::all();
         }
+        self.carries()
+    }
+
+    /// What the licence on this machine carries, enforced or not.
+    #[must_use]
+    pub const fn carries(&self) -> Modules {
         match self {
-            Self::Licensed { edition, .. } => edition.covers(area),
-            Self::Unlicensed | Self::Lapsed { .. } => false,
+            Self::Licensed { modules, .. } => *modules,
+            Self::Unlicensed | Self::Lapsed { .. } => Modules::NONE,
         }
     }
 }
@@ -232,12 +267,17 @@ pub fn standing(activation: Option<&ActivationClaims>, machine: &str, now: i64) 
     }
     if a.exp <= now {
         return Standing::Lapsed {
-            reason: "djmanzo has not reached the website for thirty days — connect once to renew."
-                .to_owned(),
+            reason: if a.plan == Plan::Trial {
+                "The seven-day trial has ended.".to_owned()
+            } else {
+                "djmanzo has not reached the website for thirty days — connect once to renew."
+                    .to_owned()
+            },
         };
     }
     Standing::Licensed {
         edition: a.edition,
+        modules: a.carries(),
         plan: a.plan,
         until: None,
         offline_until: a.exp,
@@ -245,9 +285,9 @@ pub fn standing(activation: Option<&ActivationClaims>, machine: &str, now: i64) 
     }
 }
 
-/// Of several verified licences, the one to activate: in force, covering the
-/// most, and — between equals — a perpetual one over a subscription, then
-/// the one that lasts longest.
+/// Of several verified licences, the one to activate: in force, carrying the
+/// most modules, a real one over a demo, and — between equals — a perpetual
+/// one over a subscription or a trial, then the one that lasts longest.
 #[must_use]
 pub fn best(licences: &[LicenceClaims], now: i64) -> Option<&LicenceClaims> {
     licences
@@ -256,7 +296,7 @@ pub fn best(licences: &[LicenceClaims], now: i64) -> Option<&LicenceClaims> {
         .filter(|l| l.plan != Plan::Perpetual || l.major >= MAJOR)
         .max_by_key(|l| {
             (
-                l.edition.rank(),
+                l.carries().iter().count(),
                 u8::from(!l.demo),
                 l.exp.is_none(),
                 l.exp.unwrap_or(i64::MAX),
@@ -327,7 +367,10 @@ impl Stored {
 /// A licence as the account panel shows it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Shown {
+    #[serde(with = "edition_slug")]
     pub edition: Edition,
+    #[serde(serialize_with = "module_slugs")]
+    pub modules: Modules,
     pub plan: Plan,
     pub until: Option<i64>,
     pub demo: bool,
@@ -338,6 +381,8 @@ pub struct Shown {
 /// A link waiting for the DJ to say yes in the browser.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Pending {
+    /// The short code to check on the site; empty for the loopback, which
+    /// needs none — the browser brings the answer back by itself.
     pub code: String,
     pub address: String,
 }
@@ -463,6 +508,7 @@ impl Account {
                     .iter()
                     .map(|l| Shown {
                         edition: l.edition,
+                        modules: l.carries(),
                         plan: l.plan,
                         until: l.exp,
                         demo: l.demo,
@@ -489,13 +535,126 @@ impl Account {
         })
     }
 
-    /// Ask the site for a pair of codes and wait — on a thread of its own —
-    /// for the DJ to say yes in the browser. Returns the short code and the
-    /// address at once, so the panel can show them while the thread polls.
+    /// Start linking this machine: the loopback redirect, or — when no port
+    /// on `127.0.0.1` will open — the device code. Returns what the panel
+    /// shows while a thread of its own waits for the answer.
     ///
     /// # Errors
-    /// The site could not be reached.
+    /// Neither way could start: the site could not be reached for a code.
     pub async fn link_start(&self) -> Result<Pending, String> {
+        match self.loopback_start() {
+            Ok(pending) => Ok(pending),
+            Err(error) => {
+                tracing::info!(%error, "no loopback port; linking by a code instead");
+                self.device_start().await
+            }
+        }
+    }
+
+    /// RFC 8252: listen on a port of `127.0.0.1`, send the browser to the
+    /// site with the port, a PKCE challenge and a state, and wait for it to
+    /// come back with a one-time code.
+    fn loopback_start(&self) -> Result<Pending, String> {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+        let verifier = random_text(32)?;
+        let challenge = URL_SAFE_NO_PAD.encode(ring::digest::digest(
+            &ring::digest::SHA256,
+            verifier.as_bytes(),
+        ));
+        let state = random_text(18)?;
+        let address = reqwest::Url::parse_with_params(
+            &format!("{}/link", self.site),
+            &[
+                ("port", port.to_string()),
+                ("challenge", challenge),
+                ("state", state.clone()),
+                ("machine", machine_name()),
+            ],
+        )
+        .map_err(|e| e.to_string())?
+        .to_string();
+        let pending = Pending {
+            code: String::new(),
+            address,
+        };
+        self.with(|i| {
+            i.pending = Some(pending.clone());
+            i.note = Some("Waiting for you to say yes in the browser.".to_owned());
+        });
+        let me = self.clone();
+        std::thread::Builder::new()
+            .name("dj-account-loopback".into())
+            .spawn(move || {
+                let deadline = std::time::Instant::now() + LOOPBACK_WAIT;
+                while std::time::Instant::now() < deadline {
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            if let Some(code) = answer_browser(stream, &state) {
+                                me.with(|i| i.pending = None);
+                                let result =
+                                    tauri::async_runtime::block_on(me.exchange(&code, &verifier));
+                                me.finish(result);
+                                return;
+                            }
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(200));
+                        }
+                        Err(error) => {
+                            tracing::info!(%error, "the loopback port stopped listening");
+                            break;
+                        }
+                    }
+                }
+                me.with(|i| {
+                    i.pending = None;
+                    i.note = Some("The browser did not come back in time. Try again.".to_owned());
+                });
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(pending)
+    }
+
+    /// Trade the loopback's one-time code, with the verifier only this
+    /// machine knows, for the token.
+    async fn exchange(&self, code: &str, verifier: &str) -> Result<(), String> {
+        let answer: serde_json::Value = self
+            .http
+            .post(format!("{}/api/device/exchange", self.site))
+            .json(&serde_json::json!({ "code": code, "verifier": verifier }))
+            .send()
+            .await
+            .map_err(|e| format!("the website could not be reached: {e}"))?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        let token = answer
+            .get("access_token")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "The website did not accept the link. Try again.".to_owned())?;
+        self.secrets
+            .set(SecretKind::DjmanzoAccount, &Secret::new(token.to_owned()))
+            .map_err(|e| format!("the sign-in could not be kept in the keychain: {e}"))
+    }
+
+    /// After either way of linking: fetch the licences, or say what failed.
+    fn finish(&self, result: Result<(), String>) {
+        match result {
+            Ok(()) => {
+                self.note(Some("Linked.".to_owned()));
+                if let Err(error) = tauri::async_runtime::block_on(self.refresh()) {
+                    self.note(Some(error));
+                }
+            }
+            Err(error) => self.note(Some(error)),
+        }
+    }
+
+    /// RFC 8628: ask the site for a pair of codes and poll — on a thread of
+    /// its own — until the DJ has said yes in the browser.
+    async fn device_start(&self) -> Result<Pending, String> {
         let answer: serde_json::Value = self
             .http
             .post(format!("{}/api/device/start", self.site))
@@ -545,16 +704,7 @@ impl Account {
                         Poll::Waiting => {}
                         Poll::Done(result) => {
                             me.with(|i| i.pending = None);
-                            match result {
-                                Ok(()) => {
-                                    me.note(Some("Linked.".to_owned()));
-                                    if let Err(error) = tauri::async_runtime::block_on(me.refresh())
-                                    {
-                                        me.note(Some(error));
-                                    }
-                                }
-                                Err(error) => me.note(Some(error)),
-                            }
+                            me.finish(result);
                             return;
                         }
                     }
@@ -775,6 +925,68 @@ enum Poll {
     Done(Result<(), String>),
 }
 
+/// `bytes` random bytes as base64url text.
+fn random_text(bytes: usize) -> Result<String, String> {
+    let mut b = vec![0_u8; bytes];
+    getrandom::fill(&mut b).map_err(|e| e.to_string())?;
+    Ok(URL_SAFE_NO_PAD.encode(b))
+}
+
+/// The one-time code in a request to the loopback port, if it is the
+/// site's answer to this link: `GET /callback?code=…&state=…` carrying the
+/// state djmanzo chose. Anything else knocking on the port is turned away.
+fn callback_code(request_line: &str, state: &str) -> Result<String, &'static str> {
+    let mut words = request_line.split_whitespace();
+    let (Some("GET"), Some(target)) = (words.next(), words.next()) else {
+        return Err("not a request djmanzo is waiting for");
+    };
+    let url = reqwest::Url::parse(&format!("http://127.0.0.1{target}"))
+        .map_err(|_| "not a request djmanzo is waiting for")?;
+    if url.path() != "/callback" {
+        return Err("not a request djmanzo is waiting for");
+    }
+    let field = |k: &str| {
+        url.query_pairs()
+            .find(|(name, _)| name == k)
+            .map(|(_, v)| v.into_owned())
+    };
+    if field("state").as_deref() != Some(state) {
+        return Err("this answer was not for this link");
+    }
+    field("code")
+        .filter(|c| !c.is_empty())
+        .ok_or("the answer carried no code")
+}
+
+/// Read one request from the browser, answer it with a page a person can
+/// read, and return the code if it was the one awaited.
+fn answer_browser(mut stream: std::net::TcpStream, state: &str) -> Option<String> {
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut head = [0_u8; 4096];
+    let n = stream.read(&mut head).unwrap_or(0);
+    let text = String::from_utf8_lossy(&head[..n]);
+    let line = text.lines().next().unwrap_or_default();
+    let result = callback_code(line, state);
+    let (status, words) = match &result {
+        Ok(_) => (
+            "200 OK",
+            "djmanzo is linked to your account. You can close this tab and go back to djmanzo.",
+        ),
+        Err(why) => ("400 Bad Request", *why),
+    };
+    let page = format!(
+        "<!doctype html><meta charset=utf-8><title>djmanzo</title>\
+         <body style=\"font:18px system-ui;margin:3em;max-width:32em\"><p>{words}</p>"
+    );
+    let _ = write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}",
+        page.len()
+    );
+    result.ok()
+}
+
 /// The account: who is signed in, the licences, and where this machine stands.
 #[tauri::command]
 #[must_use]
@@ -831,6 +1043,8 @@ mod tests {
     const TEST_PUBLIC: &str = "b1LFMiWzX6DnI2eOjRPiFCEsOwlR0sSX3KdCefRzV9I";
     const LICENCE: &str = "DJM1.eyJ2IjoxLCJsaWQiOiJsX3Rlc3QiLCJ1aWQiOiJ1X3Rlc3QiLCJuYW1lIjoiREogVmVjdG9yIiwiZW1haWwiOm51bGwsImVkaXRpb24iOiJrYXJhb2tlIiwicGxhbiI6InllYXJseSIsIm1ham9yIjoxLCJzZWF0cyI6MywiaWF0IjoxODAwMDAwMDAwLCJleHAiOjE4MzE1MzYwMDB9.qSjSSkfYf1QUDrY4hbOwSNDNxbdpIxnPxLnkWxBjo62mdVBvPKmS7zYuOqQok5Pc-pXK4DOJplF2ayschu_pCQ";
     const ACTIVATION: &str = "DJA1.eyJ2IjoxLCJsaWQiOiJsX3Rlc3QiLCJtYWNoaW5lIjoibWFjaGluZS12ZWN0b3ItMDEyMzQ1Njc4OSIsImVkaXRpb24iOiJrYXJhb2tlIiwicGxhbiI6InllYXJseSIsIm1ham9yIjoxLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6MTgwMjU5MjAwMH0.FPcpbeH_UqICfat_MLesZHvvlsDOLoPJNZSxC3uSfL2fd74bHMQfpKhAXgp-8MFpAlqFtpSAd9HUFm3s1s6-CA";
+    const CUSTOM: &str = "DJM1.eyJ2IjoxLCJsaWQiOiJsX2N1c3RvbSIsInVpZCI6InVfdGVzdCIsIm5hbWUiOiJESiBWZWN0b3IiLCJlbWFpbCI6bnVsbCwiZWRpdGlvbiI6ImN1c3RvbSIsIm1vZHVsZXMiOlsic3RlbXMiLCJkdnMiXSwicGxhbiI6InBlcnBldHVhbCIsIm1ham9yIjoxLCJzZWF0cyI6MywiaWF0IjoxODAwMDAwMDAwLCJleHAiOm51bGx9.G12h_9DnTxE5crb4PWnZPQjPrj60WJR5Xufoq3G8Btg5qQcl6BOBHPLsG7V0tmiBa7jpvS9EWoXeiw9xpMUsBw";
+    const TRIAL: &str = "DJA1.eyJ2IjoxLCJsaWQiOiJsX3RyaWFsIiwibWFjaGluZSI6Im1hY2hpbmUtdmVjdG9yLTAxMjM0NTY3ODkiLCJlZGl0aW9uIjoiZnVsbCIsIm1vZHVsZXMiOlsiZm91cl9kZWNrcyIsInN0ZW1zIiwiYXV0b3BpbG90IiwiYXNzaXN0YW50IiwidGVhY2hlciIsImthcmFva2UiLCJjcm93ZCIsImNvbnRyb2xsZXJzIiwiZHZzIiwidmlkZW8iLCJzdHJlYW1pbmciLCJwbHVnaW5zIiwic291cmNlcyIsImV2ZW50cyIsInJlcGxheSJdLCJwbGFuIjoidHJpYWwiLCJtYWpvciI6MSwiaWF0IjoxODAwMDAwMDAwLCJleHAiOjE4MDA2MDQ4MDB9.50ixn7X0CAOVMJpgC0B2OUDN_OIAl4jUvZpcraKFBhm8A4E9Ct1xdPGY0t0WZ5kzoiyLh42H9fRA6CfOIC3kAg";
 
     #[test]
     fn the_website_s_tokens_verify() {
@@ -840,10 +1054,25 @@ mod tests {
         assert_eq!(l.plan, Plan::Yearly);
         assert_eq!(l.exp, Some(1_831_536_000));
         assert_eq!(l.seats, 3);
+        // A licence from before modules were written into it carries its edition's.
+        assert_eq!(l.carries(), Edition::Karaoke.modules());
         let a: ActivationClaims =
             verify(ACTIVATION, "DJA1", &[TEST_PUBLIC]).expect("the website's activation verifies");
         assert_eq!(a.machine, "machine-vector-0123456789");
         assert_eq!(a.exp - a.iat, 30 * 86_400);
+
+        // Custom carries what was bought, and nothing else.
+        let c: LicenceClaims =
+            verify(CUSTOM, "DJM1", &[TEST_PUBLIC]).expect("the website's Custom licence verifies");
+        assert_eq!(c.edition, Edition::Custom);
+        assert_eq!(c.exp, None);
+        assert_eq!(c.carries(), Modules::of(&[Module::Stems, Module::Dvs]));
+        // A trial: seven days, everything the edition carries.
+        let t: ActivationClaims =
+            verify(TRIAL, "DJA1", &[TEST_PUBLIC]).expect("the website's trial activation verifies");
+        assert_eq!(t.plan, Plan::Trial);
+        assert_eq!(t.exp - t.iat, 7 * 86_400);
+        assert_eq!(t.carries(), Modules::all());
     }
 
     #[test]
@@ -860,6 +1089,25 @@ mod tests {
         assert!(verify::<LicenceClaims>(LICENCE, "DJM1", PUBLIC_KEYS).is_none());
         assert!(verify::<LicenceClaims>(LICENCE, "DJA1", &[TEST_PUBLIC]).is_none());
         assert!(verify::<LicenceClaims>("DJM1.e30", "DJM1", &[TEST_PUBLIC]).is_none());
+    }
+
+    #[test]
+    fn a_named_edition_carries_its_own_modules_whatever_the_token_lists() {
+        let listed = vec!["karaoke".to_owned(), "stems".to_owned()];
+        assert_eq!(
+            modules_of(Edition::ProDj, &listed),
+            Edition::ProDj.modules()
+        );
+        assert_eq!(
+            modules_of(Edition::Custom, &listed),
+            Modules::of(&[Module::Karaoke, Module::Stems])
+        );
+        // A module a newer site knows and this build does not is passed over.
+        let newer = vec!["stems".to_owned(), "holograms".to_owned()];
+        assert_eq!(
+            modules_of(Edition::Custom, &newer),
+            Modules::of(&[Module::Stems])
+        );
     }
 
     #[test]
@@ -882,16 +1130,24 @@ mod tests {
             Standing::Lapsed { .. }
         ));
         assert_eq!(standing(None, machine, 0), Standing::Unlicensed);
+        let t: ActivationClaims = verify(TRIAL, "DJA1", &[TEST_PUBLIC]).expect("verifies");
+        assert_eq!(
+            standing(Some(&t), machine, t.exp),
+            Standing::Lapsed {
+                reason: "The seven-day trial has ended.".to_owned()
+            }
+        );
     }
 
     #[test]
-    fn the_best_licence_covers_most_and_is_in_force() {
+    fn the_best_licence_carries_most_and_is_in_force() {
         let base = LicenceClaims {
             lid: "a".into(),
             uid: "u".into(),
             name: "n".into(),
             email: None,
             edition: Edition::Hobbyist,
+            modules: Vec::new(),
             plan: Plan::Perpetual,
             major: 1,
             seats: 2,
@@ -908,7 +1164,7 @@ mod tests {
         };
         let pro = LicenceClaims {
             lid: "c".into(),
-            edition: Edition::Pro,
+            edition: Edition::ProDj,
             plan: Plan::Yearly,
             exp: Some(500),
             ..base.clone()
@@ -919,8 +1175,18 @@ mod tests {
             demo: true,
             ..base.clone()
         };
-        let all = [base.clone(), full_ended, pro.clone()];
+        let karaoke = LicenceClaims {
+            lid: "e".into(),
+            edition: Edition::Karaoke,
+            ..base.clone()
+        };
+        let all = [base.clone(), full_ended, pro.clone(), karaoke.clone()];
         assert_eq!(best(&all, 100).map(|l| l.lid.as_str()), Some("c"));
+        // Karaoke carries one module more than the Hobbyist's foundation.
+        assert_eq!(
+            best(&[base.clone(), karaoke], 100).map(|l| l.lid.as_str()),
+            Some("e")
+        );
         // An old major version's perpetual licence does not cover this one.
         assert!(
             best(
@@ -932,7 +1198,7 @@ mod tests {
             )
             .is_none()
         );
-        // A demo Full still outranks a real Hobbyist on coverage; the panel says "demo".
+        // A demo Full still outranks a real Hobbyist on what it carries; the panel says "demo".
         assert_eq!(
             best(&[base, demo_full], 100).map(|l| l.lid.as_str()),
             Some("d")
@@ -940,14 +1206,62 @@ mod tests {
     }
 
     #[test]
-    fn editions_cover_their_halves_and_nothing_is_locked_in_the_beta() {
-        assert!(Edition::Karaoke.covers(Area::Karaoke) && !Edition::Karaoke.covers(Area::Pro));
-        assert!(Edition::Pro.covers(Area::Pro) && !Edition::Pro.covers(Area::Karaoke));
-        assert!(Edition::Full.covers(Area::Pro) && Edition::Full.covers(Area::Karaoke));
-        assert!(Edition::Hobbyist.covers(Area::Core) && !Edition::Hobbyist.covers(Area::Pro));
+    fn a_standing_says_what_it_carries_and_nothing_is_locked_in_the_beta() {
+        let a: ActivationClaims = verify(ACTIVATION, "DJA1", &[TEST_PUBLIC]).expect("verifies");
+        let karaoke = standing(Some(&a), &a.machine, a.iat);
+        assert!(karaoke.carries().has(Module::Karaoke));
+        assert!(!karaoke.carries().has(Module::Stems));
+        assert_eq!(Standing::Unlicensed.carries(), Modules::NONE);
         // Turning enforcement on is the owner's decision (see the module docs);
-        // until then an unlicensed machine is covered for everything.
-        assert!(Standing::Unlicensed.covers(Area::Pro));
+        // until then every machine may use every module.
+        assert_eq!(Standing::Unlicensed.usable(), Modules::all());
+    }
+
+    #[test]
+    fn the_loopback_takes_only_its_own_answer() {
+        let state = "state-0123456789";
+        assert_eq!(
+            callback_code(
+                "GET /callback?code=abc&state=state-0123456789 HTTP/1.1",
+                state
+            ),
+            Ok("abc".to_owned())
+        );
+        assert!(callback_code("GET /callback?code=abc&state=another HTTP/1.1", state).is_err());
+        assert!(callback_code("GET /callback?state=state-0123456789 HTTP/1.1", state).is_err());
+        assert!(callback_code("GET /favicon.ico HTTP/1.1", state).is_err());
+        assert!(
+            callback_code(
+                "POST /callback?code=abc&state=state-0123456789 HTTP/1.1",
+                state
+            )
+            .is_err()
+        );
+        assert!(callback_code("", state).is_err());
+    }
+
+    #[test]
+    fn the_loopback_answers_the_browser_and_hands_over_the_code() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+        let port = listener.local_addr().expect("an address").port();
+        let browser = std::thread::spawn(move || {
+            let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connects");
+            s.write_all(
+                b"GET /callback?code=one-time&state=st-01234567 HTTP/1.1\r\nHost: x\r\n\r\n",
+            )
+            .expect("writes");
+            let mut page = String::new();
+            let _ = s.read_to_string(&mut page);
+            page
+        });
+        let (stream, _) = listener.accept().expect("the browser knocks");
+        assert_eq!(
+            answer_browser(stream, "st-01234567").as_deref(),
+            Some("one-time")
+        );
+        let page = browser.join().expect("the browser finishes");
+        assert!(page.starts_with("HTTP/1.1 200 OK"));
+        assert!(page.contains("You can close this tab"));
     }
 
     #[test]

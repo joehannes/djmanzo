@@ -11,7 +11,8 @@
     "test": "vitest run",
     "preview": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "facts:drift": "node scripts/facts-drift.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261016.1",

@@ -253,8 +253,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 | Feature | Milestone |
 |---|---|
-| **Sign in to djmanzo's website from the application** | **shipped** — the OAuth device flow: a short code shown here, a yes in the DJ's own browser, a token kept in the keychain. See [WEBSITE.md](WEBSITE.md) |
-| **Licences verified offline** | **shipped** — Ed25519-signed by the site, checked here; thirty days of grace, renewed daily while online. **Nothing is locked in the beta** (`account::ENFORCED`) |
+| **Sign in to djmanzo's website from the application** | **shipped** — the DJ's own browser opens on the site, they say yes, and the browser hands the answer back to djmanzo on `127.0.0.1` (RFC 8252 with PKCE); where no port will open, a short code to check instead (RFC 8628). A token kept in the keychain. See [WEBSITE.md](WEBSITE.md) |
+| **Licences verified offline** | **shipped** — Ed25519-signed by the site, carrying the edition and its modules (`dj_core::edition`), checked here; thirty days of grace, renewed daily while online. The seven-day trial is a licence like any other. **Nothing is locked in the beta** (`account::ENFORCED`) |
 
 ### Deliberately not planned
 

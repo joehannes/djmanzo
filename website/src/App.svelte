@@ -115,7 +115,7 @@
     camera.tokenY = p.y;
     open = { kind: "place", id };
     if (p.stamp) profile.stamp(id);
-    history.replaceState(null, "", id === "pase" && linkCode ? `/link?code=${linkCode}` : `#/${id}`);
+    history.replaceState(null, "", id === "pase" && location.pathname === "/link" ? location.pathname + location.search : id === "pase" && linkCode ? `/link?code=${linkCode}` : `#/${id}`);
   }
 
   async function goGenre(g: Genre) {

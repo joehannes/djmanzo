@@ -161,7 +161,7 @@
           next(
             "gear",
             profile.p.gear.includes("turntables")
-              ? "Turntables! djmanzo reads timecode vinyl, so your records drive the decks."
+              ? "Turntables! With timecode vinyl they drive djmanzo's decks — djmanzo writes its own control signal (not yet tried on a pressed record)."
               : profile.p.gear.includes("laptop") && profile.p.gear.length === 1
                 ? "A laptop is enough: djmanzo makes the keyboard a full controller."
                 : "Good. djmanzo learns a controller's mapping when you press its buttons.",

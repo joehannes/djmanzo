@@ -212,9 +212,9 @@
   <li><b>A rotation that is fair</b> — one song each, in turn; djmanzo says who is next and fades break music under them.</li>
   <li><b>Words timed by speech recognition</b> inside djmanzo, on records you own; a second screen for the singers.</li>
   <li><b>The voice knob</b> — as recorded, a guide voice, or the singer taken out — and the key shifted without changing the tempo.</li>
-  <li><b>A microphone and an effect chain per singer</b>, four vocal presets, pitch correction, a monitor wedge each.</li>
+  <li><b>A microphone and an effect chain per singer</b>, four vocal presets, pitch correction, and a monitor for each singer where the sound card has the outputs.</li>
   <li><b>Guests from their phones</b>: they put their names down and send emoji to the singers' screen. No app to install.</li>
-  <li><b>Recorded performances</b>, handed to the singer afterwards.</li>
+  <li><b>Recorded performances</b>: each singer's, kept.</li>
 </ul>
 <p class="muted small">Karaoke is in beta: built and tested, and not yet through a real night with real microphones. The Karaoke edition and Full include it.</p>
 <div class="row">

@@ -19,7 +19,7 @@
 
 <figure>
   <img class="shot" src="/shots/cockpit.webp" alt="djmanzo's main screen: two decks with waveforms, stems, pads and a mixer" width="1280" height="800" loading="lazy" />
-  <figcaption>The real application, version 0.45, with two test tracks loaded. Nothing on this island is a mock-up of the app.</figcaption>
+  <figcaption>The real application (photographed at version 0.45), with two test tracks loaded. Nothing on this island is a mock-up of the app.</figcaption>
 </figure>
 
 <h2>What it does differently</h2>
@@ -47,8 +47,8 @@
 <h2>Honestly</h2>
 <p class="muted">
   djmanzo is in <b>beta</b>. Its realtime engine is proven allocation-free by test and its features are tested one by one, but it has not yet been through a real gig on
-  real hardware. It runs on macOS (Apple Silicon and Intel, plus a karaoke build for Macs back to 10.13) and Linux. There is no Windows build yet — that is on the wall
-  of wishes.
+  real hardware. It runs on macOS (Apple Silicon and Intel, plus a karaoke build for Macs back to 10.13) and Linux. A Windows build is made and packaged with every
+  release, but no person has run it yet, so it is not promised.
 </p>
 
 <style>

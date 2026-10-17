@@ -12,7 +12,7 @@
     {
       name: "VirtualDJ",
       better: "Decades of real gigs, controllers that work out of the box, video mixing, Windows, and streaming catalogues.",
-      different: "djmanzo runs on Linux, treats Caribbean music as first-class, and its assistant proposes actions rather than running the set. VirtualDJ is the closest in scope — karaoke included — and the one djmanzo set out to match.",
+      different: "djmanzo runs on Linux, treats Caribbean music as first-class, and its assistant speaks only in actions you could have pressed — it can run the mix, and gives way the moment a hand touches a control. VirtualDJ is the closest in scope — karaoke included — and the one djmanzo set out to match.",
     },
     {
       name: "Serato DJ Pro",
@@ -48,7 +48,7 @@
 
   const ROWS: { label: string; cells: (boolean | string)[] }[] = [
     { label: "Runs on Linux", cells: [true, false, false, false, false, false, true] },
-    { label: "Runs on Windows", cells: [false, true, true, true, true, true, true] },
+    { label: "Runs on Windows", cells: ["built, not yet run by a person", true, true, true, true, true, true] },
     { label: "Karaoke rotation built in", cells: [true, true, false, false, false, false, false] },
     { label: "Plays from streaming services", cells: ["not yet", true, true, true, true, true, false] },
     { label: "Years of real gigs behind it", cells: ["beta", true, true, true, true, true, true] },
@@ -90,7 +90,7 @@
 <h2>Where djmanzo is not ready</h2>
 <ul>
   <li>It is <b>beta</b>: tested piece by piece, never through a real gig on real hardware yet.</li>
-  <li><b>No Windows build</b>, no phones or tablets.</li>
+  <li><b>Windows</b> is built and packaged, but no person has run it yet; no phones or tablets.</li>
   <li><b>No streaming services</b> to play from — the slots exist; the partnerships don't.</li>
   <li><b>Pro DJ Link and StagelinQ</b> (joining a booth of club players) are on the roadmap, not in the app.</li>
   <li><b>Fewer controller mappings</b> than the established applications; the mapping editor learns a controller when you press its buttons.</li>

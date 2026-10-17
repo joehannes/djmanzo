@@ -3,9 +3,11 @@
    * The DJ's account on djmanzo's website, and the licence it holds.
    *
    * Signing in happens on the website, in the DJ's own browser, with the
-   * account they bought with; djmanzo shows a short code, opens the site,
-   * and waits for a yes there (`dj_app::account`). The licence comes back
-   * signed and is checked here, so it keeps working offline for thirty days.
+   * account they bought with; djmanzo opens the site and waits for a yes
+   * there, which the browser brings straight back (`dj_app::account`) — or,
+   * where that cannot work, shows a short code to check on the site. The
+   * licence comes back signed and is checked here, so it keeps working
+   * offline for thirty days.
    * In the beta nothing is switched off whatever the licence says, and the
    * block says so rather than letting a DJ wonder.
    */
@@ -37,14 +39,48 @@
     }
   }
 
-  const NAME: Record<string, string> = { hobbyist: "Hobbyist", pro: "Pro", karaoke: "Karaoke", full: "Full" };
-  const PLAN: Record<string, string> = { monthly: "monthly", yearly: "yearly", perpetual: "bought once" };
+  // `dj_core::edition`'s names, as the website sells them.
+  const NAME: Record<string, string> = {
+    autopilot: "Auto-Pilot",
+    hobbyist: "Hobbyist",
+    apprentice: "Apprentice",
+    karaoke: "Karaoke",
+    pro: "Pro DJ",
+    full: "Full",
+    custom: "Custom",
+  };
+  const MODULE: Record<string, string> = {
+    four_decks: "Four decks",
+    stems: "Stems",
+    autopilot: "Auto-pilot",
+    assistant: "Assistant",
+    teacher: "Teacher",
+    karaoke: "Karaoke",
+    crowd: "Reading the room",
+    controllers: "Controllers",
+    dvs: "Timecode vinyl",
+    video: "Video and visuals",
+    streaming: "Going live",
+    plugins: "Plugins",
+    sources: "Online sources",
+    events: "Events",
+    replay: "Replay",
+  };
+  const PLAN: Record<string, string> = { monthly: "monthly", yearly: "yearly", perpetual: "bought once", trial: "free trial" };
+  const custom = (edition: string, modules: string[] | undefined) =>
+    edition === "custom" && modules?.length ? ` (${modules.map((m) => MODULE[m] ?? m).join(", ")})` : "";
+  const daysLeft = (s: number) => Math.max(0, Math.ceil((s * 1000 - Date.now()) / 86_400_000));
   const day = (s: number) => new Date(s * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 </script>
 
 <div class="account" data-account>
   {#if !status}
     <p class="hint">Reading the account…</p>
+  {:else if status.pending && !status.pending.code}
+    <p data-account-state="linking">
+      Your browser has opened <b>{status.site.replace(/^https?:\/\//, "")}</b>. Sign in there with the account you bought with and say yes — the browser brings the answer straight back here.
+    </p>
+    <p class="hint">djmanzo is waiting. Didn't open? Go to <span class="mono">{status.pending.address}</span>.</p>
   {:else if status.pending}
     <p data-account-state="linking">
       Your browser has opened <b>{status.site.replace(/^https?:\/\//, "")}</b>. Sign in there with the account you bought with and check that it shows this code:
@@ -63,8 +99,12 @@
     </p>
     {#if st.kind === "licensed"}
       <p class="licence" data-account-licence>
-        djmanzo <b>{NAME[st.edition] ?? st.edition}</b>, {PLAN[st.plan] ?? st.plan}{st.until ? `, until ${day(st.until)}` : ""}{st.demo ? " — a demo licence" : ""}.
-        <span class="hint">Works offline until {day(st.offline_until)}; djmanzo renews it whenever it is online.</span>
+        djmanzo <b>{NAME[st.edition] ?? st.edition}</b>{custom(st.edition, st.modules)}, {PLAN[st.plan] ?? st.plan}{st.until ? `, until ${day(st.until)}` : ""}{st.demo ? " — a demo licence" : ""}.
+        {#if st.plan === "trial"}
+          <span class="hint" data-account-trial>{daysLeft(st.until ?? st.offline_until)} {daysLeft(st.until ?? st.offline_until) === 1 ? "day" : "days"} of the trial left. What you make in djmanzo stays yours after it ends.</span>
+        {:else}
+          <span class="hint">Works offline until {day(st.offline_until)}; djmanzo renews it whenever it is online.</span>
+        {/if}
       </p>
     {:else if st.kind === "lapsed"}
       <p class="licence lapsed" data-account-licence>{st.reason}</p>
@@ -74,7 +114,7 @@
     {#if status.licences.length > 1}
       <ul class="others">
         {#each status.licences as l, i (i)}
-          <li>{NAME[l.edition] ?? l.edition}, {PLAN[l.plan] ?? l.plan}{l.here ? " — this computer" : ""}{l.demo ? " (demo)" : ""}</li>
+          <li>{NAME[l.edition] ?? l.edition}{custom(l.edition, l.modules)}, {PLAN[l.plan] ?? l.plan}{l.here ? " — this computer" : ""}{l.demo ? " (demo)" : ""}</li>
         {/each}
       </ul>
     {/if}

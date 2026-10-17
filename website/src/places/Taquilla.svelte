@@ -1,11 +1,13 @@
 <!--
-  The box office at the harbour: four editions, three ways to pay for them,
-  a price that follows where you are (once you can show it), promo codes,
-  vouchers — and, on the board by the window, how the prices were set.
+  The box office at the harbour: seven editions — six named and Custom, built
+  from modules — three ways to pay for them, a free week of any of them, a
+  price that follows where you are (once you can show it) or that a student
+  pays, promo codes, vouchers — and, on the board by the window, how the
+  prices were set. The editions are the application's own (`editions.json`).
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { EDITIONS, PLANS, money, type Edition, type Plan } from "../../shared/catalog";
+  import { EDITIONS, MODULES, MODULE_TITLE, NAMED, PLANS, money, type Edition, type Module, type Plan } from "../../shared/catalog";
   import { BAND_NAME, band as bandOf, currencyFor, regional } from "../../shared/regions";
   import { catalog } from "../lib/catalog.svelte";
   import { session } from "../lib/session.svelte";
@@ -22,7 +24,10 @@
 
   const rec = $derived(recommend(profile.p));
   let edition = $state<Edition>(recommend(profile.p).edition);
-  let plan = $state<Plan>("yearly");
+  let plan = $state<Exclude<Plan, "trial">>("perpetual");
+  let modules = $state<Module[]>(["stems"]);
+  let trialEdition = $state<Edition>(recommend(profile.p).edition);
+  let trialMsg = $state<string | null>(null);
   let country = $state("US");
   let promo = $state("");
   let quote = $state<any>(null);
@@ -40,11 +45,13 @@
   const currency = $derived(currencyFor(country));
   const b = $derived(bandOf(country));
   const PER = { monthly: "a month", yearly: "a year", perpetual: "once, for version 1" };
+  const chosenModules = $derived(edition === "custom" ? modules : []);
+  const toggle = (m: Module) => (modules = modules.includes(m) ? modules.filter((x) => x !== m) : MODULES.filter((x) => x === m || modules.includes(x)));
 
   // Ask the Worker for the real quote whenever the choice changes; the page's own arithmetic is only a preview.
   let timer: ReturnType<typeof setTimeout>;
   $effect(() => {
-    const body = { edition, plan, country, promo: promo.trim() || null };
+    const body = { edition, plan, country, promo: promo.trim() || null, modules: chosenModules };
     clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
@@ -55,6 +62,15 @@
       }
     }, 250);
   });
+
+  async function trial() {
+    trialMsg = null;
+    try {
+      done = await post("/api/trial", { edition: trialEdition });
+    } catch (e) {
+      trialMsg = (e as Error).message;
+    }
+  }
 
   async function redeem() {
     voucherMsg = null;
@@ -75,14 +91,15 @@
     <span class="big" aria-hidden="true">🎉</span>
     <h2>It's yours.</h2>
     <p>
-      <b>djmanzo {catalog.data?.editions[done.licence.edition as Edition]?.name ?? done.licence.edition}</b>, {done.licence.plan === "perpetual" ? "bought once" : done.licence.plan}.
+      <b>djmanzo {catalog.data?.editions[done.licence.edition as Edition]?.name ?? done.licence.edition}</b>{#if done.licence.modules?.length} ({done.licence.modules.map((m: Module) => MODULE_TITLE[m]).join(", ")}){/if},
+      {done.licence.plan === "perpetual" ? "bought once" : done.licence.plan === "trial" ? "a free seven-day trial" : done.licence.plan}.
       Valid until {expires(done.licence.expires)}.{#if done.licence.demo}<span class="demo-badge">demo licence</span>{/if}
     </p>
     <h3>Get it into djmanzo</h3>
     <ol class="steps">
       <li>Download djmanzo for your computer: <a href={catalog.data?.downloads} target="_blank" rel="noopener">the latest release</a>.</li>
-      <li>In djmanzo, open <b>Settings → Account</b> and press <b>Sign in</b>. It shows a short code and opens this site.</li>
-      <li>Sign in here with the same account, check the code, and press <b>Link</b>. djmanzo picks up the licence by itself and keeps working offline.</li>
+      <li>In djmanzo, open <b>Settings → Account</b> and press <b>Sign in</b>. It opens this site.</li>
+      <li>Sign in here with the same account and say yes. djmanzo picks up the licence by itself and keeps working offline.</li>
     </ol>
     <div class="row">
       <button class="btn primary" onclick={() => go("pase")}>🪪 See it in your pass</button>
@@ -96,8 +113,8 @@
       {#each EDITIONS as e (e)}
         <EditionSleeve
           info={catalog.data.editions[e]}
-          features={catalog.data.features}
-          price={money(regional(e, plan, b), currency)}
+          facts={catalog.data.facts}
+          price={(e === "custom" ? "from " : "") + money(regional(e, plan, b, e === "custom" ? chosenModules : []), currency)}
           per={PER[plan]}
           seats={catalog.data.seats[e]}
           chosen={edition === e}
@@ -111,8 +128,25 @@
       <p class="muted">Opening the box office…</p>
     {/if}
   </div>
+  <p class="small muted">One download for every edition, unlocked by signing in. In the beta nothing is locked: the licence records what you bought, and djmanzo opens every feature for now.</p>
   {#if profile.p.asked.length}
     <p class="small muted">The MC's pick: {rec.why} <button class="link" onclick={() => go("gigs")}>Compare by kind of night</button>.</p>
+  {/if}
+
+  {#if edition === "custom" && catalog.data}
+    <h2 class="step">Your modules</h2>
+    <p class="small">The Hobbyist foundation ({money(catalog.data.foundation, "USD")}), then each module you pick.</p>
+    <div class="modules">
+      {#each catalog.data.modules as m (m.id)}
+        <label class="module"><input type="checkbox" checked={modules.includes(m.id)} onchange={() => toggle(m.id)} /> {m.title} <span class="muted">+{money(m.price, "USD")}</span></label>
+      {/each}
+    </div>
+    {#if quote?.better}
+      <p class="notice" role="status">
+        <b>{catalog.data.editions[quote.better as Edition].name}</b> carries all of that for no more —
+        <button class="link" onclick={() => (edition = quote.better)}>choose it instead</button>.
+      </p>
+    {/if}
   {/if}
 
   <h2 class="step">How you'd like to pay for it</h2>
@@ -120,7 +154,7 @@
     {#each PLANS as p (p)}
       <button class="plan" role="radio" aria-checked={plan === p} onclick={() => (plan = p)}>
         <b>{catalog.data?.plans[p].name ?? p}</b>
-        <span>{money(regional(edition, p, b), currency)} {PER[p]}</span>
+        <span>{money(regional(edition, p, b, chosenModules), currency)} {PER[p]}</span>
         <small>{catalog.data?.plans[p].about}</small>
       </button>
     {/each}
@@ -138,9 +172,10 @@
       {#if b === 1}
         Full price here. {country === catalog.data?.visitor.country ? "(We guessed from your connection.)" : ""}
       {:else}
-        <b>{BAND_NAME[b]}</b> in {flag(country)} — prices follow what things cost where you live. To get it, your <b>card must be issued in</b> and your
+        <b>{BAND_NAME[b]}</b> in {flag(country)} — prices follow what things cost where you live (the World Bank's income groups). To get it, your <b>card must be issued in</b> and your
         <b>billing address must be in</b> a country priced the same or lower. Otherwise the checkout tells you the price you can show, and asks before charging it.
       {/if}
+      <br />Students and teachers pay half, with a school e-mail address — or whichever discount is larger; they never stack.
     </p>
   </div>
 
@@ -155,11 +190,14 @@
   <div class="ticket" aria-live="polite">
     {#if quote}
       <div class="lines">
-        <span>djmanzo {catalog.data?.editions[edition].name}, {catalog.data?.plans[plan].name.toLowerCase()}</span>
+        <span>djmanzo {catalog.data?.editions[edition].name}{edition === "custom" ? ` (${quote.modules.length} modules)` : ""}, {catalog.data?.plans[plan].name.toLowerCase()}</span>
         {#if quote.regional !== quote.base}
-          <span class="r"><s>{money(quote.base, quote.currency)}</s> {money(quote.regional, quote.currency)} <small>{BAND_NAME[quote.band as 1]}</small></span>
+          <span class="r"><s>{money(quote.base, quote.currency)}</s> {money(quote.regional, quote.currency)} <small>{quote.by === "student" ? "student" : BAND_NAME[quote.band as 1]}</small></span>
         {:else}
           <span class="r">{money(quote.regional, quote.currency)}</span>
+        {/if}
+        {#if quote.upgrade}
+          <span>Upgrade from your {catalog.data?.editions[quote.upgrade.edition as Edition]?.name}</span><span class="r">− {money(quote.upgrade.credit, quote.currency)}</span>
         {/if}
         {#if quote.discount}
           <span>Promo {quote.promo.code}</span><span class="r">− {money(quote.discount, quote.currency)}</span>
@@ -180,9 +218,25 @@
   {:else}
     <p class="small">Signed in as <b>{session.user.name}</b>{session.user.email ? ` (${session.user.email})` : ""}. The licence goes to this account.</p>
     {#if quote}
-      <Checkout {edition} {plan} {country} {promo} total={quote.total} display={money(quote.total, quote.currency)} ondone={(r) => (done = r)} />
+      <Checkout {edition} modules={chosenModules} {plan} {country} {promo} total={quote.total} display={money(quote.total, quote.currency)} ondone={(r) => (done = r)} />
     {/if}
   {/if}
+
+  <section class="trial">
+    <h2 class="step">Or try it first</h2>
+    <p class="small">Seven days of any edition, Full included, free — once per account. What you make in djmanzo stays yours after it ends.</p>
+    {#if session.user}
+      <div class="promo">
+        <select bind:value={trialEdition} aria-label="Edition to try">
+          {#each NAMED as e (e)}<option value={e}>{catalog.data?.editions[e]?.name ?? e}</option>{/each}
+        </select>
+        <button class="btn" onclick={trial}>Start seven days of it</button>
+      </div>
+      {#if trialMsg}<p class="notice">{trialMsg}</p>{/if}
+    {:else}
+      <p class="small">Sign in above first, so the trial has somewhere to go.</p>
+    {/if}
+  </section>
 
   <details class="voucher">
     <summary>Got a voucher instead?</summary>
@@ -209,6 +263,17 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 14px;
+  }
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 6px 14px;
+  }
+  .module {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 14px;
   }
   .plans {
     display: grid;

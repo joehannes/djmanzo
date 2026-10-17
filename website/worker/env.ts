@@ -4,6 +4,8 @@
  * with no payment provider at all the shop runs in demo mode and says so.
  */
 export interface Secrets {
+  /** Extra school e-mail domains, comma-separated, whose verified addresses get the student price. */
+  STUDENT_DOMAINS?: string;
   /** Comma-separated e-mail addresses whose sign-in opens Backstage. */
   ADMIN_EMAILS: string;
   /** A bearer token that opens Backstage before any sign-in provider exists. */
@@ -13,6 +15,11 @@ export interface Secrets {
 
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  /** Sign in with Apple: the Services ID, the team, and the key made for it (a .p8, PEM or bare base64). */
+  APPLE_CLIENT_ID: string;
+  APPLE_TEAM_ID: string;
+  APPLE_KEY_ID: string;
+  APPLE_PRIVATE_KEY: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   DISCORD_CLIENT_ID: string;

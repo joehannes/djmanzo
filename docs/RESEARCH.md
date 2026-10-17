@@ -795,6 +795,7 @@ Apache-2.0, Unlicense and 0BSD in the tree.
 | Build and deploy | `vite`, `@sveltejs/vite-plugin-svelte`, `wrangler`, `@cloudflare/workers-types` | MIT; MIT OR Apache-2.0 | Development only. |
 | Checks | `svelte-check`, `typescript`, `vitest`, `@playwright/test` | MIT; Apache-2.0 | Development only. |
 | Type | Bungee, Figtree and one display face per genre, from Google Fonts | SIL Open Font License | Linked from Google's servers, not bundled. |
+| Regional price groups | The World Bank's country income classification, from `api.worldbank.org` (17 October 2026) | CC BY 4.0 | Data, copied into `shared/regions.ts` with its source named there. |
 
 The application side of the account (`dj_app::account`) adds **no crate**:
 Ed25519 verification is `ring`, already in the build for TLS.

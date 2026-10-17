@@ -11,6 +11,7 @@
  * | `device:<sha256>` / `usercode:<code>` | a machine waiting to be linked (15 minutes) |
  * | `order:<oid>` | a purchase, paid or not |
  * | `licence:<lid>` / `licences:<uid>` | a licence, and a person's list of them |
+ * | `trial:<uid>` | that a person has had their seven days (never expires) |
  * | `promo:<CODE>` / `promouse:<CODE>:<who>` | a promo code or voucher, and who used it |
  * | `wish:<id>` / `vote:<id>:<who>` | the wishlist, and its votes |
  * | `comment:<kind>:<inverted time>:<id>` | testimonials, comments and samples, newest first |
@@ -24,7 +25,7 @@
  * Durable Object.
  */
 
-import type { Edition, Plan, Currency } from "../shared/catalog";
+import type { Edition, Module, Plan, Currency } from "../shared/catalog";
 import type { Band } from "../shared/regions";
 
 export async function get<T>(kv: KVNamespace, key: string): Promise<T | null> {
@@ -66,6 +67,8 @@ export interface User {
   demo?: boolean;
   /** Made by the admin token; has no provider identity. */
   owner?: boolean;
+  /** A student or teacher, marked by the crew after seeing proof (an academic address needs no marking). */
+  student?: boolean;
 }
 
 export interface Session {
@@ -77,18 +80,23 @@ export interface Order {
   id: string;
   uid: string;
   edition: Edition;
+  /** Custom's modules, as chosen. */
+  modules?: Module[];
   plan: Plan;
   currency: Currency;
-  /** The base price, the band's price, the promo's discount and what was charged, all in cents. */
+  /** The list price, the price after the regional or student discount, the promo's discount and what was charged, all in cents. */
   base: number;
   regional: number;
   discount: number;
   total: number;
+  /** An upgrade: the licence it replaces and what it was worth. */
+  upgrade?: { from: string; credit: number } | null;
+  student?: boolean;
   band: Band;
   claimedBand: Band;
   proof: { instrument?: string | null; billing?: string | null; reason: string };
   promo?: string | null;
-  provider: "stripe" | "paypal" | "transfer" | "demo" | "free" | "voucher";
+  provider: "stripe" | "paypal" | "transfer" | "demo" | "free" | "voucher" | "trial";
   providerRef?: string | null;
   status: "pending" | "paid" | "failed" | "refunded" | "cancelled";
   /** A PayPal or prepaid plan does not renew; a Stripe subscription does. */
@@ -111,10 +119,12 @@ export interface Licence {
   id: string;
   uid: string;
   edition: Edition;
+  /** Custom's modules. Every other edition's are `dj_core::edition`'s, and are not stored. */
+  modules?: Module[];
   plan: Plan;
   /** The major version a perpetual licence covers. */
   major: number;
-  status: "active" | "cancelled" | "expired" | "revoked";
+  status: "active" | "cancelled" | "expired" | "revoked" | "upgraded";
   /** Milliseconds; null for a perpetual licence. */
   expires: number | null;
   order: string;

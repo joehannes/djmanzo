@@ -3,11 +3,12 @@
   what it includes — on the back. Turn it over to read it; choose it to buy it.
 -->
 <script lang="ts">
-  import type { Edition, EditionInfo, Feature } from "../../shared/catalog";
+  import type { Edition, EditionInfo } from "../../shared/catalog";
+  import type { Fact } from "../../shared/facts";
 
   interface Props {
     info: EditionInfo;
-    features: Feature[];
+    facts: Fact[];
     price: string;
     per: string;
     seats: number;
@@ -15,9 +16,11 @@
     pick: boolean;
     onchoose: (e: Edition) => void;
   }
-  let { info, features, price, per, seats, chosen, pick, onchoose }: Props = $props();
+  let { info, facts, price, per, seats, chosen, pick, onchoose }: Props = $props();
   let flipped = $state(false);
-  const included = $derived(new Set(info.features));
+  // What is on it: the foundation's and its modules' — shipped first, and what is planned said so.
+  const has = (f: Fact) => f.module === "foundation" || info.modules.includes(f.module);
+  const shown = $derived(facts.filter((f) => f.status !== "planned" || has(f)));
 </script>
 
 <div class="slot" class:chosen>
@@ -35,17 +38,21 @@
     </div>
     <div class="face back" aria-hidden={!flipped}>
       <h3>{info.name} — the tracklist</h3>
-      <p class="small">{info.forWho}</p>
+      <p class="small">For: {info.forWho}</p>
+      {#if info.id === "custom"}
+        <p class="small">The Hobbyist's foundation, with the modules you pick below.</p>
+      {/if}
       <ol>
-        {#each features as f (f.id)}
-          <li class:no={!included.has(f.id)}>
-            <span aria-hidden="true">{included.has(f.id) ? "✓" : "–"}</span>
-            {f.name}{#if f.status !== "shipped" && included.has(f.id)}<em>{f.status === "beta" ? "beta" : "coming"}</em>{/if}
-            <span class="sr-only">{included.has(f.id) ? "included" : "not included"}</span>
+        {#each shown as f (f.id)}
+          {@const on = has(f)}
+          <li class:no={!on}>
+            <span aria-hidden="true">{on ? "✓" : "–"}</span>
+            {f.name}{#if on && f.status !== "shipped"}<em>{f.status === "planned" ? "planned" : "part-built"}</em>{/if}
+            <span class="sr-only">{on ? "included" : "not included"}</span>
           </li>
         {/each}
       </ol>
-      <p class="small">On {seats} computers at once. {info.commercial ? "Paid gigs allowed." : "For personal, non-commercial use."}</p>
+      <p class="small">On {seats} computers at once. djmanzo is in beta — tested thoroughly, not yet through a real gig — and nothing is locked yet: every edition opens every feature for now, and the licence records what you bought.</p>
       <button class="btn quiet" onclick={() => (flipped = false)} tabindex={flipped ? 0 : -1}>Turn it over</button>
     </div>
   </div>
@@ -54,12 +61,12 @@
 <style>
   .slot {
     perspective: 1100px;
-    min-height: 380px;
+    min-height: 420px;
   }
   .card {
     position: relative;
     height: 100%;
-    min-height: 380px;
+    min-height: 420px;
     transform-style: preserve-3d;
     transition: transform 0.7s cubic-bezier(0.3, 1.2, 0.4, 1);
   }
@@ -100,11 +107,16 @@
   }
   h3 {
     font-family: "Bungee", sans-serif;
-    font-size: 1.6rem;
+    font-size: 1.4rem;
     margin: 8px 0 4px;
+    white-space: nowrap;
+  }
+  .front > * {
+    flex-shrink: 0;
   }
   .back h3 {
     font-size: 1rem;
+    white-space: normal;
   }
   .tag {
     font-weight: 600;
@@ -153,6 +165,9 @@
     padding: 0;
     margin: 6px 0;
     font-size: 13.5px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
   li {
     display: flex;

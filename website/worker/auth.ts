@@ -1,10 +1,15 @@
 /**
  * Sign-in with an account a person already has.
  *
- * Five providers over OAuth 2 with PKCE. A provider is offered only when its
- * client id and secret are set; with none set the site offers a demo sign-in
- * instead, labelled as one, so the island can be walked end to end before
- * the owner has registered a single app.
+ * Six providers over OAuth 2 — Google, Apple, GitHub, Microsoft and Discord,
+ * as ADR-0011 names them, and Facebook — with PKCE wherever the provider
+ * takes it. A provider is offered only when its keys are set; with none set
+ * the site offers a demo sign-in instead, labelled as one, so the site can be
+ * walked end to end before the owner has registered a single app.
+ *
+ * Apple is the odd one: its client secret is a short JWT the Worker signs
+ * with the owner's key (ES256), it answers by posting a form back rather than
+ * redirecting, and the person's name arrives only on their first sign-in.
  *
  * Accounts are linked by *verified* e-mail address: signing in with Google
  * and later with GitHub under the same address is one person with one set of
@@ -12,7 +17,7 @@
  */
 
 import type { AppEnv } from "./env";
-import { cookie, cookies, fail, randomId, same, sha256, b64url, text } from "./http";
+import { cookie, cookies, fail, randomId, same, sha256, b64url, unb64url, text } from "./http";
 import { get, put, type Session, type User } from "./store";
 
 export const SESSION_DAYS = 30;
@@ -23,7 +28,14 @@ interface Provider {
   authorize: string;
   token: string;
   scope: string;
-  profile: (token: string) => Promise<Profile>;
+  /** From the access token, by asking the provider. */
+  profile?: (token: string) => Promise<Profile>;
+  /** From the token response itself (an OpenID id_token), and the callback's form. */
+  fromToken?: (tok: Record<string, unknown>, form: URLSearchParams) => Profile | null;
+  /** Answers by posting a form to the callback (`response_mode=form_post`). */
+  formPost?: boolean;
+  /** Does not take PKCE. */
+  noPkce?: boolean;
 }
 
 export interface Profile {
@@ -54,6 +66,30 @@ export const PROVIDERS: Provider[] = [
     profile: async (t) => {
       const p = await getJson("https://openidconnect.googleapis.com/v1/userinfo", t);
       return { sub: String(p.sub), email: s(p.email), verified: p.email_verified === true, name: s(p.name) ?? "DJ", avatar: s(p.picture) };
+    },
+  },
+  {
+    id: "apple",
+    name: "Apple",
+    authorize: "https://appleid.apple.com/auth/authorize",
+    token: "https://appleid.apple.com/auth/token",
+    scope: "name email",
+    formPost: true,
+    noPkce: true,
+    // The id_token came straight from Apple's token endpoint over TLS, which
+    // OpenID Connect Core §3.1.3.7 accepts in place of checking its signature.
+    fromToken: (tok, form) => {
+      const claims = jwtClaims(s(tok.id_token));
+      if (!claims?.sub) return null;
+      let name: string | null = null;
+      try {
+        const u = JSON.parse(form.get("user") || "null") as { name?: { firstName?: string; lastName?: string } } | null;
+        name = [u?.name?.firstName, u?.name?.lastName].filter(Boolean).join(" ") || null;
+      } catch {
+        name = null;
+      }
+      const verified = claims.email_verified === true || claims.email_verified === "true";
+      return { sub: String(claims.sub), email: s(claims.email), verified, name: name ?? "DJ", avatar: null };
     },
   },
   {
@@ -112,7 +148,37 @@ export const PROVIDERS: Provider[] = [
   },
 ];
 
+/** The claims of a JWT, unchecked: only for one received straight from its issuer. */
+function jwtClaims(jwt: string | null): Record<string, unknown> | null {
+  const part = jwt?.split(".")[1];
+  if (!part) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(unb64url(part))) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apple's client secret: an ES256 JWT, signed with the key the owner made in
+ * Apple's developer account, good for five minutes.
+ */
+async function appleSecret(env: AppEnv): Promise<string> {
+  const pem = String(env.APPLE_PRIVATE_KEY || "").replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const now = Math.floor(Date.now() / 1000);
+  const enc = (o: object) => b64url(new TextEncoder().encode(JSON.stringify(o)));
+  const head = enc({ alg: "ES256", kid: env.APPLE_KEY_ID });
+  const body = enc({ iss: env.APPLE_TEAM_ID, iat: now, exp: now + 300, aud: "https://appleid.apple.com", sub: env.APPLE_CLIENT_ID });
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(`${head}.${body}`));
+  return `${head}.${body}.${b64url(sig)}`;
+}
+
 function credentials(env: AppEnv, id: string): { clientId: string; secret: string } | null {
+  if (id === "apple") {
+    return env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY ? { clientId: env.APPLE_CLIENT_ID, secret: "" } : null;
+  }
   const up = id.toUpperCase();
   const clientId = (env as unknown as Record<string, string | undefined>)[`${up}_CLIENT_ID`];
   const secret = (env as unknown as Record<string, string | undefined>)[`${up}_CLIENT_SECRET`];
@@ -133,7 +199,7 @@ export function demoMode(env: AppEnv): boolean {
 
 /** Only a path on this site may be returned to, so a sign-in cannot be used as an open redirect. */
 export function safeReturn(path: string | null): string {
-  return path && path.startsWith("/") && !path.startsWith("//") ? path.slice(0, 300) : "/";
+  return path && path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\") ? path.slice(0, 600) : "/";
 }
 
 export async function start(req: Request, env: AppEnv, providerId: string): Promise<Response> {
@@ -151,16 +217,21 @@ export async function start(req: Request, env: AppEnv, providerId: string): Prom
   auth.searchParams.set("response_type", "code");
   auth.searchParams.set("scope", provider.scope);
   auth.searchParams.set("state", state);
-  auth.searchParams.set("code_challenge", challenge);
-  auth.searchParams.set("code_challenge_method", "S256");
+  if (!provider.noPkce) {
+    auth.searchParams.set("code_challenge", challenge);
+    auth.searchParams.set("code_challenge_method", "S256");
+  }
+  if (provider.formPost) auth.searchParams.set("response_mode", "form_post");
   if (provider.id === "google") auth.searchParams.set("prompt", "select_account");
   return Response.redirect(auth.toString(), 302);
 }
 
 export async function callback(req: Request, env: AppEnv, providerId: string): Promise<Response> {
   const url = new URL(req.url);
-  const state = url.searchParams.get("state") || "";
-  const code = url.searchParams.get("code") || "";
+  // Apple posts its answer as a form; everyone else redirects with a query.
+  const form = req.method === "POST" ? new URLSearchParams(await req.text()) : url.searchParams;
+  const state = form.get("state") || "";
+  const code = form.get("code") || "";
   const saved = await get<{ provider: string; verifier: string; back: string }>(env.KV, `oauth:${state}`);
   if (!saved || saved.provider !== providerId || !code) {
     return Response.redirect(`${url.origin}/?signin=failed`, 302);
@@ -168,22 +239,23 @@ export async function callback(req: Request, env: AppEnv, providerId: string): P
   await env.KV.delete(`oauth:${state}`);
   const provider = PROVIDERS.find((p) => p.id === providerId)!;
   const creds = credentials(env, providerId)!;
-  const form = new URLSearchParams({
+  const exchange = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: `${url.origin}/auth/callback/${providerId}`,
     client_id: creds.clientId,
-    client_secret: creds.secret,
-    code_verifier: saved.verifier,
+    client_secret: providerId === "apple" ? await appleSecret(env) : creds.secret,
   });
+  if (!provider.noPkce) exchange.set("code_verifier", saved.verifier);
   const r = await fetch(provider.token, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", ...UA },
-    body: form,
+    body: exchange,
   });
-  const tok = (await r.json().catch(() => ({}))) as { access_token?: string };
-  if (!r.ok || !tok.access_token) return Response.redirect(`${url.origin}/?signin=failed`, 302);
-  const profile = await provider.profile(tok.access_token);
+  const tok = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok || (!tok.access_token && !tok.id_token)) return Response.redirect(`${url.origin}/?signin=failed`, 302);
+  const profile = provider.fromToken ? provider.fromToken(tok, form) : await provider.profile!(String(tok.access_token));
+  if (!profile) return Response.redirect(`${url.origin}/?signin=failed`, 302);
   const user = await findOrCreate(env, providerId, profile);
   return signedIn(env, user, `${url.origin}${saved.back}`);
 }

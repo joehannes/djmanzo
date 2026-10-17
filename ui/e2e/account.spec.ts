@@ -50,7 +50,7 @@ test.describe("The account and its licence", () => {
     const block = await openAccount(page, {
       account_status: {
         ...base,
-        standing: { kind: "licensed", edition: "karaoke", plan: "yearly", until: 1831536000, offline_until: 1802592000, demo: false },
+        standing: { kind: "licensed", edition: "karaoke", modules: ["karaoke"], plan: "yearly", until: 1831536000, offline_until: 1802592000, demo: false },
       },
     });
     const licence = block.locator("[data-account-licence]");
@@ -58,6 +58,34 @@ test.describe("The account and its licence", () => {
     await expect(licence).toContainText("Works offline until");
     await block.getByRole("button", { name: "Sign out on this computer" }).click();
     await expect(block.locator("[data-account-state]")).toHaveAttribute("data-account-state", "signed-out");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("linking by the loopback asks for a yes in the browser, with no code to compare", async ({ page }) => {
+    const block = await openAccount(page, {
+      account_status: { ...base, signed_in: false, standing: { kind: "unlicensed" }, pending: { code: "", address: "https://djmanzo.example/link?port=53682" } },
+    });
+    await expect(block.locator("[data-account-state]")).toHaveAttribute("data-account-state", "linking");
+    await expect(block).toContainText("say yes");
+    await expect(block.locator("[data-account-code]")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("a Custom licence names its modules, and a trial counts its days", async ({ page }) => {
+    const soon = Math.floor(Date.now() / 1000) + 3 * 86400 - 60;
+    const block = await openAccount(page, {
+      account_status: {
+        ...base,
+        standing: { kind: "licensed", edition: "full", modules: [], plan: "trial", until: soon, offline_until: soon, demo: false },
+        licences: [
+          { edition: "full", modules: [], plan: "trial", until: soon, demo: false, here: true },
+          { edition: "custom", modules: ["stems", "dvs"], plan: "perpetual", until: null, demo: false, here: false },
+        ],
+      },
+    });
+    await expect(block.locator("[data-account-licence]")).toContainText("djmanzo Full, free trial");
+    await expect(block.locator("[data-account-trial]")).toContainText("3 days of the trial left");
+    await expect(block).toContainText("Custom (Stems, Timecode vinyl), bought once");
     expect(errorsThrown(page)).toEqual([]);
   });
 

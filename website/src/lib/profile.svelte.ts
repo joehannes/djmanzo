@@ -2,8 +2,8 @@
  * What a visitor has told the island, and what the island makes of it.
  *
  * Kept in the browser first (so nothing is asked twice and nothing needs an
- * account) and copied to the visitor's account once they sign in, where
- * djmanzo itself can read it later. Every adaptation on the island reads
+ * account) and copied to the visitor's account once they sign in, so
+ * another browser knows it too. Every adaptation on the island reads
  * this one object: the colours, the loop, the order of the tour, the
  * edition the box office opens on.
  */
@@ -124,13 +124,16 @@ export function recommend(p: Pick<Profile, "role" | "venues" | "gear" | "experie
     return { edition: "full", why: "You do both — the DJ booth and the karaoke stage — so you want both halves in one application." };
   }
   if (p.role === "karaoke") {
-    return { edition: "karaoke", why: "You host singers: the rotation, the singers' screen and the voice knob are the heart of your nights." };
+    return { edition: "karaoke", why: "You host singers: the singers' screen, the queue, vocals out and a microphone per singer are the heart of your nights." };
+  }
+  if (p.role === "learning" || (p.role === "dj" && p.experience === "new")) {
+    return { edition: "apprentice", why: "You're learning: the Apprentice edition adds the assistant and the teacher — the coach, the practice deck, the quiz — to everything a DJ needs." };
   }
   if (p.role === "dj" && (paid || proGear || p.experience === "pro")) {
     const because = proGear ? "you play on turntables or CDJs" : paid ? "you play for a paying room" : "you play professionally";
-    return { edition: "pro", why: `Because ${because}: Pro adds stems, timecode vinyl, six decks, recording and the commercial licence.` };
+    return { edition: "pro", why: `Because ${because}: Pro DJ adds stems, decks three to six, timecode vinyl, any controller, video and going live, the assistant and the autopilot.` };
   }
-  return { edition: "hobbyist", why: "You're mixing for yourself and your friends — Hobbyist is the whole DJ core, and it costs least." };
+  return { edition: "hobbyist", why: "You're mixing for yourself and your friends — Hobbyist is everything basic a DJ needs, and it costs least." };
 }
 
 /**

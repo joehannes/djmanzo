@@ -1,8 +1,8 @@
 /**
  * The places on Isla Manzo.
  *
- * The island follows djmanzo's own metaphor (docs/VISUAL-LANGUAGE.md): a
- * watershed. Records wait in the highlands like springs; the river runs down
+ * The island follows the watershed of docs/VISUAL-LANGUAGE.md (in the
+ * application, the Watershed Living theme): Records wait in the highlands like springs; the river runs down
  * through the booth, where the decks meet the way rivers meet at a
  * confluence; it reaches the sea at the harbour, and the sea is the room.
  * Every place sits where that metaphor puts it, so a visitor who learns the
@@ -48,7 +48,7 @@ export const PLACES: Place[] = [
   { id: "tienda", name: "Tienda de Discos", what: "The record shop — your library", line: "Up in the hills, where records wait like springs.", x: -300, y: -540, emoji: "💿", pad: 3, stamp: true },
   { id: "tarima", name: "La Tarima", what: "The karaoke stage", line: "On the beach. The singers' screen, the voice knob, the queue.", x: 780, y: 300, emoji: "🎤", pad: 4, stamp: true },
   { id: "faro", name: "El Faro", what: "The lighthouse — visuals", line: "Light for the room, drawn by the music.", x: 900, y: -420, emoji: "🗼", pad: 5, stamp: true },
-  { id: "taquilla", name: "La Taquilla", what: "The box office — editions and prices", line: "At the harbour. Four editions, three ways to pay for them.", x: -640, y: 420, emoji: "🎟️", pad: 6, stamp: true },
+  { id: "taquilla", name: "La Taquilla", what: "The box office — editions and prices", line: "At the harbour. Seven editions, a free week of any of them, three ways to pay.", x: -640, y: 420, emoji: "🎟️", pad: 6, stamp: true },
   { id: "muro", name: "El Muro", what: "The wall — the wishlist", line: "Paste a wish. See which ones became features.", x: -900, y: -40, emoji: "🧱", pad: 7, stamp: true },
   { id: "radio", name: "Radio Manzo", what: "The radio tower — the blog", line: "Stories from the booth, in many languages.", x: -760, y: -500, emoji: "📻", pad: 8, stamp: true },
   { id: "arena", name: "La Arena", what: "The arena — honest comparisons", line: "djmanzo next to the others, strengths and gaps.", x: 520, y: -240, emoji: "🥊", stamp: true },

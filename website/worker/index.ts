@@ -3,8 +3,9 @@
  * `/auth`, and the island (static assets) for everything else.
  */
 
-import { BASE, EDITION_INFO, FEATURES, MARKET, PLAN_INFO, SEATS, typical } from "../shared/catalog";
-import { BAND_NAME, BAND_SHARE, band, currencyFor } from "../shared/regions";
+import { CHEAPEST_WITH, EDITION_INFO, FOUNDATION, MARKET, MODULES, MODULE_PRICE, MODULE_TITLE, NAMED, PLANS, PLAN_INFO, PRO_MONTH, REASON, SEATS, TRIAL_DAYS, listPrice } from "../shared/catalog";
+import { FACTS, STATUS_LINE } from "../shared/facts";
+import { BAND_NAME, BAND_SHARE, STUDENT_SHARE, band, currencyFor } from "../shared/regions";
 import type { AppEnv } from "./env";
 import * as auth from "./auth";
 import * as blog from "./blog";
@@ -28,6 +29,13 @@ interface Ctx {
 
 const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
 
+/**
+ * What djmanzo itself calls, from no web page: the only mutating requests
+ * that may arrive from another origin. Approving a link is a signed-in
+ * browser's act on this site, so it is not among them.
+ */
+const APP_CALLS = ["/api/device/start", "/api/device/token", "/api/device/exchange", "/api/app/"];
+
 function route(method: string, path: string, handler: Handler) {
   const keys: string[] = [];
   const pattern = new RegExp(
@@ -50,6 +58,7 @@ const bearer = (c: Ctx) => (c.req.headers.get("authorization") || "").replace(/^
 
 route("GET", "/auth/start/:provider", (c) => auth.start(c.req, c.env, c.params.provider));
 route("GET", "/auth/callback/:provider", (c) => auth.callback(c.req, c.env, c.params.provider));
+route("POST", "/auth/callback/:provider", (c) => auth.callback(c.req, c.env, c.params.provider));
 route("POST", "/api/auth/demo", async (c) => auth.demoSignIn(c.req, c.env, (await body<{ name?: string }>(c.req)).name ?? ""));
 route("POST", "/api/auth/owner", async (c) => auth.ownerSignIn(c.req, c.env, (await body<{ token?: string }>(c.req)).token ?? ""));
 route("POST", "/api/auth/signout", (c) => auth.signOut(c.req, c.env));
@@ -87,13 +96,19 @@ route("GET", "/api/catalog", async (c) => {
   const where = country(c.req);
   return {
     editions: EDITION_INFO,
+    modules: MODULES.map((m) => ({ id: m, title: MODULE_TITLE[m], price: MODULE_PRICE[m], cheapest: CHEAPEST_WITH[m] })),
+    foundation: FOUNDATION,
     plans: PLAN_INFO,
-    base: BASE,
+    prices: Object.fromEntries(NAMED.map((e) => [e, Object.fromEntries(PLANS.map((p) => [p, listPrice(e, p)]))])),
+    reasons: REASON,
     seats: SEATS,
-    features: FEATURES,
+    facts: FACTS,
+    status: STATUS_LINE,
     market: MARKET,
-    typical: Object.fromEntries(Object.keys(BASE).map((e) => [e, { monthly: typical(e as never, "monthly"), yearly: typical(e as never, "yearly"), perpetual: typical(e as never, "perpetual") }])),
+    proMonth: PRO_MONTH,
     bands: { share: BAND_SHARE, name: BAND_NAME },
+    studentShare: STUDENT_SHARE,
+    trialDays: TRIAL_DAYS,
     visitor: { country: where, band: band(where), currency: currencyFor(where) },
     pay: {
       demo: auth.demoMode(c.env),
@@ -119,6 +134,8 @@ route("POST", "/api/checkout/demo", async (c) => {
     acceptHigher: !!input.acceptHigher,
   });
 });
+route("POST", "/api/trial", async (c) => checkout.startTrial(c.env, await needUser(c), String((await body<{ edition?: string }>(c.req)).edition || "")));
+route("GET", "/api/trial", async (c) => ({ had: await get(c.env.KV, `trial:${(await needUser(c)).id}`) }));
 route("POST", "/api/checkout/free", async (c) => checkout.freeCheckout(c.env, await needUser(c), checkout.checkInput(await body(c.req))));
 route("POST", "/api/redeem", async (c) => checkout.redeem(c.env, await needUser(c), String((await body<{ code?: string }>(c.req)).code || "")));
 route("POST", "/api/checkout/stripe", async (c) => {
@@ -145,6 +162,11 @@ route("POST", "/api/checkout/transfer", async (c) => {
 
 route("POST", "/api/device/start", async (c) => device.startLink(c.env, c.url.origin, String((await body<{ machine?: string }>(c.req)).machine || "")));
 route("POST", "/api/device/token", async (c) => device.pollLink(c.env, String((await body<{ device_code?: string }>(c.req)).device_code || "")));
+route("POST", "/api/device/loopback", async (c) => device.approveLoopback(c.env, await needUser(c), await body(c.req)));
+route("POST", "/api/device/exchange", async (c) => {
+  const b = await body<{ code?: string; verifier?: string }>(c.req);
+  return device.exchangeLoopback(c.env, String(b.code || ""), String(b.verifier || ""));
+});
 route("GET", "/api/device/lookup", async (c) => {
   await needUser(c);
   return device.lookupLink(c.env, c.url.searchParams.get("code") || "");
@@ -306,6 +328,15 @@ route("POST", "/api/admin/licences/:id/revoke", async (c) => {
   await saveLicence(c.env.KV, l);
   return l;
 });
+route("PATCH", "/api/admin/users/:id", async (c) => {
+  await needAdmin(c);
+  const u = await get<User>(c.env.KV, `user:${c.params.id}`);
+  if (!u) fail(404, "No such account.");
+  const b = await body<{ student?: boolean }>(c.req);
+  if (typeof b.student === "boolean") u.student = b.student;
+  await put(c.env.KV, `user:${u.id}`, u);
+  return u;
+});
 route("GET", "/api/admin/users/:id", async (c) => {
   await needAdmin(c);
   const u = await get<User>(c.env.KV, `user:${c.params.id}`);
@@ -355,7 +386,7 @@ export async function handle(req: Request, env: AppEnv, exec: ExecutionContext):
   // Mutating requests from a browser must come from this site.
   if (req.method !== "GET" && req.method !== "HEAD" && !url.pathname.startsWith("/api/webhooks/")) {
     const origin = req.headers.get("origin");
-    if (origin && origin !== url.origin && !url.pathname.startsWith("/api/device/") && !url.pathname.startsWith("/api/app/")) {
+    if (origin && origin !== url.origin && !APP_CALLS.some((p) => url.pathname.startsWith(p))) {
       return json({ error: "Cross-site request refused." }, 403);
     }
   }

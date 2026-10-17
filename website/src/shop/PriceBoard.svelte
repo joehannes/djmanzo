@@ -1,15 +1,17 @@
 <!--
   The board by the box office window: what comparable software costs, where
-  each figure comes from, and djmanzo's price beside it — half the typical,
-  computed rather than chosen, so anyone can check it.
+  each figure comes from, how each edition's price was reached from it
+  (docs/EDITIONS.md), and the rules for regions and students — so anyone can
+  check the arithmetic.
 -->
 <script lang="ts">
-  import { EDITIONS, PLANS, money, type Edition } from "../../shared/catalog";
+  import { NAMED, PLANS, money, type Edition } from "../../shared/catalog";
   import { BAND_NAME, regional } from "../../shared/regions";
   import { catalog } from "../lib/catalog.svelte";
 
   const PLAN_SHORT = { monthly: "/mo", yearly: "/yr", perpetual: "once" };
   const usd = (n: number | undefined | null) => (n == null ? "—" : `$${n % 1 ? n.toFixed(2) : n}`);
+  const EXAMPLES = ["United States, Austria, Japan", "Dominican Republic, Mexico, Brazil, Jamaica", "India, Nigeria, Haiti, the Philippines", "Ethiopia, Uganda, Madagascar"];
 </script>
 
 {#if catalog.data}
@@ -17,44 +19,55 @@
   <section class="board">
     <h2>How these prices were set</h2>
     <p>
-      We looked up what comparable DJ and karaoke software costs, took the typical (mean) price for each kind of edition and plan, and halved it. A yearly plan is
-      capped at about ten months, so it is always worth having. Prices were checked in October 2026; vendors change them, so follow the links.
+      The rule: <b>half of what the professional competitors charge on average</b>, and every edition cheaper than the same modules bought one by one. These are
+      the list prices vendors published in October 2026; they change them, so follow the links.
     </p>
-    {#each EDITIONS as e (e)}
-      {@const refs = c.market[e as Edition]}
-      <details open={e === "pro"}>
-        <summary><b>{c.editions[e].emoji} {c.editions[e].name}</b> — compared with {refs.map((r) => r.product).join(", ")}</summary>
-        <table>
-          <thead><tr><th>Product</th><th>Monthly</th><th>Yearly</th><th>Once</th></tr></thead>
-          <tbody>
-            {#each refs as r (r.product)}
-              <tr>
-                <td><a href={r.source} target="_blank" rel="noopener">{r.product}</a>{#if r.note}<br /><span class="small muted">{r.note}</span>{/if}</td>
-                <td>{usd(r.monthly)}</td>
-                <td>{usd(r.yearly)}</td>
-                <td>{usd(r.perpetual)}</td>
-              </tr>
-            {/each}
-            <tr class="typ">
-              <td>Typical</td>
-              {#each PLANS as p (p)}<td>{usd(c.typical[e][p] ? Math.round(c.typical[e][p]! * 100) / 100 : null)}</td>{/each}
-            </tr>
-            <tr class="ours">
-              <td>djmanzo {c.editions[e].name}</td>
-              {#each PLANS as p (p)}<td><b>{money(c.base[e][p], "USD")}</b> <span class="small">{PLAN_SHORT[p]}</span></td>{/each}
-            </tr>
-          </tbody>
-        </table>
-        {#if e === "karaoke"}
-          <p class="small muted">KaraFun's price includes a song catalogue and a commercial licence; djmanzo comes with no songs, so it is compared with software-only karaoke and KaraFun is shown for honesty, not used.</p>
-        {/if}
-      </details>
-    {/each}
-    <h3>By region</h3>
-    <p class="small">Four bands by what things cost where you live. The band applies when your card and your billing address both show it.</p>
+    <table>
+      <thead><tr><th>Product</th><th>Once</th><th>Monthly</th><th>Yearly</th></tr></thead>
+      <tbody>
+        {#each c.market as r (r.product)}
+          <tr>
+            <td><a href={r.source} target="_blank" rel="noopener">{r.product}</a>{#if r.note}<br /><span class="small muted">{r.note}</span>{/if}</td>
+            <td>{usd(r.perpetual)}</td>
+            <td>{usd(r.monthly)}</td>
+            <td>{usd(r.yearly)}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    <h3>djmanzo, edition by edition</h3>
+    <table>
+      <thead><tr><th>Edition</th>{#each PLANS as p (p)}<th>{c.plans[p].name}</th>{/each}<th>How it was reached</th></tr></thead>
+      <tbody>
+        {#each NAMED as e (e)}
+          <tr class="ours">
+            <td><b>{c.editions[e].emoji} {c.editions[e].name}</b></td>
+            {#each PLANS as p (p)}<td>{money(c.prices[e][p], "USD")} <span class="small">{PLAN_SHORT[p]}</span></td>{/each}
+            <td class="small">{c.reasons[e]}</td>
+          </tr>
+        {/each}
+        <tr>
+          <td><b>{c.editions.custom.emoji} Custom</b></td>
+          <td colspan="3">{money(c.foundation, "USD")} + modules</td>
+          <td class="small">{c.reasons.custom}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">
+      <b>Monthly and yearly</b> are ours to propose, not yet the owner's word: Pro DJ's month is half the professional subscriptions' average (Serato DJ Pro,
+      VirtualDJ Pro, rekordbox Creative: {money(Math.round(c.proMonth * 2), "USD")} → {money(Math.round(c.proMonth), "USD")}), every other edition's month in the same
+      proportion to its one-time price, and a year is ten months. <b>Upgrading</b>, bought once, costs the difference between the two editions.
+    </p>
+
+    <h3>Where you live, and students</h3>
+    <p class="small">
+      By the World Bank's income groups. The price applies when your card and your billing address both show it. Students and teachers pay half, with a school
+      e-mail address; the two discounts never stack — the larger one applies.
+    </p>
     <ul class="bands">
       {#each [1, 2, 3, 4] as b (b)}
-        <li><b>{BAND_NAME[b as 1]}</b> — e.g. {["United States, Germany, Japan", "Spain, Poland, Chile", "Dominican Republic, Mexico, Brazil, Jamaica", "India, Nigeria, Haiti, Philippines"][b - 1]}; Pro yearly {money(regional("pro", "yearly", b as 1), "USD")}</li>
+        <li><b>{BAND_NAME[b as 1]}</b> — e.g. {EXAMPLES[b - 1]}; Pro DJ bought once {money(regional("pro" as Edition, "perpetual", b as 1), "USD")}</li>
       {/each}
     </ul>
   </section>
@@ -67,23 +80,14 @@
     border-radius: 14px;
     background: var(--surface-2);
     border: 2px dashed var(--line);
-  }
-  details {
-    margin: 8px 0;
-  }
-  summary {
-    cursor: pointer;
+    overflow-x: auto;
   }
   table {
     margin: 8px 0;
     font-size: 14px;
   }
-  .typ td {
-    color: var(--ink-soft);
-    font-style: italic;
-  }
   .ours td {
-    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
   }
   .bands {
     padding-left: 18px;

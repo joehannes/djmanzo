@@ -1,6 +1,6 @@
 # ADR-0011 — One download, unlocked by signing in
 
-- **Status**: accepted — planned, nothing built
+- **Status**: accepted — the licence service, the trial and signing in built (`website/`, `dj_app::account`); switching modules off is not
 - **Date**: 2026-10-17
 - **Supersedes**: decisions 2 and 3 of [ADR-0010](0010-editions.md)
 
@@ -59,3 +59,16 @@ sign-in, and a free 7-day trial of the Full edition or any other.
 - The Worker and its KV namespace live in this repository and are deployed
   by the owner, who holds the Cloudflare account, the OAuth clients, the
   merchant of record and the private key.
+
+## As built
+
+The website's Worker is this ADR's Worker (`website/worker/`), and
+`dj_app::account` is the application's side. Signing in is the loopback
+redirect with PKCE as decided, with one addition: when no port on
+`127.0.0.1` will open, djmanzo falls back to the OAuth device flow
+(RFC 8628) — a short code the DJ checks on the site — so a locked-down
+machine can still be linked. The licence carries the edition and its
+modules; the application trusts its own parts list for every edition but
+Custom, whose modules are the licence's. Nothing is switched off yet
+(`account::ENFORCED`); `Standing::usable` is the `Modules` the checks will
+ask. [EDITIONS.md](../EDITIONS.md) lists where the rest differs.

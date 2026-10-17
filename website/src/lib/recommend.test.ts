@@ -14,6 +14,10 @@ describe("the MC's pick", () => {
   });
   it("turntables mean Pro even at home", () => expect(recommend({ ...nobody, role: "dj", venues: ["bedroom"], gear: ["turntables"] }).edition).toBe("pro"));
   it("a bedroom DJ with a controller gets Hobbyist", () => expect(recommend({ ...nobody, role: "dj", venues: ["bedroom"], gear: ["controller"] }).edition).toBe("hobbyist"));
+  it("someone learning gets the Apprentice edition", () => {
+    expect(recommend({ ...nobody, role: "learning" }).edition).toBe("apprentice");
+    expect(recommend({ ...nobody, role: "dj", experience: "new" }).edition).toBe("apprentice");
+  });
   it("someone who said nothing gets the cheapest, not the dearest", () => expect(recommend(nobody).edition).toBe("hobbyist"));
 });
 

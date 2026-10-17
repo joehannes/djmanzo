@@ -64,7 +64,7 @@
 <p>Effects they reach for: {#each genre.fx as f, i (f)}<span class="fx">{f}</span>{i < genre.fx.length - 1 ? " " : ""}{/each}. Try them in <button class="link" onclick={() => go("cabina")}>the booth</button>.</p>
 
 <h2>In djmanzo</h2>
-<p>The theme for this room is <b>{genre.theme}</b>{#if genre.skin}, and the skin that suits it is <b>{genre.skin}</b>{/if}. Both ship with the application.</p>
+<p>The theme for this room is <b>{genre.theme}</b>{#if genre.skin}, worn with the <b>{genre.skin}</b> skin{/if}. {genre.skin ? "Both ship" : "It ships"} with the application.</p>
 {#if shot}
   <figure>
     <img class="shot" src="/shots/{shot}.webp" alt="djmanzo in the {genre.theme} theme" loading="lazy" width="1280" height="800" />

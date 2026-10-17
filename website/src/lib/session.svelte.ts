@@ -45,7 +45,7 @@ class Session {
     }
   }
 
-  signInUrl(provider: string, back = location.pathname + location.hash): string {
+  signInUrl(provider: string, back = location.pathname + location.search + location.hash): string {
     return `/auth/start/${provider}?return=${encodeURIComponent(back)}`;
   }
 

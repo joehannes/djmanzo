@@ -1,21 +1,30 @@
 /**
  * Linking djmanzo on a machine to an account on the site.
  *
- * The OAuth device flow (RFC 8628), because a DJ application should not hold
- * anybody's Google password and cannot receive a redirect. djmanzo asks for a
- * pair of codes, shows the short one and opens the browser at `/link`; the DJ
- * signs in with whatever they used to buy, sees the machine's name and the
- * same short code, and says yes. djmanzo, polling, then receives a token of
- * its own — revocable from the site, and good for nothing but this API.
+ * Two ways, both ending in the same token — revocable from the site, and
+ * good for nothing but this API. Neither puts anybody's Google password
+ * anywhere near djmanzo.
+ *
+ * **The loopback redirect** (RFC 8252, with PKCE; ADR-0011's choice).
+ * djmanzo listens on a port of `127.0.0.1` only it holds, opens the browser
+ * at `/link?port=…&challenge=…&state=…`, the DJ signs in and says yes, and
+ * the browser is sent back to that port with a one-time code. djmanzo trades
+ * the code and the verifier only it knows for the token.
+ *
+ * **The device flow** (RFC 8628), for when the loopback cannot work — a port
+ * that will not open, a browser on another machine. djmanzo asks for a pair
+ * of codes, shows the short one and opens the browser at `/link`; the DJ
+ * signs in, sees the machine's name and the same short code, says yes, and
+ * djmanzo, polling, receives the token.
  */
 
 import type { AppEnv } from "./env";
-import { fail, randomId, sha256, text } from "./http";
+import { b64url, fail, randomId, sha256, text } from "./http";
 import { ACTIVATION_DAYS, activationToken, inForce, licenceToken } from "./licence";
 import { ALPHABET } from "./promo";
 import { get, put, saveLicence, type Licence, type User } from "./store";
 import { userLicences } from "./checkout";
-import { SEATS } from "../shared/catalog";
+import { SEATS, modulesOf } from "../shared/catalog";
 
 const MINUTES = 15;
 
@@ -69,6 +78,44 @@ export async function decideLink(env: AppEnv, user: User, code: string, approve:
   return { ok: true, machine: rec.machine };
 }
 
+async function appToken(env: AppEnv, uid: string, machine: string) {
+  const token = `djm_${randomId(32)}`;
+  await put(env.KV, `apptoken:${await sha256(token)}`, { uid, machine, createdAt: Date.now() }, 365 * 86400);
+  const user = await get<User>(env.KV, `user:${uid}`);
+  return { access_token: token, token_type: "Bearer", user: user ? { name: user.name, email: user.email } : null };
+}
+
+const LOOPBACK_SECONDS = 300;
+
+/**
+ * The DJ, signed in on `/link`, said yes to the djmanzo waiting on `port`.
+ * Returns where to send the browser: back to that port with a one-time code
+ * and the state djmanzo chose, so djmanzo can tell its own answer from
+ * anything else that knocks.
+ */
+export async function approveLoopback(env: AppEnv, user: User, input: { port?: unknown; challenge?: unknown; state?: unknown; machine?: unknown }) {
+  const port = Number(input.port);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) fail(400, "That is not a port djmanzo would listen on.");
+  const challenge = String(input.challenge || "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) fail(400, "The link from djmanzo is incomplete; start again from djmanzo.");
+  const state = String(input.state || "");
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(state)) fail(400, "The link from djmanzo is incomplete; start again from djmanzo.");
+  const code = randomId(24);
+  await put(env.KV, `loopcode:${await sha256(code)}`, { uid: user.id, challenge, machine: text(input.machine, 60) || "A computer" }, LOOPBACK_SECONDS);
+  return { redirect: `http://127.0.0.1:${port}/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}` };
+}
+
+/** djmanzo trading the one-time code, and the verifier behind the challenge, for its token. */
+export async function exchangeLoopback(env: AppEnv, code: string, verifier: string) {
+  const key = `loopcode:${await sha256(String(code || ""))}`;
+  const rec = await get<{ uid: string; challenge: string; machine: string }>(env.KV, key);
+  if (!rec) fail(400, "invalid_grant", { error: "invalid_grant" });
+  await env.KV.delete(key);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(verifier || "")));
+  if (b64url(digest) !== rec.challenge) fail(400, "invalid_grant", { error: "invalid_grant" });
+  return appToken(env, rec.uid, rec.machine);
+}
+
 /** djmanzo polling. RFC 8628's answers: pending, denied, expired, or a token. */
 export async function pollLink(env: AppEnv, deviceCode: string) {
   const h = await sha256(String(deviceCode || ""));
@@ -77,10 +124,7 @@ export async function pollLink(env: AppEnv, deviceCode: string) {
   if (rec.status === "pending") fail(400, "authorization_pending", { error: "authorization_pending" });
   await env.KV.delete(`device:${h}`);
   if (rec.status === "denied" || !rec.uid) fail(400, "access_denied", { error: "access_denied" });
-  const token = `djm_${randomId(32)}`;
-  await put(env.KV, `apptoken:${await sha256(token)}`, { uid: rec.uid, machine: rec.machine, createdAt: Date.now() }, 365 * 86400);
-  const user = await get<User>(env.KV, `user:${rec.uid}`);
-  return { access_token: token, token_type: "Bearer", user: user ? { name: user.name, email: user.email } : null };
+  return appToken(env, rec.uid, rec.machine);
 }
 
 export async function revokeAppToken(env: AppEnv, bearer: string) {
@@ -95,6 +139,7 @@ export async function appMe(env: AppEnv, user: User) {
     licences.map(async (l) => ({
       id: l.id,
       edition: l.edition,
+      modules: modulesOf(l.edition, l.modules),
       plan: l.plan,
       status: l.status,
       expires: l.expires,

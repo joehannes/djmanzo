@@ -6841,7 +6841,7 @@ export const crowdReadNow = (session: string | null) => invoke<CrowdView>("crowd
 /** `account::Standing`: where this machine stands with its licence. */
 export type AccountStanding =
   | { kind: "unlicensed" }
-  | { kind: "licensed"; edition: string; plan: string; until: number | null; offline_until: number; demo: boolean }
+  | { kind: "licensed"; edition: string; modules: string[]; plan: string; until: number | null; offline_until: number; demo: boolean }
   | { kind: "lapsed"; reason: string };
 
 /** `account::Status`: the DJ's account on djmanzo's website, and the licence it holds. */
@@ -6851,8 +6851,8 @@ export interface AccountStatus {
   name: string | null;
   email: string | null;
   standing: AccountStanding;
-  licences: { edition: string; plan: string; until: number | null; demo: boolean; here: boolean }[];
-  /** A link waiting for the DJ to say yes in the browser. */
+  licences: { edition: string; modules: string[]; plan: string; until: number | null; demo: boolean; here: boolean }[];
+  /** A link waiting for the DJ to say yes in the browser; `code` is empty when the browser brings the answer back itself. */
   pending: { code: string; address: string } | null;
   /** False in the beta: nothing is switched off whatever the licence says. */
   enforced: boolean;

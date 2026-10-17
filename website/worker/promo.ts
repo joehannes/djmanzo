@@ -12,7 +12,8 @@
  */
 
 import type { Edition, Plan } from "../shared/catalog";
-import { EDITIONS, PLANS } from "../shared/catalog";
+import { NAMED, PLANS } from "../shared/catalog";
+const EDITIONS: Edition[] = NAMED;
 import type { AppEnv } from "./env";
 import { fail, text } from "./http";
 import { get, put, type Promo, type User } from "./store";
@@ -134,11 +135,11 @@ export function validSpec(spec: PromoSpec): PromoSpec {
   if (spec.kind === "fixed" && !(Number(spec.value) > 0)) fail(400, "A fixed discount needs an amount in cents.");
   if (spec.kind === "voucher") {
     const g = spec.grants;
-    if (!g || !EDITIONS.includes(g.edition) || !PLANS.includes(g.plan)) fail(400, "A voucher names the edition and plan it grants.");
+    if (!g || !EDITIONS.includes(g.edition) || !(PLANS as Plan[]).includes(g.plan)) fail(400, "A voucher names the edition (not Custom) and the plan it grants.");
     if (g.months != null && !(g.months >= 1 && g.months <= 36)) fail(400, "A voucher lasts 1 to 36 months.");
   }
   const editions = (spec.editions || []).filter((e) => EDITIONS.includes(e));
-  const plans = (spec.plans || []).filter((p) => PLANS.includes(p));
+  const plans = (spec.plans || []).filter((p) => (PLANS as Plan[]).includes(p));
   return {
     ...spec,
     value: spec.kind === "voucher" ? 100 : Number(spec.value),

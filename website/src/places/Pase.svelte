@@ -11,13 +11,16 @@
   import { profile } from "../lib/profile.svelte";
   import { PLACES, type PlaceId } from "../lib/places";
   import { GENRE_BY_ID } from "../lib/genres";
+  import { EDITION_INFO, MODULE_TITLE, type Edition, type Module } from "../../shared/catalog";
   import SignIn from "../shop/SignIn.svelte";
+  import { loopbackFrom } from "../lib/link";
 
   let { go, linkCode = null }: { go: (id: PlaceId) => void; linkCode?: string | null } = $props();
 
   interface Lic {
     id: string;
     edition: string;
+    modules?: string[];
     plan: string;
     status: string;
     expires: number | null;
@@ -32,6 +35,27 @@
   let linkMsg = $state<string | null>(null);
   let linked = $state(false);
   let prizeMsg = $state<string | null>(null);
+  // djmanzo waiting on a port of its own for the browser to come back (the loopback way).
+  const loopback = location.pathname === "/link" ? loopbackFrom(location.search) : null;
+  let loopbackMsg = $state<string | null>(null);
+  let loopbackGone = $state(false);
+
+  async function answerLoopback(approve: boolean) {
+    if (!loopback) return;
+    if (!approve) {
+      loopbackGone = true;
+      loopbackMsg = "Refused. That computer got nothing — djmanzo stops waiting after ten minutes.";
+      return;
+    }
+    try {
+      const r = await post("/api/device/loopback", { ...loopback });
+      loopbackGone = true;
+      loopbackMsg = `Linked. "${loopback.machine}" now has your licences — your browser is handing the answer back to djmanzo.`;
+      location.href = r.redirect;
+    } catch (e) {
+      loopbackMsg = (e as Error).message;
+    }
+  }
 
   const stampable = PLACES.filter((p) => p.stamp);
   const NEED = 7;
@@ -89,7 +113,23 @@
   const date = (t: number) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 </script>
 
-{#if code || linkCode}
+{#if loopback}
+  <section class="link-box" data-loopback>
+    <h2>Link djmanzo</h2>
+    {#if !session.user}
+      <SignIn why={`djmanzo on "${loopback.machine}" is asking to be linked to your account. Sign in with the account you bought with, then say yes.`} />
+    {:else if loopbackGone}
+      <p class="notice ok">{loopbackMsg}</p>
+    {:else}
+      <p>djmanzo on <b>{loopback.machine}</b> is asking for your licences. Did you just press <b>Sign in</b> in djmanzo on that computer?</p>
+      <div class="row">
+        <button class="btn primary" onclick={() => answerLoopback(true)}>Yes — link it</button>
+        <button class="btn quiet" onclick={() => answerLoopback(false)}>No, that wasn't me</button>
+      </div>
+      {#if loopbackMsg}<p class="notice">{loopbackMsg}</p>{/if}
+    {/if}
+  </section>
+{:else if code || linkCode}
   <section class="link-box">
     <h2>Link djmanzo</h2>
     {#if !session.user}
@@ -114,7 +154,7 @@
 {/if}
 
 {#if !session.user}
-  {#if !code}<SignIn why="Sign in to see your licences, link djmanzo, and claim the island's prize." />{/if}
+  {#if !code && !loopback}<SignIn why="Sign in to see your licences, link djmanzo, and claim the island's prize." />{/if}
 {:else}
   <section class="who">
     {#if session.user.avatar}<img src={session.user.avatar} alt="" />{/if}
@@ -130,7 +170,7 @@
     <ul class="lics">
       {#each licences as l (l.id)}
         <li class:off={!l.inForce}>
-          <b>djmanzo {l.edition[0].toUpperCase() + l.edition.slice(1)}</b> — {l.plan === "perpetual" ? "bought once" : l.plan}
+          <b>djmanzo {EDITION_INFO[l.edition as Edition]?.name ?? l.edition}</b>{#if l.modules?.length && l.edition === "custom"} ({l.modules.map((m) => MODULE_TITLE[m as Module] ?? m).join(", ")}){/if} — {l.plan === "perpetual" ? "bought once" : l.plan === "trial" ? "a free trial" : l.plan}
           {#if l.demo}<span class="badge">demo</span>{/if}
           <span class="muted small">{l.inForce ? (l.expires ? `until ${date(l.expires)}` : "for ever (version 1)") : `ended (${l.status})`} · on {l.activations.length} of {l.seats} computers</span>
           {#if l.activations.length}
@@ -141,16 +181,12 @@
         </li>
       {/each}
     </ul>
-    <p class="small">To use a licence: in djmanzo, <b>Settings → Account → Sign in</b>. It shows a code and opens this page.</p>
+    <p class="small">To use a licence: in djmanzo, <b>Settings → Account → Sign in</b>. It opens this page; sign in and say yes.</p>
   {:else}
     <p class="muted">None yet. <button class="link" onclick={() => go("taquilla")}>The box office is at the harbour.</button></p>
   {/if}
 {/if}
 
-<figure class="inapp">
-  <img class="shot" src="/shots/account.webp" alt="djmanzo's Account settings: signed in, djmanzo Pro yearly, works offline for thirty days" loading="lazy" width="380" height="280" />
-  <figcaption>What djmanzo shows once it is linked — a real screenshot, from a test purchase in the demo shop.</figcaption>
-</figure>
 
 <h2>Your passport</h2>
 <div class="stamps">
@@ -183,7 +219,7 @@
   <li>Rooms: {profile.p.venues.join(", ") || "—"}</li>
   <li>Gear: {profile.p.gear.join(", ") || "—"}</li>
 </ul>
-<p class="small muted">Kept in this browser{session.user ? " and copied to your account, where djmanzo can read it to set itself up" : ""}. Nothing else is tracked.</p>
+<p class="small muted">Kept in this browser{session.user ? " and copied to your account, so another browser knows it too" : ""}. Nothing else is tracked.</p>
 <button class="btn quiet" onclick={() => profile.reset()}>Forget all of it</button>
 
 <style>
@@ -290,10 +326,6 @@
   .prize {
     font-size: 1.2rem;
     letter-spacing: 0.06em;
-  }
-  .inapp {
-    max-width: 380px;
-    margin-top: 14px;
   }
   .known {
     padding-left: 18px;

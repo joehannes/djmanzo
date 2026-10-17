@@ -1,0 +1,29 @@
+{
+  "_": "Written from dj_core::edition by crates/dj-core/tests/website_editions.rs; do not edit by hand.",
+  "editions": [
+    { "slug": "autopilot", "product": "djmanzo Auto-Pilot", "modules": ["autopilot"] },
+    { "slug": "hobbyist", "product": "djmanzo Hobbyist", "modules": [] },
+    { "slug": "apprentice", "product": "djmanzo Apprentice", "modules": ["assistant", "teacher"] },
+    { "slug": "karaoke", "product": "djmanzo Karaoke", "modules": ["karaoke"] },
+    { "slug": "pro", "product": "djmanzo Pro DJ", "modules": ["four_decks", "stems", "autopilot", "assistant", "crowd", "controllers", "dvs", "video", "streaming", "plugins", "sources", "events", "replay"] },
+    { "slug": "full", "product": "djmanzo", "modules": ["four_decks", "stems", "autopilot", "assistant", "teacher", "karaoke", "crowd", "controllers", "dvs", "video", "streaming", "plugins", "sources", "events", "replay"] },
+    { "slug": "custom", "product": "djmanzo Custom", "modules": [] }
+  ],
+  "modules": [
+    { "slug": "four_decks", "title": "Four decks", "cheapest": "pro" },
+    { "slug": "stems", "title": "Stems", "cheapest": "pro" },
+    { "slug": "autopilot", "title": "Auto-pilot", "cheapest": "autopilot" },
+    { "slug": "assistant", "title": "Assistant", "cheapest": "apprentice" },
+    { "slug": "teacher", "title": "Teacher", "cheapest": "apprentice" },
+    { "slug": "karaoke", "title": "Karaoke", "cheapest": "karaoke" },
+    { "slug": "crowd", "title": "Reading the room", "cheapest": "pro" },
+    { "slug": "controllers", "title": "Controllers", "cheapest": "pro" },
+    { "slug": "dvs", "title": "Timecode vinyl", "cheapest": "pro" },
+    { "slug": "video", "title": "Video and visuals", "cheapest": "pro" },
+    { "slug": "streaming", "title": "Going live", "cheapest": "pro" },
+    { "slug": "plugins", "title": "Plugins", "cheapest": "pro" },
+    { "slug": "sources", "title": "Online sources", "cheapest": "pro" },
+    { "slug": "events", "title": "Events", "cheapest": "pro" },
+    { "slug": "replay", "title": "Replay", "cheapest": "pro" }
+  ]
+}

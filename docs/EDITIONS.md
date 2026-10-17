@@ -231,8 +231,8 @@ states, named for what they show, for the shop pages (see its README).
 | Apprentice | Guides, the welcome, the practice lab and practice deck, the coach, the quiz, the event workflow | A curriculum in order (beatmatching, phrasing, EQ, each genre's basics from its pack, crowd dynamics, a DJ's life, first gigs, preparing them, the road ahead), with exercises the teacher checks and a record of progress |
 | Karaoke | All of it | Nothing for the edition itself |
 | Pro DJ, Full | All of it | Nothing for the edition itself |
-| Custom | — | Nothing of its own: the licence and the shop below |
-| All of them | The parts list | The licence: the Worker, sign-in in the application, the trial, the shop |
+| Custom | Sold on the website, its modules in the licence | Nothing of its own |
+| All of them | The parts list; **the licence service, the shop and the trial** on the website (`website/`, [WEBSITE.md](WEBSITE.md)); **signing in and checking licences** in the application (`dj_app::account`), which reads every licence's modules | Switching modules off at run time (`account::ENFORCED` is `false`); the trial's days in the status strip; a merchant of record |
 
 ## The order of work
 
@@ -242,11 +242,52 @@ states, named for what they show, for the shop pages (see its README).
    interface hiding it. Until the licence exists, a development licence for
    Full.
 3. **The licence in the application**: reading and checking a signed
-   licence, the trial's days in the status strip, *Sign in*.
+   licence, the trial's days in the status strip, *Sign in*. *Built in
+   `dj_app::account`, except the status strip: the trial's days show in
+   Settings → Account.* `Standing::usable` is the `Modules` step 2 asks.
 4. **The licence service**: the Worker, KV, the webhook, the trial (in this
-   repository, deployed by the owner).
+   repository, deployed by the owner). *Built: `website/`, live on
+   `workers.dev`; see below where it differs.*
 5. **The quiet cards.**
 6. **The Auto-Pilot surface.**
 7. **The Apprentice curriculum**: the largest piece, and most of it is
    teaching content the owner's knowledge decides.
-8. **The shop page**, with the pictures from `docs/screenshots/`.
+8. **The shop page**, with the pictures from `docs/screenshots/`. *Built
+   with these editions and prices; the pictures follow as the folder fills.*
+
+## The licence service as built, and where it differs from the plan above
+
+The website (§132) was built on its own branch the same day §131 was
+written, and was brought into line with this page afterwards (§133). What
+differs, and why:
+
+- **Monthly and yearly plans exist beside buying once.** The owner asked the
+  website for them (§132). They follow from the prices above by one rule —
+  Pro DJ's month is half the professional subscriptions' average (Serato DJ
+  Pro $11.99, VirtualDJ Pro $19, rekordbox Creative about $15), every other
+  edition's month in the same proportion to its one-time price, a year ten
+  months — and **wait for the owner's nod**: Hobbyist $2.49 a month, Pro DJ
+  $7.49, Full $9.49 (`website/shared/catalog.ts`).
+- **Payment is Stripe, PayPal or a bank transfer**, with a labelled demo
+  checkout while none is configured. A merchant of record is still the
+  owner's choice; the Worker's payment providers are one file each.
+- **A regional price is proven by the payment** (§132): the card's country
+  and the billing address must both be in the income group, and where they
+  differ the higher price applies. Students and teachers are recognised by a
+  verified school address (`.edu`, `.ac.xx`, or a domain the crew adds) or
+  marked by the crew.
+- **Signing in from the application** is the loopback with PKCE, as ADR-0011
+  decides, and the **device code** (RFC 8628) when no port on `127.0.0.1`
+  will open. The providers are Google, Apple, GitHub, Microsoft, Discord and
+  Facebook.
+- **The KV record is per person, not per provider account**: `user:<uid>`,
+  with each sign-in identity linked to it by verified e-mail, so a DJ who
+  bought with Google and signs in with GitHub under the same address finds
+  their licence. Licences are `licence:<lid>`; the trial is `trial:<uid>`.
+- **A licence is on a number of computers at once** (two to five, by
+  edition), counted by a random id djmanzo makes once — not a device
+  fingerprint. A computer silent for sixty days frees its seat.
+- **The licence is `DJM1.<payload>.<signature>`** with the edition, its
+  modules, the plan and the major version; an *activation* (`DJA1.`) is one
+  licence on one machine for thirty days, renewed while online. Both are
+  pinned by one test vector on each side.
