@@ -118,7 +118,7 @@ class Deck {
     const v = this.engine.voices;
     const out = this.input;
     const prog = PROGRESSIONS[g.scale];
-    const barOffset = prog[Math.floor(this.step / p.steps) % prog.length];
+    const barOffset = prog[Math.floor(this.step / p.steps) % prog.length] + this.engine.transpose;
     if (p.kick.includes(s)) v.kick(t, out);
     if (p.snare.includes(s)) v.snare(t, out);
     if (p.hat.includes(s)) v.hat(t, out, s % 4 === 2 ? 0.5 : 0.3);
@@ -382,6 +382,8 @@ export class Engine {
   readonly decks: [Deck, Deck];
   tempo = 124;
   sync = true;
+  /** Key shift in semitones for everything the decks play — the karaoke key knob. */
+  transpose = 0;
   crossfader = 0.5;
   private filterNode: BiquadFilterNode;
   private fx: Record<Exclude<FxName, "filter" | "gate">, GainNode>;

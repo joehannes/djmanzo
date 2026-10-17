@@ -53,6 +53,7 @@
     bottom: 104px;
     width: min(560px, calc(100vw - 28px));
     perspective: 1400px;
+    isolation: isolate;
     z-index: 30;
     pointer-events: none;
   }
@@ -81,14 +82,14 @@
   }
   .record {
     position: absolute;
-    top: -26px;
-    right: 64px;
+    z-index: -1;
+    top: 18px;
+    left: -62px;
     width: 120px;
     height: 120px;
     border-radius: 50%;
     background: radial-gradient(circle, var(--secondary) 0 20%, #0e0e0e 21% 23%, #1d1d1d 24% 36%, #0e0e0e 37% 39%, #222 40% 54%, #0e0e0e 55% 57%, #262626 58%);
-    clip-path: inset(0 0 72% 0);
-    animation: slide 0.9s 0.15s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+    animation: slide 0.9s 0.15s cubic-bezier(0.2, 0.9, 0.25, 1) both, turn 6s 1s linear infinite;
   }
   .record span {
     position: absolute;
@@ -98,8 +99,13 @@
   }
   @keyframes slide {
     from {
-      top: 10px;
+      left: 10px;
       rotate: -40deg;
+    }
+  }
+  @keyframes turn {
+    to {
+      rotate: 360deg;
     }
   }
   header {
@@ -165,10 +171,7 @@
       }
     }
     .record {
-      right: 74px;
-      width: 90px;
-      height: 90px;
-      top: -20px;
+      display: none;
     }
     header {
       padding: 18px 16px 12px;

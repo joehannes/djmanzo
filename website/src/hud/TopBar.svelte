@@ -232,7 +232,38 @@
       display: none;
     }
     .brand {
-      padding: 4px;
+      padding: 3px;
+    }
+    .disc {
+      width: 30px;
+      height: 30px;
+    }
+    .bar {
+      padding-left: 8px;
+      padding-right: 8px;
+      gap: 6px;
+    }
+    .tools {
+      gap: 4px;
+    }
+    .tool {
+      height: 38px;
+      padding: 0 8px;
+    }
+    .xfader {
+      height: 38px;
+      padding: 0 4px;
+    }
+    .track button {
+      width: 22px;
+      font-size: 12px;
+    }
+    .tick {
+      display: none;
+    }
+    .cap {
+      width: 22px;
+      left: calc(2px + var(--i) * 22px);
     }
   }
 </style>

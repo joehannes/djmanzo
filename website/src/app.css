@@ -156,7 +156,8 @@ textarea {
 .chip:hover {
   border-color: var(--primary);
 }
-.chip[aria-pressed="true"] {
+.chip[aria-pressed="true"],
+.chip[aria-checked="true"] {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--on-primary);

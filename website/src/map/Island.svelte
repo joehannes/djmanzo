@@ -81,8 +81,8 @@
   });
 
   const places = $derived(PLACES.filter((p) => !p.hidden || admin));
-  const markerScale = $derived(Math.max(0.55, Math.min(1.25, 0.9 / Math.sqrt(camera.z))));
-  const far = $derived(camera.z < 0.22);
+  const markerScale = $derived(Math.max(0.55, Math.min(1.7, 0.9 / Math.sqrt(camera.z))));
+  const far = $derived(camera.z < 0.3);
 
   // --- Moving around ----------------------------------------------------------
 

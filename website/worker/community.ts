@@ -94,6 +94,7 @@ export const SEED: Omit<Wish, "id" | "createdAt" | "votes" | "author">[] = [
   { title: "Pro DJ Link and StagelinQ", body: "Join a booth of CDJs or Denon players as a peer.", status: "planned", tag: "hardware", note: "Milestone M7 on the roadmap.", seeded: true },
   { title: "Broadcast to Icecast / Shoutcast", body: "Stream the master straight to an internet radio server.", status: "planned", tag: "live", note: "Milestone M5; recording already ships.", seeded: true },
   { title: "Record to FLAC and MP3", body: "Not only WAV.", status: "planned", tag: "live", note: "WAV recording ships today.", seeded: true },
+  { title: "Art-Net / DMX lighting", body: "Drive the lights from the beat and the structure of the music.", status: "planned", tag: "visual", note: "In the design (docs/FEATURES.md); not in the app yet.", seeded: true },
   { title: "Video mixing for VJs", body: "Mix video clips like decks, with transitions.", status: "considering", tag: "visual", note: "Milkdrop-style visuals and video on a deck exist; full VJ mixing is milestone M8.", seeded: true },
   { title: "Duet parts for karaoke", body: "Split a duet into two singers' parts.", status: "considering", tag: "karaoke", note: "Waits for a separation model whose licence the project can accept.", seeded: true },
   { title: "Phones as microphones", body: "Guests sing into their own phone.", status: "considering", tag: "karaoke", note: "Needs a secure page on the local network.", seeded: true },
