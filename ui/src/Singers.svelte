@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { GUIDE_LEVEL, karaokeGuideOffer, type GuideOffer } from "./guideOffer";
+  import { roomReactions, roomReactionsSet } from "./roomReactions";
+  import SkinPicker from "./SkinPicker.svelte";
   import { carriesTrack, droppedTrack } from "./trackdrag";
   /**
    * §107: the singer rotation, as a karaoke host works it.
@@ -263,6 +266,20 @@
     return () => clearInterval(timer);
   });
 
+  /**
+   * B8: *Sang*, and a moment for it — the host sees it taken, the singers'
+   * screen cheers (`SingerScreen.svelte`).
+   */
+  let sangNote = $state<string | null>(null);
+  let sangGone: ReturnType<typeof setTimeout> | undefined;
+  async function sang(name: string, title: string) {
+    await change(karaokeSang());
+    if (error) return;
+    sangNote = `${name} sang ${title}`;
+    clearTimeout(sangGone);
+    sangGone = setTimeout(() => (sangNote = null), 4_000);
+  }
+
   async function change(done: Promise<Rotation>) {
     error = "";
     try {
@@ -430,8 +447,12 @@
     const next = rotation?.singers.find((s) => s.name === rotation?.up_next)?.songs[0];
     if (!next?.path) return;
     error = "";
+    // B7: what was offered for this song, read before the load moves the
+    // rotation on.
+    const guide = guideOffer !== null && guideTaken;
     try {
       rotation = await karaokeLoad(deck);
+      if (guide) await dispatch(`deck ${deck} voice ${GUIDE_LEVEL}`);
     } catch (e) {
       error = String(e);
     }
@@ -440,6 +461,35 @@
     // K6: and loading separates it, which is what reads its line.
     lineAsked += 1;
   }
+
+  /**
+   * B7: the guide, offered where the song is new to the singer up next — Rust
+   * decides when (`dj_app::guide_offer`). Ticked when offered; on *Load on N*
+   * the deck's voice goes to the guide. Asked again when who is up next, or
+   * their song, changes.
+   */
+  let guideOffer = $state<GuideOffer | null>(null);
+  let guideTaken = $state(true);
+  const guideFor = $derived.by(() => {
+    const up = rotation?.singers.find((s) => s.name === rotation?.up_next);
+    const song = up?.songs[0];
+    return up && song ? `${up.name}\n${song.title}\n${song.voice ?? ""}` : "";
+  });
+  $effect(() => {
+    const asking = guideFor;
+    guideTaken = true;
+    if (!enabled || asking === "") {
+      guideOffer = null;
+      return;
+    }
+    void karaokeGuideOffer()
+      .then((offer) => {
+        if (asking === guideFor) guideOffer = offer;
+      })
+      .catch(() => {
+        guideOffer = null;
+      });
+  });
 
   /**
    * K6: the line the up-next song's voice sings, read from its separated
@@ -739,6 +789,22 @@
   function signed(key: number): string {
     return key > 0 ? `+${key}` : `${key}`;
   }
+
+  /**
+   * Karaoke beta B2: emoji from the room's phones on the singers' screen.
+   * Off until the host turns it on; Rust keeps the switch and the rates.
+   */
+  let roomEmojiOn = $state(false);
+  void roomReactions(0)
+    .then((answer) => (roomEmojiOn = answer.on))
+    .catch(() => {});
+  async function setRoomEmoji(on: boolean) {
+    try {
+      roomEmojiOn = (await roomReactionsSet(on)).on;
+    } catch (problem) {
+      error = String(problem);
+    }
+  }
 </script>
 
 <div class="singers" data-singers>
@@ -746,6 +812,9 @@
     <p class="error" role="alert">{error}</p>
   {/if}
 
+  {#if sangNote}
+    <p class="sang-note" role="status" data-sang-note>✓ {sangNote}</p>
+  {/if}
   {#if upNext}
     {@const next = upNext.songs[0]}
     <!--
@@ -760,6 +829,9 @@
       ondragleave={() => (landing = null)}
       ondrop={(event) => void dropSinger(event, upNext.name)}
     >
+      <p class="eyebrow">Up next</p>
+      <!-- B8: the name rises in when it is someone new; nothing to press moves. -->
+      {#key upNext.name}
       <p class="who">
         {upNext.name}
         {#if upNext.ready}<span class="badge ready" data-ready>Ready</span>{/if}
@@ -771,6 +843,7 @@
           >
         {/if}
       </p>
+      {/key}
       <p class="what">{next.title}</p>
       {#if next.track && line !== undefined}
         <!-- K6: the line the song's voice sings — what a singer is scored against. -->
@@ -841,10 +914,16 @@
           onclick={() => void change(karaokeKey(upNext.name, next.key + 1))}>+</button
         >
       </div>
+      {#if guideOffer && next.path}
+        <label class="guide-offer" data-guide-offer>
+          <input type="checkbox" bind:checked={guideTaken} />
+          <span><strong>Guide voice</strong> — {guideOffer.line}</span>
+        </label>
+      {/if}
       <div class="actions">
         {#if next.path}
           {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
-            <button onclick={() => void load(deck)}>Load on {deck}</button>
+            <button class="primary" onclick={() => void load(deck)}>Load on {deck}</button>
           {/each}
         {:else}
           <span class="hint">Not found in the collection yet — search for it below.</span>
@@ -867,7 +946,7 @@
               : "Bring them in"}</button
           >
         {/if}
-        <button class="done" onclick={() => void change(karaokeSang())}>Sang</button>
+        <button class="done" onclick={() => void sang(upNext.name, next.title)}>Sang</button>
         {#if rotation?.recording}
           <!-- K9: what is being recorded, and for how long; *Sang* stops it too. -->
           <span class="recording" role="status" data-recording>
@@ -881,6 +960,7 @@
           >
         {/if}
         <button
+          class="quiet"
           title="Called and not here: to the bottom of the list, songs kept"
           onclick={() => void change(karaokeNotHere(upNext.name))}>Not here</button
         >
@@ -1410,6 +1490,29 @@
     </details>
   {/if}
 
+  <!-- Karaoke beta B6: a skin over the theme, for the night's look. -->
+  <SkinPicker />
+
+  <section class="room-emoji-switch" aria-label="Emoji from the room">
+    <label class="switch">
+      <input
+        type="checkbox"
+        checked={roomEmojiOn}
+        onchange={(event) => void setRoomEmoji(event.currentTarget.checked)}
+      />
+      Emoji from phones on the singers' screen
+    </label>
+    <p class="hint">
+      {#if roomEmojiOn}
+        On: the room's page shows a row of emoji; each tap shows small in a corner of
+        the singers' screen and fades within seconds — never over the words, a few at
+        a time, a couple of seconds between taps from one phone.
+      {:else}
+        Off: the room's page shows no row, and the singers' screen draws none.
+      {/if}
+    </p>
+  </section>
+
   <Microphones
     live={vocals}
     {enabled}
@@ -1538,17 +1641,65 @@
     color: var(--text-dim);
   }
 
+  /*
+    B8: the card a host reads from across the booth — the name first and
+    largest, the record under it, then what to do: Load on N filled, Sang
+    outlined, the rest quiet.
+  */
   .up {
     border: 1px solid var(--accent);
+    border-left-width: 4px;
     border-radius: var(--radius);
-    padding: 0.5rem 0.6rem;
-    background: var(--panel);
+    padding: 0.55rem 0.7rem 0.6rem;
+    background: linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--accent) 12%, var(--panel)),
+      var(--panel) 60%
+    );
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
   }
 
   .who {
     margin: 0;
-    font-size: 1.4em;
-    font-weight: 700;
+    font-size: 1.6em;
+    font-weight: 750;
+    line-height: 1.15;
+    animation: name-in 500ms ease-out;
+  }
+
+  @keyframes name-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.35em);
+    }
+  }
+
+  .actions .quiet {
+    color: var(--text-dim);
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .sang-note {
+    margin: 0 0 0.35rem;
+    font-weight: 600;
+    color: var(--success);
+    animation: name-in 400ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .who,
+    .sang-note {
+      animation: none;
+    }
   }
 
   .what {
@@ -1935,6 +2086,16 @@
     align-items: center;
     gap: 0.4rem;
     margin: 0.25rem 0;
+  }
+  .guide-offer {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    margin: 0.3rem 0;
+    padding: 0.35rem 0.5rem;
+    border-left: 3px solid var(--stem-vocal);
+    background: color-mix(in srgb, var(--stem-vocal) 8%, transparent);
+    border-radius: 4px;
   }
   .asks span,
   .asked {

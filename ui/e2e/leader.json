@@ -1097,6 +1097,34 @@
           "run": "switch theme pkg-velvet",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "q",
+          "label": "Malecón Night",
+          "run": "switch theme pkg-malecon",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "x",
+          "label": "Carnaval",
+          "run": "switch theme pkg-carnaval",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "y",
+          "label": "Bioluminescent Bay",
+          "run": "switch theme pkg-biobay",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "z",
+          "label": "Bachata Rosa",
+          "run": "switch theme pkg-rosa",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false

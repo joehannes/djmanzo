@@ -198,5 +198,37 @@
     "why_not": "",
     "asked": false,
     "world": false
+  },
+  {
+    "title": "Malecón Night",
+    "about": "Havana's sea wall after dark: a night-sea navy, coral for what is pressed and a sea-glass second colour.",
+    "pack": "pkg-malecon",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Carnaval",
+    "about": "The vejigante masks of Puerto Rico's carnival: yellow and green on black, the reds kept for danger.",
+    "pack": "pkg-carnaval",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Bioluminescent Bay",
+    "about": "Vieques at night, when the water glows: cyan light on a black-blue sea, violet as the second colour.",
+    "pack": "pkg-biobay",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Bachata Rosa",
+    "about": "A Dominican bachata night: rose for what is pressed and gold beside it, on a deep plum.",
+    "pack": "pkg-rosa",
+    "why_not": "",
+    "asked": false,
+    "world": false
   }
 ]
