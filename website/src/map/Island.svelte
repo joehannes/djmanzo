@@ -37,11 +37,21 @@
   let beat = $state(false);
 
   // The island's coast, hills and beaches, fixed by seed so it is the same island for everyone.
-  const coast = blobPath(-20, 40, 1260, 900, 7, 64, 0.17);
-  const beach = blobPath(-20, 40, 1300, 935, 7, 64, 0.17);
-  const reef = blobPath(-20, 40, 1480, 1080, 7, 64, 0.17);
+  // The coast: a main body and five lobes — the lighthouse's cape, the
+  // karaoke beach, the harbour, the radio's hill and the dock's point — drawn as one shape by
+  // drawing each in turn.
+  const LOBES: [number, number, number, number, number][] = [
+    [-40, 60, 920, 700, 7],
+    [960, -470, 300, 230, 21],
+    [930, 360, 360, 250, 22],
+    [-760, 560, 360, 230, 23],
+    [-880, -480, 320, 260, 24],
+    [80, 720, 260, 180, 25],
+  ];
+  const coast = LOBES.map(([x, y, rx, ry, seed]) => blobPath(x, y, rx, ry, seed, 64, 0.3));
+  const beach = LOBES.map(([x, y, rx, ry, seed]) => blobPath(x, y, rx * 1.05 + 30, ry * 1.06 + 30, seed, 64, 0.3));
+  const reef = LOBES.map(([x, y, rx, ry, seed]) => blobPath(x, y, rx * 1.18 + 120, ry * 1.2 + 120, seed, 64, 0.3));
   const hills = [blobPath(-420, -470, 560, 280, 11, 40, 0.22), blobPath(-470, -500, 340, 160, 12, 36, 0.25), blobPath(-500, -520, 160, 80, 13, 30, 0.3)];
-  const cape = blobPath(880, -400, 180, 140, 21, 32, 0.25);
   const river = smoothOpen(RIVER);
   const riverB = smoothOpen(RIVER_B);
 
@@ -268,13 +278,12 @@
           <stop offset="1" stop-color={profile.palette.primary} stop-opacity="0" />
         </radialGradient>
       </defs>
-      <path d={reef} fill={water} opacity={0.35 + 0.25 * daylight.level} />
-      <path d={beach} fill={sand} />
-      <path d={coast} fill={grass} />
+      <g opacity={0.35 + 0.25 * daylight.level}>{#each reef as d, i (i)}<path {d} fill={water} />{/each}</g>
+      {#each beach as d, i (i)}<path {d} fill={sand} />{/each}
+      {#each coast as d, i (i)}<path {d} fill={grass} />{/each}
       {#each hills as hp, i (i)}
         <path d={hp} fill={hill} opacity={0.55 + i * 0.15} />
       {/each}
-      <path d={cape} fill={hill} opacity="0.8" />
       <!-- Two rivers meet at the booth, the way two decks meet at the mixer; downstream is the future. -->
       <path d={riverB} class="river" stroke={water} />
       <path d={river} class="river" stroke={water} />
