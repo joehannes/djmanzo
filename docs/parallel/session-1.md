@@ -36,6 +36,8 @@ the shared documents at the fold (§5).
   load), *Live, in your headphones* in the Practice panel. And an old
   real-time fault fixed on the way: `Deck::eject` allocated on the audio
   thread; the engine hands decks its own silence now.
+- **§115, §118 and §121 closed by the owner**: their rows name no open
+  gap. 85 done, 25 part.
 
 ### Round 2
 
