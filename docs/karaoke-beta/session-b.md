@@ -6,6 +6,20 @@ Only session B edits this file.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
+- **A guest's song, from Suno to WhatsApp, in djmanzo's own windows.**
+  *Fill in Suno's form* (a guest's song card) opens djmanzo's Suno window
+  and fills its Custom form with the words chosen and the style, like an
+  autofill; the DJ checks them and presses Create — djmanzo never does, as
+  Suno's terms forbid it. Not signed in yet? The form fills itself once the
+  DJ has signed in and Create opens, leaving anything the DJ typed alone.
+  Suno's page says what was filled. Once the DJ opens the finished song in
+  that window, its link comes into the card by itself. *In djmanzo's
+  window* then opens WhatsApp Web in a window of djmanzo's own at the chat
+  with the guest, the message and link written; the DJ presses send. Only
+  for a guest who agreed to be contacted. The *WhatsApp* button still opens
+  the app. With no prepared event, the song's words take the DJ's own
+  genres from the press kit as the night's music.
+
 - **Four karaoke presets for a microphone.** *Stadium* (a long, wide room
   and a little more push, for the big chorus), *Radio voice* (the lows and
   highs cut, the middle forward, squeezed hard and dry — for a spoken verse
@@ -55,6 +69,43 @@ Only session B edits this file.
   seconds, six a second for the whole room.
 
 ## Status (for DIRECTIVE-STATUS.md §126 / §127, FEATURES.md, KARAOKE.md)
+
+- **B5 built**, as the owner chose on 16 October (asked: prefill and the
+  DJ presses Create, not full automation; WhatsApp ready and the DJ sends;
+  `GuestSong.svelte` may be edited): `dj_app::suno` (`suno_fill`,
+  `suno_link`, `guests_whatsapp_here`; `song_link`, `fill_script`,
+  `Pending`, `words_for`), the page script `crates/dj-app/src/suno_fill.js`,
+  `guests::whatsapp_web` (sharing `wa.me`'s number rule), `with_night`
+  taking the kit's genres when no event names the night's music,
+  `ui/src/sunoSend.ts`, and the card in `GuestSong.svelte`. Neither window
+  is named by a capability: the pages have no way into djmanzo, and
+  djmanzo reads only the Suno window's address, never the page. Held by 6
+  Rust tests (`suno::tests` 4, `whatsapp_web_is_the_same_message_on_the_
+  same_terms`, the kit case in `the_night_around_a_song_is_the_events_and_
+  the_kits`), `e2e/suno-fill.spec.ts` (4: the real script on a stand-in
+  Create page built like React's, Custom pressed, filled as typing fills,
+  what it could not find said, a waiting fill leaving the DJ's words, never
+  pressing Create) and `e2e/song-send.spec.ts` (1); 24 mutants fail them.
+- **Driven** (Xvfb, the real suno.com and web.whatsapp.com through this
+  container's proxy): *Fill in Suno's form* opened Suno's window, which
+  showed Suno's sign-in (no account here); the first drive showed the fill
+  lost to Suno's redirect to sign-in and the card claiming the words were
+  in, and both were fixed (the fill now waits on suno.com's pages for
+  fifteen minutes; the card says the words *went* to Suno's window). The
+  page then said "djmanzo is waiting for Suno's song form: sign in and open
+  Create, and djmanzo fills it in then." *In djmanzo's window* opened
+  WhatsApp Web, which WebKitGTK is served, at its QR sign-in. The same
+  drive found both new buttons drawn as blank green bars (a local style
+  that coloured their words like their fill); fixed, and a browser check of
+  it added.
+- Not proved here, and nothing here can prove it: that today's suno.com
+  Create form is found by the script's words (*lyric*, *style*/*genre*,
+  *title*, a *Custom* switch) once signed in; that the address of a song
+  opened in Suno's window is `/song/<id>` or `/s/<id>` (WebKit reports an
+  address changed by the page's own routing, which is what `suno_link`
+  reads); that WhatsApp Web, signed in, opens the chat from
+  `web.whatsapp.com/send`. A Suno redesign breaks the fill quietly: the
+  page says it found nothing, and the words are on the clipboard.
 
 - **B4 built**: `dj_vocal::Preset::{Stadium, RadioVoice, BigEcho, Duet}`
   (`radio-voice`, `big-echo` on the wire), chain settings only, inside
@@ -163,6 +214,14 @@ wiped in that singer's colour.
 sound of the voice; the fader, pan and where it is sent stay as you set
 them.
 
+**A guest's song, sent.** In the guest's record, *Fill in Suno's form*
+opens Suno in djmanzo's own window and puts in the words and the style.
+Sign in there the first time; check what it filled and press Create
+yourself. Open the finished song in that window and its link appears in the
+card. Then *In djmanzo's window* opens WhatsApp Web at the guest's chat with
+the message written (sign in once with your phone's QR code) — or
+*WhatsApp* for the app. You always press send.
+
 ## For the next session (HANDOFF.md)
 
 ## Needed a file this session does not own
@@ -188,3 +247,12 @@ them.
   Nothing breaks (the menu is drawn from Rust's list and sends its ids
   back), but the type should name `stadium`, `radio-voice`, `big-echo` and
   `duet` at the merge.
+
+- B5 edited `ui/src/GuestSong.svelte` (in neither column) with the owner's
+  leave, asked on 16 October. At the merge, keep its *Fill in Suno's form*,
+  the language choice, the caught link and *In djmanzo's window*.
+
+- `docs/karaoke_beta_release.md` (the risks table) says "djmanzo fills
+  Suno's form the day its API opens"; with the owner's choice it now fills
+  it as an autofill in its own window, and the DJ presses Create. That line
+  wants changing at the merge, and `docs/KARAOKE.md`'s §123 with it.

@@ -217,7 +217,8 @@ pub fn brief(
 /// §123: the night around a guest's song — the prepared event being played
 /// and the DJ's press kit — laid into the brief, so the words know a wedding
 /// on a terrace from a club night and whose night it was. Only what is said:
-/// no event, no occasion; an empty kit, no host.
+/// no event, no occasion; an empty kit, no host. Tonight's music is the
+/// event's genres, else the kit's (karaoke beta B5).
 #[must_use]
 pub fn with_night(
     mut brief: dj_assistant::SongBrief,
@@ -252,6 +253,16 @@ pub fn with_night(
     if let Some(kit) = kit {
         brief.host = kit.name.trim().to_owned();
         brief.host_line = kit.tagline.trim().to_owned();
+        // Karaoke beta B5: with no event naming tonight's music, the DJ's own
+        // sound from the kit is the night's.
+        if brief.evening.iter().all(|genre| genre.trim().is_empty()) {
+            brief.evening = kit
+                .genres
+                .iter()
+                .map(|genre| genre.trim().to_owned())
+                .filter(|genre| !genre.is_empty())
+                .collect();
+        }
     }
     brief
 }
@@ -312,27 +323,11 @@ pub fn compose(guest: &Guest, reach: Reach, text: &str) -> Result<String, String
         return Err(format!("{} has not agreed to be contacted", guest.name));
     }
     match reach {
-        Reach::WhatsApp => {
-            let phone = guest.phone.trim();
-            let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
-            let international = if phone.starts_with('+') {
-                digits
-            } else if let Some(rest) = digits.strip_prefix("00") {
-                rest.to_owned()
-            } else {
-                return Err(format!(
-                    "WhatsApp needs {}'s number with its country code, like +34 600 123 456",
-                    guest.name
-                ));
-            };
-            if international.len() < 8 {
-                return Err(format!("{}'s number is too short to dial", guest.name));
-            }
-            Ok(format!(
-                "https://wa.me/{international}?text={}",
-                urlencoding::encode(text)
-            ))
-        }
+        Reach::WhatsApp => Ok(format!(
+            "https://wa.me/{}?text={}",
+            international(guest)?,
+            urlencoding::encode(text)
+        )),
         Reach::Mail => {
             let email = guest.email.trim();
             if email.is_empty() {
@@ -347,6 +342,49 @@ pub fn compose(guest: &Guest, reach: Reach, text: &str) -> Result<String, String
             ))
         }
     }
+}
+
+/// A guest's number as WhatsApp dials it: digits only, the country code
+/// first.
+///
+/// # Errors
+/// A number without its country code — djmanzo cannot know which country a
+/// local number belongs to — or too short to dial.
+fn international(guest: &Guest) -> Result<String, String> {
+    let phone = guest.phone.trim();
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    let international = if phone.starts_with('+') {
+        digits
+    } else if let Some(rest) = digits.strip_prefix("00") {
+        rest.to_owned()
+    } else {
+        return Err(format!(
+            "WhatsApp needs {}'s number with its country code, like +34 600 123 456",
+            guest.name
+        ));
+    };
+    if international.len() < 8 {
+        return Err(format!("{}'s number is too short to dial", guest.name));
+    }
+    Ok(international)
+}
+
+/// Karaoke beta B5: the same message as [`compose`]'s WhatsApp address, for
+/// WhatsApp Web in a window of djmanzo's own — the chat with the guest open
+/// and the message written. Nothing is sent: the DJ presses send there.
+///
+/// # Errors
+/// As [`compose`]: a guest who has not agreed to be contacted, or a number
+/// WhatsApp cannot dial.
+pub fn whatsapp_web(guest: &Guest, text: &str) -> Result<String, String> {
+    if !guest.consent.contact || !guest.may_consent() {
+        return Err(format!("{} has not agreed to be contacted", guest.name));
+    }
+    Ok(format!(
+        "https://web.whatsapp.com/send?phone={}&text={}",
+        international(guest)?,
+        urlencoding::encode(text)
+    ))
 }
 
 /// The newest recording of a guest's voice: the take made during the song
@@ -1111,9 +1149,24 @@ mod tests {
         );
         let named = dj_assistant::SongBrief {
             place: "Bar Sol".into(),
-            ..base
+            ..base.clone()
         };
         assert_eq!(with_night(named, Some(&wedding), None).place, "Bar Sol");
+
+        // B5: tonight's music is the event's; with none, the DJ's own sound.
+        let sound = crate::kit::Kit {
+            genres: vec![" bachata ".into(), String::new(), "salsa".into()],
+            ..crate::kit::Kit::default()
+        };
+        assert_eq!(
+            with_night(base.clone(), None, Some(&sound)).evening,
+            ["bachata", "salsa"]
+        );
+        let latin = dj_assistant::SongBrief {
+            evening: vec!["latin".into()],
+            ..base.clone()
+        };
+        assert_eq!(with_night(latin, None, Some(&sound)).evening, ["latin"]);
     }
 
     fn guest(name: &str) -> Guest {
@@ -1269,6 +1322,36 @@ mod tests {
             message(&guest("Bo"), ""),
             "Hi Bo! Thank you for singing. Here is a song made for you from tonight."
         );
+    }
+
+    /// **Karaoke beta B5: WhatsApp Web, in djmanzo's own window, opens the
+    /// same chat with the same message**, on the same terms as `wa.me`: only
+    /// for a guest who agreed to be contacted and whose number has its
+    /// country code.
+    #[test]
+    fn whatsapp_web_is_the_same_message_on_the_same_terms() {
+        let mut ana = guest("Ana");
+        ana.phone = "+34 600-123 456".into();
+        let text = message(&ana, "https://suno.com/song/abc");
+        assert!(whatsapp_web(&ana, &text).is_err(), "no consent to contact");
+        ana.consent.contact = true;
+        let web = whatsapp_web(&ana, &text).expect("composed");
+        assert!(
+            web.starts_with("https://web.whatsapp.com/send?phone=34600123456&text=Hi%20Ana"),
+            "{web}"
+        );
+        assert!(web.contains("https%3A%2F%2Fsuno.com%2Fsong%2Fabc"), "{web}");
+        let app = compose(&ana, Reach::WhatsApp, &text).expect("composed");
+        assert_eq!(
+            web.split_once("text=").map(|(_, t)| t),
+            app.split_once("text=").map(|(_, t)| t),
+            "the same words either way"
+        );
+        ana.phone = "600 123 456".into();
+        assert!(whatsapp_web(&ana, &text).is_err(), "no country code");
+        ana.phone = "+34 600 123 456".into();
+        ana.age = Some(14);
+        assert!(whatsapp_web(&ana, &text).is_err(), "too young to agree");
     }
 
     #[test]

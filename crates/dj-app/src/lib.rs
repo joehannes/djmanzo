@@ -135,6 +135,7 @@ pub mod world;
 // go between these two lines, and nothing else does.
 pub mod guide_offer;
 pub mod reactions;
+pub mod suno;
 // End of session B's modules.
 pub mod youtube;
 
@@ -1156,6 +1157,9 @@ pub fn run() {
             reactions::room_reactions,
             reactions::room_reactions_set,
             guide_offer::karaoke_guide_offer,
+            suno::suno_fill,
+            suno::suno_link,
+            suno::guests_whatsapp_here,
             // End of session B's commands.
         ])
         .run(tauri::generate_context!())

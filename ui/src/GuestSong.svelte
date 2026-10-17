@@ -16,6 +16,7 @@
     type Guest,
     type GuestBook,
   } from "./api";
+  import { sunoFill, sunoLink, whatsappHere } from "./sunoSend";
 
   let { guest, onbook }: { guest: Guest; onbook: (book: GuestBook) => void } = $props();
 
@@ -33,6 +34,67 @@
   /** The song's address on Suno, pasted by the DJ once it is made. */
   let link = $state("");
   let sent = $state("");
+  /**
+   * Karaoke beta B5: the words to put in Suno's form, which language; what
+   * the fill said; and whether the link came from Suno's window by itself.
+   */
+  let fillIn = $state("");
+  let filled = $state("");
+  let caught = $state(false);
+  /** Suno's window is open: its address is read for the song's link. */
+  let watching = $state(false);
+  const fillLanguage = $derived(
+    draft?.versions.some((v) => v.language === fillIn) ? fillIn : (draft?.versions[0]?.language ?? ""),
+  );
+  async function fill() {
+    failed = "";
+    filled = "";
+    const words = draft?.versions.find((v) => v.language === fillLanguage);
+    try {
+      // On the clipboard too: a box Suno has renamed is then one paste away.
+      if (words) await navigator.clipboard.writeText(words.lyrics).catch(() => undefined);
+      const done = await sunoFill(guest.id, fillLanguage);
+      watching = true;
+      filled = `The ${done.language} words and the style went to Suno's window, and the words are on your clipboard. Suno's window says what it filled — check them there, then press Create. ${
+        done.waits
+          ? "Not signed in yet? Sign in there: the form fills itself once Create opens."
+          : "Not signed in yet? Sign in there, open Create, then press this again."
+      }`;
+    } catch (e) {
+      failed = String(e);
+    }
+  }
+  $effect(() => {
+    if (!watching || link.trim() !== "") return;
+    let alive = true;
+    const look = async () => {
+      while (alive && link.trim() === "") {
+        try {
+          const found = await sunoLink();
+          if (alive && found && link.trim() === "") {
+            link = found;
+            caught = true;
+          }
+        } catch {
+          // No window, no link: the DJ can paste it.
+        }
+        await new Promise((r) => setTimeout(r, 2_000));
+      }
+    };
+    void look();
+    return () => {
+      alive = false;
+    };
+  });
+  async function sendHere() {
+    failed = "";
+    sent = "";
+    try {
+      sent = await whatsappHere(guest.id, link.trim());
+    } catch (e) {
+      failed = String(e);
+    }
+  }
 
   const voice = $derived(guest.take ?? [...guest.sang].reverse().find((song) => song.voice)?.voice ?? null);
   // A number or an address on the record is already consent: Rust clears
@@ -141,26 +203,71 @@
       {/each}
 
       <div class="make" role="group" aria-label="Make it on Suno">
-        <button type="button" onclick={() => void act(openSuno)}>Open Suno</button>
+        <!-- B5: an autofill and no more — the DJ presses Create. -->
+        <button type="button" class="primary" onclick={() => void fill()}>Fill in Suno's form</button>
+        {#if draft.versions.length > 1}
+          <select
+            aria-label="Words to fill in"
+            value={fillLanguage}
+            onchange={(e) => (fillIn = e.currentTarget.value)}
+          >
+            {#each draft.versions as version (version.language)}
+              <option value={version.language}>{version.language}</option>
+            {/each}
+          </select>
+        {/if}
+        <button
+          type="button"
+          onclick={() =>
+            void act(async () => {
+              await openSuno();
+              watching = true;
+            })}>Open Suno</button
+        >
         {#if voice}
           <button type="button" onclick={() => void act(() => guestRevealVoice(guest.id))}>Show their voice file</button>
         {/if}
+        {#if filled}
+          <p class="filled" role="status">{filled}</p>
+        {/if}
         <p class="hint">
-          Sign in, paste the words and the style{voice ? ", upload their voice" : ""}, and make the song. djmanzo
-          does not work Suno for you: its terms do not allow it.
+          Sign in to Suno once in its window. <em>Fill in Suno's form</em> puts in the words and the style{voice
+            ? "; upload their voice yourself"
+            : ""}; you check them and press Create — Suno's terms do not allow djmanzo to make the song for you.
+          Open the finished song there and its link comes here by itself.
         </p>
       </div>
 
       {#if canWhatsApp || canMail}
         <div class="send" role="group" aria-label="Send it to {guest.name}">
-          <label class="wide">The song's link <input bind:value={link} placeholder="https://suno.com/s/…" /></label>
+          <label class="wide"
+            >The song's link <input
+              bind:value={link}
+              oninput={() => (caught = false)}
+              placeholder="https://suno.com/s/…"
+            /></label
+          >
           {#if canWhatsApp}
+            <!-- B5: WhatsApp Web in a window of djmanzo's own; the app beside it. -->
+            <button
+              type="button"
+              class="primary"
+              title="WhatsApp Web, in a window of djmanzo's own — sign in once with your phone"
+              onclick={() => void sendHere()}>In djmanzo's window</button
+            >
             <button type="button" onclick={() => void send("whatsapp")}>WhatsApp</button>
           {/if}
           {#if canMail}
             <button type="button" onclick={() => void send("mail")}>Mail</button>
           {/if}
-          <p class="hint">Opens with the message written and {guest.name} as the recipient; you press send.</p>
+          {#if caught}
+            <p class="caught" data-caught>The link came from Suno's window.</p>
+          {/if}
+          <p class="hint">
+            Opens with the message written and {guest.name} as the recipient; you press send.{canWhatsApp
+              ? " In djmanzo's window is WhatsApp Web; WhatsApp is the app on this computer."
+              : ""}
+          </p>
           {#if sent}
             <p class="sent" role="status">{sent}</p>
           {/if}
@@ -202,6 +309,12 @@
   .error {
     margin: 0;
     color: var(--danger);
+  }
+  .filled,
+  .caught {
+    margin: 0;
+    font-size: 0.85em;
+    color: var(--success);
   }
 
   .ask {
