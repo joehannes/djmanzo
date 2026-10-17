@@ -3278,6 +3278,29 @@ export const practiceRehearse = (style?: string) =>
   invoke<Rehearsal>("practice_rehearse", { style: style ?? null });
 
 /**
+ * §69: the practice deck — a deck only the headphones hear
+ * (`dj_app::practice_live`). Said to in the deck vocabulary: `play_pause`,
+ * `loop 4`, `stem_mute drums`, `fx 1 echo`.
+ */
+export interface PracticeLive {
+  /** The record on it, by id, or null. */
+  track: string | null;
+  title: string;
+  playing: boolean;
+  looping: boolean;
+  position_seconds: number;
+  length_seconds: number;
+  /** Its peak in the headphones, 0 to 1. */
+  level: number;
+  /** Whether there is a headphone pair: without one it is silent. */
+  headphones: boolean;
+}
+export const practiceLive = () => invoke<PracticeLive>("practice_live");
+export const practiceLiveLoad = (track: string) => invoke<PracticeLive>("practice_live_load", { track });
+export const practiceLiveDo = (action: string) => invoke<PracticeLive>("practice_live_do", { action });
+export const practiceLiveEject = () => invoke<PracticeLive>("practice_live_eject");
+
+/**
  * Speech recognition — words in time and spoken commands — on this machine:
  * the DJ's switch, and what the machine was found to do whatever it says.
  * See `dj_app::listening`.

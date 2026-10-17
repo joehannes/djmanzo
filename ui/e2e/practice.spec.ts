@@ -136,4 +136,81 @@ test.describe("the practice lab", () => {
     ).toContainText("cut");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **§69, live: a record in the headphones, looped, its stems taken apart
+   * and an effect put on** — each press sent as the deck word a controller
+   * uses, to the practice deck and nothing else. A record is found by a
+   * search with no pair held, the held pair's two are offered when there is
+   * one, and with no headphone pair the panel says the deck is silent.
+   */
+  test("practises a record live, in the headphones only", async ({ page }) => {
+    await practiceOpen(page);
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
+        __practice: { cmd: string; args: Record<string, unknown> }[];
+        __headphones: boolean;
+      };
+      win.__practice = [];
+      win.__headphones = true;
+      let live: Record<string, unknown> = { track: null, title: "", playing: false, looping: false, position_seconds: 0, length_seconds: 0, level: 0, headphones: true };
+      const stub = win.__TAURI_INTERNALS__.invoke;
+      win.__TAURI_INTERNALS__.invoke = (cmd, args = {}) => {
+        if (!cmd.startsWith("practice_live")) return stub(cmd, args);
+        win.__practice.push({ cmd, args: structuredClone(args) });
+        if (cmd === "practice_live_load") live = { ...live, track: args.track, title: "Juan Luis Guerra – Bachata Rosa", length_seconds: 240 };
+        if (cmd === "practice_live_do" && args.action === "play_pause") live = { ...live, playing: !live.playing };
+        if (cmd === "practice_live_do" && String(args.action).startsWith("loop ")) live = { ...live, looping: true };
+        if (cmd === "practice_live_eject") live = { ...live, track: null, title: "", playing: false };
+        return Promise.resolve({ ...live, headphones: win.__headphones });
+      };
+    });
+    const panel = page.locator(PRACTICE);
+    const live = panel.getByRole("region", { name: "Practise live, in your headphones" });
+    await expect(live).toBeVisible();
+    await expect(live.locator("[data-no-headphones]")).toHaveCount(0);
+    const said = () =>
+      page.evaluate(() =>
+        (window as unknown as { __practice: { cmd: string; args: Record<string, unknown> }[] }).__practice
+          .filter((c) => c.cmd === "practice_live_do")
+          .map((c) => c.args.action),
+      );
+
+    await live.getByRole("textbox", { name: "Find a record to practise on" }).fill("Bach");
+    await live.getByRole("list", { name: "Records to practise on" }).getByRole("button").first().click();
+    const deck = live.locator("[data-practice-live]");
+    await expect(deck).toContainText("Juan Luis Guerra – Bachata Rosa");
+
+    await deck.getByRole("button", { name: "Play" }).click();
+    await expect(deck.getByRole("button", { name: "Pause" })).toBeVisible();
+    await deck.getByRole("group", { name: "Loop" }).getByRole("button", { name: "4", exact: true }).click();
+    await expect(deck).toContainText("looping");
+    const drums = deck.getByRole("group", { name: "Stems" }).getByRole("button", { name: "Drums" });
+    await drums.click();
+    await expect(drums).toHaveAttribute("aria-pressed", "false");
+    const low = deck.getByRole("group", { name: "EQ" }).getByRole("button", { name: "Low" });
+    await low.click();
+    await expect(low).toHaveAttribute("aria-pressed", "false");
+    await deck.getByRole("combobox", { name: "Practice effect" }).selectOption("echo");
+    await deck.getByRole("group", { name: "Effect" }).getByRole("button", { name: "Off" }).click();
+    expect(await said()).toEqual(["play_pause", "loop 4", "stem_mute drums", "eq_low 0", "fx 1 echo", "fx 1 on"]);
+
+    await deck.getByRole("button", { name: "Take it off" }).click();
+    await expect(deck).toHaveCount(0);
+
+    // No headphone pair: said, not hidden.
+    await page.evaluate(() => ((window as unknown as { __headphones: boolean }).__headphones = false));
+    await live.getByRole("textbox", { name: "Find a record to practise on" }).fill("Bach");
+    await live.getByRole("list", { name: "Records to practise on" }).getByRole("button").first().click();
+    await expect(live.locator("[data-no-headphones]")).toContainText("silent");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("offers the held pair's two records to practise on", async ({ page }) => {
+    await practiceOpen(page);
+    await withHeld(page);
+    const live = page.locator(PRACTICE).getByRole("region", { name: "Practise live, in your headphones" });
+    await expect(live.getByRole("button", { name: /^Try / })).toHaveCount(2);
+  });
 });

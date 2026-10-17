@@ -33,6 +33,7 @@ pub mod sources_board;
 // Parallel, session 1 (docs/PARALLEL-SESSIONS.md §4): its modules go
 // between these two lines, and nothing else does.
 pub mod echo_tempo;
+pub mod practice_live;
 pub mod room_taps;
 // End of parallel session 1's modules.
 pub mod assistant;
@@ -727,6 +728,13 @@ pub fn run() {
             sources_board::sources_board,
             find_song::find_song,
             // End of session A's commands.
+            // Parallel, session 1 (docs/PARALLEL-SESSIONS.md §4): its
+            // commands go between these two lines, and nothing else does.
+            practice_live::practice_live,
+            practice_live::practice_live_load,
+            practice_live::practice_live_do,
+            practice_live::practice_live_eject,
+            // End of parallel session 1's commands.
             commands::list_devices,
             standin::controller_standin_press,
             commands::list_inputs,

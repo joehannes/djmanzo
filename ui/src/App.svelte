@@ -114,6 +114,7 @@
   import Pair from "./Pair.svelte";
   import MissionBar from "./MissionBar.svelte";
   import Whisper from "./Whisper.svelte";
+  import { readPeak } from "./peak.svelte";
   import Guides from "./Guides.svelte";
   import PressKit from "./PressKit.svelte";
   import Crowd from "./Crowd.svelte";
@@ -2609,6 +2610,14 @@
   */
   let promoted = $state<string | null>(null);
   const phaseNow = $derived(snapshot?.context.session?.phase ?? null);
+  // §17 at the peak: the decks' effects open between mixes (`peak.svelte.ts`).
+  $effect(() => {
+    readPeak(
+      phaseNow,
+      snapshot?.context.session?.certainty ?? null,
+      (snapshot?.decks ?? []).filter((deck) => deck.playing && deck.volume > 0.01).length,
+    );
+  });
 
   $effect(() => {
     const now = phaseNow;

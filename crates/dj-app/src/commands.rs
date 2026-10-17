@@ -2049,6 +2049,110 @@ pub async fn load_track(
     put_on_deck(&state, deck_id, decoded)
 }
 
+/// Separate a record's stems on a thread of their own, outward from wherever
+/// `position` says its playhead is now (in the record's frames), and keep the
+/// line its voice sings once the last chunk arrives. Shared by a deck's load
+/// and §69's practice deck, so a record practised on is separated the same
+/// way as one about to be played.
+///
+/// The buffer is shared, not copied. This used to `to_vec()` the whole
+/// decoded track to have something to slice in the thread -- 138 MB for a
+/// six-minute track -- beside a load that gives the analyser an `Arc` for
+/// exactly that reason. The worker copies each chunk it takes, which it has
+/// to: that one crosses a channel.
+pub(crate) fn separate_in_background(
+    state: &AppState,
+    buffer: &Arc<dj_decode::AudioBuffer>,
+    track_id: dj_core::TrackId,
+    sample_rate: dj_core::SampleRate,
+    position: impl Fn() -> f64 + Send + 'static,
+) {
+    let stems_worker = state.stems_worker();
+    let audio = Arc::clone(buffer);
+    let lock_clone = buffer.stems_lock();
+    let line_library = state.library();
+    std::thread::spawn(move || {
+        // Ten seconds of stereo audio per chunk, at the rate this track was
+        // actually decoded at -- the previous constant 44_100 made a chunk
+        // 9.2 seconds long on a 48 kHz track, and the built-in separator
+        // needs the real rate to place its band edges anyway.
+        let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
+        let interleaved = audio.as_interleaved();
+        let chunk_frames = chunk_size / dj_decode::CHANNELS;
+        let total_frames = interleaved.len() / dj_decode::CHANNELS;
+        let chunk_count = total_frames.div_ceil(chunk_frames.max(1));
+
+        // **Separate outward from the playhead, not forward from the file.**
+        //
+        // Walking 0..n is the wrong order for the one thing a DJ actually
+        // does with a fresh track: load it and cue straight to the drop. The
+        // worker would be twenty seconds in while the playhead sat at three
+        // minutes, and the stem pads would quietly do nothing there for as
+        // long as it took to grind through everything in between.
+        //
+        // So the next chunk to separate is chosen each time round, by distance
+        // from wherever the playhead is *now* -- which also means a seek
+        // mid-separation redirects the work rather than being ignored.
+        // Slightly ahead is preferred to slightly behind at equal distance,
+        // because the playhead is moving one way.
+        let here = || {
+            let position = position();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            if chunk_frames == 0 {
+                0
+            } else {
+                (position.max(0.0) / chunk_frames as f64) as usize
+            }
+        };
+        feed_chunks(
+            chunk_count,
+            here,
+            |index| lock_clone.load().has_chunk(index),
+            |next| {
+                // `process_chunk` blocks once the worker is a few chunks
+                // behind, so this thread spends most of its life asleep rather
+                // than racing ahead building a queue. That is the point of the
+                // bound -- and it is also what makes re-choosing worthwhile,
+                // because by the time it wakes the playhead has usually moved.
+                // Separated with the audio either side of it, and trimmed back
+                // to the chunk afterwards.
+                //
+                // A chunk separated alone is wrong at both edges -- the
+                // windows there have no neighbours to overlap-add with -- so
+                // butting them together put a glitch at every seam, once every
+                // ten seconds, for the whole track. See
+                // `dj_stems::stems::SEPARATION_MARGIN`.
+                let body_start = next * chunk_frames;
+                let body_end = (body_start + chunk_frames).min(total_frames);
+                let lead = body_start.min(dj_stems::stems::SEPARATION_MARGIN);
+                let from = body_start - lead;
+                let to = (body_end + dj_stems::stems::SEPARATION_MARGIN).min(total_frames);
+
+                stems_worker.process_chunk(
+                    track_id,
+                    next,
+                    &interleaved[from * dj_decode::CHANNELS..to * dj_decode::CHANNELS],
+                    lead..lead + (body_end - body_start),
+                    sample_rate.get(),
+                    Some(lock_clone.clone()),
+                );
+            },
+        );
+        // K6: every chunk asked for, the line its voice sings once the last
+        // of them arrives — for a record with words, under this separator.
+        if let Some(separator) = stems_worker.separator() {
+            keep_vocal_line(
+                &line_library,
+                track_id,
+                &lock_clone,
+                total_frames,
+                sample_rate.get(),
+                separator,
+            );
+        }
+    });
+}
+
 /// Everything a load does once the file is decoded.
 ///
 /// Split from [`load_track`] because decoding is the part that has to happen
@@ -2200,100 +2304,14 @@ pub fn put_on_deck(
     // whatever was on the deck a moment ago.
     restore_deck_state(state, deck_id, track_id, sample_rate);
 
-    // Queue stem separation in the background.
-    //
-    // The buffer is shared, not copied. This used to `to_vec()` the whole
-    // decoded track to have something to slice in the thread -- 138 MB for a
-    // six-minute track -- directly beneath the comment above explaining why
-    // the analyser gets an `Arc` instead. The worker copies each chunk it
-    // takes, which it has to: that one crosses a channel.
-    let stems_worker = state.stems_worker();
-    let audio = Arc::clone(&buffer);
-    let lock_clone = buffer.stems_lock();
+    // Queue stem separation in the background, outward from this deck's
+    // playhead.
     let registry = state.registry();
-    let line_library = state.library();
-    std::thread::spawn(move || {
-        // Ten seconds of stereo audio per chunk, at the rate this track was
-        // actually decoded at -- the previous constant 44_100 made a chunk
-        // 9.2 seconds long on a 48 kHz track, and the built-in separator
-        // needs the real rate to place its band edges anyway.
-        let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
-        let interleaved = audio.as_interleaved();
-        let chunk_frames = chunk_size / dj_decode::CHANNELS;
-        let total_frames = interleaved.len() / dj_decode::CHANNELS;
-        let chunk_count = total_frames.div_ceil(chunk_frames.max(1));
-
-        // **Separate outward from the playhead, not forward from the file.**
-        //
-        // Walking 0..n is the wrong order for the one thing a DJ actually
-        // does with a fresh track: load it and cue straight to the drop. The
-        // worker would be twenty seconds in while the playhead sat at three
-        // minutes, and the stem pads would quietly do nothing there for as
-        // long as it took to grind through everything in between.
-        //
-        // So the next chunk to separate is chosen each time round, by distance
-        // from wherever the playhead is *now* -- which also means a seek
-        // mid-separation redirects the work rather than being ignored.
-        // Slightly ahead is preferred to slightly behind at equal distance,
-        // because the playhead is moving one way.
-        let here = || {
-            let position = f64::from(registry.get(dj_core::param::ParamId::Deck(
-                deck_id,
-                dj_core::param::DeckParam::Position,
-            )));
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            if chunk_frames == 0 {
-                0
-            } else {
-                (position.max(0.0) / chunk_frames as f64) as usize
-            }
-        };
-        feed_chunks(
-            chunk_count,
-            here,
-            |index| lock_clone.load().has_chunk(index),
-            |next| {
-                // `process_chunk` blocks once the worker is a few chunks
-                // behind, so this thread spends most of its life asleep rather
-                // than racing ahead building a queue. That is the point of the
-                // bound -- and it is also what makes re-choosing worthwhile,
-                // because by the time it wakes the playhead has usually moved.
-                // Separated with the audio either side of it, and trimmed back
-                // to the chunk afterwards.
-                //
-                // A chunk separated alone is wrong at both edges -- the
-                // windows there have no neighbours to overlap-add with -- so
-                // butting them together put a glitch at every seam, once every
-                // ten seconds, for the whole track. See
-                // `dj_stems::stems::SEPARATION_MARGIN`.
-                let body_start = next * chunk_frames;
-                let body_end = (body_start + chunk_frames).min(total_frames);
-                let lead = body_start.min(dj_stems::stems::SEPARATION_MARGIN);
-                let from = body_start - lead;
-                let to = (body_end + dj_stems::stems::SEPARATION_MARGIN).min(total_frames);
-
-                stems_worker.process_chunk(
-                    track_id,
-                    next,
-                    &interleaved[from * dj_decode::CHANNELS..to * dj_decode::CHANNELS],
-                    lead..lead + (body_end - body_start),
-                    sample_rate.get(),
-                    Some(lock_clone.clone()),
-                );
-            },
-        );
-        // K6: every chunk asked for, the line its voice sings once the last
-        // of them arrives — for a record with words, under this separator.
-        if let Some(separator) = stems_worker.separator() {
-            keep_vocal_line(
-                &line_library,
-                track_id,
-                &lock_clone,
-                total_frames,
-                sample_rate.get(),
-                separator,
-            );
-        }
+    separate_in_background(state, &buffer, track_id, sample_rate, move || {
+        f64::from(registry.get(dj_core::param::ParamId::Deck(
+            deck_id,
+            dj_core::param::DeckParam::Position,
+        )))
     });
 
     // Analysis runs *after* the track is playable, on its own worker.
@@ -7247,11 +7265,12 @@ mod lesson_moment_tests {
     use crate::tiers::Tier;
 
     /// Every reason a budget can give, for the tests that must hold for all.
-    const EVERY_REASON: [Quiet; 9] = [
+    const EVERY_REASON: [Quiet; 10] = [
         Quiet::Room,
         Quiet::Failing,
         Quiet::Mixing,
         Quiet::Peak,
+        Quiet::WarmUp,
         Quiet::Focus(Focus::Performing),
         Quiet::Focus(Focus::Supervising),
         Quiet::Focus(Focus::Preparing),
@@ -8686,9 +8705,11 @@ pub(crate) fn lesson_withheld(
             "Not while you are watching the autopilot. The lesson has room in Practice."
         }
         Quiet::Focus(_) => "Not in an activity set for playing. The lesson has room in Practice.",
-        // A budget with no reason to be small: nothing judged it, so the
-        // sentence claims nothing about why.
-        Quiet::Room => "Not now. The lesson will be here when there is room for it.",
+        // A budget with no reason to be small (warm-up leaves the room's
+        // tiers as they are): the sentence claims nothing about why.
+        Quiet::Room | Quiet::WarmUp => {
+            "Not now. The lesson will be here when there is room for it."
+        }
     })
 }
 

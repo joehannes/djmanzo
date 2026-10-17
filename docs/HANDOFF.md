@@ -115,6 +115,13 @@ without a microphone has, for driving anything that listens to a strip (K6).
 
 **From the two parallel sessions of 17 October** (their notes, kept here):
 
+- **An `$effect` that fetches "until there is something" loops forever when
+  the answer is legitimately empty.** The playlist drawer did, on a DJ with
+  no plain lists; with the browser suite's instant answers it froze the page
+  (every probe "hung", even `page.evaluate` of a click). Ask once per
+  occasion, with a plain flag the effect does not read reactively.
+- **A UI mutation run leaves the mutant's bundle in `ui/dist`.** Rebuild
+  before the next real run, or it tests the mutant.
 - **The browser suite tests `ui/dist`, not `ui/src`.** A run started on a
   bundle older than the code (`npm run build` not run since a merge) fails
   or passes against the wrong interface: on 17 October seventeen of the

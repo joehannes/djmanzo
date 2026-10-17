@@ -15,6 +15,7 @@
   import SvgKnob from "./controls/SvgKnob.svelte";
   import { fxFaceOf } from "./controls/fxFaces";
   import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
+  import { peak } from "./peak.svelte";
 
   let {
     slots,
@@ -42,6 +43,19 @@
   });
 
   const anyLoaded = $derived(slots.some((slot) => slot.kind !== "none"));
+
+  /**
+   * §17 at the peak: a deck's rack opens once the peak has come (between
+   * mixes), unless the DJ closed this one while it was held open — then it
+   * stays closed for the night. The master's rack is not a deck's.
+   */
+  const isDeck = $derived(target.startsWith("deck "));
+  const peakOpen = $derived(isDeck && peak.opened && !peak.closed.includes(target));
+
+  function toggled(event: Event) {
+    const open = (event.currentTarget as HTMLDetailsElement).open;
+    if (!open && peakOpen) peak.closed = [...peak.closed, target];
+  }
 
   let naming = $state(false);
   let chainName = $state("");
@@ -96,7 +110,7 @@
   from the DJ who set it up -- including after a restart, because the slots come
   from the engine's snapshot.
 -->
-<details class="rack-fold" open={anyLoaded}>
+<details class="rack-fold" open={anyLoaded || peakOpen} ontoggle={toggled}>
   <summary>
     Effects
     {#if anyLoaded}

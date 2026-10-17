@@ -28,7 +28,7 @@ pub mod record;
 pub mod sampler;
 
 pub use bus::{BusLayout, BusRouting, STEM_OUT_CHANNELS, WIDEST_OUTPUT};
-pub use command::{Command, Retired};
+pub use command::{Command, Practice, Retired};
 pub use deck::{Deck, DeckLevels};
 pub use engine::{Engine, MONITOR_MUSIC_OFF_DB};
 pub use record::{Capture, Recorder};

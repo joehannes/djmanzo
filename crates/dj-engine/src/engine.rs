@@ -120,6 +120,17 @@ pub struct Engine {
     /// than being one: see [`crate::preview`] for why a reserved sampler slot
     /// and a hidden deck are both the wrong shape.
     preview: crate::preview::Preview,
+    /// §69: the practice deck — a deck, because practising is loops, stems
+    /// and effects and a deck already does all three, but never one of the
+    /// four: it has no channel on the crossfader, no place in sync and no
+    /// row in the parameter table, and it is processed with a layout whose
+    /// only pair is the headphones'. It cannot reach the room structurally,
+    /// as [`crate::preview`] cannot; with no headphone pair it is silent.
+    practice: Deck,
+    /// Silence, made once: what an ejected deck is left holding. Handed out
+    /// as a clone, which only counts a reference — `Deck::eject` builds a
+    /// new empty record, three allocations on the audio thread.
+    empty: Arc<dyn dj_decode::TrackSource>,
     /// Capturing into a sampler slot. See [`crate::record`].
     recorder: Recorder,
     /// The microphone / line input strip. See [`crate::mic::Mic`].
@@ -251,6 +262,8 @@ impl Engine {
             quantize: false,
             sampler: Sampler::new(sample_rate.as_f64()),
             preview: crate::preview::Preview::new(sample_rate.as_f64()),
+            practice: Deck::new(sample_rate),
+            empty: Arc::new(dj_decode::AudioBuffer::empty()),
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
             mic: crate::mic::Mic::new(sr),
@@ -432,6 +445,49 @@ impl Engine {
         }
     }
 
+    /// §69: what the practice deck is told. Its record comes back through the
+    /// retirement queue like any deck's.
+    fn practise(&mut self, order: crate::command::Practice) {
+        use crate::command::Practice;
+        match order {
+            Practice::Load {
+                source,
+                grid,
+                phrase,
+            } => {
+                let previous = self.practice.load(source);
+                self.retire(Retired::Source(previous));
+                self.practice.set_grid(grid);
+                self.practice.set_phrase(phrase);
+            }
+            Practice::Grid { grid, phrase } => {
+                self.practice.set_grid(grid);
+                self.practice.set_phrase(phrase);
+            }
+            Practice::Act(action) => act(&mut self.practice, action, self.quantize),
+            Practice::Eject => {
+                let previous = self.practice.load(Arc::clone(&self.empty));
+                self.retire(Retired::Source(previous));
+            }
+        }
+    }
+
+    /// §69: the practice deck's state, for the panel that drives it.
+    fn publish_practice(&self) {
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::PracticePlaying),
+            self.practice.is_playing(),
+        );
+        self.registry.set(
+            ParamId::Global(GlobalParam::PracticePosition),
+            self.practice.position().get() as f32,
+        );
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::PracticeLooping),
+            self.practice.active_loop().is_some(),
+        );
+    }
+
     fn deck_mut(&mut self, id: DeckId) -> Option<&mut Deck> {
         self.decks.get_mut(id.index())
     }
@@ -545,6 +601,7 @@ impl Engine {
                         self.retire(Retired::Source(previous));
                     }
                 }
+                Command::Practice(order) => self.practise(order),
                 Command::Preview { source, from_frame } => match source {
                     Some(source) => {
                         let previous = self.preview.start(source, from_frame);
@@ -646,8 +703,11 @@ impl Engine {
         match action {
             Action::Deck { deck, action } => {
                 if matches!(action, DeckAction::Eject) {
+                    // The engine's own silence rather than `Deck::eject`'s
+                    // new one: an eject is a press on the audio thread.
+                    let empty = Arc::clone(&self.empty);
                     if let Some(target) = self.deck_mut(deck) {
-                        let previous = target.eject();
+                        let previous = target.load(empty);
                         self.retire(Retired::Source(previous));
                     }
                     return;
@@ -697,164 +757,7 @@ impl Engine {
                 let Some(target) = self.deck_mut(deck) else {
                     return;
                 };
-                match action {
-                    DeckAction::Play => target.play(),
-                    DeckAction::Pause => target.pause(),
-                    DeckAction::PlayPause => target.toggle_play(),
-                    DeckAction::Cue => target.cue(),
-                    DeckAction::Seek(position) => target.seek(position),
-                    DeckAction::SetRate(rate) => target.set_rate(rate),
-                    DeckAction::SetPitch(pitch) => target.set_pitch(pitch),
-                    DeckAction::SetVolume(volume) => target.set_volume(volume),
-                    DeckAction::SetGainDb(db) => target.set_gain_db(db),
-                    DeckAction::SetEqLow(g) => target.set_eq_low(g),
-                    DeckAction::SetEqMid(g) => target.set_eq_mid(g),
-                    DeckAction::SetEqHigh(g) => target.set_eq_high(g),
-                    DeckAction::SetFilter(p) => target.set_filter(p),
-                    DeckAction::SetVoice(level) => target.set_voice(level),
-                    DeckAction::SetCue(on) => target.set_cue(on),
-                    DeckAction::ToggleCue => target.toggle_cue(),
-                    DeckAction::SetKeylock(on) => target.set_keylock(on),
-                    DeckAction::ToggleKeylock => target.toggle_keylock(),
-                    DeckAction::SetKeyShift(n) => target.set_key_shift(n),
-                    DeckAction::SetSlip(on) => target.set_slip(on),
-                    DeckAction::ToggleSlip => {
-                        let on = target.slip();
-                        target.set_slip(!on);
-                    }
-                    DeckAction::SetReverse(on) => target.set_reverse(on),
-                    DeckAction::ToggleReverse => {
-                        // The deck's own reverse, not `reversed()` -- that also
-                        // reports true while a censor is held, and toggling
-                        // during a censor would leave the deck reversed when
-                        // the pad came up.
-                        let on = target.reversed() && !target.censoring();
-                        target.set_reverse(!on);
-                    }
-                    DeckAction::SetCensor(held) => target.set_censor(held),
-                    DeckAction::JogTouch(touched) => target.set_jog_touch(touched),
-                    DeckAction::Jog(turns) => target.jog(turns),
-                    DeckAction::SetJogMode(mode) => target.set_jog_mode(mode),
-                    DeckAction::Stem { stem, change } => {
-                        let idx = stem as usize;
-                        match change {
-                            dj_core::action::StemChange::ToggleMute => {
-                                target.toggle_stem_mute(idx);
-                            }
-                            dj_core::action::StemChange::SetMute(muted) => {
-                                target.set_stem_mute(idx, muted);
-                            }
-                            dj_core::action::StemChange::SetSolo(solo) => {
-                                target.set_stem_solo(idx, solo);
-                            }
-                            dj_core::action::StemChange::Volume(vol) => {
-                                target.set_stem_volume(idx, vol);
-                            }
-                            dj_core::action::StemChange::Eq(band, gain) => {
-                                target.set_stem_eq(idx, band.index(), gain);
-                            }
-                            dj_core::action::StemChange::Filter(position) => {
-                                target.set_stem_filter(idx, position);
-                            }
-                        }
-                    }
-                    DeckAction::Fx { slot, change } => {
-                        target.rack_mut().apply(slot, change);
-                    }
-                    DeckAction::Brake(Some(beats)) => {
-                        target.brake(f64::from(beats), false);
-                    }
-                    DeckAction::Brake(None) => target.release_brake(),
-                    DeckAction::Backspin(Some(beats)) => {
-                        target.brake(f64::from(beats), true);
-                    }
-                    DeckAction::Backspin(None) => target.release_brake(),
-                    DeckAction::LoopRoll(beats) => {
-                        target.set_loop_roll(beats, quantize);
-                    }
-                    DeckAction::Slice(Some(slice)) => {
-                        target.hold_slice(slice);
-                    }
-                    DeckAction::Slice(None) => target.release_slice(),
-                    DeckAction::SliceDomain(beats) => {
-                        target.set_slice_domain(f64::from(beats));
-                    }
-                    DeckAction::BeatJump(beats) => {
-                        target.beat_jump(beats, quantize);
-                    }
-                    DeckAction::PhraseJump(phrases) => {
-                        // No `quantize` argument: a phrase jump always lands on
-                        // a boundary, which is the whole reason it is not a
-                        // beat jump. Quantise-off means "let me play against
-                        // the grid", and there is no against-the-grid way to
-                        // arrive at the start of a phrase.
-                        target.phrase_jump(phrases);
-                    }
-                    DeckAction::HotCue(slot) => {
-                        target.hot_cue_pressed(slot, quantize);
-                    }
-                    DeckAction::HotCueSet(slot) => {
-                        target.set_hot_cue(slot, quantize);
-                    }
-                    DeckAction::HotCueClear(slot) => {
-                        target.clear_hot_cue(slot);
-                    }
-                    DeckAction::HotCueMove(slot, to) => {
-                        target.move_hot_cue(slot, to, quantize);
-                    }
-                    DeckAction::LoopEdge(edge, to) => {
-                        target.move_loop_edge(edge, to, quantize);
-                    }
-                    DeckAction::LoopPhrases(phrases) => {
-                        target.set_loop_phrases(f64::from(phrases));
-                    }
-                    DeckAction::LoopBeats(beats) => {
-                        target.set_loop_length(f64::from(beats), quantize);
-                    }
-                    DeckAction::LoopOff => target.exit_loop(),
-                    DeckAction::LoopHalve => {
-                        target.scale_loop(0.5);
-                    }
-                    DeckAction::LoopDouble => {
-                        target.scale_loop(2.0);
-                    }
-                    DeckAction::LoopIn => target.set_loop_in(quantize),
-                    DeckAction::LoopOut => {
-                        target.set_loop_out(quantize);
-                    }
-                    DeckAction::LoopMove(beats) => {
-                        target.move_loop(beats);
-                    }
-                    // Sync needs to read another deck while writing this one,
-                    // so it cannot run inside a borrow of `target`.
-                    DeckAction::Sync | DeckAction::SyncOff | DeckAction::SyncToggle => {
-                        unreachable!("handled above")
-                    }
-                    DeckAction::SetCrossfaderAssign(_) => unreachable!("handled above"),
-                    DeckAction::Eject => unreachable!("handled above"),
-                    // Grid edits are computed by the host and arrive here as
-                    // `Command::SetGrid`, because editing needs the analyser's
-                    // original to reset to and a tap history to average, and
-                    // neither belongs on the audio thread. They stay in the
-                    // action vocabulary so a controller, a script and the
-                    // assistant can all express them -- see `dj_app::grid`.
-                    //
-                    // Ignored rather than `unreachable!`: a panic here would be
-                    // on the audio thread, and an action arriving by a path
-                    // nobody has written yet is not worth killing the audio for.
-                    DeckAction::GridAnchorHere
-                    | DeckAction::GridNudge(_)
-                    | DeckAction::GridScale(_)
-                    | DeckAction::GridSetBpm(_)
-                    | DeckAction::GridTap
-                    | DeckAction::GridReset
-                    | DeckAction::GridPhrase(_)
-                    // Saved loops are the same shape: the region lives in the
-                    // library with the track, so the host reads or writes it
-                    // and a recall arrives here as `Command::SetLoop`.
-                    | DeckAction::LoopSave(_)
-                    | DeckAction::LoopRecall(_) => {}
-                }
+                act(target, action, quantize);
             }
             Action::Mixer(MixerAction::Crossfader(position)) => {
                 self.crossfader = position.clamp(-1.0, 1.0);
@@ -1945,6 +1848,35 @@ impl AudioCallback for Engine {
         // normally. Nothing to skip.
         self.preview.process(out, &layout);
 
+        // §69: the practice deck, into the headphones and nowhere else. Its
+        // own layout has the cue pair as its *main* and nothing besides — no
+        // cue send, no booth, no monitor, no decks out — so whatever its
+        // fader, its effects or its stems do, the only place it can add to
+        // is the pair the DJ has on their ears. Placed with the audition and
+        // for the same reason: the master chain acts on the room's bus, and
+        // this is never on it.
+        let practice_level = match layout.cue {
+            Some(cue) => {
+                let headphones = BusLayout {
+                    channels: layout.channels,
+                    main: cue,
+                    cue: None,
+                    booth: None,
+                    monitor: None,
+                    wedges: 0,
+                    stems: None,
+                    decks_out: None,
+                };
+                self.practice
+                    .process(out, &headphones, None, None)
+                    .post_fader
+            }
+            None => 0.0,
+        };
+        self.registry
+            .set(ParamId::Global(GlobalParam::PracticeLevel), practice_level);
+        self.publish_practice();
+
         let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
         // §123: the microphone on its own, taken where its frame is read.
         let recording_mic = self.recorder.tapping() == Some(dj_core::RecordSource::Mic);
@@ -2363,6 +2295,174 @@ impl AudioCallback for Engine {
             self.registry
                 .set(ParamId::Global(GlobalParam::CpuLoad), load as f32);
         }
+    }
+}
+
+/// What a DJ does to one deck, done to it: everything in [`DeckAction`] that
+/// needs only that deck. Shared by the four decks and §69's practice deck, so
+/// a loop or a stem behaves the same on both.
+fn act(target: &mut Deck, action: DeckAction, quantize: bool) {
+    match action {
+        DeckAction::Play => target.play(),
+        DeckAction::Pause => target.pause(),
+        DeckAction::PlayPause => target.toggle_play(),
+        DeckAction::Cue => target.cue(),
+        DeckAction::Seek(position) => target.seek(position),
+        DeckAction::SetRate(rate) => target.set_rate(rate),
+        DeckAction::SetPitch(pitch) => target.set_pitch(pitch),
+        DeckAction::SetVolume(volume) => target.set_volume(volume),
+        DeckAction::SetGainDb(db) => target.set_gain_db(db),
+        DeckAction::SetEqLow(g) => target.set_eq_low(g),
+        DeckAction::SetEqMid(g) => target.set_eq_mid(g),
+        DeckAction::SetEqHigh(g) => target.set_eq_high(g),
+        DeckAction::SetFilter(p) => target.set_filter(p),
+        DeckAction::SetVoice(level) => target.set_voice(level),
+        DeckAction::SetCue(on) => target.set_cue(on),
+        DeckAction::ToggleCue => target.toggle_cue(),
+        DeckAction::SetKeylock(on) => target.set_keylock(on),
+        DeckAction::ToggleKeylock => target.toggle_keylock(),
+        DeckAction::SetKeyShift(n) => target.set_key_shift(n),
+        DeckAction::SetSlip(on) => target.set_slip(on),
+        DeckAction::ToggleSlip => {
+            let on = target.slip();
+            target.set_slip(!on);
+        }
+        DeckAction::SetReverse(on) => target.set_reverse(on),
+        DeckAction::ToggleReverse => {
+            // The deck's own reverse, not `reversed()` -- that also
+            // reports true while a censor is held, and toggling
+            // during a censor would leave the deck reversed when
+            // the pad came up.
+            let on = target.reversed() && !target.censoring();
+            target.set_reverse(!on);
+        }
+        DeckAction::SetCensor(held) => target.set_censor(held),
+        DeckAction::JogTouch(touched) => target.set_jog_touch(touched),
+        DeckAction::Jog(turns) => target.jog(turns),
+        DeckAction::SetJogMode(mode) => target.set_jog_mode(mode),
+        DeckAction::Stem { stem, change } => {
+            let idx = stem as usize;
+            match change {
+                dj_core::action::StemChange::ToggleMute => {
+                    target.toggle_stem_mute(idx);
+                }
+                dj_core::action::StemChange::SetMute(muted) => {
+                    target.set_stem_mute(idx, muted);
+                }
+                dj_core::action::StemChange::SetSolo(solo) => {
+                    target.set_stem_solo(idx, solo);
+                }
+                dj_core::action::StemChange::Volume(vol) => {
+                    target.set_stem_volume(idx, vol);
+                }
+                dj_core::action::StemChange::Eq(band, gain) => {
+                    target.set_stem_eq(idx, band.index(), gain);
+                }
+                dj_core::action::StemChange::Filter(position) => {
+                    target.set_stem_filter(idx, position);
+                }
+            }
+        }
+        DeckAction::Fx { slot, change } => {
+            target.rack_mut().apply(slot, change);
+        }
+        DeckAction::Brake(Some(beats)) => {
+            target.brake(f64::from(beats), false);
+        }
+        DeckAction::Brake(None) => target.release_brake(),
+        DeckAction::Backspin(Some(beats)) => {
+            target.brake(f64::from(beats), true);
+        }
+        DeckAction::Backspin(None) => target.release_brake(),
+        DeckAction::LoopRoll(beats) => {
+            target.set_loop_roll(beats, quantize);
+        }
+        DeckAction::Slice(Some(slice)) => {
+            target.hold_slice(slice);
+        }
+        DeckAction::Slice(None) => target.release_slice(),
+        DeckAction::SliceDomain(beats) => {
+            target.set_slice_domain(f64::from(beats));
+        }
+        DeckAction::BeatJump(beats) => {
+            target.beat_jump(beats, quantize);
+        }
+        DeckAction::PhraseJump(phrases) => {
+            // No `quantize` argument: a phrase jump always lands on
+            // a boundary, which is the whole reason it is not a
+            // beat jump. Quantise-off means "let me play against
+            // the grid", and there is no against-the-grid way to
+            // arrive at the start of a phrase.
+            target.phrase_jump(phrases);
+        }
+        DeckAction::HotCue(slot) => {
+            target.hot_cue_pressed(slot, quantize);
+        }
+        DeckAction::HotCueSet(slot) => {
+            target.set_hot_cue(slot, quantize);
+        }
+        DeckAction::HotCueClear(slot) => {
+            target.clear_hot_cue(slot);
+        }
+        DeckAction::HotCueMove(slot, to) => {
+            target.move_hot_cue(slot, to, quantize);
+        }
+        DeckAction::LoopEdge(edge, to) => {
+            target.move_loop_edge(edge, to, quantize);
+        }
+        DeckAction::LoopPhrases(phrases) => {
+            target.set_loop_phrases(f64::from(phrases));
+        }
+        DeckAction::LoopBeats(beats) => {
+            target.set_loop_length(f64::from(beats), quantize);
+        }
+        DeckAction::LoopOff => target.exit_loop(),
+        DeckAction::LoopHalve => {
+            target.scale_loop(0.5);
+        }
+        DeckAction::LoopDouble => {
+            target.scale_loop(2.0);
+        }
+        DeckAction::LoopIn => target.set_loop_in(quantize),
+        DeckAction::LoopOut => {
+            target.set_loop_out(quantize);
+        }
+        DeckAction::LoopMove(beats) => {
+            target.move_loop(beats);
+        }
+        // What needs the engine rather than one deck: sync reads another deck
+        // while writing this one, the crossfader's side recomputes every
+        // deck's gain, and an eject retires a record. `Engine::apply` does
+        // those before it gets here, and the practice deck has none of them.
+        // Ignored rather than `unreachable!`: a panic would be on the audio
+        // thread.
+        DeckAction::Sync
+        | DeckAction::SyncOff
+        | DeckAction::SyncToggle
+        | DeckAction::SetCrossfaderAssign(_)
+        | DeckAction::Eject => {}
+        // Grid edits are computed by the host and arrive here as
+        // `Command::SetGrid`, because editing needs the analyser's
+        // original to reset to and a tap history to average, and
+        // neither belongs on the audio thread. They stay in the
+        // action vocabulary so a controller, a script and the
+        // assistant can all express them -- see `dj_app::grid`.
+        //
+        // Ignored rather than `unreachable!`: a panic here would be
+        // on the audio thread, and an action arriving by a path
+        // nobody has written yet is not worth killing the audio for.
+        DeckAction::GridAnchorHere
+        | DeckAction::GridNudge(_)
+        | DeckAction::GridScale(_)
+        | DeckAction::GridSetBpm(_)
+        | DeckAction::GridTap
+        | DeckAction::GridReset
+        | DeckAction::GridPhrase(_)
+        // Saved loops are the same shape: the region lives in the
+        // library with the track, so the host reads or writes it
+        // and a recall arrives here as `Command::SetLoop`.
+        | DeckAction::LoopSave(_)
+        | DeckAction::LoopRecall(_) => {}
     }
 }
 
@@ -2814,6 +2914,94 @@ mod cue_routing_tests {
 
     fn layout(channels: usize) -> BusLayout {
         BusLayout::for_channels(channels)
+    }
+
+    /// **§69: the practice deck is heard in the headphones and never in the
+    /// room** — playing, looping, with its own cue button pressed and its
+    /// fader up, while a deck the room hears goes on as it was; and on a
+    /// device with no headphone pair it is silent rather than public.
+    #[test]
+    fn the_practice_deck_is_heard_in_the_headphones_and_never_in_the_room() {
+        use crate::command::Practice;
+        let mut stereo = rig(2);
+        let mut four = rig(4);
+        let rig = &mut four;
+        let l = layout(4);
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+        rig.commands
+            .push(Command::Practice(Practice::Load {
+                source: tone(400_000, 0.5),
+                grid: Some(dj_core::Beatgrid::new(
+                    dj_core::FramePos::new(0.0),
+                    dj_core::Bpm::new(120.0).expect("a tempo"),
+                    dj_core::Confidence::new(1.0),
+                )),
+                phrase: None,
+            }))
+            .unwrap();
+        for action in [
+            DeckAction::Play,
+            DeckAction::SetCue(true),
+            DeckAction::SetVolume(1.0),
+            DeckAction::LoopBeats(4.0),
+        ] {
+            rig.commands
+                .push(Command::Practice(Practice::Act(action)))
+                .unwrap();
+        }
+        let out = rig.settle_then_render(4_096);
+        let cue = l.cue.expect("four channels have a headphone pair");
+        assert!(rig.peak(&out, cue) > 0.3, "the headphones heard nothing");
+        assert_eq!(
+            rig.peak(&out, l.main),
+            0.0,
+            "the practice deck reached the room"
+        );
+        let registry = &rig.engine.registry;
+        assert!(registry.get_bool(ParamId::Global(GlobalParam::PracticePlaying)));
+        assert!(registry.get_bool(ParamId::Global(GlobalParam::PracticeLooping)));
+        assert!(registry.get(ParamId::Global(GlobalParam::PracticeLevel)) > 0.3);
+
+        // A deck the room hears is untouched by it.
+        rig.load_and_play(1, 0.25);
+        rig.act(Action::Mixer(MixerAction::Crossfader(-1.0)));
+        let out = rig.settle_then_render(4_096);
+        let room = rig.peak(&out, l.main);
+        assert!(
+            room > 0.2 && room < 0.3,
+            "the room heard {room}, not deck 1 alone"
+        );
+
+        // Taken off: nothing in the headphones from it.
+        rig.commands
+            .push(Command::Practice(Practice::Eject))
+            .unwrap();
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::Pause,
+        });
+        let out = rig.settle_then_render(4_096);
+        assert_eq!(rig.peak(&out, cue), 0.0);
+
+        // Two channels: nowhere private, so nowhere at all.
+        stereo
+            .commands
+            .push(Command::Practice(Practice::Load {
+                source: tone(400_000, 0.5),
+                grid: None,
+                phrase: None,
+            }))
+            .unwrap();
+        stereo
+            .commands
+            .push(Command::Practice(Practice::Act(DeckAction::Play)))
+            .unwrap();
+        let out = stereo.settle_then_render(4_096);
+        assert_eq!(
+            stereo.peak(&out, layout(2).main),
+            0.0,
+            "played out loud with no headphones"
+        );
     }
 
     /// Cue at 0.0 is the whole point: the DJ hears only what is being previewed.
