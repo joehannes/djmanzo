@@ -20,7 +20,12 @@ written under *Needed* below for the fold.
 - **§12/§14 built, in part** — effects run together, cue conventions, and
   the transaction's Modify/Reject counted and told to the assistant; the
   Modify/Reject count waits on three lines in `commands.rs` (below).
-- §16, §34/§36, §106 — not started.
+- **§16 built, waiting on the fold for the picker** — thirteen more packs
+  (`pack::READY`) and the three fields no table owned (tempo window, arc,
+  transition preferences), each held to the library's own tables. The
+  picker shows them, and the rail and planner read the new fields, once the
+  fold makes the changes listed under *Needed*.
+- §34/§36, §106 — not started.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
@@ -41,6 +46,18 @@ written under *Needed* below for the fold.
   them, and recent records weigh more), and what they did with tonight's
   staged transactions (accepted as offered, accepted after changing,
   rejected) — counted, never turned into a preference.
+
+- **Thirteen more knowledge packs, and the three things a pack could not
+  say.** Bachata, Merengue, Dembow, Reggaeton, Salsa, Caribbean, Afro /
+  Afrobeats, R&B, EDM, Wedding, Beach / Resort, Club and Practice /
+  Education join the eight, each built from what djmanzo already knows (one
+  family of the genre map with its parent's curriculum, or a §81 occasion
+  with the whole catalogue up to practised moves). Every pack now also says
+  how close two tempos have to be to count as a direct mix in that music
+  (techno three percent, house four), the set shape that kind of night
+  usually takes, and the joins it reaches for when the records leave the
+  choice open — never an echo, which is djmanzo's answer to a key clash,
+  and never instead of the cut a tempo that does not work demands.
 
 ## DIRECTIVE-STATUS text
 
@@ -96,6 +113,37 @@ written under *Needed* below for the fold.
   counts in the `nights` table, written by `commands::night_setting`); *how
   quickly the DJ changes plans* is not built.
 
+- **§16**, replacing *"What is left for this row: the remaining twenty-two
+  packs, and the §16 fields no table yet owns (energy curves, allowed BPM
+  relationships, transition preferences)"*: **Twenty-one packs, and the
+  three fields owned (17 October).** Thirteen more — Bachata, Merengue,
+  Dembow, Reggaeton, Salsa, Caribbean, Afro / Afrobeats, R&B, EDM, Wedding,
+  Beach / Resort, Club, Practice / Education — written to the same rule as
+  the eight: a genre pack is one family of `dj_core::genre` (or the few a DJ
+  names together) with its parent's curriculum, an occasion pack is a §81
+  setting with the catalogue up to practised moves. *Allowed BPM
+  relationships*: `Pack::tempo_window`, only ever a narrowing of the
+  scorer's `suggest::TEMPO_TOLERANCE` (techno and Beginner 3 %, house 4 %),
+  read by `suggest::wider_than_pack` — which reads only the scorer's
+  `TempoFits`, leaving half time to `half_time` and a far tempo to
+  `TempoFar`. *Energy curves*: `Pack::arc`, a `setlist::Arc` by name
+  (`Arc::from_name`, `None` for a name it does not know rather than the
+  default journey), offered and never imposed — the arc stays the DJ's to
+  say, which is §11's refusal above. *Transition preferences*:
+  `Pack::transitions`, only styles `plan`'s `STYLE_IS_TASTE` lets a profile
+  choose (cut, fade, blend) — never `Echo`, the music's answer to a key
+  clash — so the planner's refusal to blend records that cannot be blended
+  stays the planner's. Held by `pack::tests` (every family and setting
+  exists, ids distinct across both lists, transition preferences are taste
+  and said once, the waiting packs are not chosen by slug before the fold),
+  `setting::tests::every_packs_tempo_window_and_arc_are_the_libraries_own`,
+  `suggest::tests::a_packs_tempo_window_narrows_only_the_fit` and
+  `setlist::tests::an_arc_is_named_and_read_back_by_the_same_word`; twelve
+  mutants fail them. What is left: the other nine of §16's thirty (Private
+  Event, Lounge, Festival, Mobile DJ, Karaoke / MC, VJ / Video, DVS, CDJ,
+  Stem / Remix), whose curriculum nobody here has checked — the module docs'
+  reason, unchanged.
+
 ## Needed in files this session does not own
 
 - `crates/dj-app/src/commands.rs`, `dj_context`: its body is now
@@ -113,7 +161,43 @@ written under *Needed* below for the fold.
   verdicts (a migration in `dj-library`, this session's), filled by
   `commands::night_setting` — not built, since its writer is `commands.rs`.
 
+- **§16 at the fold** (all in files this session does not own):
+  - `crates/dj-assistant/src/pack.rs` is this session's, but the move is the
+    fold's: append `READY`'s thirteen to `ALL` (`ALL: [Pack; 21]`), delete
+    `READY` and `every()` (or keep `every()` as `ALL.iter()`), and delete
+    `the_waiting_packs_are_not_chosen_by_slug_before_the_fold`. Do it in the
+    same commit as the next two lines, or `packs.spec` fails.
+  - `ui/e2e/packs.spec.ts:55`: `toHaveCount(8)` → `toHaveCount(21)`.
+  - `ui/e2e/packs.json`: re-bless with
+    `DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture`.
+  - `commands.rs`, `KnowledgePackDto` (≈19799) and `knowledge_packs`: append
+    `tempo_window: f64`, `arc: String` (empty for none) and
+    `transitions: Vec<String>` (lower-case style names); `api.ts`'s
+    `KnowledgePack` gets the same three at the end. Optional for the picker:
+    a line under each pack, e.g. *"holds tempo within 3 % · journey · blends"*.
+  - `commands.rs`, `with_pack` (≈10850): after `also_in_pack`, when
+    `dj_library::suggest::wider_than_pack(&s, pack.tempo_window)`, take the
+    `TempoFits` credit back and push a new `Reason::TempoWiderThanPack
+    { window }` (dj-library's `Reason`, this session's — but adding the
+    variant breaks the three exhaustive matches in `commands.rs` at ≈11809,
+    ≈11881 and ≈11953, so the variant and its three wordings land
+    together at the fold: *"wider than this pack holds (3 %)"*, rank 2,
+    *"wider than the pack"*). The take-back is `also_in_pack`'s pattern.
+  - The planner's `usual` (`commands.rs` ≈9942, `ghost.rs`, `autopilot.rs`,
+    `transition.rs`, all Session 1's or shared): when the DJ's profile has no
+    usual style, pass `pack.transitions.first().copied()`. `choose_style`
+    already applies it only where tempos and keys agree and only if
+    `STYLE_IS_TASTE` contains it, so no pack can override a cut or an echo.
+  - The set planner (`commands.rs` ≈9163 parses the arc name): when the DJ
+    has not said an arc, the interface may *offer* the pack's
+    (`Arc::from_name(pack.arc?)`), never default to it silently.
+
 ## HANDOFF traps
 
 - `cargo fmt` re-wraps a long line between an edit script's read and its next
   match: re-read after every `cargo fmt` before matching text in an edit.
+- A §16 pack's `transitions` is taste in `plan`'s sense, which includes
+  `Cut` and excludes `Echo` (`STYLE_IS_TASTE`): echo is the planner's answer
+  to a key clash. It reads backwards from DJ talk, where an echo-out is a
+  style; `pack::tests::transition_preferences_are_taste_and_said_once`
+  holds it.

@@ -112,7 +112,7 @@ impl Playing {
 /// also roughly the range a pitch fader is usually set to. A track outside this
 /// is not rejected -- half- and double-time still work -- but it is not scored
 /// as a comfortable match.
-const TEMPO_TOLERANCE: f64 = 0.06;
+pub const TEMPO_TOLERANCE: f64 = 0.06;
 
 /// A reason a track was suggested, with the numbers behind it.
 ///
@@ -367,6 +367,28 @@ pub fn also_in_pack(
         suggestion.reasons.push(Reason::HalfTimeUnusual);
     }
     suggestion
+}
+
+/// §16: whether a tempo the scorer credited as fitting is wider apart than the
+/// chosen pack's window.
+///
+/// `window` is a pack's `tempo_window`, a fraction no wider than
+/// [`TEMPO_TOLERANCE`]: a techno set holds its tempo within three percent, and
+/// a six-percent stretch the scorer calls comfortable is, in that room, a
+/// change of tempo. Only `TempoFits` is read — a half- or double-time pairing
+/// is the pack's `half_time` to judge (see [`also_in_pack`]), and a tempo the
+/// scorer already called far needs no second opinion.
+///
+/// A question rather than a rescoring, because the answer has to be *said*
+/// when it costs a record its credit, the way [`also_in_pack`] says
+/// `HalfTimeUnusual`, and the reason that says it is a new [`Reason`] whose
+/// wordings live with the interface's other two.
+#[must_use]
+pub fn wider_than_pack(suggestion: &Suggestion, window: f64) -> bool {
+    suggestion.reasons.iter().any(|reason| match *reason {
+        Reason::TempoFits { from, to } => (to / from - 1.0).abs() > window,
+        _ => false,
+    })
 }
 
 /// §17: what the phase of the night asked for, when this record is it.
@@ -1121,6 +1143,50 @@ mod tests {
             unrelated,
             "a pack without half time penalised a tempo that was not one"
         );
+    }
+
+    /// **A pack's tempo window narrows the fit and reads nothing else.**
+    ///
+    /// 132 against 128 is three percent and change: comfortable to the scorer,
+    /// a change of tempo to a techno set holding three percent, ordinary to a
+    /// house set allowing four. Half time and a far tempo are left to the
+    /// reasons that already judge them, so a pack's window cannot say twice
+    /// what `half_time` or `TempoFar` has said once.
+    #[test]
+    fn a_packs_tempo_window_narrows_only_the_fit() {
+        let near = score(
+            &playing(),
+            Trajectory::Hold,
+            &track(6, Some(132.0), Some(key(8, Mode::Minor)), Some(-8.0)),
+        );
+        assert!(
+            near.reasons
+                .iter()
+                .any(|r| matches!(r, Reason::TempoFits { .. })),
+            "the fixture is wrong: 132 against 128 was meant to fit"
+        );
+        assert!(wider_than_pack(&near, 0.03), "3.1% passed a 3% window");
+        assert!(!wider_than_pack(&near, 0.04), "3.1% failed a 4% window");
+        assert!(!wider_than_pack(&near, TEMPO_TOLERANCE));
+
+        let same = score(
+            &playing(),
+            Trajectory::Hold,
+            &track(7, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0)),
+        );
+        assert!(!wider_than_pack(&same, 0.03), "the same tempo was too wide");
+
+        for other in [64.0, 101.0] {
+            let judged = score(
+                &playing(),
+                Trajectory::Hold,
+                &track(8, Some(other), Some(key(8, Mode::Minor)), Some(-8.0)),
+            );
+            assert!(
+                !wider_than_pack(&judged, 0.0),
+                "{other} against 128 is another reason's to judge"
+            );
+        }
     }
 
     /// **The loop qualifies the keep; it does not strengthen it.**
