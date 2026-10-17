@@ -25,7 +25,13 @@
   import {
     detachPanel,
     guessFromDescription,
+    similarTo,
+    searchSources,
+    wordsSearch,
     type Guess,
+    type SourceTrack,
+    type WordHit,
+    type Suggestion,
     dispatch,
     karaokeAsk,
     karaokeBreaks,
@@ -321,27 +327,73 @@
   }
 
   /**
-   * The collection, searched as the song is typed. A quarter of a second
-   * after the last key, so a fast typist does not send a query a letter.
+   * §128's fast search modes: what the song box searches as it is typed.
+   * *By name* is the collection by title and artist; *By a line* is the
+   * words of the records whose lyrics djmanzo has (`words_search`, the
+   * memory panel's); *Online* is every connected source at once
+   * (`search_sources`, the browser's *Sources*), whose finds go into the
+   * request as words.
+   */
+  type SearchMode = "name" | "line" | "online";
+  const SEARCH_MODES: { id: SearchMode; label: string; hint: string }[] = [
+    { id: "name", label: "By name", hint: "Song — searches your collection" },
+    { id: "line", label: "By a line", hint: "A line they remember — searches the words" },
+    { id: "online", label: "Online", hint: "Song — searches your connected sources" },
+  ];
+  let searchMode = $state<SearchMode>("name");
+  const searchHint = $derived(SEARCH_MODES.find((m) => m.id === searchMode)?.hint ?? "");
+  let lineHits = $state<WordHit[]>([]);
+  /** Words put in the song box by a find, not typed: not searched again. */
+  let taken = $state<string | null>(null);
+  let onlineHits = $state<{ track: SourceTrack; from: string }[]>([]);
+
+  /**
+   * The song box, searched as it is typed. A quarter of a second after the
+   * last key, so a fast typist does not send a query a letter — half a
+   * second online, where every source is asked.
    */
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const text = song.trim();
+    const mode = searchMode;
     clearTimeout(searchTimer);
-    if (!enabled || text.length < 2 || (picked && label(picked) === text)) {
-      matches = [];
-      return;
-    }
-    searchTimer = setTimeout(() => {
-      void librarySearch(text)
-        .then((found) => {
-          matches = (found ?? []).slice(0, 5);
-          void markFits();
-        })
-        .catch(() => (matches = []));
-    }, 250);
+    matches = [];
+    lineHits = [];
+    onlineHits = [];
+    if (!enabled || text.length < 2 || (picked && label(picked) === text) || taken === text) return;
+    searchTimer = setTimeout(
+      () => {
+        if (mode === "name") {
+          void librarySearch(text)
+            .then((found) => {
+              matches = (found ?? []).slice(0, 5);
+              void markFits();
+            })
+            .catch(() => (matches = []));
+        } else if (mode === "line") {
+          void wordsSearch(text)
+            .then((found) => (lineHits = (found ?? []).slice(0, 5)))
+            .catch(() => (lineHits = []));
+        } else {
+          void searchSources(text, undefined, 5)
+            .then((found) => {
+              onlineHits = (found ?? [])
+                .flatMap((source) => source.tracks.map((track) => ({ track, from: source.label })))
+                .slice(0, 8);
+            })
+            .catch(() => (onlineHits = []));
+        }
+      },
+      mode === "online" ? 500 : 250,
+    );
     return () => clearTimeout(searchTimer);
   });
+
+  /** A find from a source online: the song, as words. */
+  function takeOnline(track: SourceTrack) {
+    found(track.artist ? `${track.artist} – ${track.title}` : track.title);
+    onlineHits = [];
+  }
 
   function label(track: LibraryTrack): string {
     return track.artist ? `${track.artist} – ${track.title}` : track.title;
@@ -419,9 +471,27 @@
   let guessing = $state(false);
   let guessError = $state("");
 
+  /**
+   * §128: *Like this one* — for a song picked from the collection, records
+   * like it (`similar_to`, the Library's own), for a singer who wants
+   * another of the same. One taken goes into the request as the record.
+   */
+  let likeThis = $state<{ of: string; found: Suggestion[] } | null>(null);
+  let likeError = $state("");
+
+  async function askLikeThis(track: LibraryTrack) {
+    try {
+      likeThis = { of: label(track), found: await similarTo(track.id, 5) };
+      likeError = "";
+    } catch (e) {
+      likeError = String(e);
+    }
+  }
+
   /** Words for the song box, for a song the collection does not have. */
   function found(text: string) {
     picked = null;
+    taken = text;
     song = text;
     findOpen = false;
     guesses = [];
@@ -1123,6 +1193,13 @@
     </ol>
   {/if}
 
+  <div class="search-modes" role="group" aria-label="How to find the song">
+    {#each SEARCH_MODES as mode (mode.id)}
+      <button type="button" aria-pressed={searchMode === mode.id} onclick={() => (searchMode = mode.id)}
+        >{mode.label}</button
+      >
+    {/each}
+  </div>
   <form
     class="ask"
     class:song-over={songOver}
@@ -1145,9 +1222,12 @@
     <div class="song-box">
       <input
         bind:value={song}
-        placeholder="Song — searches your collection"
+        placeholder={searchHint}
         aria-label="Song"
-        oninput={() => (picked = null)}
+        oninput={() => {
+          picked = null;
+          likeThis = null;
+        }}
       />
       {#if matches.length > 0}
         <ul class="matches" aria-label="Songs in your collection">
@@ -1157,6 +1237,30 @@
                 >{label(track)}{#if fitWords(fits[at])}<span class="fit" data-fit={fits[at]?.fit}
                     >{fitWords(fits[at])}</span
                   >{/if}</button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if lineHits.length > 0}
+        <ul class="matches" aria-label="Songs with that line">
+          {#each lineHits as hit (hit.track.id + hit.line_number)}
+            <li>
+              <button type="button" onclick={() => foundTrack(hit.track)}
+                >{label(hit.track)}<span class="fit">“{hit.line}”</span></button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if onlineHits.length > 0}
+        <ul class="matches" aria-label="Songs found online">
+          {#each onlineHits as hit (hit.track.provider + hit.track.id)}
+            <li>
+              <button type="button" onclick={() => takeOnline(hit.track)}
+                >{hit.track.artist ? `${hit.track.artist} – ${hit.track.title}` : hit.track.title}<span class="fit"
+                  >{hit.from}</span
+                ></button
               >
             </li>
           {/each}
@@ -1175,6 +1279,9 @@
       title="The guided questions: when it is from, how fast, who sings it…"
       onclick={() => (findOpen = !findOpen)}>Can't name it?</button
     >
+    {#if picked}
+      <button type="button" class="quiet" onclick={() => picked && void askLikeThis(picked)}>Like this one</button>
+    {/if}
     {#if typedRange}
       <button type="button" class="quiet" onclick={() => void suggest()}>Songs for {singer.trim()}</button>
     {/if}
@@ -1200,6 +1307,32 @@
     </section>
   {/if}
 
+  {#if likeError}
+    <p class="error">{likeError}</p>
+  {/if}
+  {#if likeThis}
+    <section class="like-this" aria-label="Songs like {likeThis.of}">
+      {#if likeThis.found.length === 0}
+        <p class="hint">Nothing in the collection is close to {likeThis.of}.</p>
+      {:else}
+        <ul class="guesses">
+          {#each likeThis.found as like (like.track.id)}
+            <li>
+              <button
+                type="button"
+                onclick={() => {
+                  foundTrack(like.track);
+                  likeThis = null;
+                }}>{label(like.track)}</button
+              >
+              {#if like.reasons.length > 0}<span class="why">{like.reasons.slice(0, 3).join(" · ")}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <button type="button" class="quiet" onclick={() => (likeThis = null)}>Close</button>
+    </section>
+  {/if}
   {#if findOpen}
     <section class="find-song" aria-label="Find a song they cannot name">
       <FindSong {enabled} onTrack={foundTrack} onAsk={(text) => void askGuesses(text)} />
@@ -2088,7 +2221,8 @@
     text-align: left;
   }
 
-  .find-song {
+  .find-song,
+  .like-this {
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.4rem 0.5rem;
@@ -2222,6 +2356,20 @@
     font-size: 0.8em;
     color: var(--muted);
     font-style: italic;
+  }
+  .search-modes {
+    display: flex;
+    gap: 0.3rem;
+    margin-bottom: 0.3rem;
+  }
+  .search-modes button {
+    font-size: 0.85em;
+    padding: 0.1rem 0.5rem;
+  }
+  .search-modes button[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
   }
   .unsure {
     display: inline-flex;

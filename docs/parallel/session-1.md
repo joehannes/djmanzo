@@ -72,6 +72,38 @@ the shared documents at the fold (§5).
   fail them. Not read with one singer on the microphones, where the marks
   still show — a duet sung alone is rare and the marks say whose line it is.
 
+### Item 1, continued: what the karaoke beta's notes left open
+
+- **Like this one, from the request form — built.** For a song picked from
+  the collection, *Like this one* lists five records like it (`similar_to`,
+  the Library's and the Next rail's own) with why; one taken goes into the
+  request as the record. Held by `singers-findsong.spec.ts`'s second test; a
+  mutant taking it as words fails it. Driven against the real command: *two*
+  offered *one* with "key clash (11B) · 120 BPM fits · same level" — the
+  reasons are a DJ's mixing words, which a karaoke host may not need.
+- **The skin picker in Settings → Appearance too — built**, under *How much
+  of it*. Each picker is now its own radio group (`$props.id()`): two on
+  screen sharing `name="skin"` were one group, and a choice in one left the
+  other showing nothing chosen. Held by `skins.spec.ts`'s new test; 3
+  mutants fail it. Not driven in WebKitGTK (the browser test opens both).
+- **The room's taps in the night's crowd log — built.** `dj_app::room_taps`:
+  the pump keeps every tap newer than the last one kept in tonight's crowd
+  log, once, as a reaction from the room with no name and the glyph as its
+  words (`crowd::Source::Room`), so it is placed against the music like the
+  rest of §119's reactions. Held by
+  `room_taps::tests::the_rooms_taps_reach_the_nights_crowd_log_once` (through
+  `AppState`); 3 mutants fail it. A tap from a real phone was not driven.
+- **Fast search modes — built** (§128, "different fast search modes to
+  find songs for karaoke from different sources"). Above the request form,
+  *By name* (the collection, as before), *By a line* (the words of the
+  records whose lyrics djmanzo has — `words_search`, the memory panel's) and
+  *Online* (every connected source at once — `search_sources`, the
+  browser's *Sources*). A record found by a line goes in as the record; a
+  song found online as words, and is not searched for again once taken.
+  Held by `singers-findsong.spec.ts`'s third test; 3 mutants fail it.
+- **Still open from those notes:** nothing proved on a signed-in Suno or
+  WhatsApp (needs an account and a phone).
+
 ### Session 2 folded in
 
 - **§40 and §12/§14 merged** into this branch (17 October). Its *Needed*
@@ -84,8 +116,9 @@ the shared documents at the fold (§5).
 ### Changes in shared files (for the fold)
 
 - `crates/dj-app/src/lib.rs`: a *Parallel, session 1* modules block after
-  session A's (`echo_tempo`), and one pump line after the deck queue's tick:
-  `crate::echo_tempo::tick(&state, &snapshot);`.
+  session A's (`echo_tempo`, `room_taps`), and two pump lines after the deck
+  queue's tick: `crate::echo_tempo::tick(&state, &snapshot);` and
+  `crate::room_taps::tick(&state);`.
 - `crates/dj-app/src/commands.rs` (existing functions, no new command):
   `played_vocal_settings` and `send_vocal_strip` made `pub(crate)`;
   `as_played` times the echo; `karaoke_ask` takes `unsure: Option<bool>`.
@@ -103,6 +136,10 @@ the shared documents at the fold (§5).
   song even if the singer has sung it before.
 - A duet whose lyrics mark parts ("M:", "F:", "D:") rather than name the
   singers gives each part to a singer on a microphone, in their colour.
+- *Like this one* beside a request picked from the collection.
+- The skin picker in Settings → Appearance as well as on the Singers panel.
+- The room's emoji taps are kept in the night's crowd log.
+- The request form searches by name, by a line of the words, or online.
 
 ### DIRECTIVE-STATUS text (for the fold)
 

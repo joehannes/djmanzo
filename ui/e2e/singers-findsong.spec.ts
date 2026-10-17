@@ -45,6 +45,32 @@ async function rust(page: Page) {
           description: checked ? "A song a singer wants to sing but cannot name: from the 1980s." : "",
         });
       }
+      if (cmd === "words_search") {
+        win.__guessed.push(`line ${String(args.phrase)}`);
+        return Promise.resolve([{ track: hit, line: "no puedo dormir sin ti", line_number: 3 }]);
+      }
+      if (cmd === "search_sources") {
+        win.__guessed.push(`online ${String(args.text)}`);
+        const track = {
+          provider: "jamendo",
+          id: "x1",
+          title: "Vivir así",
+          artist: "Camilo Sesto",
+          album: null,
+          duration_seconds: 240,
+          bpm: null,
+          key: null,
+          genre: null,
+          artwork_url: null,
+          web_url: null,
+          playable: true,
+        };
+        return Promise.resolve([{ provider: "jamendo", label: "Jamendo", tracks: [track], error: null, matched_locally: 0 }]);
+      }
+      if (cmd === "similar_to") {
+        win.__guessed.push(`like ${String(args.track)}`);
+        return Promise.resolve([{ track: hit, score: 3, reasons: ["same key (4A)", "slow too"], summary: "" }]);
+      }
       if (cmd === "guess_from_description") {
         win.__guessed.push(String(args.description));
         return Promise.resolve([
@@ -117,6 +143,72 @@ test.describe("§128: a song a singer cannot name, from the Singers panel", () =
     await singers.getByRole("button", { name: "Add", exact: true }).click();
     await expect.poll(async () => (await karaokeAsks(page)).at(-1)?.track).toBe("t1");
     expect((await karaokeAsks(page)).at(-1)?.path).toBe("/music/hit.mp3");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Like this one**: for a song picked from the collection, records like
+   * it (Rust's `similar_to`, the Library's), with why; one taken goes into
+   * the request as the record.
+   */
+  test("a song picked from the collection offers songs like it", async ({ page }) => {
+    const singers = await openSingers(page);
+    const song = singers.getByRole("textbox", { name: "Song" });
+    const like = singers.getByRole("button", { name: "Like this one" });
+    await expect(like).toHaveCount(0);
+    await song.fill("Bach");
+    await singers.getByRole("button", { name: "Juan Luis Guerra – Bachata Rosa" }).click();
+    await like.click();
+    const found = page.getByRole("region", { name: "Songs like Juan Luis Guerra – Bachata Rosa" });
+    await expect(found.getByRole("listitem")).toHaveCount(1);
+    await expect(found).toContainText("same key (4A) · slow too");
+    expect(await page.evaluate(() => (window as unknown as { __guessed: string[] }).__guessed)).toEqual([
+      `like ${"a".repeat(64)}`,
+    ]);
+    await found.getByRole("button", { name: "Juan Gabriel – Hasta que te conocí" }).click();
+    await expect(song).toHaveValue("Juan Gabriel – Hasta que te conocí");
+    await expect(found).toHaveCount(0);
+    await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ana");
+    await singers.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(async () => (await karaokeAsks(page)).at(-1)?.track).toBe("t1");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Fast search modes** (§128): the song box searches the collection by
+   * name, the words of its records by a line, or every connected source
+   * online — a record found by its words goes in as the record, a song
+   * found online as words, and is not searched for again.
+   */
+  test("the song box searches by name, by a line, or online", async ({ page }) => {
+    const singers = await openSingers(page);
+    const song = singers.getByRole("textbox", { name: "Song" });
+    const modes = singers.getByRole("group", { name: "How to find the song" });
+    await expect(modes.getByRole("button", { name: "By name" })).toHaveAttribute("aria-pressed", "true");
+    const asked = () => page.evaluate(() => (window as unknown as { __guessed: string[] }).__guessed);
+
+    await modes.getByRole("button", { name: "By a line" }).click();
+    await expect(song).toHaveAttribute("placeholder", /A line they remember/);
+    await song.fill("no puedo");
+    const byLine = singers.getByRole("list", { name: "Songs with that line" });
+    await expect(byLine).toContainText("“no puedo dormir sin ti”");
+    expect(await asked()).toEqual(["line no puedo"]);
+    await byLine.getByRole("button").first().click();
+    await expect(song).toHaveValue("Juan Gabriel – Hasta que te conocí");
+    await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ana");
+    await singers.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(async () => (await karaokeAsks(page)).at(-1)?.track).toBe("t1");
+
+    await modes.getByRole("button", { name: "Online" }).click();
+    await song.fill("vivir");
+    const online = singers.getByRole("list", { name: "Songs found online" });
+    await expect(online).toContainText("Jamendo");
+    await online.getByRole("button", { name: /Camilo Sesto – Vivir así/ }).click();
+    await expect(song).toHaveValue("Camilo Sesto – Vivir así");
+    await expect(online).toHaveCount(0);
+    await page.waitForTimeout(800);
+    expect((await asked()).filter((call) => call.startsWith("online"))).toEqual(["online vivir"]);
+    await expect(online).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

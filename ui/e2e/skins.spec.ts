@@ -96,4 +96,28 @@ test.describe("Karaoke beta B6: skins", () => {
     await expect(page.locator("[data-theme]").first()).toBeAttached();
     await expect(page.locator("html")).not.toHaveAttribute("data-skin", /.*/);
   });
+
+  /**
+   * **In Settings too**, under Appearance, beside the theme it is worn over;
+   * and with the Singers panel open as well, a choice in either picker is
+   * what both show — each its own radio group, not one shared by name.
+   */
+  test("are chosen in Settings as well, and both pickers agree", async ({ page }) => {
+    await wearing(page, "pkg-caribbean");
+    await openShell(page, "/");
+    await singersPanel(page);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const pickers = page.getByRole("region", { name: "Skin over the theme" });
+    await expect(pickers).toHaveCount(2);
+    const inSettings = page.locator(".surface[data-surface='settings']").getByRole("region", { name: "Skin over the theme" });
+    const inSingers = page.locator("[data-singers]").getByRole("region", { name: "Skin over the theme" });
+    await inSettings.getByRole("radio", { name: "Palm shadows" }).check();
+    await expect(page.locator("html")).toHaveAttribute("data-skin", "palms");
+    await expect(inSingers.getByRole("radio", { name: "Palm shadows" })).toBeChecked();
+    await expect(inSettings.getByRole("radio", { name: "Palm shadows" })).toBeChecked();
+    await inSingers.getByRole("radio", { name: "None" }).check();
+    await expect(inSettings.getByRole("radio", { name: "None" })).toBeChecked();
+    await expect(inSingers.getByRole("radio", { name: "None" })).toBeChecked();
+    await expect(page.locator("html")).not.toHaveAttribute("data-skin", /.*/);
+  });
 });

@@ -106,6 +106,7 @@
   import SvgPad from "./controls/SvgPad.svelte";
   import { themePackages } from "./controls/themes/packages";
   import ThemeParts from "./ThemeParts.svelte";
+  import SkinPicker from "./SkinPicker.svelte";
   import { themeChosen } from "./api";
   import IconButton from "./controls/IconButton.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
@@ -1198,6 +1199,8 @@
     </div>
     <h4>How much of it</h4>
     <ThemeParts />
+    <!-- §129: the faint artwork over a theme, chosen here as well as on the Singers panel. -->
+    <SkinPicker />
   </div>
 
   <div class="block">
