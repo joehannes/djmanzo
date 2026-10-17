@@ -35,6 +35,7 @@ pub mod catalog;
 pub mod coach;
 pub mod crowd;
 pub mod fatigue;
+pub mod floor;
 pub mod http;
 pub mod intent;
 pub mod looks;

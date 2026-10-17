@@ -313,6 +313,9 @@ fn context_lines(state: &AppState) -> Vec<String> {
         lines.extend(crate::context::told(&context));
     }
     lines.extend(habit_lines(state, &log));
+    // §34 / §36: the floor's other signals, by the room's rule — only while
+    // somebody is looking.
+    lines.extend(crate::floor::briefing(state));
     lines
 }
 

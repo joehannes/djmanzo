@@ -51,6 +51,8 @@ pub struct Night {
     started: Instant,
     /// §12: what the DJ did with each staged transaction tonight.
     verdicts: Mutex<crate::staged::Verdicts>,
+    /// §34 / §36: the floor's other signals tonight (`crate::floor`).
+    floor: Mutex<dj_assistant::floor::Floor>,
 }
 
 impl Default for Night {
@@ -68,7 +70,15 @@ impl Night {
             arc: Mutex::new(Vec::new()),
             started: Instant::now(),
             verdicts: Mutex::new(crate::staged::Verdicts::default()),
+            floor: Mutex::new(dj_assistant::floor::Floor::new()),
         }
+    }
+
+    /// The floor's other signals tonight (§34 / §36), held here because a
+    /// night is what they are compared against.
+    #[must_use]
+    pub const fn floor(&self) -> &Mutex<dj_assistant::floor::Floor> {
+        &self.floor
     }
 
     /// Count what the DJ did with a staged transaction (§12, §44).

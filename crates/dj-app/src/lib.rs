@@ -138,6 +138,10 @@ pub mod guide_offer;
 pub mod reactions;
 pub mod suno;
 // End of session B's modules.
+// Parallel, session 2 (docs/PARALLEL-SESSIONS.md §4): its modules
+// go between these two lines, and nothing else does.
+pub mod floor;
+// End of session 2's modules.
 pub mod youtube;
 
 pub use host::{AudioHost, HostError};
@@ -1163,6 +1167,11 @@ pub fn run() {
             suno::suno_link,
             suno::guests_whatsapp_here,
             // End of session B's commands.
+            // Parallel, session 2 (docs/PARALLEL-SESSIONS.md §4): its
+            // commands go between these two lines, and nothing else does.
+            floor::floor_saw,
+            floor::floor_read,
+            // End of session 2's commands.
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

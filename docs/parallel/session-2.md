@@ -25,7 +25,13 @@ written under *Needed* below for the fold.
   transition preferences), each held to the library's own tables. The
   picker shows them, and the rail and planner read the new fields, once the
   fold makes the changes listed under *Needed*.
-- §34/§36, §106 — not started.
+- **§34/§36 built against stand-ins** — eight more signals from the room
+  surface's camera and microphone, each placed against its own night on its
+  own line with its own confidence (`dj_assistant::floor`). Proven against
+  drawn footage and generated sound in Chromium and run in the shipped
+  webview under Xvfb with WebKitGTK's mock devices; **nothing here has been
+  near a real room**, a real camera or a real microphone.
+- §106 — not started.
 
 ## Changelog lines (for CHANGELOG.md, under Unreleased)
 
@@ -58,6 +64,18 @@ written under *Needed* below for the fold.
   usually takes, and the joins it reaches for when the records leave the
   choice open — never an echo, which is djmanzo's answer to a key clash,
   and never instead of the cut a tempo that does not work demands.
+
+- **The room surface reads eight more things, each on its own line.** The
+  room's sound in three bands (low, mid, high), applause-like clicks (sharp
+  clicks that keep to no beat — a hi-hat does not count), the room over the
+  music (how much louder the microphone is than the music djmanzo is sending
+  explains, which is how a crowd's noise is told from the record), uneven
+  movement and moving together (a coarse optical flow across the picture),
+  and the picture changing as a whole. Each is compared only with the same
+  room earlier tonight, says how far it can be trusted, and says beside every
+  reading what it is easily confused with. Nothing adds them up: there is no
+  crowd score, by §36's own rule. Built and tested against drawn footage and
+  generated sound; not yet against a real room.
 
 ## DIRECTIVE-STATUS text
 
@@ -144,6 +162,60 @@ written under *Needed* below for the fold.
   Stem / Remix), whose curriculum nobody here has checked — the module docs'
   reason, unchanged.
 
+- **§34**, replacing *"What is left is most of §34's list … they are not
+  built: room activity in the low, mid and high bands, applause-like
+  transients, crowd noise told apart from the music, optical-flow variance,
+  an occupancy proxy, a crowd-density proxy, lighting motion and scene
+  change."*: **Five of them built (17 October), against stand-ins.**
+  `dj_assistant::floor` places each of eight signals against its own night
+  (`Floor::line`, the room's `Against` scale, `ENOUGH` looks in the last three
+  minutes, `SETTLED` before a placement stops being *early*), one line each,
+  always — a signal with nothing to say says *not yet* and why. Measured by
+  the room surface from the frames and window of sound it already reads
+  (`ui/src/floor.ts`, numbers only cross to Rust): *room activity in three
+  bands* (`bands`, power summed across each band's bins of the analyser's own
+  spectrum, smoothing turned off so a look hears its own moment);
+  *applause-like transients* (`clicks`, sharp slices of the window's first
+  difference, discounted by how much they keep to one gap — a hi-hat on the
+  grid scores nothing); *crowd noise told apart from the music*
+  (`Signal::OverMusic`: the microphone's loudness against the master's level,
+  a running straight-line fit over the night in Rust, which refuses while the
+  music has not moved two decibels or the microphone does not follow it);
+  *optical-flow variance* (`flow`, 8-pixel blocks of the 64×48 frame matched
+  within 3 pixels, a move counted only where it fits clearly better than
+  staying put); *scene change* (`sceneChange`, the brightness histogram
+  against the last look's). Held by `floor::tests` (6, in `dj-assistant`),
+  `dj_app::floor::tests` (3), `ui/src/floor.test.ts` (14) and
+  `ui/e2e/floor.spec.ts` (5: through Chromium's stand-in camera and
+  microphone — a bass tone sits in the low band and a hi-hat in the high one;
+  a room clapping reads 0.52 where the equally sharp hi-hat reads 0.00; a pan
+  moves together at 0.88 where scattered figures read 0.36 and twice as
+  uneven; a lighting cut reads a scene change of 1.0 where the pan reads
+  0.05; a sound that switches from bass to hats lets go of the bass within
+  the look); sixteen mutants fail them, and a seventeenth — the wrong FFT length passed at the call site — was made impossible by reading it off the spectrum. Driven in the shipped webview under
+  Xvfb with WebKitGTK's mock camera and microphone (`DJMANZO_MOCK_CAPTURE`):
+  the eight lines appear under *Beyond light, movement and loudness*. **None
+  of it has been near a real room.** What is left: an occupancy proxy, a
+  crowd-density proxy and lighting motion (as distinct from scene change).
+- **§36**, replacing *"What §36's `AudienceContext` names and djmanzo does not
+  read is cohesion … vocal response … and visual change"*: **Cohesion and
+  visual change are read (17 October), against stand-ins.** *Cohesion* is
+  `Signal::Together` — how much of the picture's movement goes one way (the
+  length of the blocks' summed movement over the sum of their lengths);
+  *visual change* is `Signal::Scene`. Each on its own line beside the room's
+  three, with its own confidence and its blind spot said beside it (a
+  sweeping light moves the whole picture one way; the lighting rig changing
+  looks like the room changing), and nothing combines them — a test holds
+  that each line speaks only of its own signal, and another that no line
+  names a mood. The notable ones reach the assistant's briefing, only while
+  somebody is looking (`dj_app::floor::briefing`, the room's rule). What is
+  left: *vocal response* — the room over the music in the voice band only —
+  is not split out; `OverMusic` is broadband.
+- **§106**, after *"…through a stand-in of the same kind"*: §34/§36's
+  signals have stand-ins of their own (`ui/e2e/floor/media.ts`: a pan,
+  scattered figures, a lighting cut, a room clapping, a hi-hat on the grid,
+  a bass tone, and one that switches from the bass to the hats).
+
 ## Needed in files this session does not own
 
 - `crates/dj-app/src/commands.rs`, `dj_context`: its body is now
@@ -192,6 +264,15 @@ written under *Needed* below for the fold.
     has not said an arc, the interface may *offer* the pack's
     (`Arc::from_name(pack.arc?)`), never default to it silently.
 
+- **§34/§36 at the fold**: nothing is required — `RoomSense.svelte` and the
+  new `floor.ts` are this session's, the commands are registered inside
+  `lib.rs`'s *Parallel, session 2* marker block (`floor::floor_saw`,
+  `floor::floor_read`; module `pub mod floor;` in the modules block), and the
+  floor lives on `Night` (this session's), not on `AppState`. Optional: answer
+  `floor_saw`/`floor_read` in `ui/e2e/shell.ts` so other specs that open the
+  room can see the lines; until then the shell answers both with `null`, and
+  the surface draws nothing for a `null`.
+
 ## HANDOFF traps
 
 - `cargo fmt` re-wraps a long line between an edit script's read and its next
@@ -201,3 +282,12 @@ written under *Needed* below for the fold.
   to a key clash. It reads backwards from DJ talk, where an echo-out is a
   style; `pack::tests::transition_preferences_are_taste_and_said_once`
   holds it.
+- `ui/e2e/floor/media.ts` (like `senses/media.ts`) **reuses** a file already
+  in `/tmp/djmanzo-floor`: after changing a generator, delete the directory,
+  or the test runs against the old footage.
+- `vitest run` prints a test's `console.log` only with `--reporter=verbose`;
+  without it a probe looks like it printed nothing.
+- An `AnalyserNode`'s frequency data is smoothed across reads by default
+  (`smoothingTimeConstant` 0.8). Read once a look, that carries the last
+  look's spectrum into this one for many looks; the room surface sets it to 0
+  and `floor.spec.ts`'s *switch* sound fails without it.

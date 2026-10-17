@@ -41,6 +41,17 @@
     type RoomRead,
   } from "./api";
   import { onMount } from "svelte";
+  import {
+    bands,
+    clicks,
+    floorRead,
+    floorSaw,
+    flow,
+    histogram,
+    sceneChange,
+    type FloorMeasured,
+    type FloorRead,
+  } from "./floor";
   import { performance } from "./performance.svelte";
 
   interface Props {
@@ -87,6 +98,14 @@
   const MOVEMENT_SCALE = 64;
 
   let read = $state<RoomRead | null>(null);
+  /** §34 / §36: the floor's other signals, each on its own line. */
+  let floor = $state<FloorRead | null>(null);
+  /**
+   * The last look's brightness, for §34's scene change: the picture changing
+   * as a whole from one look to the next, seconds apart rather than the sixth
+   * of a second movement is read across.
+   */
+  let lastHistogram: Float32Array | null = null;
   let error = $state("");
   let looking = $state(false);
   let showPreview = $state(true);
@@ -199,6 +218,9 @@
       // 43 ms, and the same record read 0.65 on one schedule and 0.80 on
       // another because one kept landing between kicks.
       analyser.fftSize = 32768;
+      // §34's bands are read from this look's spectrum alone. The default
+      // smoothing would blend in the last look's, two seconds ago.
+      analyser.smoothingTimeConstant = 0;
       audio.createMediaStreamSource(stream).connect(analyser);
     }
 
@@ -255,6 +277,7 @@
     audio = null;
     analyser = null;
     canvas = null;
+    lastHistogram = null;
     generation += 1;
     looking = false;
     haveCamera = false;
@@ -325,6 +348,8 @@
     if (!still()) return;
 
     const reading: { light?: number; movement?: number; loudness?: number } = {};
+    // §34 / §36, from the same two frames and the same window of sound.
+    const measured: FloorMeasured = {};
 
     const before = frame();
     if (before) {
@@ -344,6 +369,12 @@
         // reading that only ever uses a sliver of its range is a reading
         // whose own night's distribution is all one bucket.
         reading.movement = Math.min(1, changed / after.length / MOVEMENT_SCALE);
+        const moving = flow(before, after, WIDE, HIGH);
+        if (moving.uneven !== null) measured.uneven = moving.uneven;
+        if (moving.together !== null) measured.together = moving.together;
+        const shape = histogram(after);
+        if (lastHistogram) measured.scene = sceneChange(lastHistogram, shape);
+        lastHistogram = shape;
       }
     }
 
@@ -357,11 +388,17 @@
       // the bottom tenth. -60 dBFS to 0 across the full scale.
       const db = 20 * Math.log10(Math.max(rms, 1e-6));
       reading.loudness = Math.min(1, Math.max(0, (db + 60) / 60));
+      measured.heard = reading.loudness;
+      measured.applause = clicks(samples, analyser.context.sampleRate);
+      const spectrum = new Float32Array(analyser.frequencyBinCount);
+      analyser.getFloatFrequencyData(spectrum);
+      Object.assign(measured, bands(spectrum, analyser.context.sampleRate));
     }
 
     if (reading.light === undefined && reading.loudness === undefined) return;
     try {
       await roomSaw(reading);
+      await floorSaw(measured);
     } catch (e) {
       error = String(e);
     }
@@ -370,6 +407,7 @@
   async function refresh() {
     try {
       read = await roomRead();
+      floor = await floorRead();
     } catch (e) {
       error = String(e);
     }
@@ -545,6 +583,29 @@
   {/if}
 
   <!--
+    §34 / §36: what else the camera and microphone measure, each signal on its
+    own line with its own confidence. Never added up: §36 forbids a crowd
+    score, and a list is the shape that cannot become one. Each line is Rust's,
+    with what it is easily confused with in it.
+  -->
+  {#if floor?.watching && floor.lines.length > 0}
+    <div class="floor">
+      <h4>Beyond light, movement and loudness</h4>
+      <ul>
+        {#each floor.lines as line (line.signal)}
+          <li
+            data-signal={line.signal}
+            data-confidence={line.confidence}
+            class:notable={line.notable}
+            class:waiting={line.confidence === "not_yet"}
+            title={`Measured as ${line.measures}`}
+          >{line.says}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  <!--
     §37: what has happened on previous nights, when there have been enough of
     them to say. Below the numbers because it is a different kind of claim —
     everything above is tonight, measured; this is a tally over nights, and it
@@ -709,6 +770,34 @@
   }
 
   /* §37's tally over previous nights, which is not tonight's reading. */
+  .floor {
+    border-top: 1px solid var(--line, #2a2a2a);
+    padding-top: 0.4rem;
+  }
+
+  .floor h4 {
+    margin: 0 0 0.2rem;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .floor ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.85em;
+  }
+
+  /* A line with nothing to say yet is quieter than one that has placed. */
+  .floor li.waiting {
+    color: var(--muted);
+  }
+
+  .floor li.notable {
+    font-weight: 600;
+  }
+
   .history {
     border-top: 1px solid var(--line, #2a2a2a);
     padding-top: 0.4rem;
